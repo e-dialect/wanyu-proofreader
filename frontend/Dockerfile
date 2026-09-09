@@ -14,7 +14,7 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 FROM dependencies AS build
 
 COPY . .
-RUN npm run build
+RUN NODE_OPTIONS=--max-old-space-size=768 npm run build
 
 FROM nginx:1.31-alpine
 

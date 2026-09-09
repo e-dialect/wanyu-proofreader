@@ -872,3 +872,11 @@ Traefik 的 TLS router 增加一年 HSTS，关闭强制 HTTP HSTS；本机 HTTP 
 品牌整合前的旧版方辑源码快照 [`fangji-v1.0.0`](https://github.com/e-dialect/wanyu-proofreader/releases/tag/fangji-v1.0.0)
 继续适用其发布时所附条款。替代商业许可仅能覆盖北京塔聚科技有限责任公司拥有或已获充分授权的权利，
 不构成对仓库内全部历史贡献、第三方内容或用户资产的重新授权。
+
+## 小内存服务器构建
+
+后端镜像在构建阶段通过 `GOMAXPROCS=1` 和 `GOFLAGS=-p=1` 限制 Go 执行并行度和包构建并行度，前端构建 Node 堆上限为 768 MiB；测试仍在镜像构建中执行。运行容器的资源限制不会限制镜像构建，需要另行配置受限 BuildKit。
+
+edialect 部署主机使用当前选中的 edialect-bounded 构建器（1280 MiB 内存、内存和 swap 合计 2304 MiB、1 核 CPU、一个构建步骤）以及 2 GiB 主机 swap。上线前确认 docker buildx ls 的选中项正确，且没有 BUILDX_BUILDER 环境变量覆盖它，再执行 docker compose -f docker-compose.traefik.yml up --build -d。其他主机需按实际容量配置自己的构建器。
+
+主机的安装、资源保护、验收证据及回滚说明见 /home/edialect/infra/managed/RESOURCE_FIX.md。

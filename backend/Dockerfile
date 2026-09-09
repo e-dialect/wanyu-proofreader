@@ -2,6 +2,9 @@ FROM golang:1.27-alpine AS builder
 
 WORKDIR /src
 COPY go.mod go.sum* ./
+# Bound compiler/test concurrency on shared deployment hosts.
+ENV GOMAXPROCS=1
+ENV GOFLAGS="-p=1"
 RUN go mod download
 # Keep the build context future-proof as backend services are split into
 # focused files; tests still run inside the image build before compilation.
