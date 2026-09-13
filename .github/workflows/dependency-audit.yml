@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -36,7 +36,7 @@ jobs:
           npm outdated --prefix frontend --json > audit-results/npm-outdated.json || true
           cd backend
           go list -m -u -json all > ../audit-results/go-outdated.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: dependency-audit
