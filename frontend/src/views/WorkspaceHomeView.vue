@@ -9,7 +9,7 @@
     <main class="container page workspace-page">
       <header class="page-heading">
         <div>
-          <div class="page-eyebrow">我的方辑工作台</div>
+          <div class="page-eyebrow">我的万语校坊工作台</div>
           <h1>{{ greeting }}，今天从哪项工作开始？</h1>
           <p>入口只按你当前拥有的能力显示；不同项目可以承担不同职责。</p>
         </div>

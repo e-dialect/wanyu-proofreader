@@ -174,7 +174,7 @@ func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDe
 		}
 	}
 	cleanupPDFCache(root, now, pdfBookBudget)
-	stamp := fmt.Sprintf("Fangji | %s | %s p%d-%d | %s UTC", userID, pdfSourceKey(file)[:12], start, end, descriptor.ExpiresAt.Add(-pdfPreviewTTL).UTC().Format("2006-01-02 15:04:05"))
+	stamp := fmt.Sprintf("Wanyu Proofreader | %s | %s p%d-%d | %s UTC", userID, pdfSourceKey(file)[:12], start, end, descriptor.ExpiresAt.Add(-pdfPreviewTTL).UTC().Format("2006-01-02 15:04:05"))
 	dir, err := s.preparePDFPages(file)
 	var output []byte
 	if err == nil {

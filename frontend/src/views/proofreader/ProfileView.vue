@@ -21,7 +21,7 @@
         <div class="form-group">
           <label for="profile-email" class="form-label">邮箱（选填）</label>
           <input id="profile-email" v-model.trim="profile.email" class="form-control" type="email" autocomplete="email" maxlength="255" :disabled="savingProfile" />
-          <p class="text-sm text-muted mt-1">修改邮箱后将标记为未验证。个人资料仅保存在方辑，不会修改外部账号。</p>
+          <p class="text-sm text-muted mt-1">修改邮箱后将标记为未验证。个人资料仅保存在万语校坊，不会修改外部账号。</p>
         </div>
         <div v-if="profileError" class="alert alert-error mb-4" role="alert">{{ profileError }}</div>
         <div v-if="profileSuccess" class="alert alert-success mb-4" role="status">{{ profileSuccess }}</div>
@@ -73,7 +73,7 @@
 
       <section v-if="providers.length" class="card mt-6">
         <div class="card-title">统一身份绑定</div>
-        <p class="profile-note mb-4">绑定后可以使用外部账号登录方辑。登录或绑定时会尝试补齐昵称、邮箱和头像，保留你已填写的资料。同步的邮箱仍需验证；资料服务暂时不可用不影响登录。</p>
+        <p class="profile-note mb-4">绑定后可以使用外部账号登录万语校坊。登录或绑定时会尝试补齐昵称、邮箱和头像，保留你已填写的资料。同步的邮箱仍需验证；资料服务暂时不可用不影响登录。</p>
         <div class="identity-list">
           <div v-for="provider in providers" :key="provider.id" class="identity-card">
             <div class="identity-heading">

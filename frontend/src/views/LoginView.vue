@@ -2,7 +2,7 @@
   <div class="auth-container">
     <div class="auth-card">
       <div class="auth-logo">
-        <h1>方辑</h1>
+        <h1>万语校坊</h1>
         <p>线上方言校对工坊</p>
       </div>
 
@@ -13,7 +13,7 @@
           :class="{ active: !selectedProviderId }"
           :disabled="loading"
           @click="selectProvider('')"
-        >方辑账号</button>
+        >万语校坊账号</button>
         <button
           v-for="provider in providers"
           :key="provider.id"
