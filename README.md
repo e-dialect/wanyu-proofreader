@@ -866,7 +866,8 @@ Traefik 的 TLS router 增加一年 HSTS，关闭强制 HTTP HSTS；本机 HTTP 
 第三方组件继续适用其路径级许可证和版权声明；软件许可证不自动覆盖导入的 PDF、
 词典、语料、校勘项目、用户内容、录音、数据集、模型权重、商标、Logo 或生成导出物。
 完整边界见 [LICENSING.md](LICENSING.md) 和
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，资产与运行时边界见
+[ASSET_BOUNDARIES.md](ASSET_BOUNDARIES.md)。
 
 品牌整合前的旧版方辑源码快照 [`fangji-v1.0.0`](https://github.com/e-dialect/wanyu-proofreader/releases/tag/fangji-v1.0.0)
 继续适用其发布时所附条款。替代商业许可仅能覆盖北京塔聚科技有限责任公司拥有或已获充分授权的权利，
