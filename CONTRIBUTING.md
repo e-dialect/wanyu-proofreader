@@ -2,7 +2,7 @@
 
 感谢你参与万语校坊。本文件补充本仓库特有的开发和评审要求；组织级规则以 [E-Dialect 贡献指南](https://github.com/e-dialect/.github/blob/main/CONTRIBUTING.md) 为准。
 
-本项目原名“方辑（Fangji v2）”；历史 commit、migration、package 或兼容字段中可能仍保留旧名，不应仅为品牌 rename 做破坏性重命名。
+本项目原名“方辑（Fangji v2）”；品牌整合前最后一个旧版源码快照为 [`fangji-v1.0.0`](https://github.com/e-dialect/wanyu-proofreader/releases/tag/fangji-v1.0.0)。历史 commit、设计记录、migration、package、API 路径或兼容字段中可能仍保留旧名，不应仅为品牌 rename 做破坏性重命名；活跃界面和用户可见文案应使用“万语校坊”。
 
 提交贡献前，请同时阅读：
 
@@ -92,7 +92,7 @@ PR 应当：
 
 ## 当前合并政策
 
-main 已启用严格状态检查、至少一次批准、解决讨论以及禁止强推/删除，管理员同样受限制。维护者还需执行以下人工门禁：
+main 已启用严格状态检查、解决讨论以及禁止强推/删除，管理员同样受限制；仓库级的全局批准数为 0。R0/R1 变更依靠 required checks、自动审查和作者提交的人工验证证据，R2 变更在组织治理文件落地后由路径级 CODEOWNER / 人工门禁控制。维护者还需执行以下合并门禁：
 
 1. PR 必须基于当前目标分支，所有可用 checks 通过。
 2. `REQUEST_CHANGES` 和未解决的阻断讨论必须先处理。

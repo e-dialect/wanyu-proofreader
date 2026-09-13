@@ -2,7 +2,7 @@
   <div class="auth-container">
     <div class="auth-card">
       <div class="auth-logo">
-        <h1>方辑</h1>
+        <h1>万语校坊</h1>
         <p>注册新账号</p>
       </div>
 

@@ -53,7 +53,7 @@ func TestTaskPDFRenderingFixture(t *testing.T) {
 		if end > 3 {
 			end = 3
 		}
-		data, err := buildTaskPDF(bytes.NewReader(renderingTestPDF()), start, end, "Fangji | synthetic | task | UTC")
+		data, err := buildTaskPDF(bytes.NewReader(renderingTestPDF()), start, end, "Wanyu | synthetic | task | UTC")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -105,7 +105,7 @@ func TestTaskPDFBrowserRegression(t *testing.T) {
 	if err := splitPDFPages(bytes.NewReader(data), pagesDir, pdfBookBudget); err != nil {
 		t.Fatal(err)
 	}
-	const stamp = "Fangji | regression-user | regression-task | 2026-09-09 UTC"
+	const stamp = "Wanyu | regression-user | regression-task | 2026-09-09 UTC"
 	for start := 1; start <= count; start++ {
 		end := start + 1
 		if end > count {

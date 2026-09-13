@@ -2,8 +2,8 @@
   <nav class="navbar" aria-label="主导航">
     <div class="container">
       <RouterLink to="/" class="navbar-brand">
-        <span class="navbar-seal" aria-hidden="true">方</span>
-        <span>方辑</span>
+        <span class="navbar-seal" aria-hidden="true">万</span>
+        <span>万语校坊</span>
         <span class="sub">线上方言校对工坊</span>
       </RouterLink>
       <div class="navbar-nav">

@@ -2,41 +2,17 @@
 
 万语校坊是面向方言、地方语言与民族语言资料整理团队的协同校勘平台。
 
-它把 PDF、CSV、词典等批量资料交给多位校对者独立核对：结果一致时可自动确认，存在差异时进入管理员仲裁，并完整保留来源、修改记录和最终决策。
+它把 PDF、CSV、词典等批量资料交给多位校对者独立核对，并以一致确认或管理员仲裁形成最终结果。
 
 在“乡声万语”内部，这套流程承担 Candidate → Trusted / Gold 的专业工作台职责；但万语校坊也可以独立部署、独立使用，并具有独立产品与商业价值。它不是乡声集盒的管理后台。
 
 产品定位与乡声集盒的协作边界见 [docs/PRODUCT_POSITIONING.md](docs/PRODUCT_POSITIONING.md)。
 
-2027 春节阶段采用 **Data First + Product Polish**，总控 Issue 见 [SF-W · 2027 春节万语校坊 Sprint Tracking](https://github.com/e-dialect/wanyu-proofreader/issues/91)；本阶段不重写核心架构。
-
-当前版本采用“可配置多人独立校对 + 管理员仲裁”流程：每个项目可设置每条材料所需的校对人数（默认且最少为 2）。收齐 N 份独立结果后，全部完全一致时条目自动完成；存在任意差异时，系统会永久保留全部结果并转入管理员仲裁。
-
-万语校坊项目内的 `approved` 是校勘工作流完成状态，不自动等同于“乡声万语”跨产品数据质量层的 Trusted 或 Gold；是否进入 Trusted / Gold，仍须按 [#97](https://github.com/e-dialect/wanyu-proofreader/issues/97) 的 provenance、QA、可信/专家决策与版本化流程确定。
-
-### 当前稳定能力
-
-- PDF / CSV 导入；
-- 项目与角色管理；
-- 多人独立校对；
-- 差异检测；
-- 管理员仲裁；
-- provenance / 可审计导出；
-- 专用语言键盘；
-- task lease / draft / progress。
-
-### Spring 2027 重点增强
-
-- 智能错误发现与校勘辅助；
-- 真实莆仙资料试点；
-- 蒙古语 20k+ 数据试点；
-- Review Bundle v0；
-- Gold / Trusted corpus QA。
-
-“智能协同校勘”描述产品方向，不表示当前已经具备成熟的 AI 自动校勘模型。
-
 ## 目录
 
+- [当前流程与边界](#当前流程与边界)
+- [当前稳定能力](#当前稳定能力)
+- [2027 春节重点增强](#2027-春节重点增强)
 - [功能概览](#功能概览)
 - [快速启动](#快速启动)
 - [首次配置](#首次配置)
@@ -45,6 +21,35 @@
 - [项目结构](#项目结构)
 - [开发说明](#开发说明)
 - [常见问题](#常见问题)
+
+## 当前流程与边界
+
+2027 春节阶段采用 **Data First + Product Polish**，总控 Issue 见 [SF-W · 2027 春节万语校坊 Sprint Tracking](https://github.com/e-dialect/wanyu-proofreader/issues/91)；本阶段不重写核心架构。
+
+当前版本采用“可配置多人独立校对 + 管理员仲裁”流程：每个项目可设置每条材料所需的校对人数（默认且最少为 2）。收齐 N 份独立结果后，全部完全一致时条目自动完成；存在任意差异时，系统会永久保留全部结果并转入管理员仲裁。
+
+`approved` 的跨产品数据质量边界以[产品定位文档](docs/PRODUCT_POSITIONING.md#1-定位)与 [#97](https://github.com/e-dialect/wanyu-proofreader/issues/97) 为准。
+
+## 当前稳定能力
+
+- PDF / CSV 导入；
+- 项目与角色管理；
+- 多人独立校对；
+- 差异检测；
+- 管理员仲裁；
+- 最终结果导出（按 PDF 页码定位；当前不包含逐位校对者的全过程审计记录）；
+- 专用语言键盘；
+- task lease / draft / progress。
+
+## 2027 春节重点增强
+
+- 智能错误发现与校勘辅助；
+- 真实莆仙资料试点；
+- 蒙古语 20k+ 数据试点；
+- Review Bundle v0；
+- Gold / Trusted corpus QA。
+
+“智能协同校勘”描述产品方向，不表示当前已经具备成熟的 AI 自动校勘模型。
 
 ## 功能概览
 
@@ -57,7 +62,7 @@
 核心能力：
 
 - 基于 PocketBase 的注册、登录、平台角色和项目级能力控制。
-- 当前代码保留 `hinghwa` external identity provider，作为历史兼容路径；外部身份只按稳定 provider-local subject 映射本地用户，不自动按邮箱或姓名猜测合并。长期方向是以乡声集盒稳定身份作为“乡声万语”主要外部身份入口；万语校坊本地用户、项目角色和独立登录仍保留。乡声集盒 SSO 尚未宣称已实现。
+- 当前代码保留 `hinghwa` external identity provider 作为历史兼容路径；身份映射、独立权限与 SSO 状态以[产品定位文档](docs/PRODUCT_POSITIONING.md#3-登录)为准。
 - 项目创建默认采用白名单：平台管理员不限量，普通用户须获授权并可设置额度。
 - 项目支持指定成员、公开加入和口令加入；加入后成员身份持久保留。
 - 同一用户可在不同项目承担不同职责，同一项目内管理员和校对员互斥。
@@ -531,7 +536,7 @@ PDF页码,词条,读音,释义,例句
 ## 项目结构
 
 ```text
-fangji-v2/
+wanyu-proofreader/
 ├── README.md
 ├── CHANGELOG.md
 ├── .env.example
@@ -625,7 +630,7 @@ proofreading -> arbitration -> approved
 | `proofreading` | 校对员正在编辑 |
 | `proofread` | 已有独立结果，尚未收齐项目要求的人数 |
 | `arbitration` | 收齐结果后存在差异，等待管理员仲裁 |
-| `approved` | N 份结果全部一致或仲裁完成，条目在本项目校勘工作流中完成；不自动等同于 Trusted / Gold |
+| `approved` | N 份结果全部一致或仲裁完成，条目在本项目校勘工作流中完成；跨产品质量边界见[产品定位文档](docs/PRODUCT_POSITIONING.md#1-定位) |
 
 `reviewing`、`rejected` 是旧流程遗留状态，当前路由和主要业务流程不再使用。
 
@@ -856,13 +861,13 @@ Traefik 的 TLS router 增加一年 HSTS，关闭强制 HTTP HSTS；本机 HTTP 
 
 ## 许可证
 
-本仓库中由 e-dialect 有权授权的原创软件代码，除另有说明外，采用
-**GNU Affero General Public License v3.0 only（`AGPL-3.0-only`）**发布。
+除文件或目录另有说明外，本仓库中由 e-dialect 有权授权的原创软件代码采用
+[GNU Affero General Public License 第 3 版且仅该版本（AGPL-3.0-only）](LICENSE)。
+第三方组件继续适用其路径级许可证和版权声明；软件许可证不自动覆盖导入的 PDF、
+词典、语料、校勘项目、用户内容、录音、数据集、模型权重、商标、Logo 或生成导出物。
+完整边界见 [LICENSING.md](LICENSING.md) 和
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-AGPL 允许包括商业场景在内的使用，但使用者须遵守其全部条款。无法或不希望遵守
-AGPL 条款的组织，可以联系项目维护者了解替代商业许可。
-
-第三方字体、PDF.js、CMaps 和标准字体继续适用各自的路径级许可证；软件许可证也不
-自动授权导入的 PDF、词典、语料、校勘内容、录音、数据集、模型、商标或 Logo。
-详见 [`LICENSING.md`](LICENSING.md) 与
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+品牌整合前的旧版方辑源码快照 [`fangji-v1.0.0`](https://github.com/e-dialect/wanyu-proofreader/releases/tag/fangji-v1.0.0)
+继续适用其发布时所附条款。替代商业许可仅能覆盖北京塔聚科技有限责任公司拥有或已获充分授权的权利，
+不构成对仓库内全部历史贡献、第三方内容或用户资产的重新授权。

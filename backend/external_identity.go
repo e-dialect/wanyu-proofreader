@@ -137,10 +137,10 @@ func (s *externalIdentityService) bind(c *core.RequestEvent) error {
 	}
 	created, err := s.bindIdentity(auth.Id, provider.ID(), subject)
 	if errors.Is(err, errIdentityOwned) {
-		return apis.NewApiError(http.StatusConflict, "该外部账号已绑定其他方辑账号。", nil)
+		return apis.NewApiError(http.StatusConflict, "该外部账号已绑定其他万语校坊账号。", nil)
 	}
 	if errors.Is(err, errProviderBound) {
-		return apis.NewApiError(http.StatusConflict, "当前方辑账号已绑定此身份来源的其他账号。", nil)
+		return apis.NewApiError(http.StatusConflict, "当前万语校坊账号已绑定此身份来源的其他账号。", nil)
 	}
 	if err != nil {
 		s.logAuthResult(provider.ID(), "binding_error")
