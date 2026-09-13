@@ -853,3 +853,16 @@ python3 backend/tests/run_rare_characters_integration.py
 因此未设整个前端根文件系统只读；其他目录仍归 root 所有。开发镜像保留现有开发用户行为。
 Traefik 的 TLS router 增加一年 HSTS，关闭强制 HTTP HSTS；本机 HTTP 入口不发送 HSTS。
 当前 Traefik Admin UI 默认开启是既有维护入口策略，正式运营应显式设置 `ENABLE_POCKETBASE_ADMIN_UI=false`。
+
+## 许可证
+
+本仓库中由 e-dialect 有权授权的原创软件代码，除另有说明外，采用
+**GNU Affero General Public License v3.0 only（`AGPL-3.0-only`）**发布。
+
+AGPL 允许包括商业场景在内的使用，但使用者须遵守其全部条款。无法或不希望遵守
+AGPL 条款的组织，可以联系项目维护者了解替代商业许可。
+
+第三方字体、PDF.js、CMaps 和标准字体继续适用各自的路径级许可证；软件许可证也不
+自动授权导入的 PDF、词典、语料、校勘内容、录音、数据集、模型、商标或 Logo。
+详见 [`LICENSING.md`](LICENSING.md) 与
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
