@@ -36,3 +36,11 @@
 - [ ] 没有提交密钥、`.env`、生产数据或构建产物
 - [ ] PocketBase 变更通过新增迁移完成，没有改写既有迁移
 - [ ] 我理解维护者将手动审核并使用 Squash and merge；未启用 auto-merge
+
+## Contribution
+
+- [ ] I confirm that I have the right to submit this contribution.
+- [ ] Any third-party material is clearly identified with its source and license.
+
+For first-time contributors, the CLA check will guide explicit acceptance of
+the current e-dialect ICLA. These checkboxes do not constitute a CLA signature.
