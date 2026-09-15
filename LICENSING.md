@@ -13,6 +13,10 @@ can cover only rights owned by or sufficiently licensed to Beijing Taju
 Technology Co., Ltd.; it does not relicense every historical contribution,
 third-party component, or user-supplied asset in this repository.
 
+**Alternative commercial relicensing status: PARTIAL.** This audit label
+reflects incomplete repository-wide, path-by-path evidence for historical and
+excluded material; it does not limit the AGPL rights granted for covered code.
+
 The pre-integration Fangji source snapshot [`fangji-v1.0.0`](https://github.com/e-dialect/wanyu-proofreader/releases/tag/fangji-v1.0.0)
 retains the licensing and rights status attached to that historical revision.
 This repository-wide notice is not retroactive permission for material that the
@@ -35,6 +39,9 @@ have an independent lawful basis for processing those materials. See
 **GNU Affero General Public License 第 3 版且仅该版本（`AGPL-3.0-only`）**。
 AGPL 允许商业使用，但须遵守其全部条款；无法或不希望遵守这些条款的组织，可以联系
 维护者了解替代商业许可。
+
+**替代商业重许可状态：PARTIAL（部分）。**该审计标记表示尚无覆盖全部历史贡献及排除
+材料的逐路径完整权利证据；它不限制已就适用代码授予的 AGPL 权利。
 
 AGPL 声明不覆盖随仓库分发的第三方字体、PDF.js、CMaps、标准字体或其他组件，也不
 自动授权导入的 PDF、词典、语料、校勘项目、用户内容、录音、数据集、模型权重、商标、

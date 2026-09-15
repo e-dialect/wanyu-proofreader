@@ -10,6 +10,7 @@ beside the application.
 | Original application code, tests, migrations, hooks, and configuration authored for this repository | Software license in [`LICENSE`](./LICENSE), subject to authorship and path-level exceptions |
 | `frontend/public/pdfjs/**` | Third-party PDF.js distribution and path-level notices; see [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) |
 | `frontend/public/fonts/**` | Third-party font software and subsets under their adjacent OFL notices; names and subsets do not transfer copyright |
+| `docs/**/*.png`, other documentation screenshots, and `frontend/public/favicon.svg` | Documentation and visual/brand assets; no additional media or trademark license is granted unless an adjacent notice says otherwise |
 | Synthetic test fixtures | Test code/data only; they must not contain production documents, accounts, or real personal data |
 | Imported PDFs/CSV, dictionaries, corpora, proofreading projects, annotations, and user content | User/operator assets; not licensed by the repository software license and require their own lawful source and terms |
 | PocketBase runtime data, `pb_data`, backups, caches, and logs | Operational data; excluded from the repository software license and subject to access, retention, privacy, and security controls |
