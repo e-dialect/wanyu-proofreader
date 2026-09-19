@@ -295,21 +295,56 @@ routerAdd("GET", "/api/fangji/projects/{projectId}/members", (c) => {
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/projects/{projectId}/member-candidates", (c) => {
-  const { auth: fangjiAuth, assertId: fangjiAssertId, requireManager: fangjiRequireManager } = require(`${__hooks}/lib/project_access.js`)
+  const {
+    auth: fangjiAuth, assertId: fangjiAssertId, requireManager: fangjiRequireManager,
+    isPlatformAdmin: fangjiIsPlatformAdmin, managedProjectIds: fangjiManagedProjectIds
+  } = require(`${__hooks}/lib/project_access.js`)
   const auth = fangjiAuth(c)
   const projectId = fangjiAssertId(c.request.pathValue("projectId"), "项目")
   const dao = $app
-  fangjiRequireManager(dao, projectId, auth)
-  const result = []
-  for (const user of dao.findRecordsByFilter("users", 'id != ""', "name,email", 1000000, 0)) {
-    result.push({
-      id: user.id,
-      name: user.getString("name"),
-      username: user.getString("username"),
-      email: user.getString("email")
-    })
+  const { project: managedProject } = fangjiRequireManager(dao, projectId, auth)
+
+  // users.listRule grants account listing to platform admins only, and email is
+  // redacted outside emailVisibility, so a manager or owner is offered the people
+  // already connected to the projects they run — never the platform roster.
+  // A freshly created project has no members yet, so `term` restores the documented
+  // "add a person I already know" flow as a bounded lookup instead of a listing.
+  const term = String(c.request.url.query().get("term") || "").trim()
+  const pool = new Set([auth.id, managedProject.getString("admin")])
+  // A negated class, not \p{L}: goja has no Unicode property escapes, and an
+  // unsupported class silently matches almost nothing. This blocks the characters
+  // that could break out of the filter or widen the LIKE (quotes, backslash, % and _).
+  if (term && !/^[^"'\\%`_;(){}<>=!|&*?~\n\r\t]{2,64}$/.test(term)) {
+    throw new BadRequestError("搜索词需为 2-64 个字符，且不能包含引号、%、_ 或括号")
   }
-  return c.json(200, result)
+  if (term) {
+    // Quotes and backslashes are impossible here, so the filter cannot be broken out of.
+    for (const user of dao.findRecordsByFilter(
+      "users", `name ~ "${term}" || username ~ "${term}"`, "name,username", 50, 0)) {
+      pool.add(user.id)
+    }
+  } else if (fangjiIsPlatformAdmin(auth)) {
+    for (const user of dao.findRecordsByFilter("users", 'id != ""', "name,username", 500, 0)) pool.add(user.id)
+  } else {
+    for (const managed of fangjiManagedProjectIds(dao, auth)) {
+      for (const member of dao.findRecordsByFilter(
+        "project_memberships", `project = "${managed}"`, "created", 500, 0)) {
+        pool.add(member.getString("user"))
+      }
+    }
+  }
+
+  const candidates = []
+  for (const userId of pool) {
+    let user = null
+    try { user = dao.findRecordById("users", userId) } catch { continue }
+    candidates.push({ id: user.id, name: user.getString("name"), username: user.getString("username") })
+  }
+  // Order before truncating, so this project's own members can never be dropped
+  // in favour of an older project's, in a locale-independent code-unit order.
+  candidates.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1
+    : a.username < b.username ? -1 : a.username > b.username ? 1 : 0))
+  return c.json(200, candidates.slice(0, 200))
 }, $apis.requireAuth("users"))
 
 routerAdd("PUT", "/api/fangji/projects/{projectId}/members/{userId}", (c) => {
