@@ -113,7 +113,7 @@
               </header>
 
               <div class="source-value">
-                <span>导入原文</span>
+                <span>待校对原文</span>
                 <p>{{ originalRow[header] || '（空白）' }}</p>
               </div>
 
