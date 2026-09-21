@@ -22,8 +22,7 @@ docker compose start backend frontend
 由 Compose 直接构建时使用 `FANGJI_VERSION`/`FANGJI_COMMIT`/`FANGJI_BUILD_DATE` 传入，
 CI 的镜像构建与 `make docker-build` 已自动传入。未传入时记为 `dev`/`unknown`，
 `scripts/check_compose_structure.py` 会在巡检输出里提示这一点——它就是需要纠正的配置信号。
-每日巡检可运行 `python3 ops/audit_storage.py --data-dir ./pb_data`，它只读不删，
-超过预算或非零退出时可挂到调度器上。
+每日存储巡检见下文「存储巡检与告警」：`ops/audit_storage.py` 只读不删，超预算或非零退出。
 
 工具拒绝已存在的备份目录、软链接及放在源目录内的备份，复制前后检查文件哈希，
 验证 SQLite 完整性并记录版本。`--application-stopped` 是操作者对已停写的确认，
@@ -45,6 +44,99 @@ python3 backend/ops/backup.py restore /secure-backups/fangji-20260909 ./pb_data-
 工具检查完整清单、SHA-256 和 SQLite integrity_check，不覆盖现有目标目录。
 启动后检查 `/healthz` 和 `/api/health`，管理员登录、项目/条目数、PDF 打开、
 领取/提交、仲裁、CSV 导出，并对比备份前文件哈希。每季度和重要版本升级前重复演练。
+
+## 存储巡检与告警
+
+`ops/audit_storage.py` 是只读巡检：统计 `pb_data` 总体积、磁盘剩余水位、PDF 预览缓存
+与上传暂存残留，超过 `--budget` 或剩余空间不足时**非零退出**，但不删任何文件——裁剪
+始终由人决定。生产 `pb_data` 不在 CI runner 上，公共 `schedule:` workflow 看不到它，
+所以这条接线落在部署侧，由下面的 cron 或 systemd timer 二选一驱动。
+
+把下面脚本存为 `/usr/local/bin/fangji-storage-audit.sh`（`chmod 0755`），按部署实际改
+开头的几个变量；它负责留档、按退出码告警，并保留只读语义：
+
+```sh
+#!/usr/bin/env bash
+# 每日存储巡检；只读，不删任何文件。
+set -uo pipefail
+
+REPO=/opt/fangji                       # 仓库或部署根目录
+DATA_DIR="$REPO/pb_data"               # 生产数据目录；named volume 部署改成其挂载点
+LOG_DIR=/var/log/fangji                # 留档目录，先 mkdir 并授权运行用户可写
+JSONL="$LOG_DIR/storage-audit.jsonl"   # 按天追加一行，用于回看增长趋势
+BUDGET=$((2 * 1024 * 1024 * 1024))     # 2 GiB，取值见下
+ALERT_EMAIL=ops@example.com            # 告警落点；换成实际值班邮箱，或改成 webhook 封装
+
+cd "$REPO"
+OUT="$(python3 ops/audit_storage.py --data-dir "$DATA_DIR" --budget "$BUDGET" --json)"
+RC=$?
+
+# 留档：把整份 JSON 压成一行再追加，保证 JSONL 每条记录占且仅占一行（audit_storage.py
+# 的 --json 是 indent=2 的多行输出，直接追加会破坏 JSONL）。这样能 grep/绘图看积压增长，
+# 而不是只知道“今天超限”。按日志保留策略（参见「日志与升级」的 30 天口径）轮转该文件。
+printf '%s' "$OUT" | python3 -c '
+import json, sys, time
+audit = json.load(sys.stdin)
+record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+          "rc": int(sys.argv[1]), "audit": audit}
+print(json.dumps(record, ensure_ascii=False))
+' "$RC" >> "$JSONL"
+
+# 退出码到告警：只有非零（超预算或磁盘水位不足）才发，避免噪声淹没真实信号。
+# 这里用 mail(1)，需本机有 MTA；走 webhook 时换成对应的 curl 调用即可。
+if [ "$RC" -ne 0 ]; then
+  printf 'fangji storage audit FAILED (rc=%d) on %s\n\n%s\n' "$RC" "$(hostname)" "$OUT" \
+    | mail -s "[fangji] storage audit alert" "$ALERT_EMAIL"
+fi
+exit "$RC"
+```
+
+`--budget` 取 2 GiB（脚本默认值）：必须高于「PDF 分块上传」一节里全局 1 GiB 的上传
+暂存预算，这样一次合法的大上传不会误报；又能抓住预览缓存、暂存残留或 `data.db` 的
+无界增长。脚本在达到预算 80% 时报 `warn`、超过时报 `error`（非零退出），磁盘剩余不足
+同样报 `error`。改了上传口径就同步改这里。
+
+调度二选一。cron（`/etc/cron.d/fangji-storage-audit`，以能读 `pb_data` 的非特权用户运行）：
+
+```cron
+# 每日 03:30 低流量窗口巡检；字段依次为 分 时 日 月 周 用户 命令
+30 3 * * * fangji /usr/local/bin/fangji-storage-audit.sh >/dev/null 2>&1
+```
+
+或 systemd timer（`Persistent=true` 会补跑关机期间错过的巡检）：
+
+```ini
+# /etc/systemd/system/fangji-storage-audit.service
+[Unit]
+Description=fangji daily read-only storage audit
+
+[Service]
+Type=oneshot
+User=fangji
+WorkingDirectory=/opt/fangji
+ExecStart=/usr/local/bin/fangji-storage-audit.sh
+```
+
+```ini
+# /etc/systemd/system/fangji-storage-audit.timer
+[Unit]
+Description=Run the fangji storage audit daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target
+```
+
+启用：`systemctl enable --now fangji-storage-audit.timer`，`systemctl list-timers` 核对下次触发。
+
+**谁看这个告警**：与「备份与恢复」里每日调度失败时通知的维护者是同一人/同一值班渠道，
+归到 [#131](https://github.com/e-dialect/wanyu-proofreader/issues/131) 的运维基线统一认领，
+不要变成无人认领的脚本。收到非零告警后的处置：先看 JSONL 趋势判断是稳态超限还是突增，
+再用 `--json` 输出里的 `largest` 与缓存/暂存条目定位，确认后手动裁剪；巡检本身不会删文件。
 
 ## TLS、网络与管理入口
 
