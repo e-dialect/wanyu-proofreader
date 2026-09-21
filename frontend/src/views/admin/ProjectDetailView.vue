@@ -64,13 +64,11 @@
           <div>
             <h4 class="font-semibold mb-2">上传 PDF 文件</h4>
             <p class="text-sm text-muted mb-3">上传扫描版 PDF 作为校对原文预览。当前系统不会自动 OCR 或生成条目，请通过 CSV 导入待校对文本。</p>
-            <input type="file" accept=".pdf" @change="onPdfSelected" ref="pdfInput" style="display:none" />
+            <input type="file" accept=".pdf" @change="onPdfSelected" :disabled="uploadingPdf" ref="pdfInput" style="display:none" />
             <button class="btn btn-secondary" @click="$refs.pdfInput.click()" :disabled="uploadingPdf">选择 PDF 文件</button>
             <span v-if="pdfFile" class="text-sm ml-2">{{ pdfFile.name }}</span>
-            <div v-if="pdfFile" class="mt-3">
-              <button class="btn btn-primary" @click="uploadPdf" :disabled="uploadingPdf">
-                {{ uploadingPdf ? '上传处理中...' : '上传 PDF' }}
-              </button>
+            <div v-if="pdfError && pdfFile && !uploadingPdf" class="mt-3">
+              <button class="btn btn-primary" @click="uploadPdf">重试上传 PDF</button>
             </div>
             <div v-if="uploadingPdf && !pdfProcessing" class="mt-2" role="status">
               <progress :value="pdfUploadProgress" max="100" aria-label="PDF 上传进度"></progress>
@@ -402,6 +400,7 @@ import {
   reorderPendingPages
 } from '@/services/pagesService'
 import { createProjectPdf, getProjectFile } from '@/services/projectFilesService'
+import { validatePdfFile } from '@/lib/chunkedPdfUpload'
 import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors } from '@/services/importJobsService'
 import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
 import { toSafeCsvCell } from '@/lib/csvExport'
@@ -612,12 +611,24 @@ function clearMutationFeedback() {
   mutationError.value = ''
 }
 
-function onPdfSelected(e) {
+async function onPdfSelected(e) {
+  if (uploadingPdf.value) return
   pdfFile.value = e.target.files[0] || null
   pdfSuccess.value = false
   pdfMetadata.value = null
   pdfProcessing.value = false
   pdfError.value = ''
+  pdfUploadProgress.value = 0
+  if (!pdfFile.value) return
+  try {
+    validatePdfFile(pdfFile.value)
+  } catch (error) {
+    pdfFile.value = null
+    pdfError.value = error.message
+    e.target.value = ''
+    return
+  }
+  await uploadPdf()
 }
 
 function onCsvSelected(e) {
@@ -629,8 +640,9 @@ function onCsvSelected(e) {
 }
 
 async function uploadPdf() {
-  if (!pdfFile.value) return
+  if (!pdfFile.value || uploadingPdf.value) return
   uploadingPdf.value = true
+  pdfUploadProgress.value = 0
   pdfError.value = ''
   pdfSuccess.value = false
   pdfMetadata.value = null
@@ -644,8 +656,6 @@ async function uploadPdf() {
     })
     if (generation !== pdfPollGeneration) return
     pdfProcessing.value = record.status === 'processing'
-    pdfFile.value = null
-    if (pdfInput.value) pdfInput.value.value = ''
     while (record.status === 'processing' && generation === pdfPollGeneration) {
       await pollDelay(1000)
       record = await getProjectFile(record.id)
@@ -655,6 +665,8 @@ async function uploadPdf() {
     if (record.status === 'ready') {
       pdfSuccess.value = true
       pdfMetadata.value = record
+      pdfFile.value = null
+      if (pdfInput.value) pdfInput.value.value = ''
     } else {
       pdfError.value = record.error_message || 'PDF 后端校验失败'
     }

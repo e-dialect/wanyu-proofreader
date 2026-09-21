@@ -1,9 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { uploadPdfInChunks, retryUploadRequest } from '../src/lib/chunkedPdfUpload.js'
+import { uploadPdfInChunks, retryUploadRequest, validatePdfFile } from '../src/lib/chunkedPdfUpload.js'
 const size = 1024 * 1024
 const file = () => new File([new Uint8Array(size * 2 + 9)], 'book.pdf')
 const sleep = async () => {}
+test('selection validation rejects empty, oversized, and non-PDF files before upload', () => {
+  for (const candidate of [
+    { name: 'empty.pdf', size: 0 },
+    { name: 'large.pdf', size: 100 * 1024 * 1024 + 1 },
+    { name: 'notes.txt', size: 1 }
+  ]) assert.throws(() => validatePdfFile(candidate), /PDF 文件/)
+  assert.doesNotThrow(() => validatePdfFile({ name: 'book.PDF', size: 1 }))
+})
 test('uploads sequential chunks and retries lost responses without duplicating session or completion', async () => {
   const seen = [], progress = [], keys = new Set(), failures = new Set()
   const result = await uploadPdfInChunks({ projectId: 'p', file: file(), sleep, onProgress: n => progress.push(n), send: async (path, req) => {
