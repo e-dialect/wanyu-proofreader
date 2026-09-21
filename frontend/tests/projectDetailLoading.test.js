@@ -5,7 +5,10 @@ import * as pbErrors from '../src/utils/pbErrors.js'
 
 // Execute the actual mounted callback with the component's declared error
 // imports, so a missing import cannot be hidden by the test's own imports.
+// The patterns below are anchored to "\n", so normalize CRLF checkouts
+// (Windows defaults to core.autocrlf=true) instead of depending on them.
 const source = readFileSync(new URL('../src/views/admin/ProjectDetailView.vue', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n')
 const imports = source.match(/import \{([^}]+)\} from '@\/utils\/pbErrors'/)
 const mounted = source.match(/onMounted\((async \(\) => \{[\s\S]*?)\n\}\)\n/)
 assert.ok(imports, 'component must declare its error helper imports')
