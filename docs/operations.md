@@ -64,7 +64,7 @@ REPO=/opt/fangji                       # 仓库或部署根目录
 DATA_DIR="$REPO/pb_data"               # 生产数据目录；named volume 部署改成其挂载点
 LOG_DIR=/var/log/fangji                # 留档目录，先 mkdir 并授权运行用户可写
 JSONL="$LOG_DIR/storage-audit.jsonl"   # 按天追加一行，用于回看增长趋势
-BUDGET=$((2 * 1024 * 1024 * 1024))     # 2 GiB，取值见下
+BUDGET=$((2 * 1024 * 1024 * 1024))     # 脚本默认值，仅适合几乎无存量 PDF 的实例；取值见下
 ALERT_EMAIL=ops@example.com            # 告警落点；换成实际值班邮箱，或改成 webhook 封装
 
 cd "$REPO"
@@ -82,7 +82,8 @@ record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
 print(json.dumps(record, ensure_ascii=False))
 ' "$RC" >> "$JSONL"
 
-# 退出码到告警：只有非零（超预算或磁盘水位不足）才发，避免噪声淹没真实信号。
+# 退出码到告警：只有非零才发（超预算、磁盘水位不足，以及巡检自己没跑起来的 rc=2），
+# 正常时不发信，避免噪声淹没真实信号。
 # 这里用 mail(1)，需本机有 MTA；走 webhook 时换成对应的 curl 调用即可。
 if [ "$RC" -ne 0 ]; then
   printf 'fangji storage audit FAILED (rc=%d) on %s\n\n%s\n' "$RC" "$(hostname)" "$OUT" \
@@ -91,17 +92,24 @@ fi
 exit "$RC"
 ```
 
-`--budget` 取 2 GiB（脚本默认值）：必须高于「PDF 分块上传」一节里全局 1 GiB 的上传
-暂存预算，这样一次合法的大上传不会误报；又能抓住预览缓存、暂存残留或 `data.db` 的
-无界增长。脚本在达到预算 80% 时报 `warn`、超过时报 `error`（非零退出），磁盘剩余不足
-同样报 `error`。改了上传口径就同步改这里。
+`--budget` 是整个 `pb_data` 的水位，而这份瞬时开销有两处、各有 1 GiB 口径：「PDF 分块
+上传」一节的全局 1 GiB 上传暂存，以及 `docs/task-pdf-cache.md` 里预览缓存的总预算
+1 GiB——两个目录都在 `pb_data` 下，也正是 `audit_storage.py` 的 `TTLs` 在盯的那两项。
+所以取值要覆盖「两份瞬时预算 + 常态持久数据（`storage/` 与 `data.db`）」，脚本默认的
+2 GiB 只适用于几乎没有存量 PDF 的实例；先按当前实测体积再留余量确定 `BUDGET`。抬高
+预算前先看容量：磁盘剩余不足是按 `max(budget, 1 GiB)` 判定 `error` 的。脚本在达到预算
+80% 时报 `warn`、超过时报 `error`（非零退出）；改了这两处口径就同步改这里。
 
-调度二选一。cron（`/etc/cron.d/fangji-storage-audit`，以能读 `pb_data` 的非特权用户运行）：
+调度二选一。cron（`/etc/cron.d/fangji-storage-audit`，以能读 `pb_data` 的非特权用户运行）；
+stdout/stderr 必须落盘，脚本里唯一能区分「真的超预算」和「工具压根没跑起来」的信息就在
+stderr，丢进 `/dev/null` 就再也查不到了：
 
 ```cron
 # 每日 03:30 低流量窗口巡检；字段依次为 分 时 日 月 周 用户 命令
-30 3 * * * fangji /usr/local/bin/fangji-storage-audit.sh >/dev/null 2>&1
+30 3 * * * fangji /usr/local/bin/fangji-storage-audit.sh >> /var/log/fangji/storage-audit.log 2>&1
 ```
+
+该日志与 JSONL 同样按「日志与升级」的 30 天口径轮转。
 
 或 systemd timer（`Persistent=true` 会补跑关机期间错过的巡检）：
 
@@ -135,8 +143,16 @@ WantedBy=timers.target
 
 **谁看这个告警**：与「备份与恢复」里每日调度失败时通知的维护者是同一人/同一值班渠道，
 归到 [#131](https://github.com/e-dialect/wanyu-proofreader/issues/131) 的运维基线统一认领，
-不要变成无人认领的脚本。收到非零告警后的处置：先看 JSONL 趋势判断是稳态超限还是突增，
-再用 `--json` 输出里的 `largest` 与缓存/暂存条目定位，确认后手动裁剪；巡检本身不会删文件。
+不要变成无人认领的脚本。收到非零告警后先看退出码，两个信号就够分清是哪一类问题：
+
+- `rc=1` 是巡检判定超限或磁盘水位不足，属容量问题；
+- `rc=2` 是巡检**根本没跑起来**——特征是当天 JSONL 没有记录、邮件正文里没有 JSON，
+  原因在 cron 的 `storage-audit.log` 或 `journalctl -u fangji-storage-audit.service`
+  捕获的 stderr 里（形如 `can't open file .../ops/audit_storage.py`），通常是 `REPO`
+  或 `DATA_DIR` 路径写错、仓库没 checkout、Python 缺失，与容量无关。
+
+确认是巡检跑出来的结果之后，再看 JSONL 趋势判断是稳态超限还是突增，用 `--json` 输出里的
+`largest` 与缓存/暂存条目定位，确认后手动裁剪——巡检本身不会删文件。
 
 ## TLS、网络与管理入口
 
