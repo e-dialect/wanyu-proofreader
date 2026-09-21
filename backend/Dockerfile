@@ -12,7 +12,20 @@ COPY *.go ./
 COPY pb_migrations/ ./pb_migrations/
 COPY keyboards/ ./keyboards/
 RUN go test ./...
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/pocketbase .
+
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+# These arrive from CI inputs and operator env, and the ldflags line below
+# expands them in a shell, so reject anything that is not a plain stamp.
+RUN /bin/sh -c 'for stamp in "$VERSION" "$COMMIT" "$BUILD_DATE"; do \
+      case "$stamp" in -*) echo "build stamp may not start with -" && exit 1;; *[!A-Za-z0-9._+:-]*) echo "unsafe build stamp: $stamp" && exit 1;; esac; \
+    done'
+LABEL org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.version="${VERSION}"
+RUN CGO_ENABLED=0 go build -trimpath \
+  -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
+  -o /out/pocketbase .
 
 FROM alpine:3.24
 

@@ -12,9 +12,18 @@
 ```sh
 docker compose stop frontend backend
 python3 backend/ops/backup.py backup ./pb_data /secure-backups/fangji-20260909 \
-  --version '填写当前镜像digest或commit' --application-stopped
+  --version "$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$(docker compose ps -q backend)")" --application-stopped
 docker compose start backend frontend
 ```
+
+后端镜像在构建时注入 `VERSION`/`COMMIT`/`BUILD_DATE`，同时写入 OCI 标签
+`org.opencontainers.image.revision`，因此备份记录可以直接从镜像读取，不必手工誊抄；
+容器启动日志第一行 `fangji backend <version> (commit <sha>, built <date>)` 可作为交叉核对。
+由 Compose 直接构建时使用 `FANGJI_VERSION`/`FANGJI_COMMIT`/`FANGJI_BUILD_DATE` 传入，
+CI 的镜像构建与 `make docker-build` 已自动传入。未传入时记为 `dev`/`unknown`，
+`scripts/check_compose_structure.py` 会在巡检输出里提示这一点——它就是需要纠正的配置信号。
+每日巡检可运行 `python3 ops/audit_storage.py --data-dir ./pb_data`，它只读不删，
+超过预算或非零退出时可挂到调度器上。
 
 工具拒绝已存在的备份目录、软链接及放在源目录内的备份，复制前后检查文件哈希，
 验证 SQLite 完整性并记录版本。`--application-stopped` 是操作者对已停写的确认，

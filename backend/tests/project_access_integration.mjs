@@ -39,7 +39,7 @@ async function request(path, { expected = 200, ...options } = {}) {
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`
 const password = 'ProjectAccess123!'
 
-async function createUser(label) {
+async function createUser(label, displayName = label) {
   const email = `${label}-${suffix}@example.com`
   const record = await request('/api/collections/users/records', {
     method: 'POST',
@@ -48,7 +48,7 @@ async function createUser(label) {
       email,
       password,
       passwordConfirm: password,
-      name: label,
+      name: displayName,
       role: 'platform_admin'
     }
   })
@@ -167,6 +167,100 @@ try {
   assert.equal(members.filter((item) => item.user === manager.id).length, 1)
   assert.equal(members.find((item) => item.user === manager.id).role, 'manager')
   assert.equal(members.find((item) => item.user === proofreader.id).role, 'proofreader')
+
+  // The member picker reads this route. users.listRule limits account listing to
+  // platform admins, so a project manager must only see accounts already
+  // connected to projects they manage, and never an email address.
+  const twins = [await createUser('twin-a', '重名候选'), await createUser('twin-b', '重名候选')]
+  const candidatesPath = `/api/fangji/projects/${privateProject.id}/member-candidates`
+  const candidates = await request(candidatesPath, { token: manager.token })
+  assert.ok(Array.isArray(candidates), 'candidates must be a plain array, not a paginated result')
+  assert.equal(new Set(candidates.map((item) => item.id)).size, candidates.length,
+    'a duplicated id would let a Map silently hide it')
+  for (const item of candidates) {
+    assert.deepEqual(Object.keys(item).sort(), ['id', 'name', 'username'],
+      `candidates must not carry email, got ${JSON.stringify(item)}`)
+  }
+  const candidateIds = new Set(candidates.map((item) => item.id))
+  for (const user of [creator, manager, proofreader]) {
+    assert.ok(candidateIds.has(user.id), `${user.email} is connected to this project and must be offered`)
+  }
+  for (const user of [outsider, ...twins, passwordUser, rateLimitedUser]) {
+    assert.ok(!candidateIds.has(user.id), `${user.email} is unrelated and must not be enumerable by a project manager`)
+  }
+  assert.ok(candidates.every((item) => !JSON.stringify(item).includes('@')), 'no candidate row may contain an email')
+
+  // Ordered by name then username, compared as code units.
+  const codeUnitOrder = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1
+    : a.username < b.username ? -1 : a.username > b.username ? 1 : 0)
+  for (let index = 1; index < candidates.length; index++) {
+    assert.ok(codeUnitOrder(candidates[index - 1], candidates[index]) <= 0,
+      `candidates must be ordered name-then-username, but ${candidates[index - 1].name}:${candidates[index - 1].username} `
+      + `preceded ${candidates[index].name}:${candidates[index].username}`)
+  }
+
+  // A platform admin may list accounts, per users.listRule, but still not by email.
+  const asPlatformAdmin = await request(candidatesPath, { token: platform.token })
+  const adminSeen = new Set(asPlatformAdmin.map((item) => item.id))
+  for (const user of [outsider, ...twins]) {
+    assert.ok(adminSeen.has(user.id), `${user.email} must be visible to a platform admin`)
+  }
+  assert.ok(asPlatformAdmin.length > candidates.length,
+    'the platform admin view must be broader than the project-scoped one')
+  // Same-name accounts must fall through to the username tiebreak, not collapse.
+  const twinPair = asPlatformAdmin.filter((item) => item.name === '重名候选')
+  assert.equal(twinPair.length, 2, 'both same-name accounts must be listed')
+  assert.ok(codeUnitOrder(twinPair[0], twinPair[1]) < 0, 'equal names must fall through to the username tiebreak')
+
+  // An owner holds no `role = "manager"` membership row, so the pool must be
+  // derived from projects they own as well as ones they manage.
+  const asOwner = await request(candidatesPath, { token: creator.token })
+  const ownerSeen = new Set(asOwner.map((item) => item.id))
+  for (const user of [manager, proofreader]) {
+    assert.ok(ownerSeen.has(user.id), `a project owner must be offered ${user.email}`)
+  }
+  assert.ok(!ownerSeen.has(outsider.id), 'an owner still must not browse the whole platform')
+
+  // A freshly created project has no members to draw candidates from, so the
+  // documented "add this specific person" flow goes through a bounded `term`
+  // lookup rather than a listing that could enumerate the platform.
+  const secondProject = await request(`/api/fangji/projects/${privateProject.id}/members`, { token: creator.token })
+  assert.ok(secondProject.some((item) => item.user === proofreader.id))
+  const browsePath = `${candidatesPath}?term=`
+  const browsed = await request(browsePath, { token: creator.token })
+  assert.ok(!browsed.some((item) => item.id === outsider.id),
+    'an empty term must stay scoped, not fall back to a platform listing')
+  const searched = await request(`${candidatesPath}?term=${encodeURIComponent('outsider')}`, { token: creator.token })
+  assert.ok(searched.some((item) => item.id === outsider.id),
+    'an exact identifier lookup must work so a first member can still be added')
+  assert.ok(searched.every((item) => !JSON.stringify(item).includes('@')), 'lookups must not return email either')
+  // A lookup must not degrade into a sweep: prefixes of the auto-generated
+  // `usersNNNNNN` usernames and of display names must return nothing, or any
+  // project manager could walk the roster a few characters at a time.
+  for (const prefix of ['users', 'us', 'out', 'outsid', 'twin', '12']) {
+    const swept = await request(`${candidatesPath}?term=${encodeURIComponent(prefix)}`, { token: creator.token })
+    assert.ok(swept.every((item) => item.id !== outsider.id && !twins.some((twin) => twin.id === item.id)),
+      `the prefix ${JSON.stringify(prefix)} must not resolve unrelated accounts`)
+  }
+  const swept = await request(`${candidatesPath}?term=${encodeURIComponent('users')}`, { token: creator.token })
+  assert.ok(swept.length < 5, `a generic prefix must not fan out across the platform, got ${swept.length}`)
+
+  // A term is interpolated into a filter, so anything able to break out is refused.
+  for (const bad of ['a', 'x'.repeat(65), '" OR id != ""', 'a" || "1"="1', '50%', 'bo\\bs', '张三;drop']) {
+    const rejected = await rawRequest(`${candidatesPath}?term=${encodeURIComponent(bad)}`, { token: creator.token })
+    assert.equal(rejected.status, 400, `term ${JSON.stringify(bad)} must be rejected`)
+  }
+  // Whitespace-only is trimmed away and must fall back to the scoped browse.
+  const blank = await request(`${candidatesPath}?term=${encodeURIComponent('   ')}`, { token: creator.token })
+  assert.deepEqual(blank.map((item) => item.id).sort(), browsed.map((item) => item.id).sort(),
+    'a blank term must behave like no term, not like a search')
+
+  for (const [label, token] of [['proofreader', proofreader.token], ['outsider', outsider.token]]) {
+    const refused = await rawRequest(candidatesPath, { token })
+    assert.equal(refused.status, 403, `${label} must not enumerate member candidates`)
+  }
+  const unauthenticated = await rawRequest(candidatesPath)
+  assert.equal(unauthenticated.status, 401, 'candidate enumeration must not be public')
 
   const detailsPath = `/api/fangji/projects/${privateProject.id}`
   const rareName = '项目𠮷𰻞𱁬'
