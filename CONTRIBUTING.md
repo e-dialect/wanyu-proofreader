@@ -102,9 +102,11 @@ git rm --cached -r .
 git reset --hard
 ```
 
-`make check` 的 line endings 门禁扫描 HEAD 里被判定为文本的 blob，出现 CR 字节即失败。
-它兜的是 `.gitattributes` 覆盖不到的两类情况：内容含 NUL 让 `text=auto` 把文本误判为二进制，
-以及显式 `-text` 属性把 CRLF 提交进仓库；它不替代属性本身。
+`make check` 的 line endings 门禁读取 `git ls-files --eol` 的索引列，只要文本 blob 里存了
+CR（`i/crlf`、`i/mixed`）就失败。它兜的是属性管不到的那一侧：被标成 `-text` 或 `binary` 的
+文本文件、以及在归一化规则落地前就进过索引的内容。`git diff --check` 只看空白，不会报告这类
+行尾；索引列也不受本机 `core.autocrlf` 与尚未刷新的工作树影响，所以 Windows 贡献者在按上面
+步骤重新检出之前也不会被这条门禁误伤。
 
 ## PocketBase 与数据迁移
 
