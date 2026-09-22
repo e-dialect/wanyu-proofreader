@@ -37,7 +37,7 @@ make check
 ```
 
 它依次执行 gofmt/`go vet`、前端 ESLint、运行时版本与文档一致性、集成套件清单校验、
-Compose 不变量、`git diff --check`、Go 与前端单测以及迁移 up/down/up 校验。
+Compose 不变量、`git diff --check`、行尾一致性、Go 与前端单测以及迁移 up/down/up 校验。
 
 守卫脚本依赖 PyYAML，首次使用前装一次：
 
@@ -80,11 +80,31 @@ npm 缓存按锁文件管理；数据库不缓存。
 贡献者应运行本文列出的适用本地检查；PR 中所有适用的 required checks 都必须通过后才能合并。当前 required checks 与 review requirement 以 GitHub branch protection / ruleset 显示为最终真源，不在 CONTRIBUTING 中维护固定数量。
 
 提交前执行 `git diff --check`（暂存后使用 `git diff --cached --check`）。
-`.gitattributes` 仅对 `frontend/public/fonts/rare-han/OFL.txt`、
+`.gitattributes` 对 `frontend/public/fonts/rare-han/OFL.txt`、
 `frontend/public/pdfjs/cmaps/LICENSE` 和
 `frontend/public/pdfjs/standard_fonts/LICENSE_LIBERATION` 关闭空白检查，以保留上游许可证的原始字节。
 来源与许可说明仍保留在各资源目录的 README 和许可证中；不要格式化这些文件，也不要扩大到整个第三方目录。
 自有源代码和其他文件继续使用 Git 的正常空白检查。
+
+### 行尾与检出
+
+`.gitattributes` 把所有文本文件固定为「仓库内存 LF、检出也是 LF」，Git 属性的优先级高于
+`core.autocrlf`，因此不需要按机器配置行尾。这消除了一类只在 Windows 出现的故障：`gofmt -l`
+会把 CRLF 检出的每个 Go 文件都判为未格式化，读源码做正则断言的前端单测也会因为锚定 `\n`
+的表达式匹配不到 `\r\n` 而在文件加载期崩溃，汇总里只留下一个 `fail 1`。
+新增二进制资源时补一条 `binary` 规则，别依赖 `text=auto` 的启发式判定。
+
+规则落地前已经检出的工作树不会被自动重写——Git 只看 stat 信息，磁盘上的行尾会原样留着。
+确认没有未提交改动后重新检出一次即可：
+
+```bash
+git rm --cached -r .
+git reset --hard
+```
+
+`make check` 的 line endings 门禁扫描 HEAD 里被判定为文本的 blob，出现 CR 字节即失败。
+它兜的是 `.gitattributes` 覆盖不到的两类情况：内容含 NUL 让 `text=auto` 把文本误判为二进制，
+以及显式 `-text` 属性把 CRLF 提交进仓库；它不替代属性本身。
 
 ## PocketBase 与数据迁移
 

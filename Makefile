@@ -56,6 +56,9 @@ verify-static:
 	@test -n "$(BASE)" && git diff --check $(BASE) HEAD
 	@git diff --check
 	@git diff --cached --check
+	@echo 'line endings (no CR byte in committed text)'
+	@out=$$(git grep -I -l -e "$$(printf '\r')" HEAD -- .); \
+	test -z "$$out" || { printf 'committed text files hold CR, so some file escapes .gitattributes:\n%s\n' "$$out"; exit 1; }
 
 lint:
 	@echo 'eslint (correctness rules only; no style sweep yet)'
