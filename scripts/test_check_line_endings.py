@@ -91,5 +91,20 @@ class RunsFromRepositoryRoot(unittest.TestCase):
         self.assertTrue((guard.ROOT / '.gitattributes').is_file())
 
 
+class CheckoutPolicy(unittest.TestCase):
+    """The gate reads only the index, so dropping `eol=lf` from `.gitattributes`
+    would keep every blob LF, keep this gate green, and put CRLF back in every
+    Windows checkout. Pin the effective attribute instead: it decides the
+    checkout and no contributor's core.autocrlf can override it.
+    """
+
+    def test_tracked_text_files_are_checked_out_with_lf(self):
+        out = guard.subprocess.run(
+            ['git', 'check-attr', 'text', 'eol', '--', '.gitattributes'],
+            capture_output=True, text=True, cwd=guard.ROOT).stdout
+        self.assertIn('text: auto', out)
+        self.assertIn('eol: lf', out)
+
+
 if __name__ == '__main__':
     unittest.main()
