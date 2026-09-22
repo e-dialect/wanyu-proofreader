@@ -21,7 +21,12 @@ set of index values lives in exactly one place.
 import re
 import subprocess
 import sys
+from pathlib import Path
 
+# `git ls-files` is scoped to the working directory, so the guard pins the
+# repository root: run from a subdirectory it would otherwise judge a fraction
+# of the index and call the whole repository clean.
+ROOT = Path(__file__).resolve().parents[1]
 # `i/lf` normalised text, `i/none` a blob with no line endings at all,
 # `i/-text` binary content. Anything else (`i/crlf`, `i/mixed`) holds CR.
 ALLOWED = re.compile(r'i/(?:lf|none|-text)')
@@ -39,7 +44,8 @@ def violations(lines):
 
 
 def main():
-    listing = subprocess.run(['git', 'ls-files', '--eol'], capture_output=True, text=True)
+    listing = subprocess.run(['git', 'ls-files', '--eol'],
+                             capture_output=True, text=True, cwd=ROOT)
     if listing.returncode:
         print(listing.stderr.strip() or 'git ls-files --eol failed', file=sys.stderr)
         return 1

@@ -8,9 +8,12 @@ Windows contributor whose working tree still holds CRLF. Those three behaviours
 are what this pins down; without them a regex edit turns the gate into a no-op
 or into a lie about someone else's checkout.
 """
+import contextlib
 import importlib.util
+import io
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location(
     'line_endings_guard', Path(__file__).resolve().parents[1] / 'scripts' / 'check_line_endings.py')
@@ -57,6 +60,35 @@ class IndexColumnOnly(unittest.TestCase):
 
     def test_blank_output_is_clean(self):
         self.assertEqual(guard.violations(['', '  \t', '\n']), [])
+
+
+class RunsFromRepositoryRoot(unittest.TestCase):
+    """`git ls-files` is scoped to the current directory, so a guard that does not
+    pin the root judges a subdirectory and calls the repository clean: invoked
+    from backend/ it listed only that subtree and still reported PASS."""
+
+    def capture(self, rows):
+        calls = []
+
+        class Completed:
+            returncode, stdout, stderr = 0, ''.join(rows), ''
+
+        def fake_run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return Completed()
+
+        with mock.patch.object(guard.subprocess, 'run', fake_run), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(guard.main(), 0)
+        return calls
+
+    def test_git_is_invoked_at_the_root_with_an_empty_pathspec(self):
+        (argv, kwargs), = self.capture(['i/lf    w/lf    attr/\tMakefile\n'])
+        self.assertEqual(argv, ['git', 'ls-files', '--eol'])
+        # ROOT is the repository, not scripts/: the guard lives one level down,
+        # so a pathspec-free listing here spans the whole index.
+        self.assertEqual(kwargs['cwd'], guard.ROOT)
+        self.assertTrue((guard.ROOT / '.gitattributes').is_file())
 
 
 if __name__ == '__main__':
