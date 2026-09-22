@@ -96,6 +96,12 @@ jobs:
           else
             git diff --check HEAD~1 HEAD
           fi
+      - name: Line endings
+        # Same entry point `make verify-static` uses, so a CR-bearing text blob
+        # cannot reach main on the strength of the local gate alone. The check
+        # reads the index, so it judges committed bytes rather than whatever
+        # this runner's checkout happened to write to disk.
+        run: python3 scripts/check_line_endings.py
 
   pocketbase-compatibility:
     name: PocketBase compatibility (${{ matrix.suite }})

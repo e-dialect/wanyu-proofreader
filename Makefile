@@ -57,8 +57,7 @@ verify-static:
 	@git diff --check
 	@git diff --cached --check
 	@echo 'line endings (index holds LF or binary only)'
-	@out=$$(git ls-files --eol | grep -vE '^[^ ]*/(lf|none|-text) '); \
-	test -z "$$out" || { printf 'committed text still holds CR:\n%s\n' "$$out"; exit 1; }
+	@python3 scripts/check_line_endings.py
 
 lint:
 	@echo 'eslint (correctness rules only; no style sweep yet)'

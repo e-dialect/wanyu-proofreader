@@ -102,11 +102,15 @@ git rm --cached -r .
 git reset --hard
 ```
 
-`make check` 的 line endings 门禁读取 `git ls-files --eol` 的索引列，只要文本 blob 里存了
-CR（`i/crlf`、`i/mixed`）就失败。它兜的是属性管不到的那一侧：被标成 `-text` 或 `binary` 的
-文本文件、以及在归一化规则落地前就进过索引的内容。`git diff --check` 只看空白，不会报告这类
-行尾；索引列也不受本机 `core.autocrlf` 与尚未刷新的工作树影响，所以 Windows 贡献者在按上面
-步骤重新检出之前也不会被这条门禁误伤。
+行尾门禁的实现是 `scripts/check_line_endings.py`：读取 `git ls-files --eol` 的索引列，只要文本
+blob 里存了 CR（`i/crlf`、`i/mixed`）就失败。`make verify-static` 与 CI 的 Static analysis 作业
+调的是同一个脚本，所以这条门禁本地和 CI 的覆盖面一致，两边都不需要额外记一次。
+
+它兜的是属性管不到的那一侧：在归一化规则落地前就进过索引的内容，以及绕过 clean 过滤器的提交
+（`git am`、`git apply --cached`）。索引列按 blob 的字节判定，标成 `-text` 或 `binary` 并不豁免：
+不含 NUL 却带 CRLF 的文件仍会被报出来，这类文件按内容就是文本。`git diff --check` 只看空白，
+不会报告这类行尾；索引列也不受本机 `core.autocrlf` 与尚未刷新的工作树影响，所以 Windows 贡献者
+在按上面步骤重新检出之前也不会被这条门禁误伤。
 
 ## PocketBase 与数据迁移
 
