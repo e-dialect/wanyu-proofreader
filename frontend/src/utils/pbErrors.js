@@ -3,6 +3,9 @@ export function getPbStatus(error) {
 }
 
 export function getUploadErrorMessage(error, kind) {
+  if (getPbStatus(error) === 429 && kind === 'pdf') {
+    return getPbMessage(error, '已有 PDF 上传进行中或上传繁忙，请稍后重试')
+  }
   if (getPbStatus(error) === 413) {
     return kind === 'pdf' ? 'PDF 文件超过 100 MiB 上限' : 'CSV 文件超过 50 MiB 上限'
   }

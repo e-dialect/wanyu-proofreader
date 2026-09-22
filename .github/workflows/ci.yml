@@ -217,6 +217,13 @@ jobs:
           PDF_UPLOAD_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/pdf_upload_browser.cjs
           PDF_BROWSER_FIXTURE: ${{ runner.temp }}/upload-browser-fixture.json
         run: python3 backend/tests/run_integration.py pdf_chunks_integration.mjs
+      - name: Attach PDF upload state screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-upload-states
+          path: output/playwright/pdf-upload/*.png
+          if-no-files-found: ignore
 
   frontend:
     name: Frontend

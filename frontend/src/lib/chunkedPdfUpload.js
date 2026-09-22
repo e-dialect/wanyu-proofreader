@@ -1,6 +1,12 @@
 const MAX_PDF_BYTES = 100 * 1024 * 1024
 const CHUNK_BYTES = 1024 * 1024
 
+export function validatePdfFile(file) {
+  if (!file || file.size <= 0 || file.size > MAX_PDF_BYTES || !/\.pdf$/i.test(file.name)) {
+    throw new Error('请选择不超过 100 MiB 的 PDF 文件')
+  }
+}
+
 export async function retryUploadRequest(operation, { signal, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   for (let attempt = 0; ; attempt++) {
     signal?.throwIfAborted()
@@ -14,7 +20,7 @@ export async function retryUploadRequest(operation, { signal, sleep = ms => new 
 }
 
 export async function uploadPdfInChunks({ projectId, file, send, signal, onProgress = () => {}, sleep }) {
-  if (!file || file.size <= 0 || file.size > MAX_PDF_BYTES || !/\.pdf$/i.test(file.name)) throw new Error('请选择不超过 100 MiB 的 PDF 文件')
+  validatePdfFile(file)
   const base = `/api/fangji/projects/${encodeURIComponent(projectId)}/pdf-uploads`
   const requestId = crypto.randomUUID()
   const creation = { name: file.name, size: file.size, requestId }
