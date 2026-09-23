@@ -19,6 +19,13 @@ test('other upload errors preserve server validation messages and existing fallb
   assert.equal(getUploadErrorMessage({}, 'csv'), '导入失败，请检查文件格式')
 })
 
+test('PDF upload conflicts explain the active session or server limit', () => {
+  assert.equal(getUploadErrorMessage({ status: 429, response: { message: '已有上传进行中，请取消或完成后再试。' } }, 'pdf'), '已有上传进行中，请取消或完成后再试。')
+  assert.match(getUploadErrorMessage({ status: 429 }, 'pdf'), /稍后重试/)
+  assert.equal(getUploadErrorMessage({ status: 409, response: { message: '与未完成上传的文件不一致，请选择原来的 PDF 或取消后重新上传。' } }, 'pdf'), '与未完成上传的文件不一致，请选择原来的 PDF 或取消后重新上传。')
+  assert.match(getUploadErrorMessage({ status: 410 }, 'pdf'), /过期/)
+})
+
 test('uses PocketBase field validation details when available', () => {
   assert.equal(getPbMessage({
     response: {

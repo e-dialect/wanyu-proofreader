@@ -56,6 +56,8 @@ verify-static:
 	@test -n "$(BASE)" && git diff --check $(BASE) HEAD
 	@git diff --check
 	@git diff --cached --check
+	@echo 'line endings (index holds LF or binary only)'
+	@python3 scripts/check_line_endings.py
 
 lint:
 	@echo 'eslint (correctness rules only; no style sweep yet)'

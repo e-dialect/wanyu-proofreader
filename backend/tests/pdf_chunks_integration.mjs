@@ -26,15 +26,29 @@ if(process.env.PDF_UPLOAD_BROWSER_SCRIPT){
  process.exit(0)
 }
 const url=`/api/fangji/projects/${project.id}/pdf-uploads`
-const session=await api(url,{method:'POST',token,body:{name:'source.pdf',size:source.length,requestId:'slow-upload-fixture-001'},status:201})
+const contentHash=createHash('sha256').update(source).digest('hex')
+const session=await api(url,{method:'POST',token,body:{name:'source.pdf',size:source.length,requestId:'slow-upload-fixture-001',contentHash},status:201})
 const started=Date.now()
-for(let offset=0,index=0;offset<source.length;offset+=session.chunkSize,index++){
- if(index===1&&process.env.FANGJI_SLOW_UPLOAD==='1')await new Promise(r=>setTimeout(r,61000))
+const putChunk=async(index)=>{
+ const offset=index*session.chunkSize
  const data=source.subarray(offset,Math.min(source.length,offset+session.chunkSize))
  for(let repeat=0;repeat<2;repeat++){
- const result=await fetch(`${base}${url}/${session.id}/chunks/${index}`,{method:'PUT',headers:{Authorization:token,'Content-Type':'application/octet-stream'},body:data})
- assert.equal(result.status,204,await result.text())
+  const result=await fetch(`${base}${url}/${session.id}/chunks/${index}`,{method:'PUT',headers:{Authorization:token,'Content-Type':'application/octet-stream'},body:data})
+  assert.equal(result.status,204,await result.text())
  }
+}
+await putChunk(0)
+const listed=await api(url,{token})
+assert.equal(listed.items?.[0]?.id,session.id)
+assert.deepEqual(listed.items[0].received,[0])
+const resumed=await api(url,{method:'POST',token,body:{name:'source.pdf',size:source.length,requestId:'slow-upload-fixture-002',contentHash},status:200})
+assert.equal(resumed.id,session.id)
+const wrong=Buffer.from(source);wrong[wrong.length-1]^=1
+const wrongHash=createHash('sha256').update(wrong).digest('hex')
+await api(url,{method:'POST',token,body:{name:'source.pdf',size:source.length,requestId:'wrong-original-file-01',contentHash:wrongHash},status:409})
+for(let offset=session.chunkSize,index=1;offset<source.length;offset+=session.chunkSize,index++){
+ if(index===1&&process.env.FANGJI_SLOW_UPLOAD==='1')await new Promise(r=>setTimeout(r,61000))
+ await putChunk(index)
 }
 const queued=await api(`${url}/${session.id}/complete`,{method:'POST',token,status:202})
 const repeated=await api(`${url}/${session.id}/complete`,{method:'POST',token})

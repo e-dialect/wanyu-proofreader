@@ -64,13 +64,22 @@
           <div>
             <h4 class="font-semibold mb-2">上传 PDF 文件</h4>
             <p class="text-sm text-muted mb-3">上传扫描版 PDF 作为校对原文预览。当前系统不会自动 OCR 或生成条目，请通过 CSV 导入待校对文本。</p>
-            <input type="file" accept=".pdf" @change="onPdfSelected" ref="pdfInput" style="display:none" />
-            <button class="btn btn-secondary" @click="$refs.pdfInput.click()" :disabled="uploadingPdf">选择 PDF 文件</button>
+            <div v-if="pdfResume && !uploadingPdf" class="alert mt-2" role="status">
+              <p>
+                有未完成的 PDF 上传：{{ pdfResume.name }}
+                <span v-if="pdfResumeExpired">，已过期，请重新选择文件上传。</span>
+                <span v-else>。请重新选择同一文件继续；不能只靠文件名和大小匹配。</span>
+              </p>
+              <div class="mt-3 flex gap-2">
+                <button type="button" class="btn btn-primary" @click="$refs.pdfInput.click()">重新选择同一 PDF</button>
+                <button type="button" class="btn btn-quiet" @click="abandonPdfResume">放弃未完成上传</button>
+              </div>
+            </div>
+            <input type="file" accept=".pdf" @change="onPdfSelected" :disabled="uploadingPdf" ref="pdfInput" style="display:none" />
+            <button v-if="!pdfResume || uploadingPdf" class="btn btn-secondary" @click="$refs.pdfInput.click()" :disabled="uploadingPdf">选择 PDF 文件</button>
             <span v-if="pdfFile" class="text-sm ml-2">{{ pdfFile.name }}</span>
-            <div v-if="pdfFile" class="mt-3">
-              <button class="btn btn-primary" @click="uploadPdf" :disabled="uploadingPdf">
-                {{ uploadingPdf ? '上传处理中...' : '上传 PDF' }}
-              </button>
+            <div v-if="pdfError && pdfFile && !uploadingPdf" class="mt-3">
+              <button class="btn btn-primary" @click="uploadPdf">重试上传 PDF</button>
             </div>
             <div v-if="uploadingPdf && !pdfProcessing" class="mt-2" role="status">
               <progress :value="pdfUploadProgress" max="100" aria-label="PDF 上传进度"></progress>
@@ -401,7 +410,9 @@ import {
   listAllProjectPages,
   reorderPendingPages
 } from '@/services/pagesService'
-import { createProjectPdf, getProjectFile } from '@/services/projectFilesService'
+import { createProjectPdf, getProjectFile, listProjectPdfUploads, cancelProjectPdfUpload } from '@/services/projectFilesService'
+import { validatePdfFile, loadPdfUploadResume, clearPdfUploadResume } from '@/lib/chunkedPdfUpload'
+import { currentUserId } from '@/services/authService'
 import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors } from '@/services/importJobsService'
 import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
 import { toSafeCsvCell } from '@/lib/csvExport'
@@ -433,6 +444,7 @@ const csvInput = ref(null)
 const pdfFile = ref(null)
 const pdfUploadProgress = ref(0)
 let pdfUploadController = null
+const pdfResume = ref(null)
 const csvFile = ref(null)
 const uploadingPdf = ref(false)
 const uploadingCsv = ref(false)
@@ -494,6 +506,7 @@ const csvJobStatusLabel = computed(() => ({
 })[csvJob.value?.status] || '准备导入')
 const csvInspection = computed(() => parseCsvInspection(csvJob.value?.inspection_json))
 const csvPreviewHeaders = computed(() => csvInspection.value?.headers.slice(0, 6) || [])
+const pdfResumeExpired = computed(() => Boolean(pdfResume.value?.expired))
 
 watch([searchQuery, selectedStatus, listPageSize, minPdfPage, maxPdfPage], () => {
   currentListPage.value = 1
@@ -528,7 +541,7 @@ onMounted(async () => {
     return
   }
   loadingProject.value = false
-  await loadPages()
+  await Promise.all([loadPages(), loadPdfResume()])
   if (selectedStatus.value) {
     await nextTick()
     scrollToEntries()
@@ -612,12 +625,24 @@ function clearMutationFeedback() {
   mutationError.value = ''
 }
 
-function onPdfSelected(e) {
+async function onPdfSelected(e) {
+  if (uploadingPdf.value) return
   pdfFile.value = e.target.files[0] || null
   pdfSuccess.value = false
   pdfMetadata.value = null
   pdfProcessing.value = false
   pdfError.value = ''
+  pdfUploadProgress.value = 0
+  if (!pdfFile.value) return
+  try {
+    validatePdfFile(pdfFile.value)
+  } catch (error) {
+    pdfFile.value = null
+    pdfError.value = error.message
+    e.target.value = ''
+    return
+  }
+  await uploadPdf()
 }
 
 function onCsvSelected(e) {
@@ -628,9 +653,55 @@ function onCsvSelected(e) {
   csvImportErrors.value = []
 }
 
+function decoratePdfResume(item) {
+  if (!item) return null
+  const expiresAt = item.expiresAt
+  let expired = false
+  if (expiresAt) {
+    const date = new Date(expiresAt)
+    expired = Number.isNaN(date.getTime()) || date.getTime() <= Date.now()
+  }
+  return { ...item, expired }
+}
+
+async function loadPdfResume() {
+  const userId = currentUserId()
+  const stored = loadPdfUploadResume(typeof localStorage === 'undefined' ? null : localStorage, userId, projectId)
+  try {
+    const listed = await listProjectPdfUploads(projectId)
+    const item = listed?.items?.[0]
+    if (item) {
+      pdfResume.value = decoratePdfResume(item)
+      return
+    }
+    // A successful empty list means the upload finished, expired, or was canceled.
+    // Do not revive a local key that would hide "选择 PDF 文件" over an already-ready file.
+    clearPdfUploadResume(typeof localStorage === 'undefined' ? null : localStorage, userId, projectId)
+    pdfResume.value = null
+    return
+  } catch {
+    /* Local resume is enough to prompt re-selection after a network error. */
+  }
+  pdfResume.value = decoratePdfResume(stored)
+}
+
+async function abandonPdfResume() {
+  const userId = currentUserId()
+  const sessionId = pdfResume.value?.id || pdfResume.value?.sessionId
+  try {
+    if (sessionId) await cancelProjectPdfUpload(projectId, sessionId)
+  } catch {
+    /* Clearing the local prompt still lets the user start a new file. */
+  }
+  clearPdfUploadResume(typeof localStorage === 'undefined' ? null : localStorage, userId, projectId)
+  pdfResume.value = null
+  pdfError.value = ''
+}
+
 async function uploadPdf() {
-  if (!pdfFile.value) return
+  if (!pdfFile.value || uploadingPdf.value) return
   uploadingPdf.value = true
+  pdfUploadProgress.value = 0
   pdfError.value = ''
   pdfSuccess.value = false
   pdfMetadata.value = null
@@ -639,13 +710,15 @@ async function uploadPdf() {
   try {
     pdfUploadController = new AbortController()
     const signal = pdfUploadController.signal
-    let record = await createProjectPdf({ projectId, file: pdfFile.value, signal,
+    let record = await createProjectPdf({
+      projectId,
+      file: pdfFile.value,
+      signal,
+      userId: currentUserId(),
       onProgress: value => { if (generation === pdfPollGeneration) pdfUploadProgress.value = value }
     })
     if (generation !== pdfPollGeneration) return
     pdfProcessing.value = record.status === 'processing'
-    pdfFile.value = null
-    if (pdfInput.value) pdfInput.value.value = ''
     while (record.status === 'processing' && generation === pdfPollGeneration) {
       await pollDelay(1000)
       record = await getProjectFile(record.id)
@@ -655,6 +728,9 @@ async function uploadPdf() {
     if (record.status === 'ready') {
       pdfSuccess.value = true
       pdfMetadata.value = record
+      pdfFile.value = null
+      pdfResume.value = null
+      if (pdfInput.value) pdfInput.value.value = ''
     } else {
       pdfError.value = record.error_message || 'PDF 后端校验失败'
     }
@@ -662,6 +738,7 @@ async function uploadPdf() {
     if (generation !== pdfPollGeneration) return
     pdfError.value = pdfUploadController?.signal.aborted ? '上传已取消' : getUploadErrorMessage(e, 'pdf')
     pdfProcessing.value = false
+    await loadPdfResume()
   } finally {
     if (generation === pdfPollGeneration) uploadingPdf.value = false
   }

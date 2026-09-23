@@ -8,12 +8,18 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
  const browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL?{channel:process.env.BROWSER_CHANNEL}:{})})
  try {
  const page=await browser.newPage({viewport:{width:1440,height:1000}})
- const chunks=[],completions=[],errors=[];let failed=false,lost=false
+ const chunks=[],completions=[],errors=[];let failed=false,lost=false,sessionCreates=0,blockedCreates=0
  page.on('pageerror',e=>errors.push(e.message))
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());assert.equal(url.origin,'http://localhost')
   if(url.pathname.startsWith('/api/')){
    assert(!url.pathname.endsWith('/files/pdf'),'UI must use chunked upload')
+   if(url.pathname.endsWith('/pdf-uploads')&&req.method()==='POST'){
+    // One failed UI attempt = create POST + cleanup POST. Both must be blocked
+    // here so the real backend never sees them; otherwise progress waits forever.
+    if(blockedCreates<2){blockedCreates++;return route.fulfill({status:403,json:{message:'暂时无法上传，请重试'}})}
+    sessionCreates++
+   }
    if(url.pathname.includes('/chunks/')){
     const data=req.postDataBuffer();assert(data.length<=1024*1024);chunks.push({path:url.pathname,size:data.length})
     if(!failed&&url.pathname.endsWith('/chunks/1')) {failed=true;return route.fulfill({status:503,json:{message:'temporary upload failure'}})}
@@ -34,13 +40,28 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
  })
  await page.addInitScript(auth=>localStorage.setItem('pocketbase_auth',JSON.stringify({token:auth.token,record:auth.record,model:auth.record})),fixture.auth)
  await page.goto(`http://localhost/admin/projects/${fixture.project.id}`)
- await page.locator('input[type=file][accept=".pdf"]').setInputFiles({name:'source.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixture.source,'base64')})
- await page.getByRole('button',{name:'上传 PDF',exact:true}).click()
- await page.locator('progress').waitFor({state:'visible'})
- await page.waitForFunction(()=>Number(document.querySelector('progress')?.value)>0)
+ const input=page.locator('input[type=file][accept=".pdf"]')
+ assert.equal(await input.getAttribute('multiple'),null,'PDF selection remains single-file')
  const out=process.env.PDF_BROWSER_OUTPUT||path.resolve(__dirname,'../../output/playwright/pdf-upload')
- fs.mkdirSync(out,{recursive:true});await page.screenshot({path:path.join(out,'upload-progress.png'),fullPage:true})
+ fs.mkdirSync(out,{recursive:true})
+ await input.setInputFiles({name:'invalid.txt',mimeType:'text/plain',buffer:Buffer.from('invalid')})
+ await page.getByText('请选择不超过 100 MiB 的 PDF 文件').waitFor()
+ assert.equal(sessionCreates,0,'invalid selection must not create a session')
+ await page.screenshot({path:path.join(out,'upload-invalid.png'),fullPage:true})
+ await input.setInputFiles({name:'source.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixture.source,'base64')})
+ await page.getByRole('button',{name:'重试上传 PDF'}).waitFor()
+ assert.equal(blockedCreates,2,'failed create must consume create+cleanup POSTs')
+ assert.equal(sessionCreates,0,'failed creation must not reach the backend')
+ await page.screenshot({path:path.join(out,'upload-failure.png'),fullPage:true})
+ await page.getByRole('button',{name:'重试上传 PDF'}).click()
+ await page.locator('progress').waitFor({state:'visible'})
+ assert(await input.isDisabled(),'selection must be disabled during upload')
+ await page.waitForFunction(()=>Number(document.querySelector('progress')?.value)>0)
+ await page.screenshot({path:path.join(out,'upload-progress.png'),fullPage:true})
  await page.waitForFunction(()=>document.body.textContent.includes('PDF 深度校验完成，共 4 页')&&!document.querySelector('progress'),{},{timeout:30000})
+ assert.equal(sessionCreates,1,'valid selection must create exactly one session')
+ assert.equal(await page.getByRole('button',{name:'重试上传 PDF'}).count(),0,'success must not show retry')
+ await page.screenshot({path:path.join(out,'upload-success.png'),fullPage:true})
  assert.equal(chunks.length,4,'three chunks plus one retry')
  assert.equal(completions.length,2,'lost completion response must retry')
  assert.equal(completions[0].id,completions[1].id)

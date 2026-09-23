@@ -29,6 +29,12 @@
       </form>
     </section>
 
+    <section class="card mb-6" aria-labelledby="onboarding-title">
+      <h3 id="onboarding-title" class="card-title">新手引导</h3>
+      <p class="text-sm text-muted mb-4">第一次进入校对编辑器时会看到分步说明。跳过或完成后不会再自动弹出。</p>
+      <button type="button" class="btn btn-secondary" @click="replayOnboarding">重看新手引导</button>
+    </section>
+
     <div v-if="error" class="alert alert-error mb-4" role="alert">
       <p>{{ error }}</p>
       <p v-if="stats" class="text-sm">下方保留上次成功加载的统计，可能不是最新结果。</p>
@@ -121,7 +127,7 @@
 
 <script setup>
 import UserAvatar from '@/components/UserAvatar.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { bindExternalIdentity, currentUserId, listExternalProviders, updateProfile } from '@/services/authService'
 import { getProofreaderProfileStats } from '@/services/proofreaderStatsService'
@@ -161,6 +167,7 @@ const credentials = reactive({})
 const bindingProvider = ref('')
 const bindingError = reactive({})
 const stats = ref(null)
+const onboardingRef = inject('proofreaderOnboarding', ref(null))
 
 const displayName = computed(() => auth.user?.name || auth.user?.email || auth.user?.username || '校对员')
 const accuracyLabel = computed(() => stats.value?.evaluatedCount ? `${stats.value.accuracy}%` : '暂无已评估结果')
@@ -224,6 +231,10 @@ async function loadStats() {
 
 function rankLabel(rank) {
   return rank ? `第 ${rank} 名` : '暂无'
+}
+
+function replayOnboarding() {
+  onboardingRef.value?.reopen()
 }
 </script>
 

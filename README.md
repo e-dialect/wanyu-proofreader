@@ -390,8 +390,8 @@ docker compose -f docker-compose.traefik.yml logs -f backend frontend
 ### 4. 管理员上传 PDF
 
 1. 进入项目详情页。
-2. 在“上传 PDF 文件”区域选择 PDF。
-3. 点击“上传 PDF”。
+2. 在“上传 PDF 文件”区域选择单个 PDF，选择后会自动开始上传并显示进度。上传期间不能再选择文件。
+3. 等待后端校验结果；如上传失败，可点击“重试上传 PDF”或重新选择文件。
 
 单个 PDF 最大 100 MiB（104,857,600 字节），CSV 仍为 50 MiB。后端 PDF 请求和内置 Nginx 请求上限为 101 MiB，为 multipart 编码预留空间。升级时需同时重新部署后端和前端 Nginx；后端启动迁移会更新已有数据库的 PDF 字段限制。若部署了额外网关，也需允许至少 101 MiB 的请求体。
 

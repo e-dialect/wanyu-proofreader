@@ -144,50 +144,41 @@
     <template #keyboard><ProjectKeyboard v-if="page" :project-id="page.project" @availability="keyboardAvailable = $event" @insert="insertText" /></template>
   </DocumentReviewWorkspace>
 
-    <div
-      v-if="reviewingSubmission"
-      class="modal-backdrop"
-      role="presentation"
-      @click.self="closeSubmitReview"
+    <AppModal
+      :open="reviewingSubmission"
+      title-id="submit-review-title"
+      mark="校"
+      @close="closeSubmitReview"
     >
-      <section
-        class="confirmation-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="submit-review-title"
-        @keydown.esc="closeSubmitReview"
-      >
-        <div class="confirmation-dialog__mark" aria-hidden="true">校</div>
-        <div>
-          <div class="page-eyebrow">提交前确认</div>
-          <h2 id="submit-review-title">确认第 {{ page?.page_number }} 条校对结果</h2>
-          <p v-if="changedFields.length">
-            你修改了 {{ changedFields.length }} 个字段：{{ changedFields.join('、') }}。
-          </p>
-          <p v-else>
-            本条没有修改字段，提交表示你确认导入内容全部正确。
-          </p>
-          <p class="text-sm text-muted">
-            提交后不能自行撤回；系统会自动流转并尝试领取本项目下一条。
-          </p>
-        </div>
-        <div class="confirmation-dialog__actions">
+        <div class="page-eyebrow">提交前确认</div>
+        <h2 id="submit-review-title">确认第 {{ page?.page_number }} 条校对结果</h2>
+        <p v-if="changedFields.length">
+          你修改了 {{ changedFields.length }} 个字段：{{ changedFields.join('、') }}。
+        </p>
+        <p v-else>
+          本条没有修改字段，提交表示你确认导入内容全部正确。
+        </p>
+        <p class="text-sm text-muted">
+          提交后不能自行撤回；系统会自动流转并尝试领取本项目下一条。
+        </p>
+        <template #actions>
           <button type="button" class="btn btn-secondary" @click="closeSubmitReview">继续检查</button>
           <button
             ref="submitConfirmButton"
             type="button"
             class="btn btn-success"
+            autofocus
             :disabled="saving || leaseLost || !leaseToken"
             @click="submitProofread"
           >{{ saving ? '正在提交…' : '确认提交' }}</button>
-        </div>
-      </section>
-    </div>
+        </template>
+    </AppModal>
 </template>
 
 <script setup>
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import AppModal from '@/components/AppModal.vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import DocumentReviewWorkspace from '@/components/editor/DocumentReviewWorkspace.vue'
 import FieldNavigation from '@/components/editor/FieldNavigation.vue'
@@ -196,6 +187,7 @@ import ProjectKeyboard from '@/components/editor/ProjectKeyboard.vue'
 import { useStructuredRow } from '@/composables/useStructuredRow'
 import { useTaskNeighbors } from '@/composables/useTaskNeighbors'
 import { PAGE_STATUS } from '@/constants/pageStatus'
+import { shouldIgnoreEditorShortcut } from '@/lib/onboarding'
 import { getChangedFields } from '@/lib/workspaceInsights'
 import {
   clearTaskDraft,
@@ -218,6 +210,7 @@ import { formatClaimConflict, getPbMessage } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
+const onboardingRef = inject('proofreaderOnboarding', ref(null))
 
 const page = ref(null)
 const loadingPage = ref(true)
@@ -385,6 +378,8 @@ async function loadPage() {
     await loadNeighbors()
     const flash = takeTaskFlash(window.sessionStorage)
     if (flash) saved.value = flash
+    await nextTick()
+    onboardingRef.value?.startIfUnseen()
   } catch (e) {
     saveError.value = formatClaimConflict(e, '加载任务失败，请返回项目大厅刷新后重试')
   } finally {
@@ -563,7 +558,7 @@ function formatDraftTime(value) {
 }
 
 function handleEditorShortcut(event) {
-  if (event.defaultPrevented) return
+  if (shouldIgnoreEditorShortcut(event, onboardingRef.value)) return
   if (event.key === 'Escape' && reviewingSubmission.value) {
     event.preventDefault()
     closeSubmitReview()

@@ -32,6 +32,7 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
   })
   await page.addInitScript(({auth,claim})=>{
    localStorage.setItem('pocketbase_auth',JSON.stringify({token:auth.token,record:auth.record,model:auth.record}))
+   localStorage.setItem(`fangji:onboarding:v1:${auth.record.id}`,JSON.stringify({version:1,completed:true}))
    sessionStorage.setItem(`fangji:task-lease:v1:${auth.record.id}:${claim.id}`,JSON.stringify({token:claim.leaseToken,expiresAt:claim.leaseExpiresAt}))
    window.__revoked=[];const revoke=URL.revokeObjectURL;URL.revokeObjectURL=function(url){window.__revoked.push(url);return revoke.call(this,url)}
   },fixture)

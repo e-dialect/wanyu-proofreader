@@ -567,6 +567,7 @@ tr:hover td { background: var(--gray-50); }
 .confirmation-dialog h2 { margin: .25rem 0 .7rem; font-size: 1.25rem; }
 .confirmation-dialog p { margin-top: .45rem; color: var(--gray-700); line-height: 1.65; }
 .confirmation-dialog__actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: .5rem; padding-top: .5rem; }
+.confirmation-dialog__actions .onboarding-skip { margin-right: auto; }
 
 @keyframes skeleton-pulse { to { background-position: -200% 0; } }
 

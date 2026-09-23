@@ -106,10 +106,11 @@ func logUploadRejected(requestID, kind, projectID, stage, message string, err er
 }
 
 type importService struct {
-	app     *pocketbase.PocketBase
-	queue   chan importWork
-	mu      sync.Mutex
-	pending map[string]struct{}
+	app        *pocketbase.PocketBase
+	queue      chan importWork
+	mu         sync.Mutex
+	pending    map[string]struct{}
+	pdfUploads *pdfUploadPool
 }
 
 func newImportService(app *pocketbase.PocketBase) *importService {

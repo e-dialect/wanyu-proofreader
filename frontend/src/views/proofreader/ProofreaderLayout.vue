@@ -10,15 +10,19 @@
       </template>
     </AppNavbar>
     <RouterView />
+    <ProofreaderOnboarding ref="onboardingRef" :user-id="auth.user?.id || ''" />
   </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, provide, ref } from 'vue'
 import { useRoute, RouterView, RouterLink } from 'vue-router'
 import AppNavbar from '@/components/AppNavbar.vue'
+import ProofreaderOnboarding from '@/components/ProofreaderOnboarding.vue'
 import { useAuthStore } from '@/stores/auth'
 const route = useRoute()
 const auth = useAuthStore()
+const onboardingRef = ref(null)
+provide('proofreaderOnboarding', onboardingRef)
 onMounted(() => auth.loadAccessContext())
 </script>

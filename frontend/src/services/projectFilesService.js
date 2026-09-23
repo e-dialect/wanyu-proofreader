@@ -7,7 +7,26 @@ export function getFileUrl(record, fileName) {
 }
 
 export async function createProjectPdf(options) {
-  return uploadPdfInChunks({ ...options, send: (path, request) => pb.send(path, request) })
+  const storage = options.storage ?? (typeof localStorage === 'undefined' ? null : localStorage)
+  return uploadPdfInChunks({
+    ...options,
+    storage,
+    send: options.send || ((path, request) => pb.send(path, request))
+  })
+}
+
+export async function listProjectPdfUploads(projectId) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pdf-uploads`, {
+    method: 'GET',
+    requestKey: null
+  })
+}
+
+export async function cancelProjectPdfUpload(projectId, uploadId) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pdf-uploads/${encodeURIComponent(uploadId)}`, {
+    method: 'DELETE',
+    requestKey: null
+  })
 }
 
 export async function getProjectFile(recordId) {
