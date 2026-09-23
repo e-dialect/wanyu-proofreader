@@ -254,7 +254,7 @@ const navigationHint = computed(() => {
   if (loadingPage.value || neighborsState.value === 'loading') return ''
   if (saving.value) return '正在提交，暂不能切换任务。'
   if (reviewingSubmission.value) return '请先完成或关闭提交确认。'
-  if (neighborsState.value === 'error') return '获取进行中任务失败，可重试。'
+  if (neighborsState.value === 'error') return neighborsError.value
   if (!page.value) return ''
   if (taskCount.value === 0) return '当前没有可切换的进行中任务。'
   if (taskPosition.value === 0) return '当前条目不在进行中任务列表。'
@@ -300,11 +300,13 @@ const {
   canNavigatePrev,
   canNavigateNext,
   neighborsState,
+  neighborsError,
   resetNeighbors,
   loadNeighbors
 } = useTaskNeighbors(page, async (currentPage) => {
   const userId = currentUserId.value
-  if (!currentPage?.project || !userId) return []
+  if (!userId) throw new Error('登录状态已失效，请重新登录后重试。')
+  if (!currentPage?.project) return []
   return listProofreaderNeighborTasks(currentPage.project, userId)
 })
 

@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import { useTaskNeighbors } from '../src/composables/useTaskNeighbors.js'
 
@@ -125,4 +126,42 @@ test('a stale response cannot replace the current task list', async () => {
   assert.equal(api.taskPosition.value, 1)
   assert.equal(api.taskCount.value, 1)
   assert.equal(api.neighborsState.value, 'ready')
+})
+
+test('list failures expose PocketBase details and localize generic errors', async () => {
+  const page = ref({ id: 'a', project: 'p1' })
+  let error = { message: 'Something went wrong while processing your request.' }
+  const api = useTaskNeighbors(page, async () => { throw error })
+  await api.loadNeighbors()
+  assert.equal(api.neighborsError.value, '获取进行中任务失败，请重试。')
+  error = { response: { data: { project: { message: '当前账号无权访问此项目' } } } }
+  await api.loadNeighbors()
+  assert.equal(api.neighborsError.value, '当前账号无权访问此项目')
+})
+
+test('editor loader reports a lost identity as an error and recovers after login', async () => {
+  const source = readFileSync(new URL('../src/views/proofreader/ProofreadEditorView.vue', import.meta.url), 'utf8')
+  const loaderBody = source.match(/useTaskNeighbors\(page, async \(currentPage\) => \{([\s\S]*?)\n\}\)/)?.[1]
+  assert.ok(loaderBody, 'exercise the actual editor loader')
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  const loader = new AsyncFunction('currentPage', 'currentUserId', 'listProofreaderNeighborTasks', loaderBody)
+  const user = ref('')
+  let calls = 0
+  const api = useTaskNeighbors(ref({ id: 'a', project: 'p1' }), (page) => loader(page, user, async (project, userId) => {
+    calls += 1
+    assert.equal(project, 'p1')
+    assert.equal(userId, 'u1')
+    return [{ id: 'a' }, { id: 'b' }]
+  }))
+  await api.loadNeighbors()
+  assert.equal(api.neighborsState.value, 'error')
+  assert.equal(api.neighborsError.value, '登录状态已失效，请重新登录后重试。')
+  assert.equal(api.canNavigateNext.value, false)
+  assert.equal(calls, 0)
+  user.value = 'u1'
+  await api.loadNeighbors()
+  assert.equal(api.neighborsState.value, 'ready')
+  assert.equal(api.neighborsError.value, '')
+  assert.equal(api.canNavigateNext.value, true)
+  assert.equal(calls, 1)
 })

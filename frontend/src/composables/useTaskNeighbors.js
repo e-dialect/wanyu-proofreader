@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { getPbMessage } from '../utils/pbErrors.js'
 import { canGoNext, canGoPrev, positionOf, stepIndex } from '../lib/taskNavigation.js'
 
 export function useTaskNeighbors(page, listLoader) {
@@ -44,7 +45,7 @@ export function useTaskNeighbors(page, listLoader) {
     } catch (error) {
       if (request !== generation || page.value?.id !== currentPage.id) return
       neighborsState.value = 'error'
-      neighborsError.value = error?.message || '获取任务列表失败'
+      neighborsError.value = getPbMessage(error, '获取进行中任务失败，请重试。')
     }
   }
 
