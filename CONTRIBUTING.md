@@ -164,7 +164,7 @@ main
 
 1. stack 保持线性；同步动作是 **rebase**，不是 merge。
 2. 优先使用 GitHub 原生 stacked pull requests / `gh stack`（它是扩展，首次使用需 `gh extension install github/gh-stack`）。GitHub 原生 stack 要求分支位于同一仓库；有上游写权限的核心成员因此直接在本仓库建立 stack 分支。外部贡献者仍可使用 fork，但 fork PR 不与其他 PR 组成需要自动级联 rebase 的 stack。
-3. `main` 前进、或同一条 stack 被他人改过时，执行 `gh stack sync`（配 `--prune` 清理已合并分支）：它快进 trunk、按需级联 rebase、更新远端 PR，并自带 `--force-with-lease` 推送。只需搬运自己那层的提交时，执行 `gh stack rebase --upstack`（或网页端 Rebase stack）后再 `gh stack push`。两条路都不是逐层 `git merge`。
+3. `main` 前进、或同一条 stack 被他人改过时，执行 `gh stack sync`（配 `--prune` 清理已合并分支）：它快进 trunk、按需级联 rebase、更新远端 PR，并自带 `--force-with-lease` 推送。自己改了下层分支、要把上层各条重放到新的父提交上时，执行 `gh stack rebase --upstack`（或网页端 Rebase stack）后再 `gh stack push`。两条路都不是逐层 `git merge`。
 4. 底层 PR 合并后，剩余 stack 先完成级联 rebase、CI 与冲突处理，再进入下一层最终合并。仓库仍使用 **Squash and merge**；stack 的 rebase 策略不要求改变 main 的 squash 策略。
 5. 自动评审器可以在任何轮次给出 `APPROVE`、`COMMENT` 或 `REQUEST_CHANGES`。新的 push 使旧批准失效属于正常行为；自动评审器下一轮只需基于最新 head 重新检查。**最终 merge 仍由人工维护者决定**，便于人工选择是否顺手处理非阻断意见。
 6. 非阻断意见不自动升级为阻断。作者可以选择在合并前修复；一旦修复导致 head 更新，就重新走 rebase（如需要）→ CI → 自动评审。没有阻断项时不要求为了“保住旧 Approve”停止合理的小修。
