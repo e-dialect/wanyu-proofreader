@@ -87,9 +87,14 @@ function requiredProofreads(dao, projectId) {
 // against the proofreaders' accuracy, because it spends the scarcest resource
 // in the project on a difference that does not exist.
 //
-// NFC only, never NFKC. ɑ (U+0251) vs a, Ǿ vs Ø and superscript tone marks are
-// distinctions this project deliberately keeps; NFKC erases them, which is a
-// worse error than the one being fixed. A test pins that direction.
+// NFC only, never NFKC. NFKC goes further and folds compatibility forms —
+// fullwidth Ａ to A, superscript ² to 2 and ʰ to h, the ﬁ ligature to fi — which
+// would erase distinctions this project deliberately keeps. That is a worse
+// error than the one being fixed here, so the direction is pinned by a test.
+//
+// Reading those tests: ɑ (U+0251) and Ǿ (U+01FE) survive NFKC unchanged, so a
+// pair like ɑ/a cannot tell the two forms apart and stays green under an NFKC
+// implementation. Only a pair NFKC really folds can pin this direction.
 //
 // This is a comparison key, never a write-back: an attempt's row_json keeps the
 // exact codepoints its proofreader typed.

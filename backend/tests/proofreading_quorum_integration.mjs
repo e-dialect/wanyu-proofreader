@@ -255,6 +255,13 @@ try {
     'precomposed and decomposed spellings of one reading are one reading')
   assert.notEqual(key({ 词条: '\u0251' }), key({ 词条: 'a' }),
     'U+0251 vs a is a linguistic distinction: NFC must not fold it')
+  // The pair above cannot tell NFC from NFKC on its own: U+0251 comes through
+  // NFKC unchanged, so an NFKC implementation keeps it green. These two are
+  // what actually pins the direction, because NFKC does fold them.
+  assert.notEqual(key({ 词条: '\uff21' }), key({ 词条: 'A' }),
+    'fullwidth A vs A must stay distinct: NFC only, never NFKC')
+  assert.notEqual(key({ 词条: '\u00b2' }), key({ 词条: '2' }),
+    'superscript two vs 2 must stay distinct: NFC only, never NFKC')
   assert.equal(key({ b: 'x', a: PRECOMPOSED }), key({ a: DECOMPOSED, b: 'x' }),
     'the comparison key must not depend on key order')
   assert.notEqual(STACKED_ONE, STACKED_TWO,
