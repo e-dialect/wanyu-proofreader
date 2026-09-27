@@ -238,6 +238,14 @@ class RowLevelBehaviourTests(unittest.TestCase):
             {"词条": "甲", "释义": "Ω"})]
         self.assertIn("non_ipa_range_codepoints", messages)
 
+    def test_the_meaning_column_suppression_still_holds(self):
+        # Widening the detectors also widened the suppression: a 释义 cell whose
+        # structure is already broken by a placeholder must still report once.
+        row = {"词条": "甲", "释义": "@4E2D \u03a9"}
+        messages = [h.message for h in detectors.analyze_row(row)]
+        self.assertIn("missing_glyph_placeholder", messages)
+        self.assertNotIn("non_ipa_range_codepoints", messages)
+
     def test_a_row_wider_than_its_header_is_reported_not_dropped(self):
         hits = detectors.detect_row_width(4, 2)
         self.assertEqual([detectors.MERGED_COLUMNS], [h.kind for h in hits])
