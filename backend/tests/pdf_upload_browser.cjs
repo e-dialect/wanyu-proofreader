@@ -8,16 +8,18 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
  const browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL?{channel:process.env.BROWSER_CHANNEL}:{})})
  try {
  const page=await browser.newPage({viewport:{width:1440,height:1000}})
- const chunks=[],completions=[],errors=[];let failed=false,lost=false,sessionCreates=0,blockedCreates=0
+ const chunks=[],completions=[],errors=[];let failed=false,lost=false,sessionCreates=0,validationCreates=0,blockedCreates=0
  page.on('pageerror',e=>errors.push(e.message))
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());assert.equal(url.origin,'http://localhost')
   if(url.pathname.startsWith('/api/')){
    assert(!url.pathname.endsWith('/files/pdf'),'UI must use chunked upload')
    if(url.pathname.endsWith('/pdf-uploads')&&req.method()==='POST'){
-    // One failed UI attempt = create POST + cleanup POST. Both must be blocked
-    // here so the real backend never sees them; otherwise progress waits forever.
-    if(blockedCreates<2){blockedCreates++;return route.fulfill({status:403,json:{message:'暂时无法上传，请重试'}})}
+    // A validation failure and its cleanup request must not reach the backend.
+    if(validationCreates<2){validationCreates++;return route.fulfill({status:400,json:{message:'PDF 结构损坏'}})}
+    // A transient create failure gets four attempts, then one cleanup POST.
+    // Block all five so the backend sees only the session created by UI retry.
+    if(blockedCreates<5){blockedCreates++;return route.fulfill({status:503,json:{message:'暂时无法上传，请重试'}})}
     sessionCreates++
    }
    if(url.pathname.includes('/chunks/')){
@@ -49,8 +51,14 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
  assert.equal(sessionCreates,0,'invalid selection must not create a session')
  await page.screenshot({path:path.join(out,'upload-invalid.png'),fullPage:true})
  await input.setInputFiles({name:'source.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixture.source,'base64')})
+ await page.getByText(/PDF 结构损坏.*重新选择 PDF 文件/).waitFor()
+ assert.equal(validationCreates,2,'validation failure must consume create and cleanup POSTs')
+ assert.equal(await page.getByRole('button',{name:'重试上传 PDF'}).count(),0,'validation failure must not offer retry')
+ assert.equal(await input.inputValue(),'','failed upload must reset file input')
+ await page.screenshot({path:path.join(out,'upload-validation-failure.png'),fullPage:true})
+ await input.setInputFiles({name:'source.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixture.source,'base64')})
  await page.getByRole('button',{name:'重试上传 PDF'}).waitFor()
- assert.equal(blockedCreates,2,'failed create must consume create+cleanup POSTs')
+ assert.equal(blockedCreates,5,'failed create must consume four retries and one cleanup POST')
  assert.equal(sessionCreates,0,'failed creation must not reach the backend')
  await page.screenshot({path:path.join(out,'upload-failure.png'),fullPage:true})
  await page.getByRole('button',{name:'重试上传 PDF'}).click()
