@@ -49,8 +49,11 @@ PDF 接口再次鉴权，并在响应头返回实际生成的标识和有效期�
 
 每次预览生成一条结构化日志（事件 `pdf_preview`），含 `source_key`、`page_range`、
 `cache`（`watermark-hit` / `pages-hit` / `miss-degraded` /
-`pages-unreadable-degraded`）与 `open_ms` / `extract_ms` / `merge_ms` /
+`pages-unreadable-degraded`）与 `lookup_ms` / `open_ms` / `extract_ms` / `merge_ms` /
 `watermark_ms` / `total_ms`，用于量化各段成本而不是猜。
+
+`lookup_ms`（探测缓存的一次 `stat`）与 `open_ms`（打开原件）刻意分开计数：把两者
+合成一个数字会让读数的人无法判断这次请求到底碰没碰磁盘。
 
 ## 发布与验证
 

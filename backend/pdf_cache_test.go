@@ -6,6 +6,7 @@ import (
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,7 +94,13 @@ func TestCachedTaskPDFKeepsAHitWarm(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Just inside the window, so the hit only succeeds if it is also refreshed.
+	// Both timestamps have to age: lookupPDFPages gates on ready, cleanupPDFCache
+	// on the directory. Aging only the directory leaves this test passing even
+	// with no touch at all, which is how it first shipped.
 	aged := time.Now().Add(-pdfPagesTTL + time.Minute)
+	if err := os.Chtimes(filepath.Join(dir, "ready"), aged, aged); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Chtimes(dir, aged, aged); err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +113,45 @@ func TestCachedTaskPDFKeepsAHitWarm(t *testing.T) {
 	// Read the window from where the request left it, not from "now".
 	if _, ok := lookupPDFPages(root, pdfSourceKey(record), aged.Add(pdfPagesTTL+time.Second)); !ok {
 		t.Fatal("a cache hit did not extend the page cache's retention window")
+	}
+}
+
+// A page directory that advertises itself ready but cannot be merged must be
+// reported as such. It is the one verdict that would otherwise masquerade as a
+// clean cache hit, and a request logged as a hit while extract_ms is non-zero
+// would send whoever reads it after the wrong thing.
+func TestCachedTaskPDFReportsAnUnreadablePageDirectory(t *testing.T) {
+	app := newSchemaTestApp(t)
+	s := newImportService(app)
+	record, collectionID := sourcePDFRecord(t, app)
+	writeSourcePDF(t, app, collectionID, record.Id, renderingTestPDF())
+
+	root := s.pdfCacheDir()
+	dir := filepath.Join(root, "pages-"+pdfSourceKey(record))
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ready"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// 1.pdf is deliberately absent: the directory looks usable but merges fail.
+
+	var logged bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&logged)
+	defer log.SetOutput(previous)
+
+	descriptor := describePDF(record, 1, 2, "alice", time.Now())
+	output, err := s.cachedTaskPDF(record, descriptor, "proofreader0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := pdfapi.PageCount(bytes.NewReader(output), nil)
+	if err != nil || count != 2 {
+		t.Fatalf("degraded preview: count=%d err=%v", count, err)
+	}
+	if !strings.Contains(logged.String(), `"cache":"pages-unreadable-degraded"`) {
+		t.Fatalf("an unreadable page directory was not reported as such: %s", logged.String())
 	}
 }
 

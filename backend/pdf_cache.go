@@ -92,7 +92,22 @@ func cleanupPDFCache(root string, now time.Time, reserve int64) {
 // numbers the issue asks for can be read off a single log line. A nil receiver
 // means "not measuring": the rendering helpers stay callable from tests that
 // only care about the bytes they return.
-type previewStages struct{ Open, Extract, Merge, Watermark time.Duration }
+type previewStages struct {
+	Lookup    time.Duration
+	Open      time.Duration
+	Extract   time.Duration
+	Merge     time.Duration
+	Watermark time.Duration
+}
+
+// Lookup and Open are kept apart on purpose: probing the cache is a stat on a
+// warm filesystem, opening the source is I/O on a file that may not be cached.
+// Adding them into one number made the reading ambiguous.
+func (p *previewStages) markLookup(since time.Time) {
+	if p != nil {
+		p.Lookup += time.Since(since)
+	}
+}
 
 func (p *previewStages) markOpen(since time.Time) {
 	if p != nil {
@@ -135,7 +150,12 @@ func lookupPDFPages(root, sourceKey string, now time.Time) (string, bool) {
 // TTL is counted from the split, so a book in daily use would lose its cache on
 // a timer and pay the degraded path forever after. Touching on use makes the
 // window follow the material: idle books still expire, busy ones do not.
+//
+// ready is the file the request-path gate reads, so it is the timestamp the
+// window has to move; the directory mtime only drives cleanupPDFCache's expiry
+// and LRU ordering.
 func touchPDFPages(dir string, now time.Time) {
+	_ = os.Chtimes(filepath.Join(dir, "ready"), now, now)
 	_ = os.Chtimes(dir, now, now)
 }
 
@@ -242,16 +262,23 @@ func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDe
 	stages := &previewStages{}
 	lookupStart := time.Now()
 	dir, cached := lookupPDFPages(root, sourceKey, now)
-	stages.markOpen(lookupStart)
+	stages.markLookup(lookupStart)
 
 	var output []byte
 	var err error
+	// Decided here, not after the fallback: the fallback reassigns err and any
+	// error returns before the log, so a merge that failed and then recovered
+	// would otherwise be recorded as a clean cache hit — the one verdict that
+	// would make this instrumentation lie about what happened.
+	cacheState := "miss-degraded"
 	if cached {
+		cacheState = "pages-unreadable-degraded"
 		output, err = mergeCachedPDFPages(dir, start, end, stamp, stages)
 		if err == nil {
 			// Kept warm by use, so the 24h window follows the material rather
 			// than a timer set when the split happened.
 			touchPDFPages(dir, now)
+			cacheState = "pages-hit"
 		}
 	}
 	// A miss is not an error: the documented fallback is generating just these
@@ -275,12 +302,6 @@ func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDe
 		cleanupPDFCache(root, time.Now(), int64(len(output)))
 		_ = os.WriteFile(outputPath, output, 0600)
 	}
-	cacheState := "pages-hit"
-	if !cached {
-		cacheState = "miss-degraded"
-	} else if err != nil {
-		cacheState = "pages-unreadable-degraded"
-	}
 	logPDFPreview(cacheState, sourceKey, pageRange, stages, time.Since(now))
 	return output, nil
 }
@@ -297,6 +318,7 @@ func logPDFPreview(cache, sourceKey, pageRange string, stages *previewStages, to
 		"total_ms":   total.Milliseconds(),
 	}
 	if stages != nil {
+		fields["lookup_ms"] = stages.Lookup.Milliseconds()
 		fields["open_ms"] = stages.Open.Milliseconds()
 		fields["extract_ms"] = stages.Extract.Milliseconds()
 		fields["merge_ms"] = stages.Merge.Milliseconds()
