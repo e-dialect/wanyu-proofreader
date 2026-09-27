@@ -54,6 +54,7 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
  await page.getByText(/PDF 结构损坏.*重新选择 PDF 文件/).waitFor()
  assert.equal(validationCreates,2,'validation failure must consume create and cleanup POSTs')
  assert.equal(await page.getByRole('button',{name:'重试上传 PDF'}).count(),0,'validation failure must not offer retry')
+ await page.waitForFunction(()=>document.querySelector('input[type=file][accept=".pdf"]')?.value==='')
  assert.equal(await input.inputValue(),'','failed upload must reset file input')
  await page.screenshot({path:path.join(out,'upload-validation-failure.png'),fullPage:true})
  await input.setInputFiles({name:'source.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixture.source,'base64')})
