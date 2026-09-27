@@ -167,15 +167,17 @@ main
 3. `main` 前进、或同一条 stack 被他人改过时，执行 `gh stack sync`（配 `--prune` 清理已合并分支）：它快进 trunk、按需级联 rebase、更新远端 PR，并自带 `--force-with-lease` 推送。自己改了下层分支、要把上层各条重放到新的父提交上时，执行 `gh stack rebase --upstack`（或网页端 Rebase stack）后再 `gh stack push`。两条路都不是逐层 `git merge`。
 4. 底层 PR 合并后，剩余 stack 先完成级联 rebase、CI 与冲突处理，再进入下一层最终合并。仓库仍使用 **Squash and merge**；stack 的 rebase 策略不要求改变 main 的 squash 策略。
 5. 自动评审器可以在任何轮次给出 `APPROVE`、`COMMENT` 或 `REQUEST_CHANGES`。新的 push 使旧批准失效属于正常行为；自动评审器下一轮只需基于最新 head 重新检查。**最终 merge 仍由人工维护者决定**，便于人工选择是否顺手处理非阻断意见。
-6. 非阻断意见不自动升级为阻断。作者可以选择在合并前修复；一旦修复导致 head 更新，就重新走 rebase（如需要）→ CI → 自动评审。没有阻断项时不要求为了“保住旧 Approve”停止合理的小修。
-7. 不把“所有 PR 都直接以 main 为 base”当作 stack。真正独立的 PR 可以并行指向 main；存在代码依赖的 PR 才组成 stack。
+6. push 作废的只有批准：`REQUEST_CHANGES` 不会因为推送新提交而消失，后续 `COMMENT` 也不会顶掉它，必须由提出该结论的一方重新给出批准或修改意见。自动评审器遇到自己已基于最新 head 批准、而他人结论仍停在旧 head 的情况时，只请求对方重出结论，不代为 dismiss。
+7. 非阻断意见不自动升级为阻断。作者可以选择在合并前修复；一旦修复导致 head 更新，就重新走 rebase（如需要）→ CI → 自动评审。没有阻断项时不要求为了“保住旧 Approve”停止合理的小修。
+8. `main` 启用了「解决讨论」，因此**未 resolve 的线程无论意见是否阻断都会挡合并**。作者决定不在本 PR 处理某条非阻断意见时，在线程里写明取舍，由维护者 resolve；自动评审器只提意见，不 resolve 他人名下的线程。
+9. 不把“所有 PR 都直接以 main 为 base”当作 stack。真正独立的 PR 可以并行指向 main；存在代码依赖的 PR 才组成 stack。
 
 ## 当前合并政策
 
 main 已启用严格状态检查、解决讨论以及禁止强推/删除，管理员同样受限制；仓库级的全局批准数为 0。R0/R1 变更依靠 required checks、自动审查和作者提交的人工验证证据，R2 变更在组织治理文件落地后由路径级 CODEOWNER / 人工门禁控制。维护者还需执行以下合并门禁：
 
 1. PR 必须基于当前目标分支，所有可用 checks 通过。
-2. `REQUEST_CHANGES` 和未解决的阻断讨论必须先处理。
+2. `REQUEST_CHANGES` 和未 resolve 的讨论线程必须先处理；「解决讨论」不区分意见是否阻断，见「Stacked PR 与自动评审」第 8 条。
 3. 合并前确认测试、迁移和回滚说明足够，且没有意外的无关改动。
 4. 默认由维护者使用 **Squash and merge**，保持 `main` 每个 PR 一个清晰提交。
 5. 紧急绕过必须在 PR 中记录原因，并创建后续修复 issue。
