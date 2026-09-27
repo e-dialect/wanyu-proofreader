@@ -2,6 +2,15 @@ export function getPbStatus(error) {
   return error?.status || error?.response?.status || null
 }
 
+export function isRetryablePdfUploadError(error) {
+  if (error?.isAbort || error?.name === 'AbortError') return false
+  const status = getPbStatus(error)
+  if (status != null) return status === 408 || status === 429 || status >= 500
+  // PocketBase reports network failures with status 0; local validation errors
+  // are plain Errors and must not offer another upload of the same file.
+  return error?.status === 0 || error instanceof TypeError
+}
+
 export function getUploadErrorMessage(error, kind) {
   if (getPbStatus(error) === 429 && kind === 'pdf') {
     return getPbMessage(error, '已有 PDF 上传进行中或上传繁忙，请稍后重试')

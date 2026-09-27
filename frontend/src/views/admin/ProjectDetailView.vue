@@ -78,7 +78,7 @@
             <input type="file" accept=".pdf" @change="onPdfSelected" :disabled="uploadingPdf" ref="pdfInput" style="display:none" />
             <button v-if="!pdfResume || uploadingPdf" class="btn btn-secondary" @click="$refs.pdfInput.click()" :disabled="uploadingPdf">选择 PDF 文件</button>
             <span v-if="pdfFile" class="text-sm ml-2">{{ pdfFile.name }}</span>
-            <div v-if="pdfError && pdfFile && !uploadingPdf" class="mt-3">
+            <div v-if="pdfError && pdfRetryable && pdfFile && !uploadingPdf" class="mt-3">
               <button class="btn btn-primary" @click="uploadPdf">重试上传 PDF</button>
             </div>
             <div v-if="uploadingPdf && !pdfProcessing" class="mt-2" role="status">
@@ -417,7 +417,7 @@ import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors
 import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
 import { toSafeCsvCell } from '@/lib/csvExport'
 import { getProject } from '@/services/projectsService'
-import { getPbMessage, getPbStatus, getUploadErrorMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus, getUploadErrorMessage, isRetryablePdfUploadError } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
@@ -455,6 +455,7 @@ const pdfSuccess = ref(false)
 const pdfMetadata = ref(null)
 const pdfProcessing = ref(false)
 const pdfError = ref('')
+const pdfRetryable = ref(false)
 const csvSuccess = ref('')
 const csvError = ref('')
 const csvJob = ref(null)
@@ -627,22 +628,25 @@ function clearMutationFeedback() {
 
 async function onPdfSelected(e) {
   if (uploadingPdf.value) return
-  pdfFile.value = e.target.files[0] || null
+  const selectedFile = e.target.files[0]
+  if (!selectedFile) return
+  pdfFile.value = selectedFile
   pdfSuccess.value = false
   pdfMetadata.value = null
   pdfProcessing.value = false
   pdfError.value = ''
+  pdfRetryable.value = false
   pdfUploadProgress.value = 0
-  if (!pdfFile.value) return
   try {
     validatePdfFile(pdfFile.value)
+    await uploadPdf()
   } catch (error) {
     pdfFile.value = null
     pdfError.value = error.message
+    pdfRetryable.value = false
+  } finally {
     e.target.value = ''
-    return
   }
-  await uploadPdf()
 }
 
 function onCsvSelected(e) {
@@ -696,6 +700,7 @@ async function abandonPdfResume() {
   clearPdfUploadResume(typeof localStorage === 'undefined' ? null : localStorage, userId, projectId)
   pdfResume.value = null
   pdfError.value = ''
+  pdfRetryable.value = false
 }
 
 async function uploadPdf() {
@@ -703,6 +708,7 @@ async function uploadPdf() {
   uploadingPdf.value = true
   pdfUploadProgress.value = 0
   pdfError.value = ''
+  pdfRetryable.value = false
   pdfSuccess.value = false
   pdfMetadata.value = null
   pdfProcessing.value = false
@@ -732,11 +738,22 @@ async function uploadPdf() {
       pdfResume.value = null
       if (pdfInput.value) pdfInput.value.value = ''
     } else {
-      pdfError.value = record.error_message || 'PDF 后端校验失败'
+      pdfError.value = `${record.error_message || 'PDF 后端校验失败'}，请重新选择 PDF 文件。`
+      pdfFile.value = null
+      pdfResume.value = null
+      pdfRetryable.value = false
+      if (pdfInput.value) pdfInput.value.value = ''
     }
   } catch (e) {
     if (generation !== pdfPollGeneration) return
     pdfError.value = pdfUploadController?.signal.aborted ? '上传已取消' : getUploadErrorMessage(e, 'pdf')
+    pdfRetryable.value = !pdfUploadController?.signal.aborted && isRetryablePdfUploadError(e)
+    if (!pdfRetryable.value) {
+      pdfFile.value = null
+      if (getPbStatus(e) === 400 && !pdfError.value.includes('重新选择')) {
+        pdfError.value += '，请重新选择 PDF 文件。'
+      }
+    }
     pdfProcessing.value = false
     await loadPdfResume()
   } finally {
