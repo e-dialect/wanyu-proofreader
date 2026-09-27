@@ -8,7 +8,7 @@ export function isRetryablePdfUploadError(error) {
   if (status != null) return status === 408 || status === 429 || status >= 500
   // PocketBase reports network failures with status 0; local validation errors
   // are plain Errors and must not offer another upload of the same file.
-  return error?.status === 0 || error instanceof TypeError
+  return error?.status === 0
 }
 
 export function getUploadErrorMessage(error, kind) {
@@ -25,8 +25,10 @@ export function getUploadErrorMessage(error, kind) {
     return kind === 'pdf' ? 'PDF 文件超过 100 MiB 上限' : 'CSV 文件超过 50 MiB 上限'
   }
   const status = getPbStatus(error)
-  const hasServerMessage = Boolean(error?.response?.message)
-  if ([408, 502, 504].includes(status) || (status === 400 && !hasServerMessage)) {
+  if (status === 400) {
+    return getPbMessage(error, kind === 'pdf' ? 'PDF 后端校验失败，请重新选择文件上传' : '导入失败，请检查文件格式')
+  }
+  if ([408, 502, 504].includes(status)) {
     return '上传连接中断或超时，请重试；若大文件反复失败，请联系管理员检查上传超时设置'
   }
   return getPbMessage(error, kind === 'pdf' ? '上传失败，请重试' : '导入失败，请检查文件格式')

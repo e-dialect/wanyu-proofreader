@@ -81,11 +81,19 @@ test('validation responses do not offer retry even when upload throws', async ()
   assert.match(ui.pdfError.value, /PDF 结构损坏.*重新选择/)
 })
 
+test('400 without a server message gives one consistent reselect instruction', async () => {
+  const ui = setup(async () => { throw { status: 400, response: {} } })
+  await ui.onPdfSelected(event())
+  assert.equal(ui.pdfRetryable.value, false)
+  assert.match(ui.pdfError.value, /重新选择/)
+  assert.doesNotMatch(ui.pdfError.value, /请重试/)
+})
+
 test('only network, timeout, busy, and server errors can retry', () => {
-  for (const error of [{ status: 0 }, new TypeError('Failed to fetch'), { status: 408 }, { status: 429 }, { status: 500 }, { status: 503 }]) {
+  for (const error of [{ status: 0 }, { status: 408 }, { status: 429 }, { status: 500 }, { status: 503 }]) {
     assert.equal(isRetryablePdfUploadError(error), true)
   }
-  for (const error of [new Error('local validation'), { status: 400 }, { status: 401 }, { status: 409 }, { status: 410 }, { status: 413 }, { status: 0, isAbort: true }]) {
+  for (const error of [new Error('local validation'), new TypeError("Cannot read properties of undefined (reading 'digest')"), { status: 400 }, { status: 401 }, { status: 409 }, { status: 410 }, { status: 413 }, { status: 0, isAbort: true }]) {
     assert.equal(isRetryablePdfUploadError(error), false)
   }
 })

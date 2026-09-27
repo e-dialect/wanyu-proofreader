@@ -51,9 +51,11 @@ test('preserves useful server messages', () => {
   }, '提交失败'), '该条目已被其他校对员处理')
 })
 
- test('proxy disconnects explain upload timeouts without masking PDF validation', () => {
-  for (const status of [400, 408, 502, 504]) {
+test('timeouts remain retryable while 400 errors ask for a new PDF', () => {
+  for (const status of [408, 502, 504]) {
     assert.match(getUploadErrorMessage({status}, 'pdf'), /超时/)
   }
+  assert.match(getUploadErrorMessage({status:400}, 'pdf'), /重新选择/)
+  assert.equal(getUploadErrorMessage({status:400}, 'csv'), '导入失败，请检查文件格式')
   assert.equal(getUploadErrorMessage({status:400,response:{message:'PDF 结构损坏'}}, 'pdf'), 'PDF 结构损坏')
 })

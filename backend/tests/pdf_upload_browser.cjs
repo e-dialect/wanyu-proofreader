@@ -4,11 +4,16 @@ const {chromium}=require('playwright')
 const fixture=JSON.parse(fs.readFileSync(process.env.PDF_BROWSER_FIXTURE))
 const dist=path.resolve(__dirname,'../../frontend/dist')
 const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'utf8').match(/add_header Content-Security-Policy "([^"]+)"/)[1]
+// A validation error fails after one POST; a transient error is retried four
+// times. Both paths send one final cleanup POST with the same requestId.
+// Update these counts and the assertions below if upload cleanup changes.
+const CREATE_POSTS_PER_VALIDATION_FAILURE=2
+const CREATE_POSTS_PER_TRANSIENT_FAILURE=5
 ;(async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL?{channel:process.env.BROWSER_CHANNEL}:{})})
  try {
  const page=await browser.newPage({viewport:{width:1440,height:1000}})
- const chunks=[],completions=[],errors=[];let failed=false,lost=false,sessionCreates=0,validationCreates=0,blockedCreates=0
+ const chunks=[],completions=[],errors=[];let failed=false,lost=false,forwardedCreates=0,validationCreates=0,blockedCreates=0
  page.on('pageerror',e=>errors.push(e.message))
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());assert.equal(url.origin,'http://localhost')
@@ -16,11 +21,11 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
    assert(!url.pathname.endsWith('/files/pdf'),'UI must use chunked upload')
    if(url.pathname.endsWith('/pdf-uploads')&&req.method()==='POST'){
     // A validation failure and its cleanup request must not reach the backend.
-    if(validationCreates<2){validationCreates++;return route.fulfill({status:400,json:{message:'PDF 结构损坏'}})}
+    if(validationCreates<CREATE_POSTS_PER_VALIDATION_FAILURE){validationCreates++;return route.fulfill({status:400,json:{message:'PDF 结构损坏'}})}
     // A transient create failure gets four attempts, then one cleanup POST.
     // Block all five so the backend sees only the session created by UI retry.
-    if(blockedCreates<5){blockedCreates++;return route.fulfill({status:503,json:{message:'暂时无法上传，请重试'}})}
-    sessionCreates++
+    if(blockedCreates<CREATE_POSTS_PER_TRANSIENT_FAILURE){blockedCreates++;return route.fulfill({status:503,json:{message:'暂时无法上传，请重试'}})}
+    forwardedCreates++
    }
    if(url.pathname.includes('/chunks/')){
     const data=req.postDataBuffer();assert(data.length<=1024*1024);chunks.push({path:url.pathname,size:data.length})
@@ -48,19 +53,20 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
  fs.mkdirSync(out,{recursive:true})
  await input.setInputFiles({name:'invalid.txt',mimeType:'text/plain',buffer:Buffer.from('invalid')})
  await page.getByText('请选择不超过 100 MiB 的 PDF 文件').waitFor()
- assert.equal(sessionCreates,0,'invalid selection must not create a session')
+ assert.equal(blockedCreates,0,'invalid selection must not attempt to create a session')
+ assert.equal(forwardedCreates,0,'invalid selection must not forward a create POST')
  await page.screenshot({path:path.join(out,'upload-invalid.png'),fullPage:true})
  await input.setInputFiles({name:'source.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixture.source,'base64')})
  await page.getByText(/PDF 结构损坏.*重新选择 PDF 文件/).waitFor()
- assert.equal(validationCreates,2,'validation failure must consume create and cleanup POSTs')
+ assert.equal(validationCreates,CREATE_POSTS_PER_VALIDATION_FAILURE,'validation failure must consume create and cleanup POSTs')
  assert.equal(await page.getByRole('button',{name:'重试上传 PDF'}).count(),0,'validation failure must not offer retry')
  await page.waitForFunction(()=>document.querySelector('input[type=file][accept=".pdf"]')?.value==='')
  assert.equal(await input.inputValue(),'','failed upload must reset file input')
  await page.screenshot({path:path.join(out,'upload-validation-failure.png'),fullPage:true})
  await input.setInputFiles({name:'source.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixture.source,'base64')})
  await page.getByRole('button',{name:'重试上传 PDF'}).waitFor()
- assert.equal(blockedCreates,5,'failed create must consume four retries and one cleanup POST')
- assert.equal(sessionCreates,0,'failed creation must not reach the backend')
+ assert.equal(blockedCreates,CREATE_POSTS_PER_TRANSIENT_FAILURE,'failed create must consume four retries and one cleanup POST')
+ assert.equal(forwardedCreates,0,'failed create POSTs must be intercepted before forwarding')
  await page.screenshot({path:path.join(out,'upload-failure.png'),fullPage:true})
  await page.getByRole('button',{name:'重试上传 PDF'}).click()
  await page.locator('progress').waitFor({state:'visible'})
@@ -68,7 +74,7 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
  await page.waitForFunction(()=>Number(document.querySelector('progress')?.value)>0)
  await page.screenshot({path:path.join(out,'upload-progress.png'),fullPage:true})
  await page.waitForFunction(()=>document.body.textContent.includes('PDF 深度校验完成，共 4 页')&&!document.querySelector('progress'),{},{timeout:30000})
- assert.equal(sessionCreates,1,'valid selection must create exactly one session')
+ assert.equal(forwardedCreates,1,'retry must forward exactly one create POST')
  assert.equal(await page.getByRole('button',{name:'重试上传 PDF'}).count(),0,'success must not show retry')
  await page.screenshot({path:path.join(out,'upload-success.png'),fullPage:true})
  assert.equal(chunks.length,4,'three chunks plus one retry')
