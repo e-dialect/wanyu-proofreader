@@ -87,6 +87,58 @@ func cleanupPDFCache(root string, now time.Time, reserve int64) {
 		}
 	}
 }
+
+// previewStages records where one preview request spent its time, so the
+// numbers the issue asks for can be read off a single log line. A nil receiver
+// means "not measuring": the rendering helpers stay callable from tests that
+// only care about the bytes they return.
+type previewStages struct{ Open, Extract, Merge, Watermark time.Duration }
+
+func (p *previewStages) markOpen(since time.Time) {
+	if p != nil {
+		p.Open += time.Since(since)
+	}
+}
+
+func (p *previewStages) markExtract(since time.Time) {
+	if p != nil {
+		p.Extract += time.Since(since)
+	}
+}
+
+func (p *previewStages) markMerge(since time.Time) {
+	if p != nil {
+		p.Merge += time.Since(since)
+	}
+}
+
+func (p *previewStages) markWatermark(since time.Time) {
+	if p != nil {
+		p.Watermark += time.Since(since)
+	}
+}
+
+// lookupPDFPages answers "is the pre-split cache usable right now" without ever
+// building anything. Requests use this and degrade to trimming the window;
+// only the import worker builds. Splitting a whole book inside a request put
+// multi-second work on the first screen of every cold or expired book, behind a
+// process-wide mutex that serialised everyone else.
+func lookupPDFPages(root, sourceKey string, now time.Time) (string, bool) {
+	dir := filepath.Join(root, "pages-"+sourceKey)
+	if info, err := os.Stat(filepath.Join(dir, "ready")); err == nil && info.ModTime().Add(pdfPagesTTL).After(now) {
+		return dir, true
+	}
+	return "", false
+}
+
+// touchPDFPages restarts the page cache's retention window. Without it the 24h
+// TTL is counted from the split, so a book in daily use would lose its cache on
+// a timer and pay the degraded path forever after. Touching on use makes the
+// window follow the material: idle books still expire, busy ones do not.
+func touchPDFPages(dir string, now time.Time) {
+	_ = os.Chtimes(dir, now, now)
+}
+
 func (s *importService) preparePDFPages(file *core.Record) (string, error) {
 	root := s.pdfCacheDir()
 	if err := os.MkdirAll(root, 0700); err != nil {
@@ -98,10 +150,11 @@ func (s *importService) preparePDFPages(file *core.Record) (string, error) {
 	if info, err := os.Stat(oversized); err == nil && info.ModTime().Add(pdfPagesTTL).After(time.Now()) {
 		return "", errPDFPageBudget
 	}
-	dir := filepath.Join(root, "pages-"+pdfSourceKey(file))
-	if info, err := os.Stat(filepath.Join(dir, "ready")); err == nil && info.ModTime().Add(pdfPagesTTL).After(time.Now()) {
+	dir, cached := lookupPDFPages(root, pdfSourceKey(file), time.Now())
+	if cached {
 		return dir, nil
 	}
+	dir = filepath.Join(root, "pages-"+pdfSourceKey(file))
 	cleanupPDFCache(root, time.Now(), pdfBookBudget)
 	_ = os.RemoveAll(dir)
 	staging, err := os.MkdirTemp(root, "building-")
@@ -160,35 +213,59 @@ func splitPDFPages(reader io.ReadSeeker, dir string, budget int64) error {
 	}
 	return nil
 }
+
+// cachedTaskPDF renders the couple of pages a task shows. It never does
+// whole-book work: a miss on the pre-split cache falls straight through to
+// trimming this window out of the source, which is what
+// docs/task-pdf-cache.md already specifies ("退回按需两页生成"). The import
+// worker is the only thing that splits whole books, and it does so off the
+// request path.
 func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDescriptor, userID string) ([]byte, error) {
 	pdfCacheMu.Lock()
 	defer pdfCacheMu.Unlock()
 	now := time.Now()
 	start, end := descriptor.Start, descriptor.End
+	sourceKey := pdfSourceKey(file)
+	pageRange := fmt.Sprintf("%d-%d", start, end)
 	root := s.pdfCacheDir()
 	outputPath := filepath.Join(root, "watermark-"+descriptor.Key+".pdf")
 	// The handler checks live permissions and leases BEFORE every cache lookup.
 	if info, err := os.Stat(outputPath); err == nil && info.ModTime().Add(pdfPreviewTTL).After(now) {
 		if data, err := os.ReadFile(outputPath); err == nil {
+			logPDFPreview("watermark-hit", sourceKey, pageRange, nil, time.Since(now))
 			return data, nil
 		}
 	}
 	cleanupPDFCache(root, now, pdfBookBudget)
-	stamp := fmt.Sprintf("Wanyu | %s | %s p%d-%d | %s UTC", userID, pdfSourceKey(file)[:12], start, end, descriptor.ExpiresAt.Add(-pdfPreviewTTL).UTC().Format("2006-01-02 15:04:05"))
-	dir, err := s.preparePDFPages(file)
-	var output []byte
-	if err == nil {
-		output, err = mergeCachedPDFPages(dir, start, end, stamp)
-	}
+	stamp := fmt.Sprintf("Wanyu | %s | %s p%d-%d | %s UTC", userID, sourceKey[:12], start, end, descriptor.ExpiresAt.Add(-pdfPreviewTTL).UTC().Format("2006-01-02 15:04:05"))
 
-	// Cache failure must not prevent valid previews (e.g. shared-resource expansion).
-	if err != nil {
+	stages := &previewStages{}
+	lookupStart := time.Now()
+	dir, cached := lookupPDFPages(root, sourceKey, now)
+	stages.markOpen(lookupStart)
+
+	var output []byte
+	var err error
+	if cached {
+		output, err = mergeCachedPDFPages(dir, start, end, stamp, stages)
+		if err == nil {
+			// Kept warm by use, so the 24h window follows the material rather
+			// than a timer set when the split happened.
+			touchPDFPages(dir, now)
+		}
+	}
+	// A miss is not an error: the documented fallback is generating just these
+	// two pages from the source. It must stay off the whole-book path even when
+	// a stale page directory is present but unreadable.
+	if !cached || err != nil {
+		openStart := time.Now()
 		reader, closeFile, e := s.openRecordFile(file, "file")
+		stages.markOpen(openStart)
 		if e != nil {
 			return nil, e
 		}
 		defer closeFile()
-		output, err = buildTaskPDF(reader, start, end, stamp)
+		output, err = buildTaskPDF(reader, start, end, stamp, stages)
 	}
 	if err != nil {
 		return nil, err
@@ -198,10 +275,38 @@ func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDe
 		cleanupPDFCache(root, time.Now(), int64(len(output)))
 		_ = os.WriteFile(outputPath, output, 0600)
 	}
+	cacheState := "pages-hit"
+	if !cached {
+		cacheState = "miss-degraded"
+	} else if err != nil {
+		cacheState = "pages-unreadable-degraded"
+	}
+	logPDFPreview(cacheState, sourceKey, pageRange, stages, time.Since(now))
 	return output, nil
 }
 
-func mergeCachedPDFPages(dir string, start, end int, stamp string) ([]byte, error) {
+// logPDFPreview emits the per-request per-stage costs. Kept next to the request
+// path because the numbers are only meaningful with the cache verdict: a
+// degraded request and a cache hit are different code paths, and reading
+// extract time off a hit would always show zero.
+func logPDFPreview(cache, sourceKey, pageRange string, stages *previewStages, total time.Duration) {
+	fields := map[string]any{
+		"source_key": sourceKey[:12],
+		"page_range": pageRange,
+		"cache":      cache,
+		"total_ms":   total.Milliseconds(),
+	}
+	if stages != nil {
+		fields["open_ms"] = stages.Open.Milliseconds()
+		fields["extract_ms"] = stages.Extract.Milliseconds()
+		fields["merge_ms"] = stages.Merge.Milliseconds()
+		fields["watermark_ms"] = stages.Watermark.Milliseconds()
+	}
+	logUpload("info", "pdf_preview", fields)
+}
+
+func mergeCachedPDFPages(dir string, start, end int, stamp string, stages *previewStages) ([]byte, error) {
+	openStart := time.Now()
 	var readers []io.ReadSeeker
 	for n := start; n <= end; n++ {
 		f, err := os.Open(filepath.Join(dir, fmt.Sprintf("%d.pdf", n)))
@@ -211,9 +316,16 @@ func mergeCachedPDFPages(dir string, start, end int, stamp string) ([]byte, erro
 		defer f.Close()
 		readers = append(readers, f)
 	}
+	stages.markOpen(openStart)
 	var excerpt bytes.Buffer
-	if err := pdfapi.MergeRaw(readers, &excerpt, false, pdfConfig()); err != nil {
+	mergeStart := time.Now()
+	err := pdfapi.MergeRaw(readers, &excerpt, false, pdfConfig())
+	stages.markMerge(mergeStart)
+	if err != nil {
 		return nil, err
 	}
-	return watermarkTaskPDF(bytes.NewReader(excerpt.Bytes()), stamp)
+	watermarkStart := time.Now()
+	output, err := watermarkTaskPDF(bytes.NewReader(excerpt.Bytes()), stamp)
+	stages.markWatermark(watermarkStart)
+	return output, err
 }
