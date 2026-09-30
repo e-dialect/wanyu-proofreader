@@ -313,6 +313,55 @@ const row = (o) => ({ 词条: o.headword ?? '', 拼音: o.pinyin ?? '', 莆田IP
   assert.equal(sameSource.unattributed_groups, 1)
 }
 
+// #170 列角色驱动的判据：换正本（蒙古语列名）时不能再靠莆仙词表。
+{
+  const mongoRoles = { 词: 'headword', 转写: 'reading', 含义: 'meaning', 地区: 'region' }
+  const cols = identity.identityColumns(mongoRoles)
+  assert.equal(cols.source, 'roles')
+  assert.deepEqual(cols.headword, ['词'])
+  assert.deepEqual(cols.reading, ['转写'])
+  assert.ok(cols.comparable.includes('含义') && cols.comparable.includes('地区'))
+  assert.equal(cols.meaningField, '含义')
+
+  const mongoRow = (o) => ({ 词: o.h, 转写: o.r, 含义: o.m, 地区: o.g ?? '' })
+  // 词表里一个列名都不存在 ⇒ 不接角色时这批是"静默全干净"，接了角色才有键
+  assert.equal(identity.entryIdentityKey(mongoRow({ h: 'аа', r: 'aa', m: '父亲' })), null,
+    '硬编码词表不该认得蒙古语列名')
+  assert.equal(identity.entryIdentityKey(mongoRow({ h: 'аа', r: 'aa', m: '父亲' }), cols), 'аа aa')
+
+  const out = identity.findIdentityConflicts([
+    { id: 'M1', project: 'p', source: 'src-1', row: mongoRow({ h: 'аа', r: 'aa', m: '父亲', g: '牧区' }) },
+    { id: 'M2', project: 'p', source: 'src-2', row: mongoRow({ h: 'аа', r: 'aa', m: '大叔', g: '农区' }) }
+  ], new Set(), cols)
+  assert.equal(out.findings.length, 2, JSON.stringify(out))
+  assert.equal(out.findings[0].kind, 'cross_source_conflict')
+  assert.equal(out.findings[0].field, '含义', '释义列由角色决定，不能再写死「释义」')
+  assert.equal(out.unkeyed, 0, '接上角色后这批必须真的在比较，而不是 0 组')
+
+  // 角色凑不齐"词头+记音"⇒ 整份回退词表，绝不半用角色半用词表
+  const partial = identity.identityColumns({ 词: 'headword', 含义: 'meaning' })
+  assert.equal(partial.source, 'hardcoded')
+  assert.deepEqual(partial.headword, ['词条'])
+  assert.deepEqual(identity.identityColumns({}), identity.identityColumns(null))
+  // 莆仙正本即使只标了词头，今天照样能算 —— 回退路径不许变差
+  const stillWorks = identity.findIdentityConflicts([
+    { id: 'P1', project: 'p', row: row({ headword: '人', pinyin: 'lang2', meaning: '甲' }) },
+    { id: 'P2', project: 'p', row: row({ headword: '人', pinyin: 'lang2', meaning: '乙' }) }
+  ], new Set(), partial)
+  assert.equal(stillWorks.findings.length, 2)
+
+  // 没标 meaning 角色时不猜释义列：猜错会造出不存在的疑点
+  const noMeaning = identity.identityColumns({ 词: 'headword', 转写: 'reading' })
+  assert.equal(noMeaning.meaningField, null)
+  assert.deepEqual(identity.findRowShapeAnomalies(
+    { id: 'N1', row: { 词: 'аа', 转写: 'aa', 备注: 'ka53 之类' } }, noMeaning
+  ), [], '没有 meaning 角色就不能拿别的列凑数')
+  // ipa 角色与 reading 同属记音段：莆仙正本里拼音与 IPA 并存时都能成键
+  const ipaOnly = identity.identityColumns({ 词条: 'headword', 莆田IPA: 'ipa' })
+  assert.deepEqual(ipaOnly.reading, ['莆田IPA'])
+  assert.equal(identity.entryIdentityKey({ 词条: '人', 莆田IPA: 'naŋ2' }, ipaOnly), '人 naŋ2')
+}
+
 // 规模：10k 行的纯分组扫描必须是线性量级（防止退化成分组内两两比较）。
 {
   const entries = []

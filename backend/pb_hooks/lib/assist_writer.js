@@ -447,13 +447,18 @@ function sourceOfPage(dao, page, projectSource, cache) {
 
 function recomputeIdentity(dao, projectId) {
   const startedAt = new Date()
-  const { findIdentityConflicts, findRowShapeAnomalies, entryIdentityKey, IDENTITY_VERSION } =
-    require(`${__hooks}/lib/assist_identity.js`)
+  const {
+    findIdentityConflicts, findRowShapeAnomalies, entryIdentityKey, identityColumns, IDENTITY_VERSION
+  } = require(`${__hooks}/lib/assist_identity.js`)
+  const { parseStoredRoles } = require(`${__hooks}/lib/column_roles.js`)
   const collection = dao.findCollectionByNameOrId("review_findings")
   const pages = loadAllPages(dao, projectId)
   let projectSource = ""
+  let columns = identityColumns(null)
   try {
-    projectSource = dao.findRecordById("projects", projectId).getString("source")
+    const project = dao.findRecordById("projects", projectId)
+    projectSource = project.getString("source")
+    columns = identityColumns(parseStoredRoles(project.getString("column_roles_json")))
   } catch {
     projectSource = ""
   }
@@ -463,7 +468,7 @@ function recomputeIdentity(dao, projectId) {
   let backfilled = 0
   for (const page of pages) {
     const row = rowForRules(page)
-    const key = entryIdentityKey(row) ?? ""
+    const key = entryIdentityKey(row, columns) ?? ""
     if (page.getString("entry_identity_key") !== key) {
       page.set("entry_identity_key", key)
       dao.save(page) // 可重算的回填：键由列内容推导，不是原始证据
@@ -486,9 +491,9 @@ function recomputeIdentity(dao, projectId) {
     dao, "finding_dismissals", `project = "${projectId}" && status = "not_conflict"`, "group_key"
   ).map((row) => row.getString("group_key")))
 
-  const identityResult = findIdentityConflicts(entries, dismissed)
+  const identityResult = findIdentityConflicts(entries, dismissed, columns)
   const findings = [...identityResult.findings]
-  for (const entry of entries) findings.push(...findRowShapeAnomalies(entry))
+  for (const entry of entries) findings.push(...findRowShapeAnomalies(entry, columns))
   // #178 的 merged_columns 两类区间也走同一道闸门：跨行检出的 row 来自 rowForRules，
   // 与校对端切的 ocr_row_json 不是同一份串时，宁可只给字段不给高亮。
   const entryById = new Map(entries.map((entry) => [entry.id, entry]))
@@ -530,6 +535,9 @@ function recomputeIdentity(dao, projectId) {
     unattributed_groups: identityResult.unattributed_groups,
     compared_rows: identityResult.compared,
     unkeyed_rows: identityResult.unkeyed,
+    // `hardcoded` 意味着这个项目没标够列角色、判据退回了莆仙词表。
+    // 换正本时这一栏是 roles 还是 hardcoded，决定了"这批很干净"是真干净还是没在比较。
+    identity_column_source: columns.source,
     producer_version: IDENTITY_VERSION,
     // 本路径**不刷 tier**（每页刷一次的 N+1 代价见 docs §耗时那一节），而 duplicate_identity
     // 与 merged_columns 都是 strong、会进判定表。所以这一批之后每一页的 difficulty_tier 描述的是

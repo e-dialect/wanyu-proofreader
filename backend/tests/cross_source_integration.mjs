@@ -147,7 +147,39 @@ assert.equal(unknownItems.some((item) => item.kind === 'cross_source_conflict'),
 assert.ok(unknownItems.some((item) => item.kind === 'duplicate_identity'),
   JSON.stringify(unknownItems.map((i) => i.kind)))
 
-for (const projectId of [project.id, control.id, unknownSource.id]) {
+// ---------- #170 列角色：换正本（列名不是莆仙词表）时判据要跟着走 ----------
+// 这一节证的是**接线**，不是纯函数：identityColumns() 在 identity_integration.mjs 里已经能算，
+// 但如果 recomputeIdentity 不把项目的 column_roles_json 传进去，跨行检出对蒙古语正本就是
+// 一条都产不出来，而响应里只会显示"这一批很干净"。所以先跑未标角色的对照，再标角色跑第二遍，
+// 两次都断言 identity_column_source，让回退路径留在响应里可看见。
+const MONGO_HEADERS = '词,转写,含义,PDF页码'
+const mongoProject = await createProject(`跨来源角色夹具 ${suffix}`)
+await importCsv(mongoProject.id, `${MONGO_HEADERS}\nаа,aa,父亲,1\n`, 'm1.csv', sourceA.logical_id)
+await importCsv(mongoProject.id, `${MONGO_HEADERS}\nаа,aa,大叔,2\n`, 'm2.csv', sourceB.logical_id)
+
+const beforeRoles = await api(`/api/fangji/projects/${mongoProject.id}/identity/recompute`, { method: 'POST', token })
+assert.equal(beforeRoles.identity_column_source, 'hardcoded',
+  '未标列角色时必须显式暴露"用的是硬编码词表"')
+assert.equal(beforeRoles.unkeyed_rows, 2, JSON.stringify(beforeRoles))
+assert.equal(beforeRoles.findings, 0, `词表认不得的列名不该产疑点：${JSON.stringify(beforeRoles)}`)
+assert.equal((await findingsOf(mongoProject.id)).length, 0)
+
+await api(`/api/fangji/projects/${mongoProject.id}/column-roles`, {
+  method: 'PUT', token,
+  body: { roles: { 词: 'headword', 转写: 'reading', 含义: 'meaning' } }
+})
+const afterRoles = await api(`/api/fangji/projects/${mongoProject.id}/identity/recompute`, { method: 'POST', token })
+assert.equal(afterRoles.identity_column_source, 'roles', JSON.stringify(afterRoles))
+assert.equal(afterRoles.unkeyed_rows, 0, '标了角色后这些行必须真的进入比较')
+assert.ok(afterRoles.findings >= 2, JSON.stringify(afterRoles))
+const mongoItems = (await findingsOf(mongoProject.id)).filter((i) => i.kind === 'cross_source_conflict')
+assert.equal(mongoItems.length, 2, JSON.stringify((await findingsOf(mongoProject.id)).map((i) => i.kind)))
+for (const item of mongoItems) {
+  assert.deepEqual(item.message.params.differs_on, ['含义'],
+    '分歧列名来自角色，不能再是写死的「释义」')
+}
+
+for (const projectId of [project.id, control.id, unknownSource.id, mongoProject.id]) {
   await api(`/api/collections/projects/records/${projectId}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 }
 
