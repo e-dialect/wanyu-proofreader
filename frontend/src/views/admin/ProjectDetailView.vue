@@ -13,6 +13,7 @@
         <a href="#project-files">文件准备</a>
         <a href="#project-export">导出结果</a>
         <a href="#project-entries">条目管理</a>
+        <a v-if="project?.capabilities?.canManage" href="#project-assist">机器疑点</a>
       </nav>
     </header>
 
@@ -417,6 +418,77 @@
           </nav>
         </div>
       </section>
+
+      <!-- #234 机器疑点：列级/页级与跨行判据只能整批跑，此前只有 curl 能触发 -->
+      <section v-if="project?.capabilities?.canManage" id="project-assist" class="card project-section mb-6">
+        <div class="section-heading">
+          <div>
+            <h2>机器疑点</h2>
+            <p>列级与页级判据要看到整批数据才判得出来，所以只能在这里手动触发。</p>
+          </div>
+          <div class="assist-actions">
+            <button type="button" class="btn btn-secondary" :disabled="assistBusy" @click="runIdentityRecompute">重算跨行身份</button>
+            <button type="button" class="btn" :disabled="assistBusy" @click="runFindingsRecompute">
+              {{ assistBusy ? '正在重算…' : '按项目重算疑点' }}
+            </button>
+          </div>
+        </div>
+
+        <p v-if="assistError" class="alert alert-error" role="alert">{{ assistError }}</p>
+        <p v-if="assistNotice" class="text-muted">{{ assistNotice }}</p>
+        <p v-if="assistTruncated" class="alert alert-warning" role="alert">
+          疑点列表还有下一页；门控登记表读取被截断时，超出部分的规则一律按 off 处理。
+        </p>
+
+        <p class="assist-summary">
+          当前批次 {{ assistRows.length }} 条：
+          <span v-for="entry in assistKinds" :key="entry.kind">{{ entry.label }} {{ entry.count }}、</span>
+          strong {{ assistStrong }} / warn {{ assistWarn }} / info {{ assistInfo }}；
+          其中 {{ assistGatedOff }} 条所在规则尚未放行，校对员看不到。
+        </p>
+
+        <div v-if="assistKinds.length" class="assist-filter">
+          <label>只看某类
+            <select v-model="assistKind" @change="applyAssistKindFilter">
+              <option value="">全部（本页）</option>
+              <option v-for="entry in assistKinds" :key="entry.kind" :value="entry.kind">
+                {{ entry.label }}（本页 {{ entry.count }} 条）
+              </option>
+            </select>
+          </label>
+          <button v-if="assistKind" type="button" class="btn btn-sm btn-secondary" @click="clearAssistKind">清除筛选</button>
+        </div>
+
+        <ul v-if="assistRows.length" class="assist-list">
+          <li v-for="row in assistRows" :key="row.id" class="assist-row">
+            <strong>{{ assistKindLabel(row.kind) }}</strong>
+            <span class="assist-field">{{ row.field || '整条' }}</span>
+            <span :class="['assist-severity', `assist-severity--${row.severity}`]">{{ assistSeverityLabel(row.severity) }}</span>
+            <span class="assist-wording">{{ assistWording(row) }}</span>
+            <span class="assist-gate">gate {{ row.gate }} · 样本 {{ row.gate_sample_n }}</span>
+          </li>
+        </ul>
+        <p v-else class="text-muted assist-empty">{{ assistEmptyText }}</p>
+
+        <nav v-if="assistRows.length" class="assist-pager" aria-label="疑点分页">
+          <button type="button" class="btn btn-sm btn-secondary" :disabled="assistPage <= 1 || assistBusy" @click="stepAssistPage(-1)">上一页</button>
+          <span>第 {{ assistPage }} 页</span>
+          <button type="button" class="btn btn-sm btn-secondary" :disabled="!assistHasMore || assistBusy" @click="stepAssistPage(1)">下一页</button>
+        </nav>
+
+        <h3>人工结论（不是冲突的分组）</h3>
+        <p class="text-muted">标过的分组在重算时整组跳过；这些结论不跟着机器批次下线，也不随判定人消失。</p>
+        <ul v-if="assistDismissals.length" class="assist-list">
+          <li v-for="item in assistDismissals" :key="item.id" class="assist-row">
+            <strong>{{ assistKindLabel(item.kind) }}</strong>
+            <span class="assist-field">{{ item.group_key }}</span>
+            <span class="assist-wording">{{ item.note || '（无备注）' }}</span>
+            <span class="assist-gate">{{ item.decided_by_name || '判定人已不在' }} · {{ item.created }}</span>
+            <button type="button" class="btn btn-sm btn-secondary" :disabled="assistBusy" @click="revokeDismissal(item)">撤回</button>
+          </li>
+        </ul>
+        <p v-else class="text-muted assist-empty">还没有把任何分组标为「不是冲突」。</p>
+      </section>
     </template>
   </main>
 </template>
@@ -441,6 +513,24 @@ import {
   reorderPendingPages
 } from '@/services/pagesService'
 import { createProjectPdf, getProjectFile, listProjectPdfUploads, cancelProjectPdfUpload } from '@/services/projectFilesService'
+import {
+  EMPTY_MESSAGES,
+  SEVERITY_LABELS,
+  emptyReason,
+  gatedOffCount,
+  kindBreakdown,
+  recomputeNotice,
+  severityCount
+} from '@/lib/assistOverview'
+import { hintKindLabel } from '@/lib/fieldHints'
+import { renderFindingMessage } from '@/lib/findingMessages'
+import {
+  listProjectDismissals,
+  listProjectFindings,
+  recomputeProjectFindings,
+  recomputeProjectIdentity,
+  revokeGroupDismissal
+} from '@/services/assistService'
 import { validatePdfFile, loadPdfUploadResume, clearPdfUploadResume } from '@/lib/chunkedPdfUpload'
 import { currentUserId } from '@/services/authService'
 import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors, startOcr } from '@/services/importJobsService'
@@ -1115,5 +1205,147 @@ function formatItemNo(pageNumber, fallbackIndex) {
   if (Number.isFinite(n) && n > 0) return Math.floor(n)
   return fallbackIndex + 1
 }
+
+// ---------- #234 机器疑点区块 ----------
+const assistRows = ref([])
+const assistDismissals = ref([])
+const assistPage = ref(1)
+const assistHasMore = ref(false)
+const assistTruncated = ref(false)
+const assistKind = ref('')
+const assistBusy = ref(false)
+const assistNotice = ref('')
+const assistError = ref('')
+// "跑过没有"只能记在这次会话里：后端没有"这个项目是否算过"的字段，
+// 而把空列表说成"没有疑点"正是本区块要避免的那次误读。
+const assistEverRun = ref(false)
+const assistPagesScanned = ref(null)
+
+const assistKinds = computed(() => kindBreakdown(assistRows.value))
+const assistStrong = computed(() => severityCount(assistRows.value, 'strong'))
+const assistWarn = computed(() => severityCount(assistRows.value, 'warn'))
+const assistInfo = computed(() => severityCount(assistRows.value, 'info'))
+const assistGatedOff = computed(() => gatedOffCount(assistRows.value))
+const assistEmptyText = computed(() => EMPTY_MESSAGES[emptyReason({
+  items: assistRows.value,
+  everRun: assistEverRun.value,
+  pagesScanned: assistPagesScanned.value
+})])
+
+function assistKindLabel(kind) {
+  return hintKindLabel(kind)
+}
+
+function assistSeverityLabel(severity) {
+  return SEVERITY_LABELS[severity] ?? severity ?? '未知等级'
+}
+
+function assistWording(row) {
+  return renderFindingMessage(row?.message)
+}
+
+async function loadAssistFindings() {
+  assistError.value = ''
+  try {
+    const view = await listProjectFindings(projectId, { kind: assistKind.value, page: assistPage.value })
+    assistRows.value = view.items ?? []
+    assistHasMore.value = !!view.hasMore
+    // 只认后端明说的截断信号；"本页刚好满了"由分页控件表达，不混进这条告警。
+    assistTruncated.value = !!view.gate_rows_truncated
+  } catch (e) {
+    assistError.value = `疑点列表读取失败：${e?.message ?? e}`
+  }
+}
+
+async function loadAssistDismissals() {
+  try {
+    const view = await listProjectDismissals(projectId)
+    assistDismissals.value = view.items ?? []
+    if (view.truncated) assistTruncated.value = true
+  } catch (e) {
+    assistError.value = `人工结论读取失败：${e?.message ?? e}`
+  }
+}
+
+async function runFindingsRecompute() {
+  if (assistBusy.value) return
+  assistBusy.value = true
+  assistError.value = ''
+  try {
+    const summary = await recomputeProjectFindings(projectId)
+    assistEverRun.value = true
+    assistPagesScanned.value = Number.isFinite(summary?.pages) ? summary.pages : null
+    assistNotice.value = recomputeNotice(summary)
+    assistPage.value = 1
+    await loadAssistFindings()
+  } catch (e) {
+    assistError.value = `重算失败：${e?.message ?? e}`
+  } finally {
+    assistBusy.value = false
+  }
+}
+
+async function runIdentityRecompute() {
+  if (assistBusy.value) return
+  assistBusy.value = true
+  assistError.value = ''
+  try {
+    const summary = await recomputeProjectIdentity(projectId)
+    assistEverRun.value = true
+    assistPagesScanned.value = Number.isFinite(summary?.pages) ? summary.pages : null
+    assistNotice.value = recomputeNotice(summary, { identity: true })
+    assistPage.value = 1
+    await loadAssistFindings()
+  } catch (e) {
+    assistError.value = `跨行重算失败：${e?.message ?? e}`
+  } finally {
+    assistBusy.value = false
+  }
+}
+
+function stepAssistPage(delta) {
+  const next = assistPage.value + delta
+  if (next < 1) return
+  assistPage.value = next
+  loadAssistFindings()
+}
+
+function clearAssistKind() {
+  assistKind.value = ''
+  assistPage.value = 1
+  loadAssistFindings()
+}
+
+// 筛选值由 v-model 先进 assistKind，这里只负责回到第一页重读。
+// 选项只列"本页有的 kind"：全量 kind 词表归后端所有，前端复制一份就会各自漂移。
+function applyAssistKindFilter() {
+  assistPage.value = 1
+  loadAssistFindings()
+}
+
+async function revokeDismissal(item) {
+  if (assistBusy.value) return
+  assistBusy.value = true
+  assistError.value = ''
+  try {
+    await revokeGroupDismissal(projectId, item.id)
+    assistNotice.value = '人工结论已撤回（物理删除，不留痕）；下次跨行重算会重新报出这一组。'
+    await loadAssistDismissals()
+  } catch (e) {
+    assistError.value = `撤回失败：${e?.message ?? e}`
+  } finally {
+    assistBusy.value = false
+  }
+}
+
+watch(
+  () => project.value?.capabilities?.canManage,
+  (manageable) => {
+    if (!manageable) return
+    loadAssistFindings()
+    loadAssistDismissals()
+  },
+  { immediate: true }
+)
 
 </script>
