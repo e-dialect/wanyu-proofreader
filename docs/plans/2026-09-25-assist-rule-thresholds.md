@@ -78,10 +78,14 @@
 
 - #176 的 `review_findings` schema 里没有 `gate` 字段；其期望结果 3 的只读接口
   `GET /api/fangji/pages/{id}/findings` **按设计只过滤 `superseded_at`**，没有任何按档位放行的依据。
-  **该接口与 `review_findings` 集合在 main（`9b72503`）上都还不存在**——`superseded_at` 目前只挂在
-  PDF 校验元数据上（`backend/pb_migrations/1788940000_initial_schema.js:591`、
-  `backend/import_service.go:741`，`git grep -i findings upstream/main -- backend` 无命中）。
-  所以这是「集合与接口都要新建，且新建时必须带上 `gate` 过滤」，**不是「接口已有、只差一个字段」**；
+  **该接口与 `review_findings` 集合自 #207（2026-09-26）起已在 main 上存在**，且按设计带着
+  `gate` 过滤（`backend/pb_hooks/lib/findings.js`、`backend/pb_hooks/findings.pb.js`）；
+  此前本节写的「都还不存在」是 `9b72503` 时点的状态，#228 打通落库通道时一并更正。
+  仍然成立的部分是：**门控登记表在 #228 之前没有任何生产写入方**，所以缺行按 `off` 处理
+  等于校对端一条都不给。`superseded_at` 在集合上的语义见
+  `docs/plans/2026-09-25-review-findings.md` §3。
+  所以本节写下它时的判断是「集合与接口都要新建，且新建时必须带上 `gate` 过滤」，
+  **不是「接口已有、只差一个字段」**——这个判断后来被 #207/#212 按原样实现了。
 - §7 的「连续两个窗口跌破则降为 `off`」需要的是**同一个可变状态**，不是第二份。
 
 已认领的归属（写进 #176 期望结果 6 与验收标准）：一张以**规则身份**为键的门控登记表，
@@ -245,9 +249,14 @@ Unicode NFC/NFD 等价内容会被 `canonicalRow` 的字符串全等判为不一
 - 仲裁者间一致性 `π_human` 尚未测量；在测得之前，本文所有 precision 都是
   **相对于单一仲裁者**的，不构成绝对准确率承诺（对外准确率承诺须升级 Steering，#97）。
 - §2.1 的门控登记表**归属已认领给 #176**（2026-09-25 起为其期望结果 6 + 一条验收标准），
-  但**尚未实现**：`review_findings` 集合与 `GET /api/fangji/pages/{id}/findings`
-  在 main（`9b72503`）上都还不存在（见 §2.1）。在该接口带着 `gate` 过滤落地之前，
-  本文件的任何档位判定**都无法在校对端生效**。这是一个实现前置，不是文档遗留。
+  集合与带 `gate` 过滤的只读接口已随 #207/#212 合入 main。**当时的判断仍然正确、现在才闭合**：
+  在写入方到位之前，本文件的档位判定无法在校对端生效——`assist_rule_gates` 只有建表与读取，
+  缺行一律按 `off`，而 `off` 的语义就是一条都不返回。
+  **#228 补的就是这个写入方**：判据常数与升档拒绝逻辑的唯一代码出处是
+  `backend/pb_hooks/lib/gate_release.js`（`scripts/assist/lib/labeling.mjs` 从这里取同一份，
+  不再各写一份），变更集由 `scripts/assist/gate_changeset.mjs` 产出、由平台管理员经
+  `POST /api/fangji/gates/changeset` 应用。执行步骤见 `docs/operations.md`「规则门控放行」。
+  **仍然禁止自动放行**：变更集是待评审产物，本工具不写库。
 
 ### 8.1 关于 `D_max`（每行展示密度上限）：术语、出处、单位与前提都在这里
 

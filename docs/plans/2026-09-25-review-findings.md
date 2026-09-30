@@ -87,9 +87,23 @@ manager/平台管理员直通；否则要求「该条目正被你认领」或「
       "highlight": true,
       "evidence": { "char_offsets": [[4, 8]] }
     }
-  ]
+  ],
+  "truncated": false,
+  "suppressed_by_gate": 0,
+  "gate_rows_truncated": false
 }
 ```
+
+响应级字段（#228 验收标准第 6、7 条）：
+
+- `suppressed_by_gate` 是本条目上「warn/strong 级、但因规则档位为 `off` 而未下发」的条数。
+  它存在的唯一理由是把**「没下发」与「没疑点」在字段级分开**——只有 `hints: []` 时，
+  gate 全 off 与这批资料真的干净长得一模一样，而后者会被读成「这批可以放心」。
+  它只是一个计数：不含规则身份、不含内容、不含档位，因此不触碰盲校纪律。
+  `info` 级永不进校对端（§2），不计入这个数字。
+- `gate_rows_truncated` 为真表示 `assist_rule_gates` 读到了 `MAX_GATE_ROWS` 上限，
+  落不进内存映射的规则一律按 `off` 处理——这条必须有可判定出口，否则「某条规则突然不显示」
+  是查不出来的幽灵。
 
 过滤规则（与门槛文件 §2 一字不差）：
 

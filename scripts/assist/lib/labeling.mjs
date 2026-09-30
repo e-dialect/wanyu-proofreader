@@ -11,14 +11,14 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const rules = require('../../../backend/pb_hooks/lib/assist_rules.js')
+// 判据常量的唯一定义在写入侧（backend/pb_hooks/lib/gate_release.js）：打分器建议档位与
+// 变更集应用时的拒绝判据必须是同一把尺子，各留一份常数迟早会漂。
+const gateRelease = require('../../../backend/pb_hooks/lib/gate_release.js')
 
 const Z = 1.96
 
-// 门槛文件 §2 的两档判据；改这里必须同时改那份文档。
-export const GATE_CRITERIA = [
-  { gate: 'strong', theta: 0.90, nMin: 100 },
-  { gate: 'warn', theta: 0.60, nMin: 150 }
-]
+export const GATE_CRITERIA = gateRelease.GATE_CRITERIA
+export const suggestGate = gateRelease.suggestGate
 
 export function digest(value) {
   // FNV-1a 32bit，够用且零依赖；目的只是「同值可对齐」，不是密码学。
@@ -141,28 +141,6 @@ export function wilsonInterval(hits, total) {
   const centre = (p + (Z * Z) / (2 * total)) / denom
   const half = (Z / denom) * Math.sqrt((p * (1 - p)) / total + (Z * Z) / (4 * total * total))
   return { lower: Number((centre - half).toFixed(4)), upper: Number((centre + half).toFixed(4)) }
-}
-
-export function suggestGate(n, precision) {
-  // 门槛文件 §3 的三分法要求先问「证据够不够」，再问「精度达没达标」，
-  // 而且「够不够」是相对**该精度本来够格的那一档**的 n_min 说的——
-  // 拿全局最小 n_min 判会把 n=149、p̂=0.65 误报成「精度不足」，
-  // 而它其实是 warn 档的证据不足（warn 要 150）。两者处置不同：前者关规则，后者等证据。
-  if (!n) return { gate: "off", basis: "n/a", note: "无命中样本，证据不足以下结论" }
-  const minNMin = Math.min(...GATE_CRITERIA.map((c) => c.nMin))
-  const qualified = GATE_CRITERIA
-    .filter((criterion) => precision >= criterion.theta)
-    .sort((a, b) => b.theta - a.theta)[0]
-  if (!qualified) {
-    if (n < minNMin) {
-      return { gate: "off", basis: "n/a", note: `样本量 ${n} 低于任何档的 n_min，不评精度` }
-    }
-    return { gate: "off", basis: `p̂=${precision.toFixed(4)} 未达任何档`, note: "有证据表明精度不足" }
-  }
-  if (n < qualified.nMin) {
-    return { gate: "off", basis: "n/a", note: `样本量 ${n} 低于 ${qualified.gate} 档要求的 ${qualified.nMin}` }
-  }
-  return { gate: qualified.gate, basis: `p̂=${precision.toFixed(4)} ≥ ${qualified.theta} 且 n=${n} ≥ ${qualified.nMin}`, note: "" }
 }
 
 /**
