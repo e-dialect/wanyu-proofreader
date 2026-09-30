@@ -538,7 +538,7 @@ button.field-hint-chip { cursor: pointer; }
 button.field-hint-chip:hover { background: var(--gray-100); }
 button.field-hint-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .field-hint-reason { color: var(--gray-600); font-size: .78rem; line-height: 1.5; }
-.field-hint-overflow, .field-hint-truncated { color: var(--gray-500); font-size: .74rem; }
+.field-hint-overflow, .field-hint-truncated, .field-hint-gated { color: var(--gray-500); font-size: .74rem; }
 .proofread-textarea.form-control {
   min-height: 104px;
   border: 0;
