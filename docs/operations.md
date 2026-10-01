@@ -263,3 +263,62 @@ diff -u /path/to/traefik.json /tmp/traefik-upload.json
 校验本身不到一秒。无需重复上传来“预热”PDF 校验器。
 
 参考：[Traefik 入口 respondingTimeouts](https://doc.traefik.io/traefik/v3.3/routing/entrypoints/#respondingtimeouts)。
+
+## 规则门控放行与降档（#228）
+
+`assist_rule_gates` 决定机器疑点要不要下发给校对员。缺行按 `off` 处理，即**一条都不给**；
+这张表没有任何自动写入方——档位变化只能由平台管理员按下面的步骤人工应用。
+
+判据（`strong` 需 p̂ ≥ 0.90 且 n ≥ 100；`warn` 需 p̂ ≥ 0.60 且 n ≥ 150）的唯一代码出处是
+`backend/pb_hooks/lib/gate_release.js`，打分器与写入侧共用同一份常数；口径的文档出处是
+`docs/plans/2026-09-25-assist-rule-thresholds.md` §2/§5。改判据要同时改这两处。
+
+1. **打分**（全程只读，不写库）：
+
+   ```bash
+   node scripts/assist/score_rules.mjs --db <部署库的只读副本> --json /tmp/score.json
+   ```
+
+2. **产出待评审变更集**（同样不写库；`--approved-by` 必填，因为它要落进每条记录）：
+
+   ```bash
+   node scripts/assist/gate_changeset.mjs --score /tmp/score.json \
+     --approved-by "<人名/邮箱>" --report docs/plans/gate-changeset-<date>.md \
+     --out /tmp/gate-changeset-<date>.json
+   ```
+
+   变更集把「建议放行」与「保持 off（逐条给理由）」分两栏列出；不在变更集里的规则保持 off。
+   **评审这一步不能省**：文件应当作为 PR diff 或 `docs/plans/` 里的产物留下，
+   而不是直接在命令行里生成就应用。
+
+3. **应用**（平台管理员身份；判据不满足的条目逐条拒绝，不整批失败）：
+
+   ```bash
+   curl -X POST "$PB_URL/api/fangji/gates/changeset" \
+     -H "Authorization: $PLATFORM_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+     -d @/tmp/gate-changeset-<date>.json
+   ```
+
+   返回 `{applied, unchanged, refused, locked, entries[]}`；`refused` 非零要逐条看理由，
+   不要重发一份把判据改小的变更集来"绕过去"。
+
+4. **验证生效**：`GET /api/fangji/gates` 看档位与 `approved_by`/`changeset`/`applied_by`；
+   管理端 `GET /api/fangji/projects/{id}/findings` 里对应疑点的 `gate` 与判据数字同步；
+   校对端 `GET /api/fangji/pages/{id}/findings` 应出现 hint，且 `suppressed_by_gate` 下降。
+
+5. **降档（kill switch）**：
+
+   ```bash
+   curl -X POST "$PB_URL/api/fangji/gates/revoke" \
+     -H "Authorization: $PLATFORM_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"producer":"rule","producer_version":"l0-v1","kind":"missing_field","message_key":"required_role_field_empty","note":"误报复核中"}'
+   ```
+
+   幂等：重复撤销不产生新状态。**降档后重放同一份变更集不会把它抬回去**（返回 `locked`）——
+   要恢复必须显式 `{"restore": true}` 清除降档标记，再发一份**新的**变更集。
+   `restore` 只清标记、不改档位，所以这里不存在绕过判据的第二条升档路径。
+
+注意：`assist_rule_gates` 读取上限是 `MAX_GATE_ROWS = 2000`，超出部分静默按 `off` 处理。
+`GET /api/fangji/gates?limit=N` 的 `truncated`、以及两个 findings 接口的
+`gate_rows_truncated` 是这一情况的唯一可观测出口；巡检时确认表行数远离上限，
+接近时要么清理，要么把上限连同这条纪律一起改。

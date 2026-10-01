@@ -60,16 +60,18 @@ function identityOf(record) {
   ].join("\u0000")
 }
 
+// 返回 { map, truncated }：截断与否必须是可判定的返回值，不能只留一条 console.warn。
+// 校对端与管理端都靠它把「读不全」这件事如实告诉调用方——否则某条规则突然不显示
+// 就成了查不出来的幽灵（#228 验收标准第 7 条）。
 function gateMap(dao, limit = MAX_GATE_ROWS) {
-  const rows = dao.findRecordsByFilter("assist_rule_gates", "", "", limit, 0)
-  if (rows.length >= limit) {
-    // 截断方向是安全的（落不进 map 的规则按 off 处理，只会更不可见），
-    // 但必须留痕，否则"某条规则突然不显示"会变成查不出来的幽灵。
+  const rows = dao.findRecordsByFilter("assist_rule_gates", "", "", limit + 1, 0)
+  const truncated = rows.length > limit
+  if (truncated) {
     console.warn(`assist_rule_gates 读取被截断在 ${limit} 行，超出的规则一律按 off 处理`)
   }
   const map = new Map()
-  for (const row of rows) map.set(identityOf(row), row)
-  return map
+  for (const row of rows.slice(0, limit)) map.set(identityOf(row), row)
+  return { map, truncated }
 }
 
 function gateOf(gates, record) {
@@ -137,17 +139,33 @@ function statisticsView(record, gate, row) {
 }
 
 // 校对端：按 gate 与 severity 双重过滤后的 hints（#176 期望结果 4）。
+//
+// `suppressed_by_gate` 是「本条目上有 warn/strong 级疑点，但所在规则档位没放行」的条数。
+// 它存在的唯一理由是把「没下发」与「没疑点」这两件事在字段级分开（#228 验收标准第 6 条）：
+// 只有 hints 数组时，gate 全 off 与这批资料真的干净，在响应里长得一模一样，
+// 而后者会被读成「这批可以放心」。它只是一个计数，不含规则身份、不含内容，
+// 因此不触碰盲校纪律（校对端仍看不到别人的结果、轮次与档位）。
 function hintsForPage(dao, pageId) {
-  const gates = gateMap(dao)
+  const { map: gates, truncated: gateTruncated } = gateMap(dao)
   const records = currentRecords(dao, `page = "${pageId}"`, "kind,message_key", MAX_PAGE_SIZE + 1, 0)
   const hints = []
+  let suppressed = 0
   for (const record of records) {
     const { gate } = gateOf(gates, record)
     const severity = record.getString("severity")
-    if (!GATE_RELEASES[gate].includes(severity)) continue
+    if (!GATE_RELEASES[gate].includes(severity)) {
+      // info 级本来就不进校对端（门槛文件 §2），不该混进「被门控挡住」这个数字里。
+      if (gate === "off" && GATE_RELEASES.warn.includes(severity)) suppressed += 1
+      continue
+    }
     hints.push(hintView(record, gate))
   }
-  return { hints, truncated: records.length > MAX_PAGE_SIZE }
+  return {
+    hints,
+    truncated: records.length > MAX_PAGE_SIZE,
+    suppressed_by_gate: suppressed,
+    gate_rows_truncated: gateTruncated
+  }
 }
 
 // 管理端：不做门控过滤，info 与 off 一律可见——门槛文件 §2 要求 off 只挡校对端，
@@ -160,14 +178,14 @@ function listForProject(dao, projectId, { page = 1, per = 50, kind = "", produce
   if (safeProducer) clauses.push(`producer = "${safeProducer}"`)
   const size = Math.max(1, Math.min(MAX_PAGE_SIZE, Number(per) || 50))
   const index = Math.max(1, Number(page) || 1)
-  const gates = gateMap(dao)
+  const { map: gates, truncated: gateTruncated } = gateMap(dao)
   // 多取一条用来判断是否还有下一页，不依赖 count 查询。
   const records = currentRecords(dao, clauses.join(" && "), "-produced_at,kind,message_key", size + 1, (index - 1) * size)
   const items = records.slice(0, size).map((record) => {
     const { gate, row } = gateOf(gates, record)
     return statisticsView(record, gate, row)
   })
-  return { items, hasMore: records.length > size, page: index, per: size }
+  return { items, hasMore: records.length > size, page: index, per: size, gate_rows_truncated: gateTruncated }
 }
 
 module.exports = {

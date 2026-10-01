@@ -24,7 +24,7 @@
 | `severity` | select `info \| warn \| strong` | 是 | finding 自身属性，**不是规则档位** |
 | `message_key` | text | 是 | 措辞键，前端按 key 渲染中文（§4）。**它是规则身份的组成部分** |
 | `params_json` | text（JSON 字符串） | 是 | 措辞参数，只允许结构信息（码位、计数、列名），见 §6 |
-| `evidence_json` | text（JSON 字符串） | 否 | `{bbox?, char_offsets?, excerpt?, page?}`，形状由 #125 定义写入方 |
+| `evidence_json` | text（JSON 字符串） | 否 | `{bbox?, char_offsets?, excerpt?, page?, anchor?, partners?}`。`char_offsets` 是 `[[start, end), …]` 的**码位**半开区间，与消费端 `frontend/src/lib/fieldHints.js` 的 `locateSpan` 同口径（它再换算成 UTF-16 选区）。有格内命中位置的生产者必须带：R1 越界字符、R2 可混淆字符、R3 格级组合符、R6 长数字串，以及 `merged_columns` 两类；不带的是「空格里没有字符可标」的 R5，以及判据本身看不到单格的列级 R3/R4 与页级 R7 |
 | `producer` | select `rule \| ocr \| bundle_import` | 是 | 谁产的 |
 | `producer_version` | text | 是 | 规则/模型版本，升版即新批次 |
 | `produced_at` | date | 是 | 批次时间 |
@@ -87,9 +87,23 @@ manager/平台管理员直通；否则要求「该条目正被你认领」或「
       "highlight": true,
       "evidence": { "char_offsets": [[4, 8]] }
     }
-  ]
+  ],
+  "truncated": false,
+  "suppressed_by_gate": 0,
+  "gate_rows_truncated": false
 }
 ```
+
+响应级字段（#228 验收标准第 6、7 条）：
+
+- `suppressed_by_gate` 是本条目上「warn/strong 级、但因规则档位为 `off` 而未下发」的条数。
+  它存在的唯一理由是把**「没下发」与「没疑点」在字段级分开**——只有 `hints: []` 时，
+  gate 全 off 与这批资料真的干净长得一模一样，而后者会被读成「这批可以放心」。
+  它只是一个计数：不含规则身份、不含内容、不含档位，因此不触碰盲校纪律。
+  `info` 级永不进校对端（§2），不计入这个数字。
+- `gate_rows_truncated` 为真表示 `assist_rule_gates` 读到了 `MAX_GATE_ROWS` 上限，
+  落不进内存映射的规则一律按 `off` 处理——这条必须有可判定出口，否则「某条规则突然不显示」
+  是查不出来的幽灵。
 
 过滤规则（与门槛文件 §2 一字不差）：
 

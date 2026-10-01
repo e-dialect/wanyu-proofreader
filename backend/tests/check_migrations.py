@@ -112,6 +112,18 @@ SPECS = {
     # Column roles are metadata on the project row. There is no new index;
     # the entry exists so a missing migration file still fails the coverage check.
     '1789200100_column_roles.js': {},
+    # #228 gate 放行的审计列。断言 required=False：这些列全是可选项，
+    # 一旦有人把 approved_by 改成必填，老登记行会立刻写不进去。
+    '1789200200_gate_release_audit.js': {
+        'fields': ('assist_rule_gates', {
+            'approved_by': {'required': False},
+            'approved_at': {'required': False},
+            'changeset': {'required': False},
+            'applied_by': {'required': False},
+            'revoked_at': {'required': False},
+            'revoked_by': {'required': False},
+        }),
+    },
 }
 FIRST = '1788940000_initial_schema.js'
 
@@ -203,17 +215,25 @@ def _assert_fields(data, migration, field_spec, problems, expect):
 
     field_spec 形如 (collection, {field_name: {'required': bool, 'values_contains': str}})。
     expect=True 表示应用迁移后应满足这些条件；expect=False 表示回滚后应不满足。
+
+    回滚方向上「集合或字段根本不存在」是**通过**而不是失败：往 collections 上追加字段的迁移，
+    它的 down 通常只删字段，而那个集合本身是由更早的迁移创建、会在回滚序列里被整个删掉
+    （assist_rule_gates 就同时被 1789113600 的 down 删除）。把它判成缺失报错，等于要求
+    「加字段」类迁移永远不能声明 fields 断言——而那正是这类迁移唯一能写的断言。
     """
     collection, fields = field_spec
     with sqlite3.connect(data / 'data.db') as db:
         row = db.execute('SELECT fields FROM _collections WHERE name=?', (collection,)).fetchone()
     if row is None:
-        problems.append(f'{migration}: collection {collection} missing')
+        if expect:
+            problems.append(f'{migration}: collection {collection} missing')
         return
     declared = json.loads(row[0])
     for field_name, conditions in fields.items():
         target = next((f for f in declared if f.get('name') == field_name), None)
         if target is None:
+            if not expect:
+                continue
             problems.append(f'{migration}: field {collection}.{field_name} missing')
             continue
         if 'required' in conditions:
