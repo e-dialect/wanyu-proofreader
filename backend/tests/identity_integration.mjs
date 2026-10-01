@@ -369,6 +369,17 @@ const row = (o) => ({ 词条: o.headword ?? '', 拼音: o.pinyin ?? '', 莆田IP
   assert.equal(bareOut.compared, 0, '没在比较就不许记成"比较过"')
   assert.equal(bareOut.uncomparable_groups, 1,
     `可比列为空必须是可见计数：${JSON.stringify(bareOut)}`)
+  // 反向：可比列**配上了**且两行取值一致 ⇒ 这是干净的组，一条都不许计。
+  // 早先的 `!others.length` 把这种组也算进 uncomparable_groups，于是"整整齐齐没有分歧"
+  // 在响应里长得像"根本没在比较"，方向反了。
+  const same = (id) => ({ id, project: 'p', source: 's1', row: { 词: '人', 转写: 'lang2', 含义: '同义' } })
+  const cleanOut = identity.findIdentityConflicts([same('w1'), same('w2')], new Set(),
+    identity.identityColumns({ 词: 'headword', 转写: 'reading', 含义: 'meaning' }))
+  assert.deepEqual(cleanOut.findings, [], JSON.stringify(cleanOut))
+  assert.equal(cleanOut.uncomparable_groups, 0,
+    `已比较且取值一致的组不该计入"没在比较"：${JSON.stringify(cleanOut)}`)
+  assert.equal(cleanOut.groups, 1, '分组仍然成立：这一组被看见了、只是干净，而不是没被比较')
+
   // 同一个配置若退回词表（角色没凑齐两段），可比列非空、照常产出疑点 —— 两格行为不同，都要钉住
   const backToHardcoded = identity.identityColumns({ 词: 'headword' })
   assert.equal(backToHardcoded.source, 'hardcoded')

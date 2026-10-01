@@ -201,16 +201,25 @@ function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT
   for (const [key, bucket] of [...groups].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     if (bucket.length < 2) continue
     if (dismissed.has(key)) continue
+    let comparableSeen = 0
     const others = columns.comparable
       .map((field) => {
         const values = new Set(bucket.map((item) => normalizeText(item.row?.[field])).filter(Boolean))
+        // 这一列在这组里有任何非空取值 ⇒ 它**被比较过**，哪怕结论是完全一致。
+        if (values.size) comparableSeen += 1
         return values.size > 1 ? field : null
       })
       .filter(Boolean)
-    if (!others.length) {
+    // 两种 0 必须分开（#238 二轮评审阻断）：
+    //   可比列一个都没配上（或全组该列都空）——这是"没在比较"，要计数；
+    //   配上了且取值一致——这是干净的组，一条都不该计。
+    // 早先写成 `!others.length` 就把后者也报成前者，一个填得整整齐齐却毫无分歧的项目
+    // 会在响应里显示"有组没在比较"，而它其实恰恰比较过了。
+    if (!comparableSeen) {
       uncomparable += 1
       continue
     }
+    if (!others.length) continue
     // 同词头不同拼音的两条根本不会落进同一个 key，所以 R-DEDUP 的反向用例由分组保证，
     // 不是靠"记得判断"。这里断言的是一次比较都发生在身份相同的前提下。
     compared += bucket.length
