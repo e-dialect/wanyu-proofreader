@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   EMPTY_MESSAGES,
@@ -77,4 +78,44 @@ test('off 档计数只数 gate 明确为 off 的条目', () => {
   assert.equal(gatedOffCount([
     { gate: 'off' }, { gate: 'off' }, { gate: 'warn' }, { gate: 'strong' }, {}
   ]), 2)
+})
+
+// #235 评审阻断项：`truncatedNotice` 曾经"测试钉着、UI 零消费"，
+// ProjectDetailView 自己手写了一句告警，把三个不相干的口径混在一起。
+// 下面几条把"helper 真的被消费"与"两个截断信号互不覆写"钉在源码上，
+// 因为这个仓库没有组件渲染测试，不这么钉就等于没测。
+const readSource = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
+
+test('管理端告警必须走 truncatedNotice，而不是手写另一句', () => {
+  const view = readSource('../src/views/admin/ProjectDetailView.vue')
+  assert.match(view, /truncatedNotice/, 'truncatedNotice 没被 import 或没被调用')
+  assert.match(view, /assistFindingsNotice\.value = truncatedNotice\(/,
+    'findings 侧的告警文案应由 helper 生成，而不是在 UI 里拼字符串')
+  assert.equal(view.includes('assistTruncated'), false,
+    '共享的 assistTruncated 已废弃：它让读疑点顺手冲掉人工结论的截断告警')
+})
+
+test('疑点截断与人工结论截断是两个独立信号', () => {
+  const view = readSource('../src/views/admin/ProjectDetailView.vue')
+  assert.match(view, /const assistFindingsNotice = ref\(''\)/)
+  assert.match(view, /const assistDismissalsTruncated = ref\(false\)/)
+  assert.match(view, /v-if="assistFindingsNotice"/, 'findings 侧要有自己的展示位')
+  assert.match(view, /v-if="assistDismissalsTruncated"/, '人工结论侧要有自己的展示位')
+
+  // 关键回归：读 findings 不许碰人工结论那个 ref。
+  const body = view.match(/async function loadAssistFindings\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  assert.ok(body.length > 0, '没找到 loadAssistFindings，断言会恒真')
+  assert.equal(body.includes('assistDismissalsTruncated'), false,
+    `读疑点却在写人工结论的截断位：${body}`)
+
+  // 人工结论那句必须说清"更早的仍在生效、只是不在列表"，而不是含糊的分页提示。
+  assert.match(view, /更早的结论仍会在重算时整组生效/,
+    '截断文案必须点明"没列出"不等于"没有"')
+})
+
+test('truncatedNotice 只说后端明说的事', () => {
+  assert.equal(truncatedNotice({ gate_rows_truncated: true, hasMore: false }),
+    '门控登记表读取被截断，超出部分的规则一律按 off 处理')
+  assert.equal(truncatedNotice({ hasMore: true }), '疑点列表还有下一页')
+  assert.equal(truncatedNotice({}), '', '两个信号都没有时不许凭空造告警')
 })

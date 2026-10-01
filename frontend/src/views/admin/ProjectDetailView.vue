@@ -436,9 +436,7 @@
 
         <p v-if="assistError" class="alert alert-error" role="alert">{{ assistError }}</p>
         <p v-if="assistNotice" class="text-muted">{{ assistNotice }}</p>
-        <p v-if="assistTruncated" class="alert alert-warning" role="alert">
-          疑点列表还有下一页；门控登记表读取被截断时，超出部分的规则一律按 off 处理。
-        </p>
+        <p v-if="assistFindingsNotice" class="alert alert-warning" role="alert">{{ assistFindingsNotice }}</p>
 
         <p class="assist-summary">
           当前批次 {{ assistRows.length }} 条：
@@ -478,6 +476,10 @@
 
         <h3>人工结论（不是冲突的分组）</h3>
         <p class="text-muted">标过的分组在重算时整组跳过；这些结论不跟着机器批次下线，也不随判定人消失。</p>
+        <p v-if="assistDismissalsTruncated" class="alert alert-warning" role="alert">
+          人工结论只列出最近 200 条。更早的结论仍会在重算时整组生效，只是不在这份列表里，也无法在这里撤回——
+          这不是"没有更早的结论"，别把它当成可以重新判定的依据。
+        </p>
         <ul v-if="assistDismissals.length" class="assist-list">
           <li v-for="item in assistDismissals" :key="item.id" class="assist-row">
             <strong>{{ assistKindLabel(item.kind) }}</strong>
@@ -520,7 +522,8 @@ import {
   gatedOffCount,
   kindBreakdown,
   recomputeNotice,
-  severityCount
+  severityCount,
+  truncatedNotice
 } from '@/lib/assistOverview'
 import { hintKindLabel } from '@/lib/fieldHints'
 import { renderFindingMessage } from '@/lib/findingMessages'
@@ -1211,7 +1214,11 @@ const assistRows = ref([])
 const assistDismissals = ref([])
 const assistPage = ref(1)
 const assistHasMore = ref(false)
-const assistTruncated = ref(false)
+// 两个截断信号各一个 ref。合成一个是 #235 的评审阻断项：
+// findings 侧每次读取都会无条件覆写那个共享 ref，翻页/筛选/重算都会把
+// "人工结论被截断"的告警凭空冲掉，而列表里那 200 条以外的结论还在生效。
+const assistFindingsNotice = ref('')
+const assistDismissalsTruncated = ref(false)
 const assistKind = ref('')
 const assistBusy = ref(false)
 const assistNotice = ref('')
@@ -1250,8 +1257,13 @@ async function loadAssistFindings() {
     const view = await listProjectFindings(projectId, { kind: assistKind.value, page: assistPage.value })
     assistRows.value = view.items ?? []
     assistHasMore.value = !!view.hasMore
-    // 只认后端明说的截断信号；"本页刚好满了"由分页控件表达，不混进这条告警。
-    assistTruncated.value = !!view.gate_rows_truncated
+    // 只认后端明说的截断信号；文案由 assistOverview 的 truncatedNotice 生成，
+    // 不在 UI 里另写一句（#235 评审：那句手写的告警与测试钉住的 helper 是两套，
+    // 而 helper 在 frontend/src 里零消费）。
+    assistFindingsNotice.value = truncatedNotice({
+      gate_rows_truncated: view.gate_rows_truncated,
+      hasMore: view.hasMore
+    })
   } catch (e) {
     assistError.value = `疑点列表读取失败：${e?.message ?? e}`
   }
@@ -1261,7 +1273,8 @@ async function loadAssistDismissals() {
   try {
     const view = await listProjectDismissals(projectId)
     assistDismissals.value = view.items ?? []
-    if (view.truncated) assistTruncated.value = true
+    // 后端只回最近 200 条：被截断时说的是"人工结论"这件事，与疑点列表/门控表无关。
+    assistDismissalsTruncated.value = !!view.truncated
   } catch (e) {
     assistError.value = `人工结论读取失败：${e?.message ?? e}`
   }
