@@ -14,10 +14,16 @@ import {
 
 test('空列表的四种成因互斥且各有说法', () => {
   const item = { kind: 'missing_field', severity: 'strong' }
-  assert.equal(emptyReason({ items: [item], everRun: true, pagesScanned: 3 }), 'has-findings')
-  assert.equal(emptyReason({ items: [], everRun: false, pagesScanned: 3 }), 'never-run')
-  assert.equal(emptyReason({ items: [], everRun: true, pagesScanned: 0 }), 'no-entries')
-  assert.equal(emptyReason({ items: [], everRun: true, pagesScanned: 5 }), 'clean')
+  assert.equal(emptyReason({ items: [item], runs: { rules: true }, pagesScanned: 3 }), 'has-findings')
+  assert.equal(emptyReason({ items: [], runs: {}, pagesScanned: 3 }), 'never-run')
+  assert.equal(emptyReason({ items: [], runs: { rules: true }, pagesScanned: 0 }), 'no-entries')
+  assert.equal(emptyReason({ items: [], runs: { rules: true }, pagesScanned: 5 }), 'clean')
+  // 只跑跨行身份：不得说成"没有疑点"（#235 二轮评审阻断项）
+  assert.equal(emptyReason({ items: [], runs: { identity: true }, pagesScanned: 5 }), 'identity-only')
+  assert.equal(emptyReason({ items: [], runs: { rules: true, identity: true }, pagesScanned: 5 }), 'clean')
+  assert.match(EMPTY_MESSAGES['identity-only'], /不表示资料干净/)
+  assert.equal(EMPTY_MESSAGES['identity-only'].includes('没有疑点'), false,
+    '只跑跨行身份的文案不许出现"没有疑点"这种全量结论')
   // never-run 的文案必须点明"这不表示资料干净"，否则空列表就会被读成后者。
   assert.match(EMPTY_MESSAGES['never-run'], /不表示资料干净/)
   assert.equal(EMPTY_MESSAGES.clean, '跑过了，当前批次没有疑点。')
@@ -118,4 +124,16 @@ test('truncatedNotice 只说后端明说的事', () => {
     '门控登记表读取被截断，超出部分的规则一律按 off 处理')
   assert.equal(truncatedNotice({ hasMore: true }), '疑点列表还有下一页')
   assert.equal(truncatedNotice({}), '', '两个信号都没有时不许凭空造告警')
+})
+
+test('两类重算的覆盖范围分开记录，跨行重算不算全量', () => {
+  const view = readSource('../src/views/admin/ProjectDetailView.vue')
+  const identityBody = view.match(/async function runIdentityRecompute\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  assert.ok(identityBody.length > 0, '没找到 runIdentityRecompute，断言会恒真')
+  assert.match(identityBody, /identity: true/)
+  assert.equal(identityBody.includes('rules: true'), false,
+    `只跑跨行重算却标了全量覆盖：${identityBody}`)
+  const rulesBody = view.match(/async function runFindingsRecompute\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  assert.match(rulesBody, /rules: true/)
+  assert.equal(view.includes('assistEverRun'), false, '共享的 assistEverRun 已废弃')
 })

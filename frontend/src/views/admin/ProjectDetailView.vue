@@ -1225,7 +1225,8 @@ const assistNotice = ref('')
 const assistError = ref('')
 // "跑过没有"只能记在这次会话里：后端没有"这个项目是否算过"的字段，
 // 而把空列表说成"没有疑点"正是本区块要避免的那次误读。
-const assistEverRun = ref(false)
+// 两类重算各记各的：只跑跨行身份时，列级/页级判据仍然没算过，空态不能说"干净"。
+const assistRuns = ref({ rules: false, identity: false })
 const assistPagesScanned = ref(null)
 
 const assistKinds = computed(() => kindBreakdown(assistRows.value))
@@ -1235,7 +1236,7 @@ const assistInfo = computed(() => severityCount(assistRows.value, 'info'))
 const assistGatedOff = computed(() => gatedOffCount(assistRows.value))
 const assistEmptyText = computed(() => EMPTY_MESSAGES[emptyReason({
   items: assistRows.value,
-  everRun: assistEverRun.value,
+  runs: assistRuns.value,
   pagesScanned: assistPagesScanned.value
 })])
 
@@ -1286,7 +1287,7 @@ async function runFindingsRecompute() {
   assistError.value = ''
   try {
     const summary = await recomputeProjectFindings(projectId)
-    assistEverRun.value = true
+    assistRuns.value = { ...assistRuns.value, rules: true }
     assistPagesScanned.value = Number.isFinite(summary?.pages) ? summary.pages : null
     assistNotice.value = recomputeNotice(summary)
     assistPage.value = 1
@@ -1304,7 +1305,8 @@ async function runIdentityRecompute() {
   assistError.value = ''
   try {
     const summary = await recomputeProjectIdentity(projectId)
-    assistEverRun.value = true
+    // 只标 identity：跨行重算不刷新列级/页级判据，也不刷 tier
+    assistRuns.value = { ...assistRuns.value, identity: true }
     assistPagesScanned.value = Number.isFinite(summary?.pages) ? summary.pages : null
     assistNotice.value = recomputeNotice(summary, { identity: true })
     assistPage.value = 1

@@ -40,9 +40,16 @@ export function truncatedNotice(listResponse) {
 
 // 空列表的三种来源必须能被区分出来。everRun 来自"这次会话里点过重算"或后端摘要，
 // pagesScanned 是重算摘要里扫过的条目数 —— 0 条目的空与扫过 500 条的空不是一回事。
-export function emptyReason({ items, everRun, pagesScanned }) {
+/**
+ * 空列表的成因。`runs` 是**两类覆盖范围**（rules = 项目级重算，identity = 跨行身份重算），
+ * 不能用一个布尔代表"跑过了"：只点跨行重算时列级/页级判据一条都没算，
+ * 此时说"当前批次没有疑点"是假承诺（#235 二轮评审阻断项）。
+ */
+export function emptyReason({ items, runs, pagesScanned }) {
   if ((items ?? []).length > 0) return 'has-findings'
-  if (!everRun) return 'never-run'
+  const rulesRun = Boolean(runs?.rules)
+  if (!rulesRun && !runs?.identity) return 'never-run'
+  if (!rulesRun) return 'identity-only'
   if (pagesScanned === 0) return 'no-entries'
   return 'clean'
 }
@@ -51,7 +58,9 @@ export const EMPTY_MESSAGES = {
   'has-findings': '',
   'never-run': '这个项目还没跑过项目级重算。列级与页级疑点（编码形式、标点混用、分页异常）必须看到整批数据才判得出来，所以它们现在一定是空的——这不表示资料干净。',
   'no-entries': '项目里还没有可扫描的条目，重算跑不出东西。',
-  clean: '跑过了，当前批次没有疑点。'
+  clean: '跑过了，当前批次没有疑点。',
+  // 只跑过跨行重算时的说法：不得宣称"没有疑点"，那等于把没算过的判据说成算了且干净。
+  'identity-only': '这个项目只跑过跨行身份重算：列级与页级判据（编码形式、标点混用、分页异常）还没看到整批数据，因此这里为空不表示资料干净。请再点一次「按项目重算疑点」。'
 }
 
 // 重算摘要 → 一句人话。字段名不猜：缺什么就不说什么，绝不编一个数出来。
