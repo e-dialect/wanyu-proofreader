@@ -356,10 +356,23 @@ const row = (o) => ({ 词条: o.headword ?? '', 拼音: o.pinyin ?? '', 莆田IP
   assert.deepEqual(identity.findRowShapeAnomalies(
     { id: 'N1', row: { 词: 'аа', 转写: 'aa', 备注: 'ka53 之类' } }, noMeaning
   ), [], '没有 meaning 角色就不能拿别的列凑数')
-  // ipa 角色与 reading 同属记音段：莆仙正本里拼音与 IPA 并存时都能成键
-  const ipaOnly = identity.identityColumns({ 词条: 'headword', 莆田IPA: 'ipa' })
-  assert.deepEqual(ipaOnly.reading, ['莆田IPA'])
-  assert.equal(identity.entryIdentityKey({ 词条: '人', 莆田IPA: 'naŋ2' }, ipaOnly), '人 naŋ2')
+  // 只标词头与记音（含义/地区都留着 unspecified）是最自然的中间状态：这一格走角色路径，
+  // 但可比列为空 ⇒ 每一组都在「没有可比列」处被跳过。它必须被计数说出来，
+  // 否则"没在比较"和"真的干净"在响应里长得一模一样（#238 评审阻断 2）。
+  const bareRoles = identity.identityColumns({ 词: 'headword', 转写: 'reading' })
+  assert.equal(bareRoles.source, 'roles')
+  assert.deepEqual(bareRoles.comparable, [], 'meaning/region/example/note 都没标时可比列应为空')
+  const bare = (id, meaning, source) => ({ id, project: 'p', source, row: { 词: 'аа', 转写: 'aa', 含义: meaning } })
+  const bareOut = identity.findIdentityConflicts(
+    [bare('u1', '父亲', 's1'), bare('u2', '大叔', 's2')], new Set(), bareRoles)
+  assert.equal(bareOut.findings.length, 0)
+  assert.equal(bareOut.compared, 0, '没在比较就不许记成"比较过"')
+  assert.equal(bareOut.uncomparable_groups, 1,
+    `可比列为空必须是可见计数：${JSON.stringify(bareOut)}`)
+  // 同一个配置若退回词表（角色没凑齐两段），可比列非空、照常产出疑点 —— 两格行为不同，都要钉住
+  const backToHardcoded = identity.identityColumns({ 词: 'headword' })
+  assert.equal(backToHardcoded.source, 'hardcoded')
+  assert.ok(backToHardcoded.comparable.includes('释义'))
 }
 
 // 规模：10k 行的纯分组扫描必须是线性量级（防止退化成分组内两两比较）。

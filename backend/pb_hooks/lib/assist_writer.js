@@ -533,6 +533,9 @@ function recomputeIdentity(dao, projectId) {
     // "这一组没报 cross_source" 要么是判据判定不该报，要么是没登记来源可依据，
     // 两者的运维动作完全不同（前者不用管，后者要去补 sources 关联）。
     unattributed_groups: identityResult.unattributed_groups,
+    // 可比列一个没配上的组数（角色只标了词头/记音时的常态）。它与 unattributed 是两种
+    // 不同的"没报"：前者是"这组根本没在比较"，处置是回去补列角色；后者是"来源不足以判跨来源"。
+    uncomparable_groups: identityResult.uncomparable_groups,
     compared_rows: identityResult.compared,
     unkeyed_rows: identityResult.unkeyed,
     // `hardcoded` 意味着这个项目没标够列角色、判据退回了莆仙词表。

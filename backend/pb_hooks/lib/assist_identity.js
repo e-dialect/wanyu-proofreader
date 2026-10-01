@@ -20,12 +20,20 @@
 // 不做的事（#178 非目标）：不合并、不删除、不做模糊匹配/编辑距离/向量相似度（那是 L2 #181）、
 // 不跨项目、不裁决谁对、不写回任何值。
 
-const IDENTITY_VERSION = "identity-v2"
-// 从 v1 升版的原因不是加了第三个 kind，而是**同身份分歧的归类规则变了**：
+const IDENTITY_VERSION = "identity-v3"
+// v1 → v2 的原因不是加了第三个 kind，而是**同身份分歧的归类规则变了**：
 // 以前所有分歧都叫 duplicate_identity，现在能归因到不同登记来源的那批改叫
 // cross_source_conflict。同一份数据用 v1 与 v2 会产出不同 kind，而 gate 的四元组里
 // 带 producer_version，所以升版等于"新 kinds 一律从 off 重新攒证据"——这正是
 // docs/plans/2026-09-25-assist-rule-thresholds.md §2 想要的效果，不是副作用。
+//
+// v2 → v3 是同一类变更，而且更彻底：判据的**取列口径**换了。词头取哪一列、记音取哪一列、
+// 哪些列可比、什么时候才判「释义里混进记音」四条都由 `identityColumns(roles)` 按 #170 的
+// 列角色推导，未标够两段时才整份回退莆仙词表。同一份数据在标角色前后会产出不同的键与
+// 不同的 kind，所以 v2 这个档位身份不再能同时容纳两批判定：某个项目中途采纳列角色时，
+// 旧批次的 `n`/`p̂` 与新批次的判据不再对应同一套规则，而 gate 恰恰是按
+// `(producer, producer_version, kind, message_key)` 攒证据的。升版即"新口径从 off 重攒"。
+// 这条要求写在 docs/plans/2026-09-25-cross-row-conflicts.md 的升版预告里，本支就是那个「届时」。
 // 挂靠口径的词表由 assist_rules.js 拥有（ANCHOR_ENTRY / ANCHOR_COLUMN / ANCHOR_PDF_PAGE）。
 // #178 的三条疑点都是"逐成员产条、挂在这个成员自己那一条上"，所以一律 entry；契约侧
 // anchor 是**每条**必填（docs/plans/2026-09-25-review-findings.md §8.1 第 2 条），
@@ -63,9 +71,12 @@ function identityColumns(roles) {
     source: "hardcoded"
   }
   const headword = fieldsForRole(roles, "headword")
-  // `ipa` 与 `reading` 都算记音段：身份键要的是"这一列读出来是什么"，
-  // 莆仙正本里 拼音 与 莆田IPA 本来就同时存在且互为佐证。
-  const reading = [...fieldsForRole(roles, "reading"), ...fieldsForRole(roles, "ipa")]
+  // 记音段只认 `reading`。#170 的 ROLES 里没有 `ipa` 这一档：validateRoleMap 会拒掉带
+  // `ipa` 的请求，parseStoredRoles 又会把库里躺着的那种值折成 unspecified，所以"也认 ipa"
+  // 是到不了代码的分支。莆仙正本里 拼音/莆田IPA/仙游IPA 三列互为佐证的形状，由下面的
+  // hardcoded 回退路径负责；真要让别的正本把 IPA 单独标一档，那是 #170 的枚举改动，
+  // 该带 ROLES、前端 FIELD_ROLES、建议规则与文档一起改，不藏在这支里。
+  const reading = fieldsForRole(roles, "reading")
   if (!headword.length || !reading.length) return fallback
   const meaning = fieldsForRole(roles, "meaning")
   const comparable = [
@@ -184,6 +195,9 @@ function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT
   const findings = []
   let compared = 0
   let unattributed = 0
+  // 有键、有分组，但可比列一个都没配上（角色只标了词头/记音，或可比列取值全空）。
+  // 这一格既不进 compared 也不进 unattributed，不另计就成了第二个"静默零"。
+  let uncomparable = 0
   for (const [key, bucket] of [...groups].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     if (bucket.length < 2) continue
     if (dismissed.has(key)) continue
@@ -193,7 +207,10 @@ function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT
         return values.size > 1 ? field : null
       })
       .filter(Boolean)
-    if (!others.length) continue
+    if (!others.length) {
+      uncomparable += 1
+      continue
+    }
     // 同词头不同拼音的两条根本不会落进同一个 key，所以 R-DEDUP 的反向用例由分组保证，
     // 不是靠"记得判断"。这里断言的是一次比较都发生在身份相同的前提下。
     compared += bucket.length
@@ -236,6 +253,7 @@ function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT
     compared,
     unkeyed: noKey,
     unattributed_groups: unattributed,
+    uncomparable_groups: uncomparable,
     dismissed_groups: dismissed.size
   }
 }
