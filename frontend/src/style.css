@@ -954,6 +954,8 @@ button, input, select, textarea { font-family: inherit; }
 .assist-list { list-style: none; margin: .6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
 .assist-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: .55rem; padding: .45rem .2rem; border-top: 1px solid var(--gray-100); font-size: .84rem; }
 .assist-field { color: var(--gray-700); font-variant-numeric: tabular-nums; }
+.assist-locator { color: var(--gray-800); font-weight: 600; font-variant-numeric: tabular-nums; }
+.assist-span { color: var(--gray-600); font-size: .78rem; font-variant-numeric: tabular-nums; }
 .assist-severity { border: 1px solid var(--gray-200); border-radius: 999px; padding: 0 .5rem; font-size: .74rem; }
 .assist-severity--strong { border-color: var(--danger); color: var(--danger); }
 .assist-severity--warn { border-color: var(--accent); color: var(--accent); }

@@ -6,6 +6,8 @@ import {
   EMPTY_MESSAGES,
   gatedOffCount,
   emptyReason,
+  findingLocator,
+  findingSpanText,
   kindBreakdown,
   recomputeNotice,
   severityCount,
@@ -124,6 +126,61 @@ test('truncatedNotice 只说后端明说的事', () => {
     '门控登记表读取被截断，超出部分的规则一律按 off 处理')
   assert.equal(truncatedNotice({ hasMore: true }), '疑点列表还有下一页')
   assert.equal(truncatedNotice({}), '', '两个信号都没有时不许凭空造告警')
+})
+
+test('疑点行说清挂靠哪一条，整批判据不许说成"这一条有问题"', () => {
+  assert.deepEqual(findingLocator({ page_number: 41, pdf_page: 7, evidence: { anchor: 'entry' } }),
+    { entryText: '第 41 条', pdfText: 'PDF 第 7 页', jumpable: true, pdfPage: 7 })
+  // 列级/页级判据挑第一个条目当锚点，措辞必须带上判定范围
+  assert.equal(findingLocator({ page_number: 41, pdf_page: 7, evidence: { anchor: 'column_first_entry' } }).entryText,
+    '整列判定，挂靠第 41 条')
+  assert.equal(findingLocator({ page_number: 41, evidence: { anchor: 'pdf_page_first_entry' } }).entryText,
+    '整页判定，挂靠第 41 条')
+  assert.equal(findingLocator({ page_number: 41, evidence: {} }).entryText, '第 41 条',
+    '没有 anchor 时按最直白的说法，不硬加"挂靠"前缀')
+})
+
+test('缺定位信息时如实降级，不许留白或假称可以跳转', () => {
+  // 条目号取不到 = 说"未知"，不能渲染成"第  条"或干脆不渲染
+  assert.equal(findingLocator({ page_number: null, pdf_page: 3 }).entryText, '条目号未知')
+  assert.equal(findingLocator({ page_number: null, evidence: { anchor: 'column_first_entry' } }).entryText,
+    '整列判定，挂靠条目号未知')
+  assert.equal('entry_missing' in findingLocator({ page_number: 9, pdf_page: 9 }), false,
+    'entry_missing 是死分支（page 是 cascadeDelete 的 relation，悬挂引用进不了库）')
+  assert.deepEqual(findingLocator({ page_number: 0, pdf_page: 0 }),
+    { entryText: '条目号未知', pdfText: '无 PDF 页号（CSV 直接导入的条目）', jumpable: false, pdfPage: null })
+  assert.equal(findingLocator(undefined).entryText, '条目号未知', '整行缺失也不许崩')
+})
+
+test('命中区间只在有区间时说区间，否则点明判据看不到单格', () => {
+  assert.equal(findingSpanText({ evidence: { char_offsets: [[2, 7], [11, 13]] } }),
+    '命中第 3–7 字、第 12–13 字')
+  // 正本实测里绝大多数区间就是单字符（一个全角标点），不要渲染成"第 1–1 字"
+  assert.equal(findingSpanText({ evidence: { char_offsets: [[0, 1], [1, 2], [2, 3], [3, 4]] } }),
+    '命中第 1 字、第 2 字、第 3 字 等 4 处')
+  assert.equal(findingSpanText({ evidence: { anchor: 'entry' } }), '未给出命中位置')
+  assert.equal(findingSpanText({ evidence: { anchor: 'column_first_entry' } }),
+    '该类判据按整批数据判定，指不到具体字')
+  // 形状不符（区间倒置、长度不是 2）退化成"未给出"，而不是渲染出 NaN 或第 -2 字
+  assert.equal(findingSpanText({ evidence: { char_offsets: [[5, 5], [1], ['a', 'b']] } }),
+    '未给出命中位置')
+  assert.equal(findingSpanText(undefined), '该类判据按整批数据判定，指不到具体字')
+})
+
+test('视图真的消费这两个 helper，跳转用精确页号而不是子串搜索', () => {
+  const view = readSource('../src/views/admin/ProjectDetailView.vue')
+  const rowsBody = view.match(/const assistViewRows = computed\([\s\S]*?\n\}\)\)\)/)?.[0] ?? ''
+  assert.ok(rowsBody.length > 0, '没找到 assistViewRows，断言会恒真')
+  assert.match(rowsBody, /findingLocator\(/)
+  assert.match(rowsBody, /findingSpanText\(/)
+  assert.match(view, /v-for="view in assistViewRows"/, '模板还在直接渲染原始行，定位串不会显示')
+
+  const jumpBody = view.match(/async function jumpToEntryPage\(view\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  assert.ok(jumpBody.length > 0, '没找到 jumpToEntryPage，断言会恒真')
+  assert.match(jumpBody, /minPdfPage\.value = String\(page\)/)
+  assert.match(jumpBody, /maxPdfPage\.value = String\(page\)/)
+  // q 是对正文的子串匹配，用它跳某一条会连带命中别条 ⇒ 这条路径不许出现
+  assert.equal(jumpBody.includes('searchQuery'), false, `跳转改用了子串搜索：${jumpBody}`)
 })
 
 test('两类重算的覆盖范围分开记录，跨行重算不算全量', () => {
