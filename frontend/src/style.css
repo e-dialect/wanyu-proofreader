@@ -445,6 +445,7 @@ tr:hover td { background: var(--gray-50); }
 .queue-tier:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
 .queue-tier:disabled { cursor: default; opacity: .55; }
 .queue-tier--muted { border-style: dashed; color: var(--gray-500); cursor: default; }
+.queue-tier--warn { border-color: var(--warn); color: var(--warn); cursor: default; }
 .queue-metrics dd { margin-top: .25rem; color: var(--ink); font-size: 1rem; font-weight: 700; }
 .project-work-card__footer > span { color: var(--gray-500); font-size: .78rem; }
 .skeleton-card { min-height: 280px; align-content: start; pointer-events: none; }
