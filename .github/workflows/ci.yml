@@ -305,6 +305,64 @@ jobs:
           path: output/playwright/assist-admin/*.png
           if-no-files-found: ignore
 
+  quality-state-browser:
+    name: Quality state admin screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Build the SPA for same-origin API calls
+        run: |
+          npm --prefix frontend ci
+          # 与 assist-browser 同一理由：构建期把后端指到同源，否则生产 CSP 的
+          # connect-src 不含 http://127.0.0.1:8090，截图只会截到错误边界。
+          VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - name: Install browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/quality-browser" playwright@1.62.1
+          "$RUNNER_TEMP/quality-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Capture the quality state summary, filter and dialog paths
+        env:
+          NODE_PATH: ${{ runner.temp }}/quality-browser/node_modules
+          QUALITY_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/quality_state_browser.cjs
+          QUALITY_BROWSER_FIXTURE: ${{ runner.temp }}/quality-browser-fixture.json
+        run: python3 backend/tests/run_integration.py quality_state_browser_integration.mjs
+      - name: Verify every screenshot exists and is non-trivial
+        if: success()
+        run: |
+          # 与 quality_state_browser_integration.mjs 的名字清单一一对应。
+          # 留这一层是防"套件被静默 SKIP"：没设 QUALITY_BROWSER_SCRIPT 时套件退出 0，
+          # 只有这里能发现产物根本不存在。
+          for state in quality-state-summary quality-state-filter-withheld \
+                   quality-state-basis-required quality-state-server-rejected \
+                   quality-state-after-change quality-state-empty-project; do
+            test -s "output/playwright/quality-state/${state}.png" || {
+              echo "Missing or empty quality state screenshot: ${state}.png" >&2
+              exit 1
+            }
+          done
+      - name: Attach quality state screenshots
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-state-admin
+          path: output/playwright/quality-state/*.png
+          if-no-files-found: error
+      - name: Attach quality state screenshots after failure
+        if: ${{ always() && !success() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-state-admin
+          path: output/playwright/quality-state/*.png
+          if-no-files-found: ignore
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
