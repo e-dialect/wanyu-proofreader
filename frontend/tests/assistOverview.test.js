@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 
 import {
   EMPTY_MESSAGES,
-  gatedOffCount,
+  gatedOffNotice,
+  gatedOffSplit,
   emptyReason,
   findingLocator,
   findingSpanText,
@@ -34,7 +35,8 @@ test('空列表的四种成因互斥且各有说法', () => {
 
 test('缺字段与缺参数时不许崩，也不许编数', () => {
   assert.deepEqual(kindBreakdown(undefined), [])
-  assert.equal(gatedOffCount(null), 0)
+  assert.deepEqual(gatedOffSplit(null), { waiting: 0, noChannel: 0, unknown: 0, total: 0 })
+  assert.equal(gatedOffNotice(gatedOffSplit(null)), '')
   assert.equal(severityCount([null, {}, { severity: 'warn' }], 'warn'), 1)
   assert.equal(emptyReason({}), 'never-run')
   assert.equal(recomputeNotice(null), '')
@@ -82,10 +84,37 @@ test('按 kind 汇总的顺序稳定且标签来自同一个词表', () => {
     '未知 kind 要原样回显而不是编一个中文标签')
 })
 
-test('off 档计数只数 gate 明确为 off 的条目', () => {
-  assert.equal(gatedOffCount([
-    { gate: 'off' }, { gate: 'off' }, { gate: 'warn' }, { gate: 'strong' }, {}
-  ]), 2)
+// #254：两种 off 不许共用一句"尚未放行"。有通道、等证据 与 永远拿不到档位
+// 是两种完全不同的排产动作，混说会让 manager 去等一个不会发生的放行。
+test('off 档按打分通道分三类计数，只数 gate 明确为 off 的条目', () => {
+  const split = gatedOffSplit([
+    { gate: 'off', scoring_channel: 'scored' },
+    { gate: 'off', scoring_channel: 'scored' },
+    { gate: 'off', scoring_channel: 'unscored' },
+    { gate: 'off' },
+    { gate: 'warn', scoring_channel: 'unscored' },
+    { gate: 'strong', scoring_channel: 'scored' },
+    {}
+  ])
+  assert.deepEqual(split, { waiting: 2, noChannel: 1, unknown: 1, total: 4 })
+})
+
+test('未登记通道的身份单独说，不并进"等证据"也不并进"无通道"', () => {
+  const text = gatedOffNotice(gatedOffSplit([{ gate: 'off' }]))
+  assert.match(text, /未登记在通道表里/)
+  assert.equal(/证据未达档/.test(text), false, '未知身份被说成等证据')
+  assert.equal(/没有弱标注打分通道/.test(text), false, '未知身份被说成永远拿不到')
+})
+
+test('两类措辞各自成句，且都不出现"尚未放行"这种等得起的说法', () => {
+  const waiting = gatedOffNotice({ waiting: 3, noChannel: 0, unknown: 0, total: 3 })
+  const noChannel = gatedOffNotice({ waiting: 0, noChannel: 5, unknown: 0, total: 5 })
+  assert.match(waiting, /3 条.*证据未达档/)
+  assert.match(noChannel, /5 条.*拿不到档位/)
+  for (const text of [waiting, noChannel]) {
+    assert.equal(/尚未放行/.test(text), false, `两类共用了一句：${text}`)
+    assert.ok(text.includes(String(text === waiting ? 3 : 5)))
+  }
 })
 
 // #235 评审阻断项：`truncatedNotice` 曾经"测试钉着、UI 零消费"，

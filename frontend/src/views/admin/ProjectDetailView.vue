@@ -442,7 +442,8 @@
           当前批次 {{ assistRows.length }} 条：
           <span v-for="entry in assistKinds" :key="entry.kind">{{ entry.label }} {{ entry.count }}、</span>
           strong {{ assistStrong }} / warn {{ assistWarn }} / info {{ assistInfo }}；
-          其中 {{ assistGatedOff }} 条所在规则尚未放行，校对员看不到。
+          <template v-if="assistGatedOff.total">{{ assistGatedOffText }}，校对员今天看不到；</template>
+          <template v-else>全部规则已放行。</template>
         </p>
 
         <div v-if="assistKinds.length" class="assist-filter">
@@ -531,7 +532,8 @@ import {
   emptyReason,
   findingLocator,
   findingSpanText,
-  gatedOffCount,
+  gatedOffNotice,
+  gatedOffSplit,
   kindBreakdown,
   recomputeNotice,
   severityCount,
@@ -1245,7 +1247,8 @@ const assistKinds = computed(() => kindBreakdown(assistRows.value))
 const assistStrong = computed(() => severityCount(assistRows.value, 'strong'))
 const assistWarn = computed(() => severityCount(assistRows.value, 'warn'))
 const assistInfo = computed(() => severityCount(assistRows.value, 'info'))
-const assistGatedOff = computed(() => gatedOffCount(assistRows.value))
+const assistGatedOff = computed(() => gatedOffSplit(assistRows.value))
+const assistGatedOffText = computed(() => gatedOffNotice(assistGatedOff.value))
 const assistEmptyText = computed(() => EMPTY_MESSAGES[emptyReason({
   items: assistRows.value,
   runs: assistRuns.value,

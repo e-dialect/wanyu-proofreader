@@ -25,10 +25,29 @@ export function kindBreakdown(items) {
     .sort((a, b) => (b.count - a.count) || (a.kind < b.kind ? -1 : 1))
 }
 
-// `off` 档的疑点数量：门槛文档 §2 的"仍计算、仍写库、只在管理端统计"就是这一格。
-// 没有它，管理员看到一堆疑点却不知道哪些今天不会下发给校对员，只能靠猜。
-export function gatedOffCount(items) {
-  return (items ?? []).filter((item) => item?.gate === 'off').length
+// `off` 档的两种成因必须分开数（#254）。它们都写"尚未放行"，但动作完全不同：
+// 前者是等证据，后者按现有流程永远等不到——把后者说成"尚未放行"，
+// manager 就会排一次永远不会发生的放行。`unknown` 单列：表上没登记的身份
+// 连有没有通道都不知道，并进任何一类都是替它编一个结论。
+export function gatedOffSplit(items) {
+  const split = { waiting: 0, noChannel: 0, unknown: 0, total: 0 }
+  for (const item of items ?? []) {
+    if (item?.gate !== 'off') continue
+    split.total += 1
+    if (item?.scoring_channel === 'unscored') split.noChannel += 1
+    else if (item?.scoring_channel === 'scored') split.waiting += 1
+    else split.unknown += 1
+  }
+  return split
+}
+
+export function gatedOffNotice(split) {
+  if (!split?.total) return ''
+  const parts = []
+  if (split.waiting) parts.push(`${split.waiting} 条所在规则有打分通道、这轮证据未达档（n/p̂ 不够），补够样本并人工批准后可放行`)
+  if (split.noChannel) parts.push(`${split.noChannel} 条所属判据没有弱标注打分通道，按现有流程拿不到档位——不是"再等等"`)
+  if (split.unknown) parts.push(`${split.unknown} 条所属判据未登记在通道表里，界面无法判断它能否拿到档位，需要补 rule_coverage.js`)
+  return parts.join('；')
 }
 
 export function truncatedNotice(listResponse) {
