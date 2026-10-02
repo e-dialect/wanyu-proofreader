@@ -161,6 +161,111 @@ await api(`/api/fangji/pages/${quietClaim.id}/release`, {
 })
 await api(`/api/fangji/projects/${unlabeledProject.id}/claim`, { method: 'POST', token: quietAuth.token, body: { tier: 'A' }, status: 404 })
 
+// ---------- #244：同 PDF 页邻接 与 难度优先 的组合 ----------
+//
+// #232 把循环改成「filters 在外、passes 在内」，为的就是这一条：同页的兄弟条目不许被
+// 「全项目还剩一条 A」抢走。`tier_dispatch`（本文件上半）与 `pdf_reuse` 各测了一半，
+// 两套可以同时全绿而组合是坏的——那正是评审留下的这条测试债。
+//
+// 夹具刻意摆成：pn1/pdf1 = A（先领走并提交）、pn2/pdf1 = B（同页兄弟）、
+// pn3/pdf2 = A（干扰项）。旧的 passes 外层顺序会先扫全项目找 A 而给出 pn3；
+// 新顺序必须先给 pn2。这条断言就是 #244 验收第 4 条要的变异验证靶子。
+function comboPDF() {
+  const objects = ['', '<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 >>']
+  for (let i = 0; i < 4; i += 1) {
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 11 0 R >> >> /Contents ${7 + i} 0 R >>`)
+  }
+  for (let i = 0; i < 4; i += 1) {
+    const content = `BT /F1 24 Tf 50 700 Td (COMBO_PAGE_${i + 1}) Tj ET\n`
+    objects.push(`<< /Length ${content.length} >>\nstream\n${content}endstream`)
+  }
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+  let out = '%PDF-1.4\n'
+  const offsets = [0]
+  for (let i = 1; i < objects.length; i += 1) { offsets.push(out.length); out += `${i} 0 obj\n${objects[i]}\nendobj\n` }
+  const xref = out.length
+  out += `xref\n0 ${objects.length}\n0000000000 65535 f \n`
+  for (const offset of offsets.slice(1)) out += `${String(offset).padStart(10, '0')} 00000 n \n`
+  return out + `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+}
+
+// 邻接筛选读的是 project_files（status=ready + 同 file），而 CSV 导入不建这个记录，
+// 所以这一支必须走真 PDF 上传；tier 仍然由真实生产者算（列角色 + 项目级重算），
+// 不手工 UPDATE difficulty_tier——与上面那半份套件的纪律一致。
+const combo = await api('/api/fangji/projects', { method: 'POST', token, body: { name: `组合领取夹具 ${suffix}` }, status: 201 })
+const pdfForm = new FormData()
+pdfForm.set('file', new Blob([comboPDF()], { type: 'application/pdf' }), 'combo.pdf')
+const queued = await api(`/api/fangji/projects/${combo.id}/files/pdf`, { method: 'POST', token, body: pdfForm, status: 202 })
+let comboFile = null
+for (let i = 0; i < 200; i += 1) {
+  comboFile = await api(`/api/collections/project_files/records/${queued.id}`, { token })
+  if (comboFile.status === 'ready') break
+  assert.notEqual(comboFile.status, 'failed', JSON.stringify(comboFile))
+  await new Promise((resolve) => setTimeout(resolve, 100))
+}
+assert.equal(comboFile.status, 'ready', JSON.stringify(comboFile))
+
+const comboRows = [
+  { page_number: 1, pdf_page: 1, 词头: '甲', 莆田IPA: 'kʰin1' },
+  { page_number: 2, pdf_page: 1, 词头: '乙', 莆田IPA: 'kʰin9876' },
+  { page_number: 3, pdf_page: 2, 词头: '丙', 莆田IPA: 'kʰin1' }
+]
+const comboPages = []
+for (const row of comboRows) {
+  const values = { 词头: row.词头, 莆田IPA: row.莆田IPA }
+  comboPages.push(await api('/api/collections/pages/records', {
+    method: 'POST', token: superAuth.token,
+    body: {
+      project: combo.id, project_file: comboFile.id,
+      page_number: row.page_number, pdf_page: row.pdf_page,
+      ocr_row_json: JSON.stringify(values), ocr_text: row.词头,
+      row_headers_json: JSON.stringify(['词头', '莆田IPA']),
+      proofread_round: 1, mismatch_count: 0, status: 'pending'
+    }
+  }))
+}
+await api(`/api/fangji/projects/${combo.id}/column-roles`, {
+  method: 'PUT', token, body: { roles: { 词头: 'headword', 莆田IPA: 'reading' } }
+})
+await api(`/api/fangji/projects/${combo.id}/findings/recompute`, { method: 'POST', token })
+const comboFresh = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`project="${combo.id}"`)}`, { token })
+const comboTier = new Map(comboFresh.items.map((page) => [page.page_number, page.difficulty_tier]))
+assert.deepEqual([...comboTier.entries()].sort(), [[1, 'A'], [2, 'B'], [3, 'A']],
+  `组合夹具的档位没摆对：${JSON.stringify([...comboTier.entries()])}`)
+
+const comboReader = await api('/api/collections/users/records', {
+  method: 'POST',
+  body: { email: `tier-combo-${suffix}@example.com`, name: `tier-combo-${suffix}`, role: 'user', password, passwordConfirm: password }
+})
+await api(`/api/fangji/projects/${combo.id}/members/${comboReader.id}`, { method: 'PUT', token, body: { role: 'proofreader' } })
+const comboAuth = await api('/api/collections/users/auth-with-password', {
+  method: 'POST', body: { identity: `tier-combo-${suffix}@example.com`, password }
+})
+const comboClaim = (body = {}) => api(`/api/fangji/projects/${combo.id}/claim`, { method: 'POST', token: comboAuth.token, body })
+const comboSubmit = (task) => api(`/api/fangji/pages/${task.id}/submit`, {
+  method: 'POST', token: comboAuth.token,
+  body: { rowJson: JSON.stringify({ 词头: '甲', 莆田IPA: 'kʰin1' }), text: '甲', leaseToken: task.leaseToken }
+})
+
+const firstCombo = await comboClaim()
+assert.equal(firstCombo.id, comboPages[0].id, `默认应先给 A 类里的第 1 页，实得 ${JSON.stringify(firstCombo)}`)
+await comboSubmit(firstCombo)
+
+// 这一条是本支的全部意义：同页的 B 必须赢过另一页的 A。
+const adjacent = await comboClaim({ previousTaskId: firstCombo.id })
+assert.equal(adjacent.id, comboPages[1].id,
+  `同 PDF 页兄弟条目被全项目的 A 抢走了（拿到第 ${adjacent.page_number} 页 = 旧循环顺序）`)
+await comboSubmit(adjacent)
+
+// 同页两条都消耗完之后，才允许回到全项目——仍然是 A 优先。
+const fallback = await comboClaim({ previousTaskId: adjacent.id })
+assert.equal(fallback.id, comboPages[2].id, `同页无可领取项后应回到全项目，实得 ${JSON.stringify(fallback)}`)
+assert.equal(fallback.page_number, 3)
+
+// 显式层级仍是硬筛选：组合夹具里没有 C 档，找不到就 404，不许悄悄给一条别的档。
+await comboSubmit(fallback)
+await api(`/api/fangji/projects/${combo.id}/claim`, { method: 'POST', token: comboAuth.token, body: { tier: 'C' }, status: 404 })
+
 // 权限边界不许因分层派发退化：非项目成员、以及项目管理员之外的身份都不能领。
 const outsider = await api('/api/collections/users/records', {
   method: 'POST',
@@ -173,8 +278,8 @@ await api(`/api/fangji/projects/${labeled.id}/claim`, { method: 'POST', token: o
 await api(`/api/fangji/projects/${labeled.id}/claim`, { method: 'POST', token: outsiderAuth.token, body: { tier: 'A' }, status: 403 })
 await api('/api/fangji/proofreading-queues', { token: outsiderAuth.token })
 
-for (const projectId of [labeled.id, unlabeledProject.id]) {
+for (const projectId of [labeled.id, unlabeledProject.id, combo.id]) {
   await api(`/api/collections/projects/records/${projectId}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 }
 
-console.log('PASS: 默认优先 A 类会跳过排在最前的 B 条目，显式层级是筛选而非提示，无层级数据时逐字退回原行为，权限边界未退化')
+console.log('PASS: 默认优先 A 类会跳过排在最前的 B 条目，显式层级是筛选而非提示，无层级数据时逐字退回原行为，同 PDF 页邻接优先于全项目的 A，权限边界未退化')
