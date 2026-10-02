@@ -458,12 +458,22 @@
         </div>
 
         <ul v-if="assistRows.length" class="assist-list">
-          <li v-for="row in assistRows" :key="row.id" class="assist-row">
-            <strong>{{ assistKindLabel(row.kind) }}</strong>
-            <span class="assist-field">{{ row.field || '整条' }}</span>
-            <span :class="['assist-severity', `assist-severity--${row.severity}`]">{{ assistSeverityLabel(row.severity) }}</span>
-            <span class="assist-wording">{{ assistWording(row) }}</span>
-            <span class="assist-gate">gate {{ row.gate }} · 样本 {{ row.gate_sample_n }}</span>
+          <li v-for="view in assistViewRows" :key="view.row.id" class="assist-row">
+            <strong>{{ assistKindLabel(view.row.kind) }}</strong>
+            <span class="assist-field">{{ view.row.field || '整条' }}</span>
+            <span class="assist-locator">
+              {{ view.locator.entryText }}<template v-if="view.locator.pdfText"> · {{ view.locator.pdfText }}</template>
+            </span>
+            <button
+              v-if="view.locator.jumpable"
+              type="button"
+              class="btn btn-sm btn-quiet"
+              @click="jumpToEntryPage(view)"
+            >只看这页</button>
+            <span :class="['assist-severity', `assist-severity--${view.row.severity}`]">{{ assistSeverityLabel(view.row.severity) }}</span>
+            <span class="assist-wording">{{ assistWording(view.row) }}</span>
+            <span class="assist-span">{{ view.span }}</span>
+            <span class="assist-gate">gate {{ view.row.gate }} · 样本 {{ view.row.gate_sample_n }}</span>
           </li>
         </ul>
         <p v-else class="text-muted assist-empty">{{ assistEmptyText }}</p>
@@ -519,6 +529,8 @@ import {
   EMPTY_MESSAGES,
   SEVERITY_LABELS,
   emptyReason,
+  findingLocator,
+  findingSpanText,
   gatedOffCount,
   kindBreakdown,
   recomputeNotice,
@@ -1239,6 +1251,23 @@ const assistEmptyText = computed(() => EMPTY_MESSAGES[emptyReason({
   runs: assistRuns.value,
   pagesScanned: assistPagesScanned.value
 })])
+// 每行的定位串只算一次：模板里 v-for 每行要用三次（条目号 / PDF 页 / 命中区间）。
+const assistViewRows = computed(() => assistRows.value.map((row) => ({
+  row,
+  locator: findingLocator(row),
+  span: findingSpanText(row)
+})))
+
+// 「只看这页」走条目列表已有的 PDF 页范围精确过滤（min/max 同一个数），
+// 而不是把条目号塞进 q——q 是对正文的子串匹配，跳某一条会连带命中别条。
+async function jumpToEntryPage(view) {
+  const page = view?.locator?.pdfPage
+  if (!Number.isInteger(page)) return
+  minPdfPage.value = String(page)
+  maxPdfPage.value = String(page)
+  await nextTick()
+  scrollToEntries()
+}
 
 function assistKindLabel(kind) {
   return hintKindLabel(kind)

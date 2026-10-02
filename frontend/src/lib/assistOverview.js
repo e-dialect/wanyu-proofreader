@@ -82,3 +82,60 @@ export function recomputeNotice(summary, { identity = false } = {}) {
   }
   return bits.join('；')
 }
+
+// ---- 疑点定位 ----
+//
+// 只有 kind / 字段 / 措辞时，管理员读完一批疑点仍然不知道"去哪一条核对"，
+// 这些函数把后端下发的 page_number / pdf_page / evidence 变成能照着找的东西。
+//
+// anchor 决定了「第 N 条」能不能直说：`entry` 是真挂靠在这条上，
+// 而 `column_first_entry` / `pdf_page_first_entry` 只是整批判据挑的第一个条目当锚点，
+// 此时说"疑点在第 41 条"会把"整列都有问题"说成"这一条有问题"——必须换个说法。
+const ANCHOR_PREFIX = {
+  column_first_entry: '整列判定，挂靠',
+  pdf_page_first_entry: '整页判定，挂靠'
+}
+// 每处命中区间的展示上限：一行里堆十个区间就没法扫了。
+const MAX_SPANS_SHOWN = 3
+
+// 「第几个字」：char_offsets 是码位半开区间 [[start, end), …]，展示成 1 起的闭区间。
+// 契约（review-findings.md §2）写明只有格级判据带区间，R5 与列级/页级判据天生看不到单格，
+// 所以缺区间要说成"这类判据指不到字"，不能留白让人以为已经看过。
+export function findingSpanText(row) {
+  const spans = row?.evidence?.char_offsets
+  if (!Array.isArray(spans) || spans.length === 0) {
+    return row?.evidence?.anchor === 'entry'
+      ? '未给出命中位置'
+      : '该类判据按整批数据判定，指不到具体字'
+  }
+  const parts = spans
+    .filter((pair) => Array.isArray(pair) && pair.length === 2)
+    .filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end) && end > start)
+    .slice(0, MAX_SPANS_SHOWN)
+    .map(([start, end]) => (end - start === 1 ? `第 ${start + 1} 字` : `第 ${start + 1}–${end} 字`))
+  if (!parts.length) return '未给出命中位置'
+  const rest = spans.length - parts.length
+  return `命中${parts.join('、')}${rest > 0 ? ` 等 ${spans.length} 处` : ''}`
+}
+
+// 挂靠条目 + PDF 页 + 能不能一键筛。缺值一律如实说出来，不许留白。
+// `page` 是 cascadeDelete 的 relation，条目删除会连带删掉疑点，所以这里不存在
+// 「疑点还挂着但条目没了」那一档，缺号只可能是没填或读取异常 ⇒ 一律说"未知"。
+export function findingLocator(row) {
+  const anchor = String(row?.evidence?.anchor ?? '')
+  const prefix = ANCHOR_PREFIX[anchor] ?? ''
+  const pageNumber = Number(row?.page_number)
+  const entryText = Number.isInteger(pageNumber) && pageNumber > 0
+    ? `${prefix}第 ${pageNumber} 条`
+    : `${prefix}条目号未知`
+  const pdfPage = Number(row?.pdf_page)
+  const hasPdf = Number.isInteger(pdfPage) && pdfPage > 0
+  // 条目列表的 PDF 页范围是后端精确数值过滤（q 是子串匹配，拿来跳某一条会误命中），
+  // 所以只有拿到页号时才给这个按钮。
+  return {
+    entryText,
+    pdfText: hasPdf ? `PDF 第 ${pdfPage} 页` : '无 PDF 页号（CSV 直接导入的条目）',
+    jumpable: hasPdf,
+    pdfPage: hasPdf ? pdfPage : null
+  }
+}
