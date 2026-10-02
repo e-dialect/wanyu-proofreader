@@ -279,10 +279,11 @@ jobs:
       - name: Verify every screenshot exists and is non-trivial
         if: success()
         run: |
-          # 这些状态名与 backend/tests/assist_browser.cjs 里的 shoot() 调用一一对应，
-          # 新增状态要同时改两处。
-          for state in findings-normal findings-empty-never-run findings-empty-clean
-                   findings-forbidden hall-tiers hall-claim-by-tier
+          # 这些状态名与 backend/tests/assist_browser_integration.mjs 的名字清单一一对应。
+          # 留这一层不是为了再看一次图，而是防"套件被静默 SKIP"：没设
+          # ASSIST_BROWSER_SCRIPT 时套件会退出 0，只有这里能发现产物根本不存在。
+          for state in findings-normal findings-empty-never-run findings-empty-clean \
+                   findings-forbidden hall-tiers hall-claim-by-tier \
                    proofreader-gated proofreader-hints; do
             test -s "output/playwright/assist-admin/${state}.png" || {
               echo "Missing or empty assist screenshot: ${state}.png" >&2
