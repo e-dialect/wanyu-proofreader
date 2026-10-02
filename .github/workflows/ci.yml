@@ -246,6 +246,62 @@ jobs:
           path: output/playwright/pdf-upload/*.png
           if-no-files-found: ignore
 
+  assist-browser:
+    name: Assist admin and hall screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Build the SPA for same-origin API calls
+        run: |
+          npm --prefix frontend ci
+          # 构建期把后端指到同源：截图脚本用 route 拦截把 /api/* 转发给真实服务端，
+          # 而生产 CSP 的 connect-src 不含 http://127.0.0.1:8090，指向它会被拦成
+          # "页面暂时无法显示"，于是整条作业只会截到错误边界。
+          VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - name: Install browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/assist-browser" playwright@1.62.1
+          "$RUNNER_TEMP/assist-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Capture the four admin states and the hall tier strip
+        env:
+          NODE_PATH: ${{ runner.temp }}/assist-browser/node_modules
+          ASSIST_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/assist_browser.cjs
+          ASSIST_BROWSER_FIXTURE: ${{ runner.temp }}/assist-browser-fixture.json
+        run: python3 backend/tests/run_integration.py assist_browser_integration.mjs
+      - name: Verify every screenshot exists and is non-trivial
+        if: success()
+        run: |
+          # 这些状态名与 backend/tests/assist_browser.cjs 里的 shoot() 调用一一对应，
+          # 新增状态要同时改两处。
+          for state in findings-normal findings-empty-never-run findings-empty-clean findings-forbidden hall-tiers; do
+            test -s "output/playwright/assist-admin/${state}.png" || {
+              echo "Missing or empty assist screenshot: ${state}.png" >&2
+              exit 1
+            }
+          done
+      - name: Attach assist screenshots
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: assist-admin-states
+          path: output/playwright/assist-admin/*.png
+          if-no-files-found: error
+      - name: Attach assist screenshots after failure
+        if: ${{ always() && !success() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: assist-admin-states
+          path: output/playwright/assist-admin/*.png
+          if-no-files-found: ignore
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
