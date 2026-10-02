@@ -64,7 +64,7 @@ const CLEAN = `${H}\n天,thin1,tʰĩ1,tʰĩ1,天空,1\n`
 // 带 char_offsets），所以认领到哪一页都能看到同一种疑点——截图不依赖认领顺序。
 const EDIT = `${H}\n甲 乙,ka1,ka32,ka32,两种东西,1\n丙 丁,pe1,pe32,pe32,两类东西,2\n`
 
-async function makeProject (name, csv, { recompute = true } = {}, members = []) {
+async function makeProject (name, csv, { recompute = true, roles = null } = {}, members = []) {
   const project = await api('/api/fangji/projects', {
     method: 'POST', token: admin.token, status: 201, body: { name: `${name} ${suffix}` }
   })
@@ -84,6 +84,10 @@ async function makeProject (name, csv, { recompute = true } = {}, members = []) 
     }
     if (want === 'validated') await api(`/api/fangji/imports/${job.id}/commit`, { method: 'POST', token: admin.token, status: 202 })
   }
+  // 列角色必须在重算之前落库：档位是按角色口径推的，晚一步就等于这批 tier 用旧口径算完再改。
+  if (roles) {
+    await api(`/api/fangji/projects/${project.id}/column-roles`, { method: 'PUT', token: admin.token, body: { roles } })
+  }
   if (recompute) {
     await api(`/api/fangji/projects/${project.id}/identity/recompute`, { method: 'POST', token: admin.token })
     await api(`/api/fangji/projects/${project.id}/findings/recompute`, { method: 'POST', token: admin.token })
@@ -94,7 +98,12 @@ async function makeProject (name, csv, { recompute = true } = {}, members = []) 
 const projectWithFindings = await makeProject('浏览器验收·有疑点', DIRTY, {}, [[manager.id, 'manager'], [reader.id, 'proofreader']])
 const projectNeverRun = await makeProject('浏览器验收·未重算', DIRTY, { recompute: false }, [[manager.id, 'manager']])
 const projectClean = await makeProject('浏览器验收·干净', CLEAN, {}, [[manager.id, 'manager']])
-const hallProject = await makeProject('浏览器验收·大厅层级', DIRTY, {}, [[hallReader.id, 'proofreader']])
+// 大厅那份单独用「词头 + 记音」两列：`kʰin9876` 那条被 R6 判 strong 落 B，
+// 另两条零疑点走 pure_transcription 落 A（与 tier_dispatch 的已验证形状一致）。
+// 一份 CSV 只落一档的话，这张图证明的就只是"层级条渲染了"，而不是"分层并存"（#162 第 4 条）。
+const HALL_CSV = '词头,莆田IPA,PDF页码\n甲,kʰin9876,1\n乙,kʰin1,2\n丙,kʰin1,3\n'
+const hallProject = await makeProject('浏览器验收·大厅层级', HALL_CSV,
+  { roles: { 词头: 'headword', 莆田IPA: 'reading' } }, [[hallReader.id, 'proofreader']])
 const editorProject = await makeProject('浏览器验收·校对端', EDIT, {}, [[editorReader.id, 'proofreader']])
 
 // 截图前先把服务端事实钉住：三态在数据层必须真的不同，否则截图毫无意义。
@@ -105,8 +114,8 @@ assert.equal(neverView.items.length, 0, '未重算的项目不该已有疑点')
 const cleanView = await api(`/api/fangji/projects/${projectClean.id}/findings?per=200`, { token: admin.token })
 assert.equal(cleanView.items.length, 0, `干净项目不该产出疑点：${JSON.stringify(cleanView.items.map((i) => [i.kind, i.message.key]))}`)
 const hallPages = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`project="${hallProject.id}"`)}`, { token: superAuth.token })
-assert.ok(hallPages.items.some((p) => ['A', 'B', 'C'].includes(p.difficulty_tier)),
-  `大厅项目必须有层级数据：${JSON.stringify(hallPages.items.map((p) => p.difficulty_tier))}`)
+const hallTiers = hallPages.items.map((p) => p.difficulty_tier).sort()
+assert.deepEqual(hallTiers, ['A', 'A', 'B'], `大厅项目必须分层并存：${JSON.stringify(hallTiers)}`)
 // 校对员触发项目级重算必须是 403（截图里"看不到按钮"的前提是接口真的拒）
 await api(`/api/fangji/projects/${projectWithFindings.id}/findings/recompute`, {
   method: 'POST', token: reader.token, status: 403

@@ -45,7 +45,12 @@ async function session (browser, auth, tolerated = []) {
   })
   page.on('requestfailed', (r) => errors.push(`reqfail: ${r.url().slice(0, 120)} ${r.failure()?.errorText}`))
   page.on('response', (r) => {
-    if (r.status() >= 400 && !isTolerated(r.url())) errors.push(`http ${r.status()}: ${r.url().slice(0, 140)}`)
+    // 只豁免「没有可预览的 PDF」那一种：该路由 404 是空态（pdf_access.go:76），
+    // 403 是登录/成员/租约信号（:48,58,62，`pdf_reuse_integration.mjs` 就是把 403 当结论断言的），
+    // 按 URL 整段放行会把后者一起静音。console 那条没有状态码，仍按 URL 豁免。
+    if (r.status() >= 400 && !(r.status() === 404 && isTolerated(r.url()))) {
+      errors.push(`http ${r.status()}: ${r.url().slice(0, 140)}`)
+    }
   })
   await page.route('**/*', async (route) => {
     const req = route.request()
@@ -163,8 +168,12 @@ async function dismissOnboarding (page) {
     await reader.waitForTimeout(1200)
     await shoot(reader, 'findings-forbidden')
     const readerBody = await reader.innerText('body')
+    // 只断言「不存在」是不够的：`ProjectDetailView.vue:659-673` 有三个都会让区块消失的分支
+    // （成员但无管理权 / 登录态失效 / 非成员），而登录态是靠 localStorage 注入的——
+    // 注入哪天失效，这张会截到登录页而两条负向断言照样全过。钉住预期分支的那句文案。
     assert.equal(/按项目重算疑点/.test(readerBody), false, '重算按钮对非 manager 可见')
     assert.equal(/机器疑点/.test(readerBody), false, '疑点区块对非 manager 可见')
+    assert.match(readerBody, /无权限管理该项目/, `无权限态不是预期分支：${readerBody.slice(0, 300)}`)
 
     // ---------- 5. 大厅：层级计数与按层级领取 ----------
     const hall = await session(browser, fixture.hallReader, [/\/pdf\/descriptor/])
@@ -172,10 +181,14 @@ async function dismissOnboarding (page) {
     await hall.waitForTimeout(1500)
     await hall.goto(`http://localhost/tasks`)
     // 层级计数只在 queue-tiers 那块出现（TaskHallView 的 tierRows），所以等它出现而不是等固定时长
-    await hall.locator('.queue-tiers').first().waitFor({ timeout: 60000 })
-    const hallText = await hall.innerText('body')
-    assert.match(hallText, /A|B|C/, '大厅没有层级信息')
-    assert.match(hallText, /简|易|难|档|级/, `大厅层级文案缺失：${hallText.slice(0, 400)}`)
+    const strip = hall.locator('.queue-tiers').first()
+    await strip.waitFor({ timeout: 60000 })
+    // 断言收在层级条本身，且要求**两档以上**：读整页 body 的 /A|B|C/ 单档也必过，
+    // 而 #162 要的是分层并存（评审抓到旧图只有一枚 B 芯片）。
+    assert.ok(await hall.locator('.queue-tier').count() >= 2, '大厅层级条不足两档，证明不了分层')
+    const hallText = await strip.innerText()
+    assert.match(hallText, /A 类 · 照抄型 · \d+/, `层级条里没有 A 档：${hallText}`)
+    assert.match(hallText, /B 类 · 需判断 · \d+/, `层级条里没有 B 档：${hallText}`)
     await shoot(hall, 'hall-tiers')
     // 层级条不是装饰：点某个层级按钮会真去服务端按该层领一条并跳进编辑页（#162）。
     // 前一张只证明"数出来了"，这张证明"按了有用"。
