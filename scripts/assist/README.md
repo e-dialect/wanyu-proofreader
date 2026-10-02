@@ -64,6 +64,11 @@ R3 列级（`mixed_normalization_forms`）、R4（`punctuation_mix`）、R7 的�
 所以这四条会在变更集里以「不参与打分」出现，跨行三条则**连点名都没有**。
 要度量它们，需要先把标注粒度提到 `(提交, 列/页)` 或 `(提交, 分组)`——那是 #185 一类的结构改动，不在本 spike 范围。
 
+2026-10-02 起这份「未覆盖」清单不再手写：它与「跨行身份族」（`merged_columns` 两个 key、
+`duplicate_identity`、`cross_source_conflict`，#254 报的就是这一族以前两栏都不提）
+合并成一处定义 `backend/pb_hooks/lib/rule_coverage.js`，`gate_changeset.mjs` 报告的
+第三栏「无打分通道」与 `score_rules.mjs` 的 `defaultRuleSet` 都从它读，漏归类套件会红。
+
 ## 5. 「先定线」的时间戳证据
 
 #179 的核心交付是「门槛数字早于 #177 的实现合入」。实测：

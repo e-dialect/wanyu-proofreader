@@ -151,6 +151,7 @@ function locatorOf(app, pageId, cache) {
 // 注意不要写成 highlight: undefined —— goja 会把 undefined 转成 null 落进响应里。
 function statisticsView(record, gate, row, locator) {
   const view = hintView(record, gate)
+  const coverage = require(`${__hooks}/lib/rule_coverage.js`)
   return {
     id: record.id,
     field: view.field,
@@ -166,6 +167,15 @@ function statisticsView(record, gate, row, locator) {
     producer_version: record.getString("producer_version"),
     produced_at: record.getString("produced_at"),
     gate,
+    // #254：`off` 有两种，界面必须说得出是哪一种——"有通道、等证据"与
+    // "现有通道量不到精度"读起来都像"再等等"，但后者永远等不到。
+    // 通道只下发给管理端：hintView（校对口）不带它，校对员不需要知道
+    // 自己手上这条能不能打分，那是放行侧的事。
+    scoring_channel: coverage.channelOf({
+      producer_version: record.getString("producer_version"),
+      kind: record.getString("kind"),
+      message_key: record.getString("message_key")
+    }),
     gate_sample_n: row ? row.getInt("sample_n") : 0,
     gate_precision_hat: row ? Number(row.get("precision_hat") || 0) : null
   }
