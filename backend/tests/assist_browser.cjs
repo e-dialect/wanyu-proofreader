@@ -1,4 +1,5 @@
-// #234 / #162 的界面证据：管理端机器疑点区块三态 + 大厅层级计数。
+// #234 / #162 / #228 的界面证据：管理端机器疑点区块三态、大厅层级派发，
+// 以及校对端在「门控挡住」与「人工放行」两种档位下的编辑页实况。
 //
 // 与 pdf_upload_browser.cjs 同一套做法：静态资源从 frontend/dist 取，**/api/* 一律转发给
 // 真实的 harness 服务端**（fixture.base），所以截图里的数字来自真库真判据，不是 mock。
@@ -25,14 +26,27 @@ async function shoot (page, name) {
   shots.push([name, fs.statSync(file).size])
 }
 
-async function session (browser, auth) {
+async function session (browser, auth, tolerated = []) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   const page = await context.newPage()
   const errors = []
+  // 有些 4xx 是**界面本该如实处理的空态**，不是页面故障：CSV 导入的项目没有 PDF，
+  // 编辑页的预览面板就走「没有可预览的 PDF」分支。把它当错误会让整条证据链
+  // 只能靠删断言通过；把它单独豁免，其余任何 4xx 依然一票否决。
+  const isTolerated = (url) => tolerated.some((pattern) => pattern.test(url))
   page.on('pageerror', (e) => errors.push(e.message))
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 400)}`) })
+  // 资源类 4xx 浏览器还会额外记一条 console error，而它本身不带 URL：
+  // 不取 location 的话，豁免就退化成"按文案放行"，那等于任何 404 都能被一句话抹掉。
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return
+    const where = m.location()?.url || ''
+    if (isTolerated(where)) return
+    errors.push(`console: ${m.text().slice(0, 400)} @ ${where.slice(0, 140)}`)
+  })
   page.on('requestfailed', (r) => errors.push(`reqfail: ${r.url().slice(0, 120)} ${r.failure()?.errorText}`))
-  page.on('response', (r) => { if (r.status() >= 400) errors.push(`http ${r.status()}: ${r.url().slice(0, 140)}`) })
+  page.on('response', (r) => {
+    if (r.status() >= 400 && !isTolerated(r.url())) errors.push(`http ${r.status()}: ${r.url().slice(0, 140)}`)
+  })
   await page.route('**/*', async (route) => {
     const req = route.request()
     const url = new URL(req.url())
@@ -69,6 +83,15 @@ async function session (browser, auth) {
   }, auth)
   page.__errors = errors
   return page
+}
+
+async function dismissOnboarding (page) {
+  // 首次进编辑页会弹新手引导，模态层会挡住一切点击。这里是**替校对员点掉它**，
+  // 不是把 DOM 删掉：证据要的是引导关掉之后真实的工作台界面。
+  const skip = page.locator('.onboarding-skip')
+  if (!await skip.count()) return
+  await skip.first().click({ timeout: 20000 })
+  await skip.first().waitFor({ state: 'hidden', timeout: 20000 })
 }
 
 ;(async () => {
@@ -144,7 +167,7 @@ async function session (browser, auth) {
     assert.equal(/机器疑点/.test(readerBody), false, '疑点区块对非 manager 可见')
 
     // ---------- 5. 大厅：层级计数与按层级领取 ----------
-    const hall = await session(browser, fixture.hallReader)
+    const hall = await session(browser, fixture.hallReader, [/\/pdf\/descriptor/])
     await hall.goto('http://localhost/workspace')
     await hall.waitForTimeout(1500)
     await hall.goto(`http://localhost/tasks`)
@@ -154,12 +177,63 @@ async function session (browser, auth) {
     assert.match(hallText, /A|B|C/, '大厅没有层级信息')
     assert.match(hallText, /简|易|难|档|级/, `大厅层级文案缺失：${hallText.slice(0, 400)}`)
     await shoot(hall, 'hall-tiers')
-    const queue = await hall.locator('text=/A 档|简单|难度|条/').first()
-    await queue.waitFor({ timeout: 20000 }).catch(() => {})
-    await shoot(hall, 'hall-tiers-queue')
+    // 层级条不是装饰：点某个层级按钮会真去服务端按该层领一条并跳进编辑页（#162）。
+    // 前一张只证明"数出来了"，这张证明"按了有用"。
+    const tierButton = hall.locator('.queue-tiers .queue-tier:not([disabled])').first()
+    const tierLabel = (await tierButton.innerText()).trim()
+    await tierButton.click({ timeout: 30000 })
+    await hall.waitForURL(/\/tasks\/[a-z0-9]+\/edit$/, { timeout: 60000 })
+    await hall.locator('.proofread-fields').first().waitFor({ timeout: 60000 })
+    await dismissOnboarding(hall)
+    assert.match(tierLabel, /·\s*\d+/, `层级按钮没带数量：${tierLabel}`)
+    await shoot(hall, 'hall-claim-by-tier')
 
-    for (const [, page] of []) void page
-    const all = [manager, never, clean, reader, hall]
+    // ---------- 6. 校对端：门控挡住 vs 放行后疑点进编辑页 ----------
+    //
+    // 这两张图是整条链路唯一"校对员真的看见了东西"的证据，所以中间那次放行
+    // 必须走 #228 的变更集接口（平台管理员 token），不能在这里直接改库：
+    // 直接改库的话，截图证明的就只是"前端会渲染"，而不是"门控会放行"。
+    const editor = await session(browser, fixture.editorReader, [/\/pdf\/descriptor/])
+    await editor.goto(`http://localhost/tasks/${fixture.editorPage.id}/edit`)
+    await editor.locator('.field-hint-gated').first().waitFor({ timeout: 60000 })
+    await dismissOnboarding(editor)
+    assert.equal(await editor.locator('.field-hint-chip').count(), 0, '规则未放行，编辑页却已经渲染了疑点')
+    const gatedText = await editor.locator('.field-hint-gated').first().innerText()
+    assert.match(gatedText, /暂未开放显示/, `挡住的数量没说清楚：${gatedText}`)
+    await shoot(editor, 'proofreader-gated')
+
+    const release = await fetch(`${fixture.base}/api/fangji/gates/changeset`, {
+      method: 'POST',
+      headers: { Authorization: fixture.admin.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changeset: `cs-browser-${Date.now()}`, entries: fixture.editorIdentities })
+    })
+    const releaseStatus = release.status
+    const releaseRaw = await release.text()
+    assert.equal(releaseStatus, 200, `变更集被拒：${releaseStatus} ${releaseRaw}`)
+    const applied = JSON.parse(releaseRaw)
+    assert.equal(applied.refused, 0, `有条目没过判据：${JSON.stringify(applied.entries.filter((e) => e.action === 'refused'))}`)
+    assert.ok(applied.applied >= 1, JSON.stringify(applied))
+
+    await editor.reload()
+    await dismissOnboarding(editor)
+    const chips = editor.locator('.field-hint-chip')
+    await chips.first().waitFor({ timeout: 60000 })
+    assert.ok(await chips.count() >= 1, '放行后编辑页没有疑点芯片')
+    // 高亮档专属：strong 芯片才会带 --strong 类，这是「档位→界面」那条线唯一的外在信号。
+    const strongChip = editor.locator('.field-hint-chip--strong')
+    assert.ok(await strongChip.count() >= 1, 'strong 档放行后没有出现高亮级疑点')
+    assert.equal(await editor.locator('.field-hint-gated').count(), 0, '放行后仍提示"有疑点被挡住"')
+    await strongChip.first().scrollIntoViewIfNeeded()
+    await strongChip.first().click()
+    // 点芯片 → locateSpan → 原文面板把命中码位标成 .source-value__hit。
+    // 断言标出来的**文字**而不是"有个元素"：区间错位时元素照样在，字却是别的字。
+    const hits = editor.locator('.source-value__hit')
+    await hits.first().waitFor({ timeout: 20000 })
+    const hitText = (await hits.first().innerText()).trim()
+    assert.ok(/[一-龥]/.test(hitText), `命中标记里没有正文：${JSON.stringify(hitText)}`)
+    await shoot(editor, 'proofreader-hints')
+
+    const all = [manager, never, clean, reader, hall, editor]
     for (const p of all) assert.deepEqual(p.__errors, [], `页面脚本报错：${p.__errors.join(' | ')}`)
     console.log('ASSIST BROWSER OK', JSON.stringify(shots))
   } finally {

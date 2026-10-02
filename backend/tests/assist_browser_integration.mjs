@@ -7,7 +7,7 @@
 // 而不是静默产出一张"看起来对"的空图。
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const base = process.env.PB_URL
@@ -55,10 +55,14 @@ async function userWithAuth (label) {
 const manager = await userWithAuth('assist-manager')
 const reader = await userWithAuth('assist-reader')
 const hallReader = await userWithAuth('assist-hall-reader')
+const editorReader = await userWithAuth('assist-editor-reader')
 
 const H = '词条,拼音,莆田IPA,仙游IPA,释义,PDF页码'
 const DIRTY = `${H}\n人,lang2,kʰan2,taŋ2,人类,1\n人,lang2,kʰan2,taŋ2,别人,2\n甲 乙,ka1,ka32,ka32,两种东西,3\n`
 const CLEAN = `${H}\n天,thin1,tʰĩ1,tʰĩ1,天空,1\n`
+// 校对端证据用的两份词头：每一行都会撞上 `multiple_headwords_in_cell`（strong 级、
+// 带 char_offsets），所以认领到哪一页都能看到同一种疑点——截图不依赖认领顺序。
+const EDIT = `${H}\n甲 乙,ka1,ka32,ka32,两种东西,1\n丙 丁,pe1,pe32,pe32,两类东西,2\n`
 
 async function makeProject (name, csv, { recompute = true } = {}, members = []) {
   const project = await api('/api/fangji/projects', {
@@ -91,6 +95,7 @@ const projectWithFindings = await makeProject('浏览器验收·有疑点', DIRT
 const projectNeverRun = await makeProject('浏览器验收·未重算', DIRTY, { recompute: false }, [[manager.id, 'manager']])
 const projectClean = await makeProject('浏览器验收·干净', CLEAN, {}, [[manager.id, 'manager']])
 const hallProject = await makeProject('浏览器验收·大厅层级', DIRTY, {}, [[hallReader.id, 'proofreader']])
+const editorProject = await makeProject('浏览器验收·校对端', EDIT, {}, [[editorReader.id, 'proofreader']])
 
 // 截图前先把服务端事实钉住：三态在数据层必须真的不同，否则截图毫无意义。
 const dirtyView = await api(`/api/fangji/projects/${projectWithFindings.id}/findings?per=200`, { token: admin.token })
@@ -107,9 +112,54 @@ await api(`/api/fangji/projects/${projectWithFindings.id}/findings/recompute`, {
   method: 'POST', token: reader.token, status: 403
 })
 
+// ---------- 校对端证据：先钉住"门控挡着"，再把放行动作交给截图脚本 ----------
+//
+// 这两张图要证明的是同一件事的两面：同一份疑点、同一个校对员、同一个条目，
+// 唯一的差别是规则档位。所以放行必须在浏览器跑到一半时才发生，
+// 这里只准备 payload——数字（n=120 / p̂=0.95）是**夹具自证的样例证据**，
+// 不是对线上规则的结论；判据本身由 gate_release.js 校验，refused 必须为 0。
+const editorPage = await api(`/api/fangji/projects/${editorProject.id}/claim`, {
+  method: 'POST', token: editorReader.token, body: {}
+})
+const gated = await api(`/api/fangji/pages/${editorPage.id}/findings`, { token: editorReader.token })
+assert.equal(gated.hints.length, 0, `规则没放行却有 hints：${JSON.stringify(gated.hints)}`)
+assert.ok(gated.suppressed_by_gate >= 1, `校对端必须知道"有东西被挡住"：${JSON.stringify(gated)}`)
+
+const editorIdentities = await api(`/api/fangji/projects/${editorProject.id}/findings?per=200`, { token: admin.token })
+assert.ok(editorIdentities.items.length >= 2, JSON.stringify(editorIdentities.items.map((i) => [i.kind, i.message.key])))
+// 四元组从**库里读**，不在这儿硬编码：硬编码的档位身份一旦和生产者漂移，
+// 变更集会 refuse 或更糟——放行一条根本不存在的规则，截图照样"对"。
+const seen = new Set()
+const entries = []
+for (const item of editorIdentities.items) {
+  const identity = [item.producer, item.producer_version, item.kind, item.message.key].join('\u0000')
+  if (seen.has(identity)) continue
+  seen.add(identity)
+  if (item.severity === 'info') continue
+  const strong = item.severity === 'strong'
+  entries.push({
+    producer: item.producer,
+    producer_version: item.producer_version,
+    kind: item.kind,
+    message_key: item.message.key,
+    // strong 档要 n≥100 且 p̂≥0.90，warn 档要 n≥150 且 p̂≥0.60（门槛文件 §2，
+    // 唯一出处是 gate_release.js 的 GATE_CRITERIA）。这里按各自门槛给足。
+    gate: strong ? 'strong' : 'warn',
+    sample_n: strong ? 120 : 160,
+    precision_hat: strong ? 0.95 : 0.75,
+    approved_by: 'platform-admin@assist-browser-evidence',
+    approved_at: new Date().toISOString()
+  })
+}
+assert.ok(entries.length >= 1, '没有可放行的 strong/warn 疑点，校对端截图无法成立')
+assert.ok(entries.some((e) => e.gate === 'strong'), '至少要有一条 strong，否则高亮分支不会被走到')
+
 const fixture = path.resolve(process.env.ASSIST_BROWSER_FIXTURE || '/tmp/assist-browser-fixture.json')
 writeFileSync(fixture, JSON.stringify({
-  base, manager, reader, hallReader, projectWithFindings, projectNeverRun, projectClean, hallProject
+  base, manager, reader, hallReader, editorReader,
+  admin: { token: admin.token, record: admin.record },
+  projectWithFindings, projectNeverRun, projectClean, hallProject, editorProject,
+  editorPage, editorIdentities: entries
 }))
 const outDir = process.env.ASSIST_BROWSER_OUTPUT || path.resolve('.', 'output/playwright/assist-admin')
 
@@ -119,7 +169,8 @@ const result = spawnSync('node', [script], {
 })
 assert.equal(result.status, 0, `assist_browser.cjs 退出码 ${result.status}`)
 
-for (const name of ['findings-normal', 'findings-empty-never-run', 'findings-empty-clean', 'findings-forbidden', 'hall-tiers']) {
+for (const name of ['findings-normal', 'findings-empty-never-run', 'findings-empty-clean', 'findings-forbidden',
+  'hall-tiers', 'hall-claim-by-tier', 'proofreader-gated', 'proofreader-hints']) {
   const file = path.join(outDir, `${name}.png`)
   assert.ok(existsSync(file), `缺截图：${file}`)
   assert.ok(statSync(file).size > 4096, `截图过小，疑似空白页：${file} ${statSync(file).size}`)
@@ -128,10 +179,9 @@ for (const name of ['findings-normal', 'findings-empty-never-run', 'findings-emp
 }
 console.log('Assist browser integration test passed.')
 
-for (const id of [projectWithFindings.id, projectNeverRun.id, projectClean.id, hallProject.id]) {
+for (const id of [projectWithFindings.id, projectNeverRun.id, projectClean.id, hallProject.id, editorProject.id]) {
   await api(`/api/collections/projects/records/${id}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 }
-for (const id of [manager.id, reader.id, hallReader.id]) {
+for (const id of [manager.id, reader.id, hallReader.id, editorReader.id]) {
   await api(`/api/collections/users/records/${id}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 }
-void readFileSync

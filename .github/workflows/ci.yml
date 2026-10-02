@@ -247,7 +247,7 @@ jobs:
           if-no-files-found: ignore
 
   assist-browser:
-    name: Assist admin and hall screenshots
+    name: Assist admin, hall and editor screenshots
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -270,7 +270,7 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/assist-browser" playwright@1.62.1
           "$RUNNER_TEMP/assist-browser/node_modules/.bin/playwright" install --with-deps chromium
-      - name: Capture the four admin states and the hall tier strip
+      - name: Capture admin states, the hall tier strip and the proofreader editor
         env:
           NODE_PATH: ${{ runner.temp }}/assist-browser/node_modules
           ASSIST_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/assist_browser.cjs
@@ -281,7 +281,9 @@ jobs:
         run: |
           # 这些状态名与 backend/tests/assist_browser.cjs 里的 shoot() 调用一一对应，
           # 新增状态要同时改两处。
-          for state in findings-normal findings-empty-never-run findings-empty-clean findings-forbidden hall-tiers; do
+          for state in findings-normal findings-empty-never-run findings-empty-clean
+                   findings-forbidden hall-tiers hall-claim-by-tier
+                   proofreader-gated proofreader-hints; do
             test -s "output/playwright/assist-admin/${state}.png" || {
               echo "Missing or empty assist screenshot: ${state}.png" >&2
               exit 1
