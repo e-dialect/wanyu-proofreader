@@ -269,6 +269,20 @@ diff -u /path/to/traefik.json /tmp/traefik-upload.json
 `assist_rule_gates` 决定机器疑点要不要下发给校对员。缺行按 `off` 处理，即**一条都不给**；
 这张表没有任何自动写入方——档位变化只能由平台管理员按下面的步骤人工应用。
 
+打分前有一个前提，它出错时的症状是「报告能出、数字全空、界面一切正常」：
+
+- **弱标注需要真实提交记录。** 标签来自 `pages.proofread_row_json` 与各次
+  `proofreading_attempts.row_json` 的字段级对齐（`scripts/assist/weak_labels.mjs`），
+  没人提交过就是 0 条样本、全表 `n/a`、全规则 `off`。那是**证据不足**而不是**精度不足**，
+  两者处置不同（门槛文件 §3）：前者等证据或改抽检口径，后者才考虑关规则。
+  2026-10-02 用正本 15,022 行跑的首轮就是这个样子：疑点 31,876 条，样本 0 条。
+
+另一个容易读错的地方：`GET/PUT /api/fangji/projects/{id}/column-roles` 返回的视图是拿**表头**
+（第一条条目的列名）对照的，所以项目还没有条目时，每列都会显示 `present: false`、全部列名进
+`stale`。那不是"你标错了"，也不是 R5 不产的原因——规则引擎用的是 `column_roles_json` 这份存储映射
+配**每行自己的列名**（`lib/column_roles.js` 的 `rolesForRules`），导入前标一样生效。
+`stale` 真正的含义是"这些名字在当前表头里找不到"，导入完成后它会自己清空。
+
 判据（`strong` 需 p̂ ≥ 0.90 且 n ≥ 100；`warn` 需 p̂ ≥ 0.60 且 n ≥ 150）的唯一代码出处是
 `backend/pb_hooks/lib/gate_release.js`，打分器与写入侧共用同一份常数；口径的文档出处是
 `docs/plans/2026-09-25-assist-rule-thresholds.md` §2/§5。改判据要同时改这两处。

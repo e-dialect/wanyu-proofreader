@@ -57,10 +57,16 @@ function main() {
   const dataset = values.db ? loadFromSqlite(values.db) : loadFromRecords(values.records)
   const keyboardPath = values.keyboard || path.join(here, '..', '..', 'backend', 'keyboards', 'hinghwa-dialect.json')
   const keyboards = [{ definition: JSON.parse(readFileSync(keyboardPath, 'utf8')) }]
-  // roles 可以由 --roles 指定文件；用 --records 时若导出文件自带 roles 就沿用它，
-  // 否则报告会静默少了 R5，读者以为该规则精度为 0。
-  const roles = values.roles ? JSON.parse(readFileSync(values.roles, 'utf8'))
-    : (dataset.roles && Object.keys(dataset.roles).length ? dataset.roles : null)
+  // 列角色决定 R5 的判定作用域。三种来源必须分开说，因为它们的处置动作不同：
+  // --roles 显式给的 > 库内读的 > 没有；库内多项目不一致时**不猜**，
+  // 直接降到"R5 不参与打分"并把原因写进报告头（静默少评一条规则是这类工具最常见的假绿）。
+  const dbRoles = dataset.roles && Object.keys(dataset.roles).length ? dataset.roles : null
+  const rolesConflict = Boolean(dataset.rolesConflict) && !values.roles
+  const roles = values.roles ? JSON.parse(readFileSync(values.roles, 'utf8')) : dbRoles
+  const rolesNote = values.roles ? '已提供（--roles 指定）'
+    : rolesConflict ? '不一致（本库含多个项目且列角色不同，R5 不参与打分；请按项目分别打分或用 --roles 指定）'
+      : roles ? (values.db ? '已提供（读自库内 projects.column_roles_json）' : '已提供（导出文件自带 roles）')
+        : '未提供（这份数据里没有任何列角色登记，R5 不参与打分）'
   const labels = buildLabels(dataset)
   const result = scoreRules(labels, defaultRuleSet({ keyboards, roles }))
   const synthetic = { ...result, labels: stripSecrets(labels) }
@@ -74,7 +80,7 @@ function main() {
     generatedAt: values.date || new Date().toISOString().slice(0, 10),
     sourceNote: `样本来自 ${values.db ? path.basename(values.db) : path.basename(values.records)}：`
       + `条目 ${dataset.pages.length}、提交 ${dataset.attempts.length}、字段级样本 ${labels.length}。`
-      + ` 键盘口径 = ${path.basename(keyboardPath)}；列角色 = ${roles ? '已提供' : '未提供（#170 未落地，R5 不参与打分）'}。`
+      + ` 键盘口径 = ${path.basename(keyboardPath)}；列角色 = ${rolesNote}。`
   })
   if (values.json) writeFileSync(values.json, JSON.stringify(synthetic, null, 2))
   if (values.report) writeFileSync(values.report, report)
