@@ -59,8 +59,12 @@ await api(`/api/fangji/projects/${project.id}/members/${reader.id}`, {
 // （带 char_offsets，且它是"无打分通道"那一族的代表）；`lang2` 产 l0-v1 的
 // `confusable_ascii_in_reading`（"有通道、等证据"那一族）；第三条是"另一条同身份形状"的对照，
 // 让跨行判据有可比的两行而不是一行自撞。
+// 第一格「𠀋 á 乙」同时踩两种偏移陷阱：𠀋 是补充平面字符（U+2A00B），一个码位占两个
+// UTF-16 单元——生产者发的是**码位**下标，前端 `locateSpan` 必须换算成 UTF-16 才能切
+// textarea/DOM，用普通汉字这一区分不出来；á 是 `a` + U+0301 两个码位一个字形，
+// 逐字符切分会把声调符甩在高亮外面。
 const csv = '词条,拼音,莆田IPA,仙游IPA,释义,PDF页码\n'
-  + '甲 乙,ka1,ka32,ka32,两种东西,1\n'
+  + '𠀋 a\u0301 乙,ka1,ka32,ka32,两种东西,1\n'
   + '人,lang2,kʰan2,taŋ2,人类,2\n'
   + '丙,pe1,pe32,pe32,单一个,3\n'
 const upload = new FormData()
@@ -140,7 +144,17 @@ const pageRow = await api(`/api/collections/pages/records/${claimed.id}`, { toke
 const source = JSON.parse(pageRow.ocr_row_json)[highlight.field]
 assert.equal(typeof source, 'string', `疑点挂在没有原文的字段上：${highlight.field}`)
 const spans = highlight.evidence?.char_offsets
-assert.ok(Array.isArray(spans) && spans.length, `strong 疑点必须带命中区间：${JSON.stringify(highlight.evidence)}`)
+assert.ok(Array.isArray(spans) && spans.length >= 2, `strong 疑点必须带命中区间：${JSON.stringify(highlight.evidence)}`)
+// 每一段都不许**从组合符开始**：`a` + U+0301 是一个字形单元，生产者若按字符逐个切，
+// 声调符会被甩在高亮外面——界面看上去就是"标错了位置"。
+for (const [index, [spanStart, spanEnd]] of spans.entries()) {
+  const chars = Array.from(source)
+  const first = chars[spanStart]
+  const code = first?.codePointAt(0) ?? -1
+  assert.ok(!(code >= 0x300 && code <= 0x36F),
+    `第 ${index + 1} 段从组合符开始，声调符被甩在高亮外：${JSON.stringify({ spans, source })}`)
+  assert.ok(spanEnd > spanStart && spanEnd <= chars.length, `第 ${index + 1} 段越界：${JSON.stringify(spans)}`)
+}
 const [start, end] = spans[0]
 const fragment = Array.from(source).slice(start, end).join('')
 assert.ok(fragment.length > 0, `区间切出来是空的：${JSON.stringify(spans)} / ${JSON.stringify(source)}`)
@@ -149,6 +163,17 @@ assert.ok(fragment.length > 0, `区间切出来是空的：${JSON.stringify(span
 assert.ok(source.split(/[\s、,，;；]+/).includes(fragment),
   `命中文本不是该格里的一个词头段：${JSON.stringify({ source, fragment, spans })}`)
 assert.equal(/^\s+$/.test(fragment), false, '命中区间切成了空白')
+// 契约的另一半：这些下标是**码位**而不是 UTF-16。第一格的首段是补充平面字符，
+// 按 UTF-16 直接切会得到一个孤立代理对——那正是前端如果不换算就会画出的"高亮"。
+if (Array.from(fragment).some((ch) => ch.codePointAt(0) > 0xFFFF)) {
+  const naive = String(source).slice(start, end)
+  assert.notEqual(naive, fragment, `码位下标与 UTF-16 下标没区分开（都是 ${JSON.stringify(fragment)}）`)
+  assert.equal(/^[\uD800-\uDBFF]$/.test(naive), true,
+    `按 UTF-16 切出来的不是半个代理对，说明这一格没真正测到差异：${JSON.stringify({ naive, fragment })}`)
+} else {
+  assert.ok(Array.from(source).some((ch) => ch.codePointAt(0) > 0xFFFF),
+    '夹具里的补充平面字符不见了：这段断言退化成普通汉字的重复检查')
+}
 
 // ---------- F：第二遍校对看到的疑点不受第一遍提交结果影响 ----------
 //
