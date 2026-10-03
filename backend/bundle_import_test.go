@@ -14,6 +14,9 @@ func testBundle() reviewbundle.Bundle {
 		SourceSystem:  "xiangsheng-jihe",
 		SourceID:      "synthetic-lexicon",
 		SourceVersion: "2026-10-02",
+		// 列集合与顺序按 requested_fields 投影，所以夹具必须声明它。
+		RequestedFields: []string{"headword", "reading"},
+		RightsRef:       "src-synthetic-0001",
 	}
 }
 
@@ -49,11 +52,13 @@ func TestBuildBundlePageKeepsFieldOrderAndSourceKey(t *testing.T) {
 }
 
 func TestBuildBundlePageRoutesPageColumnOutOfHeaders(t *testing.T) {
+	bundle := testBundle()
+	bundle.RequestedFields = []string{"headword", "pdf_page"}
 	entry := testEntry("e-1",
 		reviewbundle.Field{Name: "headword", Value: "甲"},
 		reviewbundle.Field{Name: "pdf_page", Value: "7"},
 	)
-	page, rowErr := buildBundlePage(testBundle(), entry, 10)
+	page, rowErr := buildBundlePage(bundle, entry, 10)
 	if rowErr != nil {
 		t.Fatalf("unexpected row error: %+v", rowErr)
 	}
@@ -66,8 +71,32 @@ func TestBuildBundlePageRoutesPageColumnOutOfHeaders(t *testing.T) {
 	}
 
 	// 超出当前主 PDF 的页码拒绝落库，而不是把越界页写进去。
-	if _, rowErr := buildBundlePage(testBundle(), entry, 5); rowErr == nil || rowErr.code != "PDF_PAGE_OUT_OF_RANGE" {
+	if _, rowErr := buildBundlePage(bundle, entry, 5); rowErr == nil || rowErr.code != "PDF_PAGE_OUT_OF_RANGE" {
 		t.Fatalf("out-of-range page was not rejected: %+v", rowErr)
+	}
+}
+
+// 列集合与顺序取 requested_fields，不是条目自己的键顺序：同一包内键序不一致会让
+// headersForProject 的按页 union 交错，而多给的键会变成整个项目的一列并下发到校对端。
+func TestBuildBundlePageProjectsOntoRequestedFields(t *testing.T) {
+	entry := testEntry("e-1",
+		reviewbundle.Field{Name: "reading", Value: "kah"},
+		reviewbundle.Field{Name: "headword", Value: "甲"},
+		reviewbundle.Field{Name: "upstream_note", Value: "不该落库"},
+	)
+	page, rowErr := buildBundlePage(testBundle(), entry, 0)
+	if rowErr != nil {
+		t.Fatalf("unexpected row error: %+v", rowErr)
+	}
+	if got, want := page.rowJSON, `{"headword":"甲","reading":"kah"}`; got != want {
+		t.Fatalf("rowJSON = %s, want %s（列序取 requested_fields，多余键不落库）", got, want)
+	}
+	if got, want := page.headersJSON, `["headword","reading"]`; got != want {
+		t.Fatalf("headersJSON = %s, want %s", got, want)
+	}
+	// 不落库不等于可以静默：被丢掉的键要能被上报。
+	if len(page.ignored) != 1 || page.ignored[0] != "upstream_note" {
+		t.Fatalf("ignored keys must be reported, got %v", page.ignored)
 	}
 }
 

@@ -12,7 +12,7 @@
 // 空串表示「这一行没有来源登记」，与导入时 source_link 的 unknown 语义一致。
 //
 // 幂等重放的另一半在 Go 侧（backend/bundle_import.go）：同一
-// (project, bundle_id) 的作业直接返回原结果，不新建作业；
+// (project, bundle_id) 且未失败的作业直接返回原结果，不新建作业；
 // 作业中途重启后重新入队时，已经写进去的条目会被同一把唯一索引挡住——所以
 // 「批次断点」不需要额外的游标表，自然键本身就是游标。
 //
@@ -20,7 +20,10 @@
 // 不是本库推导出来的），要撤掉更早的迁移，先备份 pb_data。
 
 const PAGE_INDEX = "CREATE UNIQUE INDEX idx_pages_source_entry ON pages (project, source_system, source_id, source_version, source_entry_id) WHERE source_entry_id != ''"
-const JOB_INDEX = "CREATE INDEX idx_import_jobs_bundle ON import_jobs (project, bundle_id)"
+// 部分唯一索引，谓词与「failed 可重试」配套：同一批只允许有一个未失败的作业，
+// 但失败之后可以再建一个新的（bundle_id 是来源侧身份，上游不能随意改，
+// 把 failed 也算进唯一性等于让瞬时失败的批次永久无法重试）。
+const JOB_INDEX = "CREATE UNIQUE INDEX idx_import_jobs_bundle ON import_jobs (project, bundle_id) WHERE status != 'failed'"
 
 const pageFields = [
   { build: () => new TextField({ name: "source_system", required: false, max: 200 }), remove: "source_system" },

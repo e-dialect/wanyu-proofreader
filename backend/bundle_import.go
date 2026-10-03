@@ -25,8 +25,11 @@ import (
 // 校验，所以「通过校验」与「能被解析」不可能各自漂移。本文件只做它刻意没做的那一半——
 // 落库，并给出三种确定行为：
 //
-//  1. **幂等**：同一 (project, bundle_id) 已有作业 → 直接返回原作业，不新建、不重导；
-//     同一条目的重复写入由 pages 的唯一索引兜住，跳过而不是覆盖。
+//  1. **幂等**：同一 (project, bundle_id) 且**未失败**的作业 → 直接返回原作业，不新建、
+//     不重导。口径与 CSV 侧刻意一致（import_service.go 的同型去重同样带 `status != "failed"`）：
+//     failed 允许重试，否则一个因瞬时原因失败的批次会因为 bundle_id 是来源侧身份、
+//     上游不能随意改而永久无法经由 API 重试。重放安全性不受影响——真重试时未写完的条目
+//     仍由条目级自然键挡住。同一条目的重复写入同样由唯一索引兜住，跳过而不是覆盖。
 //  2. **版本变化**：同 entry_id、新 source_version → 自然键不同 → 新条目，旧条目留在库里
 //     可追溯。这条规则不写在业务代码里，它是 (…, source_version, source_entry_id)
 //     唯一索引的自然结果。
@@ -59,10 +62,12 @@ type bundlePage struct {
 	sourceID      string
 	sourceVersion string
 	fields        []reviewbundle.Field
-	pdfPage       int
-	rowJSON       string
-	headersJSON   string
-	entryText     string
+	// ignored 是条目里带了、但不在 requested_fields 里的键：不落库，但要能被上报。
+	ignored     []string
+	pdfPage     int
+	rowJSON     string
+	headersJSON string
+	entryText   string
 }
 
 // isPDFPageHeader 与 CSV 的 resolveCSVHeaders 共用同一份别名表：
@@ -94,12 +99,38 @@ type bundleRowError struct {
 //   - 非文本值：契约允许任意 JSON 值，而 W 的条目模型是文本列。宁可逐条报出来，
 //     也不要静默 JSON.stringify——那会把「上游给了一个对象」变成一条看起来正常的字符串。
 func buildBundlePage(bundle reviewbundle.Bundle, entry reviewbundle.Entry, maxPDFPage int) (bundlePage, *bundleRowError) {
-	fields := make([]reviewbundle.Field, 0, len(entry.Fields))
-	headers := make([]string, 0, len(entry.Fields))
-	parts := make([]string, 0, len(entry.Fields))
+	byName := make(map[string]reviewbundle.Field, len(entry.Fields))
+	ignored := []string{}
+	requested := make(map[string]bool, len(bundle.RequestedFields))
+	for _, name := range bundle.RequestedFields {
+		requested[name] = true
+	}
+	for _, field := range entry.Fields {
+		if !requested[field.Name] {
+			// 契约只要求 fields **包含** requested_fields（下界），所以多给的键不算违约；
+			// 但它们不在「希望校对的字段」里，落库就会变成整个项目的一列、并随任务下发给
+			// 校对员（column_roles 的 headersForProject 会把各页表头按页序 union）。
+			// 因此不落库，只计数上报，不静默。
+			ignored = append(ignored, field.Name)
+			continue
+		}
+		if _, exists := byName[field.Name]; !exists {
+			byName[field.Name] = field
+		}
+	}
+
+	fields := make([]reviewbundle.Field, 0, len(bundle.RequestedFields))
+	headers := make([]string, 0, len(bundle.RequestedFields))
+	parts := make([]string, 0, len(bundle.RequestedFields))
 	pdfPage := 0
 
-	for _, field := range entry.Fields {
+	// 列的顺序取 requested_fields，而不是条目自己的键顺序：同一包内条目键序不一致时，
+	// headersForProject 的按页 union 会变成一个取决于哪一页先到的交错顺序。
+	for _, name := range bundle.RequestedFields {
+		field, ok := byName[name]
+		if !ok {
+			continue // 校验器保证每个 requested 字段都在；这里是防御性跳过
+		}
 		value, ok := field.Value.(string)
 		if !ok {
 			return bundlePage{}, &bundleRowError{
@@ -156,6 +187,7 @@ func buildBundlePage(bundle reviewbundle.Bundle, entry reviewbundle.Entry, maxPD
 		sourceID:      bundle.SourceID,
 		sourceVersion: bundle.SourceVersion,
 		fields:        fields,
+		ignored:       ignored,
 		pdfPage:       pdfPage,
 		rowJSON:       rowJSON,
 		headersJSON:   string(headersJSON),
@@ -193,6 +225,11 @@ func marshalOrderedFields(fields []reviewbundle.Field) (string, error) {
 func (s *importService) uploadBundle(c *core.RequestEvent) error {
 	requestID := ensureRequestID(c)
 	projectID := c.Request.PathValue("projectId")
+	// 与只读入口 bundle_validate.go、PDF 写入口 pdf_uploads.go 一致：还没改初始密码的账号
+	// 不该往项目里写条目。（CSV 入口漏了这条，不在本 PR 的口径里 —— 见 PR 正文。）
+	if c.Auth != nil && c.Auth.GetBool("must_change_password") {
+		return apis.NewForbiddenError("请先登录并完成初始密码修改。", nil)
+	}
 	auth, _, err := s.requireProjectManager(c, projectID)
 	if err != nil {
 		return err
@@ -224,29 +261,34 @@ func (s *importService) uploadBundle(c *core.RequestEvent) error {
 		return c.JSON(http.StatusUnprocessableEntity, report)
 	}
 
-	// 幂等：同一 bundle 已经有作业（含正在跑的）就直接把它还给调用方。
-	// 查询按 (project, bundle_id)，因为 bundle_id 是来源侧的「这一批」身份；
-	// 版本变化走的是新 bundle_id，落到下面的自然键规则里。
-	existing, err := s.app.FindRecordsByFilter(
-		"import_jobs",
-		`project = {:project} && bundle_id = {:bundle}`,
-		"-created",
-		1,
-		0,
-		dbx.Params{"project": projectID, "bundle": bundle.BundleID},
-	)
+	// rights_ref 是契约要求的来源登记 logical_id（校验器只查格式，存在性留给我们）。
+	// 判据直接复用 CSV 那条（import_service.go 的 importSourceLink）：找得到就关联，
+	// 找不到就拒绝这一次导入，不静默标成 unknown —— 与
+	// docs/plans/2026-09-29-source-registry.md 的既有口径一致。
+	// bundle 的 rights_ref 是必填的，所以这里不存在「留空 ⇒ unknown」那一支。
+	sourceID, sourceLink, err := s.importSourceLink(bundle.RightsRef)
+	if err != nil {
+		return apis.NewBadRequestError(
+			fmt.Sprintf("压缩包声明的 rights_ref「%s」不在来源登记里。请先在来源登记建好这条 logical_id 再导入。", bundle.RightsRef),
+			nil)
+	}
+
+	// 幂等：同一 bundle 已经有**未失败**的作业（含正在跑的）就直接把它还给调用方。
+	// failed 刻意不在短路范围内：bundle_id 是来源侧身份，上游不能随意改，
+	// 把 failed 也短路掉等于让一个瞬时失败的批次永久无法经由 API 重试。
+	existing, err := s.findJobByBundle(projectID, bundle.BundleID)
 	if err != nil {
 		return apis.NewBadRequestError("读取已有导入作业失败。", err)
 	}
-	if len(existing) > 0 {
+	if existing != nil {
 		logUpload("info", "bundle_replay_short_circuit", map[string]any{
 			"request_id": requestID,
 			"project_id": projectID,
 			"bundle_id":  bundle.BundleID,
-			"job_id":     existing[0].Id,
-			"status":     existing[0].GetString("status"),
+			"job_id":     existing.Id,
+			"status":     existing.GetString("status"),
 		})
-		return c.JSON(http.StatusOK, map[string]any{"status": "already_imported", "job": existing[0]})
+		return c.JSON(http.StatusOK, map[string]any{"status": "already_imported", "job": existing})
 	}
 
 	collection, err := s.app.FindCollectionByNameOrId("import_jobs")
@@ -268,17 +310,44 @@ func (s *importService) uploadBundle(c *core.RequestEvent) error {
 	record.Set("failed_count", 0)
 	record.Set("bundle_id", bundle.BundleID)
 	record.Set("bundle_schema_version", bundle.SchemaVersion)
-	record.Set("source_link", "unknown")
+	record.Set("source", sourceID)
+	record.Set("source_link", sourceLink)
 	file, err := filesystem.NewFileFromBytes(data, record.GetString("original_filename"))
 	if err != nil {
 		return apis.NewBadRequestError("保存压缩包失败，未写入任何数据。", err)
 	}
 	record.Set("source_file", file)
 	if err := s.app.Save(record); err != nil {
+		// idx_import_jobs_bundle 是部分唯一索引（WHERE status != 'failed'），并发上传同一批时
+		// 后来者会在这里撞上。重查一次确认「现在确实有同键作业」再按重放返回，查不到才如实
+		// 报错——不这么分，一条真实的写入失败会被当成重复而静默吞掉（与条目级同一取舍）。
+		if again, lookupErr := s.findJobByBundle(projectID, bundle.BundleID); lookupErr == nil && again != nil {
+			return c.JSON(http.StatusOK, map[string]any{"status": "already_imported", "job": again})
+		}
 		return apis.NewBadRequestError("创建导入作业失败，未写入任何数据。", err)
 	}
 	s.enqueue(importWork{kind: "bundle", id: record.Id, requestID: requestID})
 	return c.JSON(http.StatusAccepted, record)
+}
+
+// findJobByBundle 是作业级幂等的唯一查询入口：查与写后重查共用它，
+// 所以「什么算同一次重放」只有一处定义。
+func (s *importService) findJobByBundle(projectID, bundleID string) (*core.Record, error) {
+	records, err := s.app.FindRecordsByFilter(
+		"import_jobs",
+		`project = {:project} && bundle_id = {:bundle} && status != "failed"`,
+		"-created",
+		1,
+		0,
+		dbx.Params{"project": projectID, "bundle": bundleID},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, nil
+	}
+	return records[0], nil
 }
 
 // bundleFileName 保留上传者给的文件名（作业列表里要能认出来），但去掉路径成分，
@@ -389,8 +458,17 @@ func (s *importService) processBundle(work importWork) {
 	job.Set("processed_count", counters.processed)
 	job.Set("success_count", counters.success)
 	job.Set("failed_count", counters.failed)
+	// notes 只在真有事发生时才有内容：无条件写一句「已跳过 0 条重复条目」会让一次
+	// 全新的成功导入也挂上一条读起来像错误的文案。
+	notes := []string{}
+	if counters.skipped > 0 {
+		notes = append(notes, fmt.Sprintf("已跳过 %d 条重复条目（同一自然键在前一次导入里已存在）。", counters.skipped))
+	}
+	if len(counters.ignoredFields) > 0 {
+		notes = append(notes, fmt.Sprintf("已忽略 %d 个未请求字段：%s。", len(counters.ignoredFields), strings.Join(counters.ignoredFields, "、")))
+	}
 	job.Set("error_code", "")
-	job.Set("error_message", fmt.Sprintf("已跳过 %d 条重复条目。", counters.skipped))
+	job.Set("error_message", strings.Join(notes, ""))
 	job.Set("finished_at", types.NowDateTime())
 	if err := s.app.RunInTransaction(func(txDao core.App) error {
 		if _, err := txDao.DB().NewQuery(
@@ -402,6 +480,12 @@ func (s *importService) processBundle(work importWork) {
 		}
 		return txDao.Save(job)
 	}); err != nil {
+		// finalize 失败会把已写入的条目留在 status='importing'（那是导入中的暂存态，
+		// 对用户不可见也不会进任何队列）。这些僵尸页现在依赖「failed 可重试」被清掉：
+		// 调用方重新上传同一个包时，未失败作业的短路不会命中（这条是 failed），于是
+		// 走一条新作业，而新作业里同键条目的写入会被条目级唯一索引挡住——僵尸页不会
+		// 因此消失。清理它属于运维动作，见本文件头部「failed 可重试」那段口径；
+		// 这里先如实记下，不让它成为一条没人知道的隐含性质。
 		s.markFatal(work, "JOB_FINALIZE_FAILED", "条目已处理，但作业状态更新失败。", err)
 		return
 	}
@@ -415,6 +499,7 @@ func (s *importService) processBundle(work importWork) {
 		"success":     counters.success,
 		"skipped":     counters.skipped,
 		"failed":      counters.failed,
+		"ignored":     len(counters.ignoredFields),
 		"status":      status,
 	})
 }
@@ -425,6 +510,19 @@ type bundleCounters struct {
 	success   int
 	skipped   int
 	failed    int
+	// ignoredFields 是本次导入里出现过的、但不在 requested_fields 里的键名（去重、有序）。
+	// 它们不落库，所以必须有人能看见——否则「上游多给了一列」这件事在作业上完全无痕。
+	ignoredFields []string
+}
+
+func (c *bundleCounters) recordIgnored(pages []bundlePage) {
+	for _, page := range pages {
+		for _, name := range page.ignored {
+			if !containsStr(c.ignoredFields, name) {
+				c.ignoredFields = append(c.ignoredFields, name)
+			}
+		}
+	}
 }
 
 // flushBundleBatch 逐条「不存在才写」。整批走一个事务，失败后退回逐条写——
@@ -438,7 +536,11 @@ func (s *importService) flushBundleBatch(
 	projectID := job.GetString("project")
 	projectFileID := job.GetString("project_file")
 	number := nextPageNumber
+	// skipped 用批次局部变量累计：直接在闭包里 ++ 会在事务回退后重复计数
+	// （number 有同样的风险，只是它只造成页码空洞、无害）。
+	skippedInBatch := 0
 	err := s.app.RunInTransaction(func(txDao core.App) error {
+		skippedInBatch = 0
 		for _, page := range pages {
 			inserted, err := writeBundlePage(txDao, job.Id, projectID, projectFileID, number, page)
 			if err != nil {
@@ -446,6 +548,8 @@ func (s *importService) flushBundleBatch(
 			}
 			if inserted {
 				number++
+			} else {
+				skippedInBatch++
 			}
 		}
 		return nil
@@ -453,6 +557,8 @@ func (s *importService) flushBundleBatch(
 	if err == nil {
 		counters.success += len(pages)
 		counters.processed += len(pages)
+		counters.skipped += skippedInBatch
+		counters.recordIgnored(pages)
 		return number
 	}
 
@@ -466,6 +572,7 @@ func (s *importService) flushBundleBatch(
 	for _, page := range pages {
 		inserted, writeErr := writeBundlePage(s.app, job.Id, projectID, projectFileID, number, page)
 		counters.processed++
+		counters.recordIgnored([]bundlePage{page})
 		switch {
 		case writeErr != nil:
 			counters.failed++
@@ -473,9 +580,7 @@ func (s *importService) flushBundleBatch(
 				"该条通过格式校验，但写入数据库失败。", truncateText(writeErr.Error(), 500), true)
 		case !inserted:
 			counters.skipped++
-			counters.success++
 		default:
-			counters.success++
 			number++
 		}
 	}
