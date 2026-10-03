@@ -281,7 +281,61 @@ async function dismissOnboarding (page) {
     assert.ok(/[一-龥]/.test(hitText), `命中标记里没有正文：${JSON.stringify(hitText)}`)
     await shoot(editor, 'proofreader-hints')
 
-    const all = [manager, never, clean, reader, hall, noChannel, waiting, editor]
+    // ---------- 8. 条目阻塞结论三态（#240 验收第 7 条） ----------
+    //
+    // 三张图钉的是三件不同的事：无值那张必须真是"没人登记过"（不是加载失败的空壳）、
+    // 有值那张必须由**界面上的表单**写进去（不是夹具预先 UPDATE 库），
+    // 无权限那张必须证明这个身份在接口上也拿不到（否则只是"前端藏起来了"）。
+    const adminSession = await session(browser, fixture.admin)
+    await adminSession.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}`)
+    const panel = adminSession.locator('.blocked-conclusion')
+    await panel.waitFor({ timeout: 60000 })
+    await adminSession.getByLabel('选择条目（本页）').selectOption(fixture.blockedPage.id)
+    await adminSession.getByText('这条还没有人登记过阻塞原因。').waitFor({ timeout: 60000 })
+    assert.equal(await adminSession.getByRole('button', { name: '撤销结论' }).isDisabled(), true,
+      '库里没有结论时撤销按钮却是可点的')
+    await panel.scrollIntoViewIfNeeded()
+    await shoot(adminSession, 'blocked-conclusion-unset')
+
+    await adminSession.getByLabel('阻塞原因').selectOption('rights_gate')
+    await adminSession.getByLabel('依据（必填）').fill('浏览器验收：授权邮件 2026-10-03，本条目未获授权')
+    const submit = adminSession.getByRole('button', { name: '登记结论' })
+    assert.equal(await submit.isDisabled(), false, '填齐了两项仍然提交不了')
+    await submit.click()
+    // 回读串必须带 who/when/basis 三件，缺一件这条结论就不可复核
+    await adminSession.getByText(/授权未决｜登记于 \d{4}-\d{2}-\d{2} \d{2}:\d{2}｜依据：浏览器验收[^｜]+｜登记者：\S/).waitFor({ timeout: 60000 })
+    const tierLine = adminSession.getByText(/登记后层级/)
+    await tierLine.waitFor({ timeout: 60000 })
+    const tierText = await tierLine.innerText()
+    assert.match(tierText, /层级 C/, `登记 rights_gate 之后层级没落到 C：${tierText}`)
+    assert.match(tierText, /rights_gate_blocked/, `判据里没有人工桶：${tierText}`)
+    assert.equal(await adminSession.getByRole('button', { name: '撤销结论' }).isDisabled(), false,
+      '已经有结论却不能撤销')
+    await panel.scrollIntoViewIfNeeded()
+    await shoot(adminSession, 'blocked-conclusion-settled')
+
+    // 撤销走完整个往返：界面读回来的必须是服务端此刻的"没人登记过"，
+    // 而不是把上一行的文字留在原地。
+    await adminSession.getByRole('button', { name: '撤销结论' }).click()
+    await adminSession.getByText('这条还没有人登记过阻塞原因。').waitFor({ timeout: 60000 })
+
+    // 项目管理员：看得到「机器疑点」，看不到「条目阻塞结论」，且接口那边真是 403。
+    const blockedProbe = await fetch(`${fixture.base}/api/fangji/pages/${fixture.blockedPage.id}/blocked-reason`, {
+      headers: { Authorization: fixture.manager.token }
+    })
+    assert.equal(blockedProbe.status, 403, `项目管理员竟然读得到阻塞结论：${blockedProbe.status}`)
+    const managerBlocked = await session(browser, fixture.manager)
+    await managerBlocked.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}`)
+    const assistSection = managerBlocked.locator('section', { has: managerBlocked.locator('h2', { hasText: '机器疑点' }) }).first()
+    await assistSection.waitFor({ timeout: 60000 })
+    const sectionText = await assistSection.innerText()
+    // 钉住"人确实进到了正确的区块"，否则一张登录过期页也能让下面的负断言全过。
+    assert.match(sectionText, /机器疑点/)
+    assert.equal(/条目阻塞结论/.test(sectionText), false, '阻塞结论区块对非平台管理员可见')
+    await assistSection.scrollIntoViewIfNeeded()
+    await shoot(managerBlocked, 'blocked-conclusion-no-permission')
+
+    const all = [manager, never, clean, reader, hall, noChannel, waiting, editor, adminSession, managerBlocked]
     for (const p of all) assert.deepEqual(p.__errors, [], `页面脚本报错：${p.__errors.join(' | ')}`)
     console.log('ASSIST BROWSER OK', JSON.stringify(shots))
   } finally {

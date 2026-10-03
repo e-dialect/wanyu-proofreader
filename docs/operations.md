@@ -365,3 +365,10 @@ ASSIST_BROWSER_SCRIPT="$PWD/backend/tests/assist_browser.cjs" \
 
 正本规模的复现命令见上面「规则门控放行与降档」的打分/变更集两步；它的产物是报告，
 不是界面，两者不要混为一份证据。
+
+同一次运行还会拍出「条目阻塞结论」的三态（#240 验收第 7 条）：
+`blocked-conclusion-unset`（库里没有结论，撤销按钮灰着）、
+`blocked-conclusion-settled`（**由界面上的表单**写入，回读串带齐 who/when/basis，
+且层级当场落 C）、`blocked-conclusion-no-permission`（项目管理员看得到「机器疑点」
+但看不到这一节，同时接口对他是真 403）。第二张必须是点出来的而不是夹具预置的，
+否则它证明的只是"前端会渲染一行字"。

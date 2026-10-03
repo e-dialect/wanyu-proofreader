@@ -42,6 +42,7 @@ routerAdd("PUT", "/api/fangji/pages/{pageId}/blocked-reason", (c) => {
   const derived = blockedRefresh($app, page)
   return c.json(200, {
     page: pageId, blocked_reason: reason, blocked_reason_by: auth.id,
+    blocked_reason_by_name: auth.getString("name"),
     blocked_reason_at: at, blocked_reason_note: basis,
     difficulty_tier: derived.tier, difficulty_basis: derived.basis,
     difficulty_version: derived.version
@@ -53,10 +54,19 @@ routerAdd("GET", "/api/fangji/pages/{pageId}/blocked-reason", (c) => {
   if (!blockedIsPlatformAdmin(c.auth)) throw new ForbiddenError("只有平台管理员能读阻塞结论")
   let page = null
   try { page = $app.findRecordById("pages", c.request.pathValue("pageId")) } catch { throw new NotFoundError("条目不存在") }
+  const by = page.getString("blocked_reason_by")
+  let byName = ""
+  try {
+    byName = $app.findRecordById("users", by).getString("name")
+  } catch {
+    // 登记人被删掉时结论仍然有效（它是人工判断，不跟着人一起消失），只是没有署名。
+    byName = ""
+  }
   return c.json(200, {
     page: page.id,
     blocked_reason: page.getString("blocked_reason"),
-    blocked_reason_by: page.getString("blocked_reason_by"),
+    blocked_reason_by: by,
+    blocked_reason_by_name: byName,
     blocked_reason_at: page.getString("blocked_reason_at"),
     blocked_reason_note: page.getString("blocked_reason_note")
   })

@@ -89,6 +89,9 @@ assert.match(afterWrite.blocked_reason_note, /未获授权/, 'basis 没落库')
 const read = await api(route, { token: platform.token })
 assert.equal(read.blocked_reason, 'rights_gate')
 assert.equal(read.blocked_reason_note, afterWrite.blocked_reason_note)
+// who 必须给得出名字：界面那行"登记者"只有 id 的话，一张截图证明不了是谁登记的。
+assert.equal(read.blocked_reason_by_name, platform.record.name, JSON.stringify(read))
+assert.equal(written.blocked_reason_by_name, platform.record.name, JSON.stringify(written))
 
 // ---------- 值域与必填：白名单，绝不把输入拼进任何过滤表达式 ----------
 await api(route, { method: 'PUT', token: platform.token, body: { reason: 'not_a_bucket', basis: 'x' }, status: 400 })
@@ -121,6 +124,12 @@ const afterClear = await readPage()
 for (const field of ['blocked_reason', 'blocked_reason_by', 'blocked_reason_at', 'blocked_reason_note']) {
   assert.equal(afterClear[field] ?? '', '', `${field} 清除后不是空串：${JSON.stringify(afterClear[field])}`)
 }
+// 读回口也不能留着署名：界面那行"登记者"会指向一个已经没有结论的人。
+const readAfterClear = await api(route, { token: platform.token })
+assert.equal(readAfterClear.blocked_reason, '')
+assert.equal(readAfterClear.blocked_reason_by, '')
+assert.equal(readAfterClear.blocked_reason_by_name ?? '', '', JSON.stringify(readAfterClear))
+assert.equal(readAfterClear.blocked_reason_note ?? '', '')
 
 // unknown 是一个**结论**，与"没人说过"必须能在库里区分开
 await api(route, { method: 'PUT', token: platform.token, body: { reason: 'unknown', basis: '看过，认不出是什么卡住了' } })

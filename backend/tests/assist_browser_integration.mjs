@@ -205,12 +205,18 @@ assert.ok(entries.length >= 1, '没有可放行的 strong/warn 疑点，校对�
 assert.ok(entries.some((e) => e.gate === 'strong'), '至少要有一条 strong，否则高亮分支不会被走到')
 
 const fixture = path.resolve(process.env.ASSIST_BROWSER_FIXTURE || '/tmp/assist-browser-fixture.json')
+// #240 的三态截图需要一条"此刻库里确实没有结论"的条目：截图里那句"还没有人登记过"
+// 如果其实是加载失败留下的空壳，这张图就不能当验收证据。
+const blockedPages = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`project="${projectWithFindings.id}"`)}&sort=page_number&perPage=1`, { token: superAuth.token })
+const blockedPage = blockedPages.items[0]
+assert.ok(blockedPage, '有疑点的项目里必须有条目')
+assert.equal(blockedPage.blocked_reason ?? '', '', `截图要拍的那条必须还没有结论：${JSON.stringify(blockedPage.blocked_reason)}`)
 writeFileSync(fixture, JSON.stringify({
   base, manager, reader, hallReader, editorReader,
   admin: { token: admin.token, record: admin.record },
   projectWithFindings, projectNeverRun, projectClean, hallProject, editorProject,
   projectNoChannel, projectWaiting,
-  editorPage, editorIdentities: entries
+  blockedPage, editorPage, editorIdentities: entries
 }))
 const outDir = process.env.ASSIST_BROWSER_OUTPUT || path.resolve('.', 'output/playwright/assist-admin')
 
@@ -222,7 +228,8 @@ assert.equal(result.status, 0, `assist_browser.cjs 退出码 ${result.status}`)
 
 for (const name of ['findings-normal', 'findings-empty-never-run', 'findings-empty-clean', 'findings-forbidden',
   'findings-no-channel', 'findings-waiting-evidence', 'hall-tiers', 'hall-claim-by-tier',
-  'proofreader-gated', 'proofreader-hints']) {
+  'proofreader-gated', 'proofreader-hints',
+  'blocked-conclusion-unset', 'blocked-conclusion-settled', 'blocked-conclusion-no-permission']) {
   const file = path.join(outDir, `${name}.png`)
   assert.ok(existsSync(file), `缺截图：${file}`)
   assert.ok(statSync(file).size > 4096, `截图过小，疑似空白页：${file} ${statSync(file).size}`)
