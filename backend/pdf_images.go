@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -59,7 +60,7 @@ func lookupPageImage(root string, file *core.Record, n int, now time.Time) (stri
 
 // Only called by the serial worker. Process arguments never go through a shell.
 // Each renderer is bounded by a timeout and a 2048px longest edge.
-func renderPageImage(source, dir string, n int, stamp string) (pageImageMeta, error) {
+func renderPageImage(parent context.Context, source, dir string, n int, stamp string) (pageImageMeta, error) {
 	raw, err := os.ReadFile(source)
 	if err != nil {
 		return pageImageMeta{}, err
@@ -76,9 +77,7 @@ func renderPageImage(source, dir string, n int, stamp string) (pageImageMeta, er
 	prefix := filepath.Join(dir, "render")
 	png := prefix + ".png"
 	defer os.Remove(png)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, "pdftoppm", "-f", "1", "-l", "1", "-singlefile", "-cropbox", "-scale-to", "2048", "-png", pdf, prefix).CombinedOutput(); err != nil {
+	if out, err := runImageCommand(parent, 30*time.Second, "pdftoppm", "-f", "1", "-l", "1", "-singlefile", "-cropbox", "-scale-to", "2048", "-png", pdf, prefix); err != nil {
 		return pageImageMeta{}, fmt.Errorf("page rasterization: %w: %.500s", err, out)
 	}
 	f, err := os.Open(png)
@@ -94,7 +93,7 @@ func renderPageImage(source, dir string, n int, stamp string) (pageImageMeta, er
 	if meta.Width < 1 || meta.Height < 1 || meta.Width > 2048 || meta.Height > 2048 {
 		return meta, fmt.Errorf("invalid rendered dimensions")
 	}
-	if out, err := exec.CommandContext(ctx, "cwebp", "-quiet", "-q", "90", png, "-o", filepath.Join(dir, fmt.Sprintf("%d.webp", n))).CombinedOutput(); err != nil {
+	if out, err := runImageCommand(parent, 30*time.Second, "cwebp", "-quiet", "-q", "90", png, "-o", filepath.Join(dir, fmt.Sprintf("%d.webp", n))); err != nil {
 		return meta, fmt.Errorf("WebP encoding: %w: %.500s", err, out)
 	}
 	raw, _ = json.Marshal(meta)
@@ -103,6 +102,8 @@ func renderPageImage(source, dir string, n int, stamp string) (pageImageMeta, er
 }
 
 func (s *importService) preparePDFImages(file *core.Record) error {
+	ctx, cancel := context.WithTimeout(s.imageContext, 10*time.Minute)
+	defer cancel()
 	complete := file.GetInt("page_count") > 0
 	for n := 1; n <= file.GetInt("page_count"); n++ {
 		if _, _, ok := lookupPageImage(s.pdfCacheDir(), file, n, time.Now()); !ok {
@@ -134,8 +135,11 @@ func (s *importService) preparePDFImages(file *core.Record) error {
 	defer os.RemoveAll(staging)
 	var size int64
 	for n := 1; n <= file.GetInt("page_count"); n++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		stamp := fmt.Sprintf("Wanyu | %s p%d", pdfSourceKey(file)[:12], n)
-		if _, err := renderPageImage(filepath.Join(source, fmt.Sprintf("%d.pdf", n)), staging, n, stamp); err != nil {
+		if _, err := renderPageImage(ctx, filepath.Join(source, fmt.Sprintf("%d.pdf", n)), staging, n, stamp); err != nil {
 			return err
 		}
 		for _, ext := range []string{"webp", "json"} {
@@ -177,7 +181,7 @@ func (s *importService) schedulePDFImages(file *core.Record) {
 	}
 	s.pending[key] = struct{}{}
 	select {
-	case s.queue <- importWork{kind: "pdf-images", id: file.Id, requestID: "preview-" + file.Id, enqueuedAt: time.Now()}:
+	case s.imageQueue <- importWork{kind: "pdf-images", id: file.Id, requestID: "preview-" + file.Id, enqueuedAt: time.Now()}:
 	default:
 		delete(s.pending, key)
 	}
@@ -189,6 +193,9 @@ func (s *importService) processPDFImages(work importWork) {
 		return
 	}
 	if err := s.preparePDFImages(file); err != nil {
+		if s.imageContext.Err() != nil {
+			return // Shutdown cancellation must not cause a 24-hour failure backoff.
+		}
 		pdfCacheMu.Lock()
 		_ = os.MkdirAll(s.pdfCacheDir(), 0700)
 		_ = os.WriteFile(filepath.Join(s.pdfCacheDir(), "oversized-images-"+imageSourceKey(file)), nil, 0600)
@@ -202,6 +209,7 @@ func imageWindowKey(file *core.Record, user string, n int, expiry time.Time) str
 }
 
 func (s *importService) taskPageImage(c *core.RequestEvent) error {
+	started := time.Now()
 	file, start, end, err := s.resolveTaskPDF(c)
 	if err != nil {
 		return err
@@ -239,5 +247,63 @@ func (s *importService) taskPageImage(c *core.RequestEvent) error {
 	if err != nil {
 		return apis.NewNotFoundError("页面图片不可用，请使用 PDF 预览。", nil)
 	}
+	logPageImageAccess(c.Auth.Id, pdfCacheKey(imageSourceKey(file), strconv.Itoa(n)), pdfSourceKey(file), n, started)
 	return c.Blob(http.StatusOK, "image/webp", data)
+}
+
+func runImageCommand(parent context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+}
+
+var imageStagingName = regexp.MustCompile(`^pdf-images-[0-9]+$`)
+
+// Startup only, before workers start: never age-delete active render directories.
+func (s *importService) cleanupPDFImageStaging() {
+	entries, err := os.ReadDir(s.app.DataDir())
+	if err != nil {
+		logUpload("warn", "pdf_images_cleanup_failed", map[string]any{"error": err.Error()})
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !imageStagingName.MatchString(entry.Name()) {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(s.app.DataDir(), entry.Name())); err != nil {
+			logUpload("warn", "pdf_images_cleanup_failed", map[string]any{"error": err.Error()})
+		}
+	}
+}
+
+// A dedicated worker bounds image concurrency at one without occupying imports.
+func (s *importService) runPDFImageWorker(process func(importWork)) {
+	for {
+		select {
+		case <-s.imageContext.Done():
+			return
+		case work := <-s.imageQueue:
+			if s.imageContext.Err() != nil {
+				return
+			}
+			s.executePDFImageWork(work, process)
+		}
+	}
+}
+
+func (s *importService) executePDFImageWork(work importWork, process func(importWork)) {
+	started := time.Now()
+	logUpload("info", "work_started", map[string]any{"kind": work.kind, "record_id": work.id, "request_id": work.requestID, "queue_wait_ms": started.Sub(work.enqueuedAt).Milliseconds()})
+	defer s.finishWork(work)
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logUpload("error", "worker_panic", map[string]any{"kind": work.kind, "record_id": work.id, "error": fmt.Sprint(recovered)})
+		}
+		logUpload("info", "work_finished", map[string]any{"kind": work.kind, "record_id": work.id, "duration_ms": time.Since(started).Milliseconds()})
+	}()
+	process(work)
+}
+
+func logPageImageAccess(userID, assetID, sourceKey string, n int, started time.Time) {
+	logUpload("info", "pdf_preview", map[string]any{"user_id": userID, "asset_id": assetID, "source_key": sourceKey[:12], "page_range": strconv.Itoa(n), "cache": "image-hit", "total_ms": time.Since(started).Milliseconds()})
 }

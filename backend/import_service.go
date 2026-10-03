@@ -110,23 +110,34 @@ func logUploadRejected(requestID, kind, projectID, stage, message string, err er
 }
 
 type importService struct {
-	app        *pocketbase.PocketBase
-	queue      chan importWork
-	mu         sync.Mutex
-	pending    map[string]struct{}
-	pdfUploads *pdfUploadPool
+	app          *pocketbase.PocketBase
+	queue        chan importWork
+	imageQueue   chan importWork
+	imageContext context.Context
+	imageCancel  context.CancelFunc
+	mu           sync.Mutex
+	pending      map[string]struct{}
+	pdfUploads   *pdfUploadPool
 }
 
 func newImportService(app *pocketbase.PocketBase) *importService {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &importService{
-		app:     app,
-		queue:   make(chan importWork, 1024),
-		pending: map[string]struct{}{},
+		app:          app,
+		queue:        make(chan importWork, 1024),
+		imageQueue:   make(chan importWork, 16),
+		imageContext: ctx,
+		imageCancel:  cancel,
+		pending:      map[string]struct{}{},
 	}
 }
 
 func (s *importService) register() {
 	s.registerChunkUploads()
+	s.app.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
+		s.imageCancel()
+		return e.Next()
+	})
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		e.Router.POST(
 			"/api/fangji/projects/{projectId}/imports/csv",
@@ -140,6 +151,9 @@ func (s *importService) register() {
 			s.uploadPDF).Bind(apis.BodyLimit(maxPDFBytes+1024*1024), // Allow multipart framing.
 			apis.RequireAuth("users"))
 
+		// Remove abandoned staging before either worker can create new directories.
+		s.cleanupPDFImageStaging()
+		go s.runPDFImageWorker(s.processPDFImages)
 		go s.runWorker()
 		go s.recoverPendingWork()
 		return e.Next()
@@ -566,9 +580,7 @@ func (s *importService) runWorker() {
 						"record_id":  work.id,
 						"error":      panicErr.Error(),
 					})
-					if work.kind != "pdf-images" {
-						s.markFatal(work, "WORKER_PANIC", "服务器处理文件时发生内部错误。", panicErr)
-					}
+					s.markFatal(work, "WORKER_PANIC", "服务器处理文件时发生内部错误。", panicErr)
 				}
 			}()
 			switch work.kind {
@@ -578,8 +590,6 @@ func (s *importService) runWorker() {
 				s.processCSV(work)
 			case "pdf":
 				s.processPDF(work)
-			case "pdf-images":
-				s.processPDFImages(work)
 			case "ocr":
 				s.processOCR(work)
 			}
@@ -814,7 +824,7 @@ func (s *importService) processPDF(work importWork) {
 		"validator":  pdfValidator,
 	})
 	// Publish ready first; page images may take longer and must not block use.
-	s.processPDFImages(importWork{kind: "pdf-images", id: recordID})
+	s.schedulePDFImages(record)
 }
 
 func validatePDFStructure(reader io.ReadSeeker) (int, error) {
