@@ -28,5 +28,6 @@
   { "suite": "assist_browser_integration.mjs", "ci_matrix": false, "requires_env": "ASSIST_BROWSER_SCRIPT", "note": "需要 playwright 与已构建的 frontend/dist；截图由 assist-browser 作业产出" },
   { "suite": "tier_dispatch_integration.mjs", "ci_matrix": true },
   { "suite": "assist_admin_integration.mjs", "ci_matrix": true },
-  { "suite": "artifact_export_integration.mjs", "ci_matrix": true }
+  { "suite": "artifact_export_integration.mjs", "ci_matrix": true },
+  { "suite": "bundle_import_integration.mjs", "ci_matrix": false, "ci_runner": "run_bundle_import_integration.py", "note": "restarts the server to prove an interrupted bundle job reaches a terminal state" }
 ]
