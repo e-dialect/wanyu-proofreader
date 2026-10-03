@@ -115,6 +115,8 @@ type importService struct {
 	mu         sync.Mutex
 	pending    map[string]struct{}
 	pdfUploads *pdfUploadPool
+	// schemes 是启动时载入的拼音规则表（#190）。载入后不变，因此读它不需要加锁。
+	schemes *schemeRegistry
 }
 
 func newImportService(app *pocketbase.PocketBase) *importService {
@@ -578,6 +580,8 @@ func (s *importService) runWorker() {
 				s.processPDF(work)
 			case "ocr":
 				s.processOCR(work)
+			case "conversion":
+				s.processConversion(work)
 			}
 		}()
 	}
@@ -609,6 +613,24 @@ func (s *importService) recoverPendingWork() {
 		}
 	}
 
+	conversions, err := s.app.FindRecordsByFilter(
+		"conversion_jobs",
+		`status = "queued" || status = "processing"`,
+		"created",
+		10000,
+		0,
+	)
+	if err != nil {
+		logUpload("error", "recovery_query_failed", map[string]any{
+			"kind":  "conversion",
+			"error": err.Error(),
+		})
+	} else {
+		for _, job := range conversions {
+			s.enqueue(importWork{kind: "conversion", id: job.Id, requestID: "recovery-" + job.Id})
+		}
+	}
+
 	files, err := s.app.FindRecordsByFilter(
 		"project_files",
 		`status = "processing"`,
@@ -627,8 +649,9 @@ func (s *importService) recoverPendingWork() {
 		}
 	}
 	logUpload("info", "recovery_scan_completed", map[string]any{
-		"csv_jobs":  len(jobs),
-		"pdf_files": len(files),
+		"csv_jobs":    len(jobs),
+		"pdf_files":   len(files),
+		"conversions": len(conversions),
 	})
 }
 
