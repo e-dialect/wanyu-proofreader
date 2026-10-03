@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 
 // #240：`pages.blocked_reason` 的人工写入口。权限口径由维护者定为 (B) 平台管理员。
 //
@@ -137,8 +138,42 @@ assert.equal((await readPage()).blocked_reason, 'unknown')
 await api(route, { method: 'DELETE', token: platform.token })
 assert.equal((await readPage()).blocked_reason, '')
 
+// ---------- 四条判据逐条可达 ----------
+// issue 标题说的是"4 条 tier 判据读不到东西"，所以只钉 `rights_gate` 一条不算交付完：
+// 每个桶各自落在不同档位（A/B/C），漏掉任何一个的症状都是"这个桶登记了但分层没反应"，
+// 而界面上那句"登记与撤销都会立刻重算层级"就成了假话。
+// 期望档位从 `assist_difficulty.js` 的 TIER_RULES 读，不在测试里另抄一份数字：
+// 抄一份的话规则改了档位，测试会跟着红在"我以为它是 B"而不是"库里确实是 B"。
+const difficultySource = await readFile(
+  new URL('../pb_hooks/lib/assist_difficulty.js', import.meta.url), 'utf8')
+const expectedTier = (ruleId) => {
+  const match = difficultySource.match(new RegExp(`id: "${ruleId}", tier: "(\\w)"`))
+  assert.ok(match, `TIER_RULES 里找不到 ${ruleId}：这条防漏测试已经失效`)
+  return match[1]
+}
+for (const [bucket, ruleId] of [
+  ['glyph_table', 'glyph_table_blocked'],
+  ['scanned_read', 'scanned_read_blocked'],
+  ['column_merge', 'column_merge_blocked'],
+  ['rights_gate', 'rights_gate_blocked']
+]) {
+  const tier = expectedTier(ruleId)
+  const result = await api(route, {
+    method: 'PUT', token: platform.token, body: { reason: bucket, basis: `逐桶可达性验证：${bucket}` }
+  })
+  assert.equal(result.blocked_reason, bucket)
+  assert.equal(result.difficulty_tier, tier, `${bucket} 应把档位推到 ${tier}，实得 ${JSON.stringify(result)}`)
+  assert.ok(result.difficulty_basis.includes(ruleId), `${ruleId} 没因人工写值而命中：${JSON.stringify(result.difficulty_basis)}`)
+  // 库里存的必须就是人写的那个桶：机器路径只读不 stamp，写后被洗掉是本 issue 立项的根因
+  assert.equal((await readPage()).blocked_reason, bucket, `${bucket} 写进去又被人读成别的值`)
+  await api(route, { method: 'DELETE', token: platform.token })
+}
+// 四个桶都过完之后必须回到"没人说过"，否则后面删项目前的状态是脏的
+assert.equal((await readPage()).blocked_reason, '')
+assert.equal((await readPage()).difficulty_tier, tierBefore, `逐桶验证之后没回落到基线档位`)
+
 await api(`/api/collections/projects/records/${project.id}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 for (const id of [manager.id, proofreader.id, outsider.id]) {
   await api(`/api/collections/users/records/${id}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 }
-console.log('PASS: 阻塞结论只有平台管理员能写、值域白名单、basis 必填、写完即刷档、重算不洗、清除回到空串且层级回落')
+console.log('PASS: 阻塞结论只有平台管理员能写、值域白名单、basis 必填、写完即刷档、重算不洗、清除回到空串且层级回落、四个桶各自把档位推到 TIER_RULES 写的值')
