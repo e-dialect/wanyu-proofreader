@@ -28,5 +28,7 @@
   { "suite": "assist_browser_integration.mjs", "ci_matrix": false, "requires_env": "ASSIST_BROWSER_SCRIPT", "note": "需要 playwright 与已构建的 frontend/dist；截图由 assist-browser 作业产出" },
   { "suite": "tier_dispatch_integration.mjs", "ci_matrix": true },
   { "suite": "assist_admin_integration.mjs", "ci_matrix": true },
-  { "suite": "artifact_export_integration.mjs", "ci_matrix": true }
+  { "suite": "artifact_export_integration.mjs", "ci_matrix": true },
+  { "suite": "scheme_conversion_browser_integration.mjs", "ci_matrix": false, "requires_env": "SCHEME_BROWSER_SCRIPT", "note": "需要 playwright、已构建的 frontend/dist 与 #281 的合成适配器；截图由 scheme-conversion-browser 作业产出" },
+  { "suite": "scheme_conversion_integration.mjs", "ci_matrix": false, "ci_runner": "run_scheme_conversion_integration.py", "note": "需要规则目录与一次重启；用 #281 的合成适配器" }
 ]

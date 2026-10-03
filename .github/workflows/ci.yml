@@ -307,6 +307,57 @@ jobs:
           path: output/playwright/assist-admin/*.png
           if-no-files-found: ignore
 
+  scheme-conversion-browser:
+    name: Scheme conversion admin screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Build the SPA for same-origin API calls
+        run: |
+          npm --prefix frontend ci
+          VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - name: Install browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/scheme-browser" playwright@1.62.1
+          "$RUNNER_TEMP/scheme-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Capture the conversion summary and the review queue
+        env:
+          NODE_PATH: ${{ runner.temp }}/scheme-browser/node_modules
+        run: python3 backend/tests/run_scheme_conversion_browser.py
+      - name: Verify every screenshot exists and is non-trivial
+        if: success()
+        run: |
+          # 名字与 scheme_conversion_browser_integration.mjs 的清单一一对应。
+          # 没设 SCHEME_BROWSER_SCRIPT 时套件会退出 0，只有这里能发现产物不存在。
+          for state in scheme-summary-and-queue scheme-review-draft scheme-review-done; do
+            test -s "output/playwright/scheme-conversion/${state}.png" || {
+              echo "Missing or empty scheme conversion screenshot: ${state}.png" >&2
+              exit 1
+            }
+          done
+      - name: Attach scheme conversion screenshots
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scheme-conversion-admin
+          path: output/playwright/scheme-conversion/*.png
+          if-no-files-found: error
+      - name: Attach scheme conversion screenshots after failure
+        if: ${{ always() && !success() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: scheme-conversion-admin
+          path: output/playwright/scheme-conversion/*.png
+          if-no-files-found: ignore
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -382,6 +433,8 @@ jobs:
         run: python3 backend/tests/check_migrations.py
       - name: Backend guard and tooling unit tests
         run: python3 -m unittest discover -s backend/tests -p 'test_*.py'
+      - name: Verify scheme conversion jobs, review queue and restart resume
+        run: python3 backend/tests/run_scheme_conversion_integration.py
       - name: Verify Unicode import, proofreading, arbitration and restart persistence
         run: python3 backend/tests/run_rare_characters_integration.py
       - name: Publish Go coverage summary
