@@ -365,21 +365,32 @@ for (const item of errors.items) {
 assert.equal((await listPages()).length, 10, '合法的 3 条必须全部落库')
 
 // ---------- 5. 存量无来源键的条目不受唯一索引影响 ----------
-// CSV 导入建的条目三列为空串：部分唯一索引的 WHERE 把空串排除在外，所以它们不会互相冲突。
-const csv = new FormData()
-csv.set('file', new Blob(['词头,释义,PDF页码\n壬,九,1\n癸,十,2\n']), 'plain.csv')
-csv.set('inspect_only', 'true')
-const csvJob = await api(`/api/fangji/projects/${project.id}/imports/csv`, { method: 'POST', token, body: csv, status: 202 })
-for (let attempt = 0; attempt < 100; attempt++) {
-  const job = await api(`/api/collections/import_jobs/records/${csvJob.id}`, { token })
-  if (job.status === 'validated') break
-  await new Promise((resolve) => setTimeout(resolve, 100))
+// CSV 导入建的条目三列为空串：pages 那条部分唯一索引的 WHERE 把空串排除在外，
+// 所以它们不会互相冲突。
+async function importCsv(projectId, name, content) {
+  const form = new FormData()
+  form.set('file', new Blob([content]), name)
+  form.set('inspect_only', 'true')
+  const job = await api(`/api/fangji/projects/${projectId}/imports/csv`, { method: 'POST', token, body: form, status: 202 })
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const current = await api(`/api/collections/import_jobs/records/${job.id}`, { token })
+    assert.notEqual(current.status, 'failed', JSON.stringify(current))
+    if (current.status === 'validated') break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  await api(`/api/fangji/imports/${job.id}/commit`, { method: 'POST', token, status: 202 })
+  return waitJob(job.id, token, ['completed', 'completed_with_errors'])
 }
-await api(`/api/fangji/imports/${csvJob.id}/commit`, { method: 'POST', token, status: 202 })
-await waitJob(csvJob.id, token, ['completed', 'completed_with_errors'])
+
+await importCsv(project.id, 'plain.csv', '词头,释义,PDF页码\n壬,九,1\n癸,十,2\n')
+// 再导一次 CSV：这是作业级索引那条 `bundle_id != ''` 谓词的回归位。
+// CSV / OCR 作业的 bundle_id 是空串，若唯一的谓词只写 status != 'failed'，
+// 同一项目里的第二个 CSV 作业就会在 (project, '') 上撞唯一约束、整条导入返回 400
+// ——这个缺口在 CI 上出现过一次。本套件自己钉一格，不指望别处兜着。
+await importCsv(project.id, 'plain-2.csv', '词头,释义,PDF页码\n甲一,十一,3\n')
 const withCSV = await listPages()
-assert.equal(withCSV.length, 12)
-assert.equal(withCSV.filter((page) => page.source_entry_id === '').length, 2)
+assert.equal(withCSV.length, 13)
+assert.equal(withCSV.filter((page) => page.source_entry_id === '').length, 3)
 
 // ---------- 5b. failed 可重试：同一个 bundle_id 修好后应当能再导 ----------
 // bundle_id 是来源侧身份、上游不能随意改，所以把 failed 也算进幂等短路，
