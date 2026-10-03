@@ -159,13 +159,16 @@ func (s *importService) registerSchemeConversion() error {
 		return err
 	}
 	s.schemes = registry
-	if registry.notice != "" {
-		logUpload("info", "scheme_registry_empty", map[string]any{"dir": registry.dir, "notice": registry.notice})
-	} else {
-		logUpload("info", "scheme_registry_loaded", map[string]any{"dir": registry.dir, "schemes": len(registry.adapters)})
-	}
 
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		// 日志放在 OnServe 而不是 main 里：main 也会被 `pocketbase migrate` 走到，
+		// 而那一次既不服务也不加载规则，一次完整的启动序列会白打十几行同样的内容。
+		if registry.notice != "" {
+			logUpload("info", "scheme_registry_empty", map[string]any{"dir": registry.dir, "notice": registry.notice})
+		} else {
+			logUpload("info", "scheme_registry_loaded", map[string]any{"dir": registry.dir, "schemes": len(registry.adapters)})
+		}
+
 		e.Router.GET("/api/fangji/scheme-adapters", s.listSchemeAdapters).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/fangji/projects/{projectId}/conversions", s.startConversion).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/conversions", s.listConversions).Bind(apis.RequireAuth("users"))
