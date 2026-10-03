@@ -709,7 +709,9 @@ let csvPollGeneration = 0
 const statusOptions = Object.entries(PAGE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
 const qualityStateOptions = QUALITY_STATES.map((value) => ({ value, label: QUALITY_STATE_LABELS[value] }))
 const qualitySummaryRows = computed(() => qualityStateSummaryRows(qualitySummary.value))
-// 目标状态与当前值相同时服务端会拒绝（同值写入会刷新审计三列），所以在按钮上就挡掉。
+// 这里只挡「目标需要依据而依据为空」。同值写入**不**在按钮上挡：它由服务端拒绝
+// （同值写入会刷新审计三列，见 backend/quality_state.go），界面负责把那条理由显示出来——
+// backend/tests/quality_state_browser.cjs 的第 4 步正是走这条路径截的图，删掉服务端那半边会让它失去意义。
 const qualityBasisRequired = computed(() => qualityStateNeedsBasis(qualityDraftState.value))
 const qualitySubmitDisabled = computed(() =>
   qualitySubmitting.value || (qualityBasisRequired.value && !qualityDraftBasis.value.trim()))
@@ -1130,7 +1132,9 @@ async function confirmCsvImport() {
       csvImportErrors.value = result.items
     }
     selectedPendingIds.value = []
-    await loadPages()
+    // 导入会改变条目总数，汇总必须跟着走：只刷表格的话，三枚分桶芯片与「共 N 条」
+    // 会停在旧数字上，与正下方刚刷新出来的表格对不上账（#172 验收第 4 条问的就是这个数）。
+    await Promise.all([loadPages(), loadQualitySummary()])
   } catch (e) {
     csvError.value = getPbMessage(e, '确认导入失败，请稍后重试。')
   } finally {
@@ -1359,7 +1363,8 @@ async function deleteSelectedRows() {
   try {
     await deletePendingPages(projectId, selectedPendingIds.value)
     selectedPendingIds.value = []
-    await loadPages()
+    // 同上：删除同样改变条目总数，汇总不跟着走就会与表格对不上账。
+    await Promise.all([loadPages(), loadQualitySummary()])
     mutationSuccess.value = `已删除 ${deleteCount} 条待校对条目，并重新整理条号。`
   } catch (e) {
     mutationError.value = getPbMessage(e, '批量删除失败，请重试')

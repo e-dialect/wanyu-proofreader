@@ -50,6 +50,9 @@ func TestValidateQualityStateChange(t *testing.T) {
 		{"legacy empty row to validated", "", qualityStateValidated, "补标", false, ""},
 		{"withheld back to validated with basis", qualityStateWithheld, qualityStateValidated, "争议已解决", false, ""},
 		{"validated back to candidate needs no basis", qualityStateValidated, qualityStateCandidate, "", false, ""},
+		// 退回 candidate 时依据可以留空，但**留了**就要合法：上限检查必须在 candidate
+		// 早退之前，否则这条会在 app.Save 的 TextField max 上失败，而调用方看不到原因。
+		{"candidate target still enforces the basis limit", qualityStateValidated, qualityStateCandidate, longBasis, true, "最多 500 个字符"},
 
 		{"reject unknown target", qualityStateCandidate, "quarantine", "理由", true, "candidate、validated 或 withheld"},
 		{"reject empty target", qualityStateCandidate, "", "理由", true, "candidate、validated 或 withheld"},

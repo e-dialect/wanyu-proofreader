@@ -76,14 +76,17 @@ func validateQualityStateChange(current, next, basis string) error {
 	if next == normalizeQualityState(current) {
 		return fmt.Errorf("条目已经是「%s」，无需变更。", qualityStateLabel(next))
 	}
+	// 长度上限在 candidate 早退**之前**判：退回 candidate 时依据可以留空，但留了就要合法。
+	// 放在早退之后，一条 501 码点的依据会先过这里、再由 app.Save 的 TextField max 拒掉，
+	// 调用方只看到「保存质量状态失败。」而拿不到真正的原因。
+	if utf8.RuneCountInString(basis) > qualityStateBasisMax {
+		return fmt.Errorf("依据最多 %d 个字符。", qualityStateBasisMax)
+	}
 	if next == qualityStateCandidate {
 		return nil
 	}
 	if strings.TrimSpace(basis) == "" {
 		return fmt.Errorf("把条目标为「%s」必须写明依据。", qualityStateLabel(next))
-	}
-	if utf8.RuneCountInString(basis) > qualityStateBasisMax {
-		return fmt.Errorf("依据最多 %d 个字符。", qualityStateBasisMax)
 	}
 	return nil
 }
