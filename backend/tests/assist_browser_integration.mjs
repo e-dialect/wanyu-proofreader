@@ -63,6 +63,14 @@ const CLEAN = `${H}\n天,thin1,tʰĩ1,tʰĩ1,天空,1\n`
 // 校对端证据用的两份词头：每一行都会撞上 `multiple_headwords_in_cell`（strong 级、
 // 带 char_offsets），所以认领到哪一页都能看到同一种疑点——截图不依赖认领顺序。
 const EDIT = `${H}\n甲 乙,ka1,ka32,ka32,两种东西,1\n丙 丁,pe1,pe32,pe32,两类东西,2\n`
+// 管理端两种 off 措辞各要一份**只落在一类里**的夹具：混在一起时界面会把两句话都念出来
+// （那是正确行为），但那张图就分不出钉的是哪一种。两行两列、标了列角色之后
+// `meaningField` 为空，`reading_inside_meaning_row` 那条根本不会判，
+// 于是无通道那一份只剩 `multiple_headwords_in_cell`，等证据那一份只剩 R6 的 l0-v1 判据。
+const TWO_COL = '词头,莆田IPA,PDF页码'
+const TWO_ROLES = { 词头: 'headword', 莆田IPA: 'reading' }
+const NO_CHANNEL = `${TWO_COL}\n甲 乙,kʰin1,1\n丙 丁,kʰin1,2\n`
+const WAITING = `${TWO_COL}\n甲,kʰin9876,1\n乙,kʰin98765,2\n`
 
 async function makeProject (name, csv, { recompute = true, roles = null } = {}, members = []) {
   const project = await api('/api/fangji/projects', {
@@ -101,10 +109,14 @@ const projectClean = await makeProject('浏览器验收·干净', CLEAN, {}, [[m
 // 大厅那份单独用「词头 + 记音」两列：`kʰin9876` 那条被 R6 判 strong 落 B，
 // 另两条零疑点走 pure_transcription 落 A（与 tier_dispatch 的已验证形状一致）。
 // 一份 CSV 只落一档的话，这张图证明的就只是"层级条渲染了"，而不是"分层并存"（#162 第 4 条）。
+// 三行由生产者算出 B/A/A；unknown 与 unlabeled 那两条另建（见下方注释），
+// 于是层级条同时出现四枚芯片：两档可领 + 两种"没有档"各说各话（#247）。
 const HALL_CSV = '词头,莆田IPA,PDF页码\n甲,kʰin9876,1\n乙,kʰin1,2\n丙,kʰin1,3\n'
 const hallProject = await makeProject('浏览器验收·大厅层级', HALL_CSV,
   { roles: { 词头: 'headword', 莆田IPA: 'reading' } }, [[hallReader.id, 'proofreader']])
 const editorProject = await makeProject('浏览器验收·校对端', EDIT, {}, [[editorReader.id, 'proofreader']])
+const projectNoChannel = await makeProject('浏览器验收·无打分通道', NO_CHANNEL, { roles: TWO_ROLES }, [[manager.id, 'manager']])
+const projectWaiting = await makeProject('浏览器验收·等证据', WAITING, { roles: TWO_ROLES }, [[manager.id, 'manager']])
 
 // 截图前先把服务端事实钉住：三态在数据层必须真的不同，否则截图毫无意义。
 const dirtyView = await api(`/api/fangji/projects/${projectWithFindings.id}/findings?per=200`, { token: admin.token })
@@ -116,10 +128,39 @@ assert.equal(cleanView.items.length, 0, `干净项目不该产出疑点：${JSON
 const hallPages = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`project="${hallProject.id}"`)}`, { token: superAuth.token })
 const hallTiers = hallPages.items.map((p) => p.difficulty_tier).sort()
 assert.deepEqual(hallTiers, ['A', 'A', 'B'], `大厅项目必须分层并存：${JSON.stringify(hallTiers)}`)
+// unknown（算过但信号不足）与 unlabeled（从没算过）是两种"没有档"，界面必须分开说。
+// 档位本身的生产由 tier_dispatch 套件钉，这里只要存储形状对就行——大厅读的是这一列。
+// 只能**新建**而不能 PATCH 已有条目：待认领的页被 `pages` 的写入钩子挡着
+// （"待认领任务只允许执行认领操作"），这条限制本身由 task_leases 套件守。
+for (const [number, tier] of [[4, 'unknown'], [5, '']]) {
+  await api('/api/collections/pages/records', {
+    method: 'POST', token: superAuth.token,
+    body: {
+      project: hallProject.id, page_number: number, pdf_page: number,
+      ocr_row_json: JSON.stringify({ 词头: `条${number}` }), ocr_text: `条${number}`,
+      difficulty_tier: tier, proofread_round: 1, mismatch_count: 0, status: 'pending'
+    }
+  })
+}
+const hallQueue = await api('/api/fangji/proofreading-queues?page=1&perPage=50', { token: hallReader.token })
+const hallRow = hallQueue.items.find((item) => JSON.stringify(item).includes(hallProject.id))
+assert.deepEqual(hallRow.tiers, { A: 2, B: 1, C: 0, other: 1, unlabeled: 1 }, JSON.stringify(hallRow.tiers))
+assert.equal(hallRow.claimable, 5, JSON.stringify(hallRow))
 // 校对员触发项目级重算必须是 403（截图里"看不到按钮"的前提是接口真的拒）
 await api(`/api/fangji/projects/${projectWithFindings.id}/findings/recompute`, {
   method: 'POST', token: reader.token, status: 403
 })
+
+// 两类措辞在数据层必须真的分得开：截图里那句话的前提是"这个项目当前批次的
+// off 疑点全部落在同一类"，否则界面上同时出现两句话，图证就说不清钉的是哪一条。
+const noChannelView = await api(`/api/fangji/projects/${projectNoChannel.id}/findings?per=200`, { token: admin.token })
+assert.ok(noChannelView.items.length >= 2, JSON.stringify(noChannelView.items.map((i) => i.kind)))
+assert.deepEqual([...new Set(noChannelView.items.map((i) => i.scoring_channel))], ['unscored'],
+  JSON.stringify(noChannelView.items.map((i) => [i.kind, i.message.key, i.severity, i.scoring_channel])))
+const waitingView = await api(`/api/fangji/projects/${projectWaiting.id}/findings?per=200`, { token: admin.token })
+assert.ok(waitingView.items.length >= 1, JSON.stringify(waitingView.items.map((i) => [i.kind, i.message.key])))
+assert.deepEqual([...new Set(waitingView.items.map((i) => i.scoring_channel))], ['scored'],
+  JSON.stringify(waitingView.items.map((i) => [i.kind, i.message.key, i.severity, i.scoring_channel])))
 
 // ---------- 校对端证据：先钉住"门控挡着"，再把放行动作交给截图脚本 ----------
 //
@@ -168,6 +209,7 @@ writeFileSync(fixture, JSON.stringify({
   base, manager, reader, hallReader, editorReader,
   admin: { token: admin.token, record: admin.record },
   projectWithFindings, projectNeverRun, projectClean, hallProject, editorProject,
+  projectNoChannel, projectWaiting,
   editorPage, editorIdentities: entries
 }))
 const outDir = process.env.ASSIST_BROWSER_OUTPUT || path.resolve('.', 'output/playwright/assist-admin')
@@ -179,7 +221,8 @@ const result = spawnSync('node', [script], {
 assert.equal(result.status, 0, `assist_browser.cjs 退出码 ${result.status}`)
 
 for (const name of ['findings-normal', 'findings-empty-never-run', 'findings-empty-clean', 'findings-forbidden',
-  'hall-tiers', 'hall-claim-by-tier', 'proofreader-gated', 'proofreader-hints']) {
+  'findings-no-channel', 'findings-waiting-evidence', 'hall-tiers', 'hall-claim-by-tier',
+  'proofreader-gated', 'proofreader-hints']) {
   const file = path.join(outDir, `${name}.png`)
   assert.ok(existsSync(file), `缺截图：${file}`)
   assert.ok(statSync(file).size > 4096, `截图过小，疑似空白页：${file} ${statSync(file).size}`)
@@ -188,7 +231,8 @@ for (const name of ['findings-normal', 'findings-empty-never-run', 'findings-emp
 }
 console.log('Assist browser integration test passed.')
 
-for (const id of [projectWithFindings.id, projectNeverRun.id, projectClean.id, hallProject.id, editorProject.id]) {
+for (const id of [projectWithFindings.id, projectNeverRun.id, projectClean.id, hallProject.id, editorProject.id,
+  projectNoChannel.id, projectWaiting.id]) {
   await api(`/api/collections/projects/records/${id}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 }
 for (const id of [manager.id, reader.id, hallReader.id, editorReader.id]) {
