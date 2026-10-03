@@ -133,6 +133,27 @@ SPECS = {
             'blocked_reason_note': {'required': False},
         }),
     },
+    # #190 的两把查询：复核队列按 (project, normalization_status) 筛，
+    # 作业侧按 project 找当前活跃的那个。fields 断言钉住 required=False——
+    # 这些列在转换跑过之前都是空的，设成必填会让所有既有创建路径在校验期失败。
+    '1789200700_scheme_conversion.js': {
+        'indexes': ['idx_pages_normalization_queue', 'idx_pages_normalization_rule',
+                    'idx_conversion_jobs_active', 'idx_conversion_jobs_project'],
+        'plans': [
+            ('pages', 'SELECT id FROM pages WHERE project=? AND normalization_status=?',
+             ('p', 'AMBIGUOUS'), 'idx_pages_normalization_queue'),
+            ('conversion_jobs',
+             "SELECT id FROM conversion_jobs WHERE project=? AND status IN ('queued','processing')",
+             ('p',), 'idx_conversion_jobs_active'),
+        ],
+        'collection_indexes': ('pages', 'idx_pages_normalization_queue'),
+        'fields': ('pages', {
+            'normalization_status': {'required': False, 'values_contains': 'REVIEWED'},
+            'canonical_pronunciation': {'required': False},
+            'normalization_basis': {'required': False},
+            'normalization_source_column': {'required': False},
+        }),
+    },
     '1789200300_project_artifacts.js': {
         'indexes': ['idx_project_artifacts_project'],
         'plans': [
