@@ -58,6 +58,8 @@ verify-static:
 	@git diff --cached --check
 	@echo 'line endings (index holds LF or binary only)'
 	@python3 scripts/check_line_endings.py
+	@echo 'docker build context (every Go package directory is copied)'
+	@python3 scripts/check_docker_build_context.py
 
 lint:
 	@echo 'eslint (correctness rules only; no style sweep yet)'

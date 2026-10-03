@@ -105,6 +105,11 @@ jobs:
         # is not a required context: a CR-bearing blob turns this check red
         # without blocking the merge.
         run: python3 scripts/check_line_endings.py
+      - name: Docker build context
+        # 与 `make verify-static` 同一个入口。这条兜的是「本机与 CI 的 Go 构建都看不见、
+        # 只有容器构建会报错」的那一类缺口：Dockerfile 的 builder 是白名单 COPY，
+        # 新加的 Go 包目录忘了加进去时，本机 80 多项检查全绿而镜像构建立刻失败。
+        run: python3 scripts/check_docker_build_context.py
 
   pocketbase-compatibility:
     name: PocketBase compatibility (${{ matrix.suite }})
