@@ -137,7 +137,7 @@ SPECS = {
     # 作业侧按 project 找当前活跃的那个。fields 断言钉住 required=False——
     # 这些列在转换跑过之前都是空的，设成必填会让所有既有创建路径在校验期失败。
     '1789200700_scheme_conversion.js': {
-        'indexes': ['idx_pages_normalization_queue', 'idx_pages_normalization_rule',
+        'indexes': ['idx_pages_normalization_queue',
                     'idx_conversion_jobs_active', 'idx_conversion_jobs_project'],
         'plans': [
             ('pages', 'SELECT id FROM pages WHERE project=? AND normalization_status=?',
