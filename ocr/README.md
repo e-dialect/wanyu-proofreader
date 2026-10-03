@@ -92,4 +92,5 @@ python score.py --gold 标准答案.csv --test 待测结果.csv [--key 页码]
 
 ## 外部依赖
 
-- `extract_text.py` 依赖系统安装 `pdftotext`（poppler-utils，GPL-2.0-or-later）。**未 vendoring**：不随仓库分发、不进入 `THIRD_PARTY_NOTICES.md`（该文件只登记 vendored 进 `frontend/public/**` 等路径的组件），仅在运行 `extract_text.py` 的机器上按需系统安装并加入 `PATH`。本仓库代码不链接、不封装 poppler 库，只以外部命令方式调用其可执行文件，因此不构成衍生作品，亦不影响本仓 AGPL 边界。
+- `extract_text.py` 依赖系统安装 `pdftotext`（poppler-utils，GPL-2.0-or-later），仅在运行脚本的机器上按需独立安装并加入 `PATH`；本仓库代码通过外部命令调用它，不链接或封装 Poppler 库。
+- 第三方登记统一按 [ASSET_BOUNDARIES.md「第三方登记判据」](../ASSET_BOUNDARIES.md#third-party-registration--第三方登记判据) 的**是否随仓库或发布物分发**判断，适用于所有目录。目前 OCR 工具链不随仓库或发布物携带 Poppler，因此不因脚本调用而登记到 `THIRD_PARTY_NOTICES.md`；若以后捆绑其二进制或装入分发的容器镜像，则须登记并保留适用的上游声明。
