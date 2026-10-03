@@ -225,8 +225,11 @@ type Bundle struct {
 	SourceID        string
 	SourceVersion   string
 	RequestedFields []string
-	Operator        string
-	Entries         []Entry
+	// RightsRef 是来源登记里的 logical_id。校验器只查它的格式（协议 §4），
+	// 存在性由导入侧负责——所以它必须被带出来，否则那条契约分工在导入侧就是断的。
+	RightsRef string
+	Operator  string
+	Entries   []Entry
 }
 
 // Load 重新读一遍已通过校验的 zip 并返回内容。校验不通过时返回 (Bundle{}, report, nil)，
@@ -267,6 +270,7 @@ func Load(data []byte) (Bundle, Report, error) {
 		SourceID:        doc.SourceID,
 		SourceVersion:   doc.SourceVersion,
 		RequestedFields: doc.RequestedFields,
+		RightsRef:       doc.RightsRef,
 		Operator:        doc.Operator,
 	}
 	for _, file := range doc.Files {
@@ -298,8 +302,12 @@ func Load(data []byte) (Bundle, Report, error) {
 	return bundle, report, nil
 }
 
-// orderedFields 按 JSON 里的书写顺序读出对象字段。Go 的 map 迭代无序，而
-// requested_fields 的顺序就是导入后条目的列顺序，退回 map 会让表头在两次导入之间乱序。
+// orderedFields 按 JSON 里的书写顺序读出对象字段。
+//
+// 它只保证「不要退回 Go map 的字母序」，**不**保证列顺序等于 requested_fields：
+// 条目里的键顺序是上游自己写的，导入侧要按 requested_fields 投影（见
+// backend/bundle_import.go 的 buildBundlePage）。契约只要求 fields **包含**
+// requested_fields（下界），所以条目可以多给键——那些键不进 W 的列清单。
 func orderedFields(raw json.RawMessage) ([]Field, bool) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	tok, err := dec.Token()

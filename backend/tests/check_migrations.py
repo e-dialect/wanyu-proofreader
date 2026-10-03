@@ -166,7 +166,10 @@ SPECS = {
             ('pages',
              "SELECT id FROM pages WHERE project=? AND source_entry_id != '' AND source_system=? AND source_id=? AND source_version=? AND source_entry_id='e'",
              ('p', 's', 'a', 'v'), 'idx_pages_source_entry'),
-            ('import_jobs', 'SELECT id FROM import_jobs WHERE project=? AND bundle_id=?',
+            # 与 findJobByBundle 的谓词逐字一致（含 status != 'failed'）：部分索引只有
+            # 在查询里写出这个谓词时才会被选中。
+            ('import_jobs',
+             "SELECT id FROM import_jobs WHERE project=? AND bundle_id=? AND status != 'failed'",
              ('p', 'b'), 'idx_import_jobs_bundle'),
         ],
         'collection_indexes': ('pages', 'idx_pages_source_entry'),
