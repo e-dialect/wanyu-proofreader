@@ -41,7 +41,7 @@ make check
 ```
 
 它依次执行 gofmt/`go vet`、前端 ESLint、运行时版本与文档一致性、集成套件清单校验、
-Compose 不变量、`git diff --check`、行尾一致性、Go 与前端单测以及迁移 up/down/up 校验。
+Compose 不变量、`git diff --check`、行尾一致性、UI 债务棘轮、Go 与前端单测以及迁移 up/down/up 校验。
 
 守卫脚本依赖 PyYAML，首次使用前装一次：
 
@@ -62,6 +62,7 @@ python3 -m pip install -r requirements-dev.txt
 | `make test-integration` | 全部后端集成套件，共享一次编译 |
 | `make test-integration SUITES=pdf_` | 只跑名字包含 `pdf_` 的套件 |
 | `make coverage` | Go 与前端覆盖率报告 |
+| `python3 scripts/check_ui_debt.py` | UI 债务九类计数、基线上限与逐项源码位置（初始为 warn） |
 | `make seed` | 向运行中的实例灌入可复核的演示项目 |
 | `make ci` | `check` + 集成套件 + 前端构建 + 镜像构建 |
 
@@ -115,6 +116,52 @@ blob 里存了 CR（`i/crlf`、`i/mixed`）就失败。`make verify-static` 与 
 不含 NUL 却带 CRLF 的文件仍会被报出来，这类文件按内容就是文本。`git diff --check` 只看空白，
 不会报告这类行尾；索引列也不受本机 `core.autocrlf` 与尚未刷新的工作树影响，所以 Windows 贡献者
 在按上面步骤重新检出之前也不会被这条门禁误伤。
+
+### UI 债务棘轮
+
+`scripts/check_ui_debt.py` 扫描 `frontend/src` 下全部 `.css` 与 `.vue`，与
+`scripts/ui_debt_baseline.json` 比较并输出 `kind / baseline / now / delta / mode / result`，
+随后列出每项的 `file:line` 与值。基线取自 2026-10-04 的 `main`（`e044f69`），不是 issue
+正文里的历史估计；同一行有多个命中会分别列出。当前九类定义如下：
+
+| kind | 计数口径 | 初始上限 |
+| --- | --- | --- |
+| `hardcoded_colors` | 属性值中的完整十六进制色、RGB/HSL 等颜色函数、颜色属性中的命名色；不计 `--token:` 定义 | 145 |
+| `border_radius_literals` | 非令牌 `border-radius` 的不同字面值种类 | 15 |
+| `z_index_literals` | 非令牌 `z-index` 的不同字面值种类 | 8 |
+| `inline_styles` | 模板中 `style`、`:style`、`v-bind:style` 属性次数，包含动态尺寸 | 27 |
+| `bare_tables` | 原生 `<table>` 开始标签次数 | 10 |
+| `alerts_without_role` | 含 `alert` 类且没有非空 `role` / `:role` / `v-bind:role` 的开始标签次数 | 30 |
+| `custom_modals` | `components/AppModal.vue` 以外含 `modal-backdrop` 类的开始标签次数 | 1 |
+| `undefined_variables` | 属性值中引用、但源码内无 CSS 或绑定对象定义的 `var(--x)` 次数；带 fallback 仍计入 | 1 |
+| `font_family_stacks` | 非令牌、非 `var()` 的含逗号字体栈声明次数；单字体 `@font-face` 不计 | 20 |
+
+颜色包含渐变、阴影、fallback 与内联静态样式；`#fff` 不会匹配 `#fff7ed`，CSS/HTML 注释、
+选择器、URL 与内容字符串不算色值。全量色值的细分计数随报告输出（当前 `#fff` 为 36 次，
+另外列出各函数与调色板外的具体色值）。字体栈按声明次数计，而非只抽取某一种字体栈。
+解析跨行标签并识别绑定类表达式里的字符串、绑定样式对象里的常量值；不执行 JavaScript，
+运行时拼接的样式/类、外部 CSS 不在覆盖范围。变量定义按整个源码目录判断，不证明运行时作用域可用。
+
+`make verify-static`、CI 的 `Static analysis` 与 `Frontend` 作业调用同一脚本、同一基线，
+所以本地与 CI 覆盖面一致。解析回归测试在本地守卫自测与两个 CI 作业里运行。
+`Frontend` 是阻断模式的落点：将某类基线的 `mode` 从 `warn` 改为 `fail` 后，增加该类债务
+会让这个 context 失败；实际 required contexts 仍以仓库保护规则为真源。
+
+第一阶段全部 `warn`：超出上限打印警告但退出 0；`fail` 类只有超出上限才退出 1，存量不阻断。
+无法读取基线、非法策略或没有源码始终退出 1，避免误报成功。可重复传 `--only` 聚焦类别：
+
+```bash
+python3 scripts/check_ui_debt.py --only hardcoded_colors
+python3 scripts/check_ui_debt.py --only hardcoded_colors --mode fail
+python3 -m unittest discover -s scripts -p 'test_check_ui_debt.py'
+```
+
+第二条是严格验收探针：临时在视图 `<style>` 里加入 `color: #fff`，应退出 1 并指出位置，
+删除后恢复通过。`--mode` 仅覆盖当次执行，日常本地/CI 入口不传覆盖参数，遵守文件内逐类策略。
+减少债务时在同一个 PR 下调对应 `limit`，让清理成果成为新上限；脚本不会自动改写基线。
+确需提高上限时必须显式修改基线，并在 PR 正文和基线 `reason` 说明理由，供评审查看。
+逐类转 `fail` 需维护者先在 #264 记录并确认类别与生效时间，再通过 PR 修改 `mode`；
+本次仅上线观测，尚未设定或启用阻断日期，不修改分支保护规则。
 
 ### CHANGELOG 暂停更新
 
