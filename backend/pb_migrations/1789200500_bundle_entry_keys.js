@@ -20,10 +20,14 @@
 // 不是本库推导出来的），要撤掉更早的迁移，先备份 pb_data。
 
 const PAGE_INDEX = "CREATE UNIQUE INDEX idx_pages_source_entry ON pages (project, source_system, source_id, source_version, source_entry_id) WHERE source_entry_id != ''"
-// 部分唯一索引，谓词与「failed 可重试」配套：同一批只允许有一个未失败的作业，
-// 但失败之后可以再建一个新的（bundle_id 是来源侧身份，上游不能随意改，
-// 把 failed 也算进唯一性等于让瞬时失败的批次永久无法重试）。
-const JOB_INDEX = "CREATE UNIQUE INDEX idx_import_jobs_bundle ON import_jobs (project, bundle_id) WHERE status != 'failed'"
+// 部分唯一索引，谓词有两段，缺一不可：
+// - `status != 'failed'`：「同一批只允许有一个未失败的作业」，但失败之后可以再建一个新的
+//   （bundle_id 是来源侧身份，上游不能随意改，把 failed 也算进唯一性等于让瞬时失败的
+//   批次永久无法重试）。
+// - `bundle_id != ''`：**CSV / OCR 作业的 bundle_id 是空串**。少了这一段，同一项目里的
+//   第二个 CSV 作业就会在 (project, '') 上与第一个撞唯一约束，整条 CSV 导入全线 400。
+//   与 pages 那条部分唯一索引同一个理由：空值表示「这一行没有这个键」，不是「键都叫空」。
+const JOB_INDEX = "CREATE UNIQUE INDEX idx_import_jobs_bundle ON import_jobs (project, bundle_id) WHERE status != 'failed' AND bundle_id != ''"
 
 const pageFields = [
   { build: () => new TextField({ name: "source_system", required: false, max: 200 }), remove: "source_system" },

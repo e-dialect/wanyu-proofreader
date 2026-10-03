@@ -169,7 +169,7 @@ SPECS = {
             # 与 findJobByBundle 的谓词逐字一致（含 status != 'failed'）：部分索引只有
             # 在查询里写出这个谓词时才会被选中。
             ('import_jobs',
-             "SELECT id FROM import_jobs WHERE project=? AND bundle_id=? AND status != 'failed'",
+             "SELECT id FROM import_jobs WHERE project=? AND bundle_id != '' AND bundle_id=? AND status != 'failed'",
              ('p', 'b'), 'idx_import_jobs_bundle'),
         ],
         'collection_indexes': ('pages', 'idx_pages_source_entry'),

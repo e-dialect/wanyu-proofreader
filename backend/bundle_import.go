@@ -333,9 +333,13 @@ func (s *importService) uploadBundle(c *core.RequestEvent) error {
 // findJobByBundle 是作业级幂等的唯一查询入口：查与写后重查共用它，
 // 所以「什么算同一次重放」只有一处定义。
 func (s *importService) findJobByBundle(projectID, bundleID string) (*core.Record, error) {
+	// bundle_id != "" 这一条不是多余的：idx_import_jobs_bundle 是**部分**唯一索引
+	// （WHERE status != 'failed' AND bundle_id != ''，后者是为了让 CSV/OCR 那些
+	// bundle_id 为空串的作业不受约束），而 SQLite 只有在查询里显式写出这些谓词时
+	// 才会选中它。它在这里恒真：本函数只在 bundle 路径上被调用。
 	records, err := s.app.FindRecordsByFilter(
 		"import_jobs",
-		`project = {:project} && bundle_id = {:bundle} && status != "failed"`,
+		`project = {:project} && bundle_id != "" && bundle_id = {:bundle} && status != "failed"`,
 		"-created",
 		1,
 		0,
