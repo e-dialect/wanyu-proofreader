@@ -566,7 +566,9 @@ func (s *importService) runWorker() {
 						"record_id":  work.id,
 						"error":      panicErr.Error(),
 					})
-					s.markFatal(work, "WORKER_PANIC", "服务器处理文件时发生内部错误。", panicErr)
+					if work.kind != "pdf-images" {
+						s.markFatal(work, "WORKER_PANIC", "服务器处理文件时发生内部错误。", panicErr)
+					}
 				}
 			}()
 			switch work.kind {
@@ -576,6 +578,8 @@ func (s *importService) runWorker() {
 				s.processCSV(work)
 			case "pdf":
 				s.processPDF(work)
+			case "pdf-images":
+				s.processPDFImages(work)
 			case "ocr":
 				s.processOCR(work)
 			}
@@ -809,6 +813,8 @@ func (s *importService) processPDF(work importWork) {
 		"page_count": pageCount,
 		"validator":  pdfValidator,
 	})
+	// Publish ready first; page images may take longer and must not block use.
+	s.processPDFImages(importWork{kind: "pdf-images", id: recordID})
 }
 
 func validatePDFStructure(reader io.ReadSeeker) (int, error) {

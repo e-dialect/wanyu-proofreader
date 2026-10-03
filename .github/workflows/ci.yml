@@ -558,9 +558,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - name: Install page image renderers
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils webp
       - run: go test ./...
         working-directory: backend
-      - run: python3 backend/tests/run_integration.py pdf_access_integration.mjs
+      - run: python3 backend/tests/run_integration.py pdf_access_integration.mjs --env REQUIRE_PAGE_IMAGES=1
       - name: Install PDF rendering test browser
         run: |
           npm install --prefix "$RUNNER_TEMP/pdf-browser" playwright@1.62.1
@@ -578,3 +580,17 @@ jobs:
           PDF_REUSE_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/pdf_reuse_browser.cjs
           PDF_BROWSER_FIXTURE: ${{ runner.temp }}/pdf-reuse-fixture.json
         run: python3 backend/tests/run_integration.py pdf_reuse_integration.mjs
+      - name: Verify page images, adjacent preload and PDF fallback
+        env:
+          NODE_PATH: ${{ runner.temp }}/pdf-browser/node_modules
+          PDF_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/page_images_browser.cjs
+          PDF_BROWSER_FIXTURE: ${{ runner.temp }}/page-images-fixture.json
+          PDF_BROWSER_OUTPUT: ${{ runner.temp }}/page-images-evidence
+        run: python3 backend/tests/run_integration.py pdf_access_integration.mjs --env REQUIRE_PAGE_IMAGES=1
+      - name: Save page image browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: page-image-browser-evidence
+          path: ${{ runner.temp }}/page-images-evidence
+          if-no-files-found: ignore
