@@ -353,9 +353,18 @@ python3 backend/tests/run_integration.py assist_chain_integration.mjs
 ```bash
 # 界面证据：管理端各态 + 大厅层级条 + 校对端放行前后
 VITE_PB_URL=http://localhost npm --prefix frontend run build
-ASSIST_BROWSER_SCRIPT="$PWD/backend/tests/assist_browser.cjs" \
+BROWSER_CHANNEL=chrome \
+  NODE_PATH="/tmp/assist-browser/node_modules" \
+  ASSIST_BROWSER_SCRIPT="$PWD/backend/tests/assist_browser.cjs" \
   python3 backend/tests/run_integration.py assist_browser_integration.mjs
 ```
+
+`BROWSER_CHANNEL` 与 `NODE_PATH` 是**本地才需要**的：CI 由 `assist-browser` 作业自己装 playwright。
+本机这两个变量各挡一个真实的坑——不指定 channel 时 playwright 会找它自己那个构建号的
+chromium（`Executable doesn't exist`），而 `NODE_PATH` 必须指向**真的装着 playwright 的那份**
+node_modules（`npm root -g` 里未必有，指向它会 `Cannot find module`）。
+跑成功的判据不是退出码，而是输出里有 `ASSIST BROWSER OK [...]` 这一行，
+且方括号里的状态名数量与截图清单一致。
 
 **这一支有个容易骗过人的地方**：没设 `ASSIST_BROWSER_SCRIPT` 时它会打印 SKIP 并以 0 退出。
 于是"全套件绿"里可能根本没跑过浏览器（`run_all.py` 现在会把这种情况显式报成 skip，
