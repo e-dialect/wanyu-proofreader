@@ -105,6 +105,8 @@ jobs:
         # is not a required context: a CR-bearing blob turns this check red
         # without blocking the merge.
         run: python3 scripts/check_line_endings.py
+      - name: UI debt ratchet
+        run: python3 scripts/check_ui_debt.py
 
   pocketbase-compatibility:
     name: PocketBase compatibility (${{ matrix.suite }})
@@ -317,6 +319,19 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Set up Python for UI debt ratchet
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: UI debt ratchet (required Frontend context)
+        # Same policy as verify-static. All kinds start in warn mode; enabling
+        # fail in the baseline turns this required context red on an increase.
+        working-directory: .
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_check_ui_debt.py'
+          python3 scripts/check_ui_debt.py
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
