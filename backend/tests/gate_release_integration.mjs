@@ -280,6 +280,29 @@ assert.equal(flooded.gate_rows_truncated, true, '超过 MAX_GATE_ROWS 必须返�
 const floodedManager = await api(`/api/fangji/projects/${project.id}/findings`, { token })
 assert.equal(floodedManager.gate_rows_truncated, true, '统计口共用同一个上限与同一个信号')
 
+// 门控表读取口也必须带通道（#254 第 3 件事的另一半：`/admin/gate-rules` 以前只有
+// 档位与样本数，"等证据"与"永远拿不到"在两栏数字上长得一模一样）。
+const gateTable = await api('/api/fangji/gates', { token })
+assert.ok(gateTable.items.length >= 1, JSON.stringify(gateTable))
+for (const row of gateTable.items) {
+  assert.ok(['scored', 'unscored', 'unknown'].includes(row.scoring_channel),
+    `门控表读到的通道不可判定：${JSON.stringify([row.kind, row.message_key, row.scoring_channel])}`)
+}
+const noChannelRow = await api('/api/collections/assist_rule_gates/records', {
+  method: 'POST', token: superAuth.token,
+  body: {
+    producer: 'rule', producer_version: 'identity-v3', kind: 'merged_columns',
+    message_key: 'multiple_headwords_in_cell', gate: 'off', sample_n: 0, precision_hat: null,
+    evaluated_at: new Date().toISOString().slice(0, 10)
+  }
+})
+gateIds.push(noChannelRow.id)
+const gateTableAfter = await api('/api/fangji/gates', { token })
+const mergedRow = gateTableAfter.items.find((row) => row.kind === 'merged_columns')
+assert.equal(mergedRow?.scoring_channel, 'unscored', JSON.stringify(mergedRow))
+assert.ok(gateTableAfter.items.some((row) => row.scoring_channel === 'scored'),
+  '表里一条"可打分"都没有：这组断言退化成只看一种')
+
 // ---------- #254：判据"能不能拿到精度"必须一处定义、漏归类要红 ----------
 const { createRequire } = await import('node:module')
 const nodeRequire = createRequire(import.meta.url)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/csv"
@@ -817,14 +818,14 @@ func validatePDFStructure(reader io.ReadSeeker) (int, error) {
 	pdfapi.DisableConfigDir()
 	configuration := pdfmodel.NewDefaultConfiguration()
 	configuration.ValidationMode = pdfmodel.ValidationRelaxed
-	context, err := pdfapi.ReadAndValidate(reader, configuration)
+	document, err := pdfapi.ReadAndValidate(context.Background(), reader, configuration)
 	if err != nil {
 		return 0, err
 	}
-	if context.PageCount < 1 {
+	if document.PageCount < 1 {
 		return 0, errors.New("PDF contains no pages")
 	}
-	return context.PageCount, nil
+	return document.PageCount, nil
 }
 
 func (s *importService) openRecordFile(record *core.Record, field string) (io.ReadSeeker, func(), error) {

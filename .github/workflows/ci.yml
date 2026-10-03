@@ -284,7 +284,9 @@ jobs:
           # ASSIST_BROWSER_SCRIPT 时套件会退出 0，只有这里能发现产物根本不存在。
           for state in findings-normal findings-empty-never-run findings-empty-clean \
                    findings-forbidden findings-no-channel findings-waiting-evidence \
-                   hall-tiers hall-claim-by-tier proofreader-gated proofreader-hints; do
+                   hall-tiers hall-claim-by-tier proofreader-gated proofreader-hints \
+                   blocked-conclusion-unset blocked-conclusion-settled \
+                   blocked-conclusion-no-permission; do
             test -s "output/playwright/assist-admin/${state}.png" || {
               echo "Missing or empty assist screenshot: ${state}.png" >&2
               exit 1

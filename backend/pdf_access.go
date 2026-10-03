@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -142,7 +143,7 @@ func buildTaskPDF(reader io.ReadSeeker, start, end int, stamp string, stages *pr
 	config.ValidationMode = pdfmodel.ValidationRelaxed
 	var excerpt bytes.Buffer
 	extractStart := time.Now()
-	err := pdfapi.Trim(reader, &excerpt, []string{fmt.Sprintf("%d-%d", start, end)}, config)
+	err := pdfapi.Trim(context.Background(), reader, &excerpt, []string{fmt.Sprintf("%d-%d", start, end)}, config)
 	stages.markExtract(extractStart)
 	if err != nil {
 		return nil, err
@@ -155,11 +156,11 @@ func buildTaskPDF(reader io.ReadSeeker, start, end int, stamp string, stages *pr
 
 func watermarkTaskPDF(reader io.ReadSeeker, stamp string) ([]byte, error) {
 	var output bytes.Buffer
-	watermark, err := pdfapi.TextWatermark(stamp, "fontname:Helvetica, points:11, scale:1 abs, rotation:25, opacity:0.18", true, false, pdftypes.POINTS)
+	watermark, err := pdfapi.TextWatermark(context.Background(), stamp, "fontname:Helvetica, points:11, scale:1 abs, rotation:25, opacity:0.18", true, false, pdftypes.POINTS, pdfConfig())
 	if err != nil {
 		return nil, err
 	}
-	if err := pdfapi.AddWatermarks(reader, &output, nil, watermark, pdfConfig()); err != nil {
+	if err := pdfapi.AddWatermarks(context.Background(), reader, &output, nil, watermark, pdfConfig()); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil

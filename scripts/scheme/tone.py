@@ -9,7 +9,7 @@
 5 类、#189「信息不足时不得猜」）。所以本模块的输出永远是「要么完整转换，要么一字
 不动」，不存在半转换的单元格。
 
-合法调值集与列的对应关系来自 `data/tone_values.json`（可审阅的规则文件），上标
+合法调值集与列的对应关系来自 `data/tone_notation.json`（可审阅的规则文件），上标
 字符集来自项目自己的键盘定义，两处都不写死在代码里。
 """
 import json
@@ -28,10 +28,13 @@ EMPTY = "EMPTY"
 _STATUS_ORDER = (EXACT, NO_TONE, AMBIGUOUS, UNSUPPORTED)
 
 # `@NNNN` 是源库缺字登记的序号，不是 Unicode 码点，其数字绝不能当成声调。
-# 这里刻意取 {2,6} 的并集口径：仓库内 `detectors.py` 用 @十六进制{3,6}，未入仓的
-# `w2_parser.py` 用 @十进制{2,6}，两者在这份语料上实测等价但定义不一致。对转换器
-# 而言多保护几个字符零成本，少保护一个就会把登记号印成上标。
-PLACEHOLDER = re.compile(r"@[\da-fA-F]{2,6}")
+# 下界取 2：仓库内 `detectors.py` 用 @十六进制{3,6}，未入仓的 `w2_parser.py` 用
+# @十进制{2,6}，两者在这份语料上实测等价但定义不一致；对转换器而言多保护几个字符
+# 零成本，少保护一个就会把登记号印成上标。
+# 上界刻意不设限：`5`、`3` 本身也是十六进制字符，所以一旦登记号长过规范，就无法
+# 判断它到哪里结束、后面的数字是不是声调。与其猜一个边界，不如整格拒绝。
+PLACEHOLDER = re.compile(r"@[\da-fA-F]{2,}")
+PLACEHOLDER_MAX_HEX = 6
 DIGIT_RUN = re.compile(r"\d+")
 
 _WORD_TO_DIGIT = {"ZERO": "0", "ONE": "1", "TWO": "2", "THREE": "3", "FOUR": "4",
@@ -175,7 +178,15 @@ def convert_cell(value, legal, superscripts):
     # A digit run is either wholly inside a placeholder or wholly outside it: a
     # placeholder starts at `@`, which is not a digit, and its own run is maximal,
     # so no run can straddle the boundary. Checking the start offset is enough.
-    protected = [(m.start(), m.end()) for m in PLACEHOLDER.finditer(value)]
+    protected = []
+    for mark in PLACEHOLDER.finditer(value):
+        if len(mark.group(0)) - 1 > PLACEHOLDER_MAX_HEX:
+            # Longer than the spec allows: the tail cannot be told apart from a
+            # tone digit, and `flatten()` round-trips either way, so verify()
+            # would never see it. Refuse the cell instead of guessing a boundary.
+            return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                              reason="placeholder_out_of_spec_length")
+        protected.append((mark.start(), mark.end()))
 
     def inside_placeholder(position):
         return any(start <= position < end for start, end in protected)

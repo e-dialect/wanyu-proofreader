@@ -353,9 +353,18 @@ python3 backend/tests/run_integration.py assist_chain_integration.mjs
 ```bash
 # 界面证据：管理端各态 + 大厅层级条 + 校对端放行前后
 VITE_PB_URL=http://localhost npm --prefix frontend run build
-ASSIST_BROWSER_SCRIPT="$PWD/backend/tests/assist_browser.cjs" \
+BROWSER_CHANNEL=chrome \
+  NODE_PATH="/tmp/assist-browser/node_modules" \
+  ASSIST_BROWSER_SCRIPT="$PWD/backend/tests/assist_browser.cjs" \
   python3 backend/tests/run_integration.py assist_browser_integration.mjs
 ```
+
+`BROWSER_CHANNEL` 与 `NODE_PATH` 是**本地才需要**的：CI 由 `assist-browser` 作业自己装 playwright。
+本机这两个变量各挡一个真实的坑——不指定 channel 时 playwright 会找它自己那个构建号的
+chromium（`Executable doesn't exist`），而 `NODE_PATH` 必须指向**真的装着 playwright 的那份**
+node_modules（`npm root -g` 里未必有，指向它会 `Cannot find module`）。
+跑成功的判据不是退出码，而是输出里有 `ASSIST BROWSER OK [...]` 这一行，
+且方括号里的状态名数量与截图清单一致。
 
 **这一支有个容易骗过人的地方**：没设 `ASSIST_BROWSER_SCRIPT` 时它会打印 SKIP 并以 0 退出。
 于是"全套件绿"里可能根本没跑过浏览器（`run_all.py` 现在会把这种情况显式报成 skip，
@@ -365,3 +374,10 @@ ASSIST_BROWSER_SCRIPT="$PWD/backend/tests/assist_browser.cjs" \
 
 正本规模的复现命令见上面「规则门控放行与降档」的打分/变更集两步；它的产物是报告，
 不是界面，两者不要混为一份证据。
+
+同一次运行还会拍出「条目阻塞结论」的三态（#240 验收第 7 条）：
+`blocked-conclusion-unset`（库里没有结论，撤销按钮灰着）、
+`blocked-conclusion-settled`（**由界面上的表单**写入，回读串带齐 who/when/basis，
+且层级当场落 C）、`blocked-conclusion-no-permission`（项目管理员看得到「机器疑点」
+但看不到这一节，同时接口对他是真 403）。第二张必须是点出来的而不是夹具预置的，
+否则它证明的只是"前端会渲染一行字"。

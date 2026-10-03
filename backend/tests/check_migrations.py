@@ -124,6 +124,15 @@ SPECS = {
             'revoked_by': {'required': False},
         }),
     },
+    # #240 阻塞结论的审计列。断言 required=False：一旦有人把它们改成必填，
+    # 存量条目会立刻写不进 blocked_reason（清除路径要写空串）。
+    '1789200400_blocked_reason_audit.js': {
+        'fields': ('pages', {
+            'blocked_reason_by': {'required': False},
+            'blocked_reason_at': {'required': False},
+            'blocked_reason_note': {'required': False},
+        }),
+    },
     '1789200300_project_artifacts.js': {
         'indexes': ['idx_project_artifacts_project'],
         'plans': [

@@ -524,6 +524,56 @@
           <button type="button" class="btn btn-sm btn-secondary" :disabled="!assistHasMore || assistBusy" @click="stepAssistPage(1)">下一页</button>
         </nav>
 
+        <!-- #240：条目阻塞结论。写入口只对平台管理员开放（后端 blocked_reason.pb.js 里
+             三个路由都是 requireAuth + isPlatformAdmin），所以这里连控件都不给别的身份渲染。
+             控件不在 ≠ 能力被关掉了：机器路径本来就只把桶当判档输入，从不写回这一列。 -->
+        <div v-if="auth.isPlatformAdmin" class="blocked-conclusion">
+          <h3>条目阻塞结论</h3>
+          <p class="text-muted">
+            机器认不出「这条为什么卡住」时，需要一个人事先把判断写下来，并在依据里说清出处。
+            登记与撤销都会立刻重算这一条的难度层级。
+          </p>
+          <label class="form-group">
+            <span class="form-label">选择条目（本页）</span>
+            <select v-model="blockedPageId" class="form-control" @change="loadBlockedConclusion">
+              <option value="">—</option>
+              <option v-for="(pg, idx) in displayedPages" :key="pg.id" :value="pg.id">
+                第 {{ formatItemNo(pg.page_number, displayedPageOffset + idx) }} 条 · {{ statusLabel(pg.status) }}
+              </option>
+            </select>
+          </label>
+          <template v-if="blockedPageId">
+            <p class="blocked-conclusion__current">{{ blockedConclusionText }}</p>
+            <label class="form-group">
+              <span class="form-label">阻塞原因</span>
+              <select v-model="blockedForm.reason" class="form-control">
+                <option value="">—</option>
+                <option v-for="(label, key) in BUCKET_LABELS" :key="key" :value="key">{{ label }}</option>
+              </select>
+            </label>
+            <label class="form-group">
+              <span class="form-label">依据（必填）</span>
+              <textarea
+                v-model="blockedForm.basis"
+                class="form-control"
+                rows="2"
+                maxlength="500"
+                placeholder="例：授权邮件 2026-10-03；凡例 §4 第 2 条"
+              ></textarea>
+            </label>
+            <div class="flex gap-2">
+              <button type="button" class="btn btn-primary" :disabled="blockedBusy || !blockedCanSubmit" @click="saveBlockedConclusion">
+                {{ blockedBusy ? '提交中…' : '登记结论' }}
+              </button>
+              <button type="button" class="btn btn-secondary" :disabled="blockedBusy || blockedState === 'unset'" @click="clearBlockedConclusion">
+                撤销结论
+              </button>
+            </div>
+            <p v-if="blockedTier" class="text-sm text-muted">登记后层级 {{ blockedTier }} · 判据 {{ blockedTierBasis }}</p>
+          </template>
+          <p v-if="blockedError" class="alert alert-error" role="alert">{{ blockedError }}</p>
+        </div>
+
         <h3>人工结论（不是冲突的分组）</h3>
         <p class="text-muted">标过的分组在重算时整组跳过；这些结论不跟着机器批次下线，也不随判定人消失。</p>
         <p v-if="assistDismissalsTruncated" class="alert alert-warning" role="alert">
@@ -619,6 +669,9 @@ import {
   revokeGroupDismissal
 } from '@/services/assistService'
 import { validatePdfFile, loadPdfUploadResume, clearPdfUploadResume } from '@/lib/chunkedPdfUpload'
+import { BUCKET_LABELS, canSubmit as canSubmitBlocked, conclusionState, conclusionSummary } from '@/lib/blockedReason'
+import { clearBlockedReason, getBlockedReason, setBlockedReason } from '@/services/blockedReasonService'
+import { useAuthStore } from '@/stores/auth'
 import { currentUserId } from '@/services/authService'
 import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors, startOcr } from '@/services/importJobsService'
 import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
@@ -638,6 +691,7 @@ import { getPbMessage, getPbStatus, getUploadErrorMessage, isRetryablePdfUploadE
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const projectId = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
 const ACTIVE_STATUS_FILTER = 'active'
 const initialStatus = Array.isArray(route.query.status) ? route.query.status[0] : route.query.status
@@ -1541,13 +1595,85 @@ async function revokeDismissal(item) {
   }
 }
 
+// ---------- #240 条目阻塞结论区块 ----------
+// 只有平台管理员能看到这一节（口径由维护者在 #240 上定为 B）：区块所在的「机器疑点」
+// 是 canManage 门禁，比平台管理员宽，所以这里必须再套一层 isPlatformAdmin，
+// 否则项目管理员会看见一组点了就 403 的控件。
+const blockedPageId = ref('')
+const blockedRecord = ref(null)
+const blockedForm = ref({ reason: '', basis: '' })
+const blockedBusy = ref(false)
+const blockedError = ref('')
+const blockedTier = ref('')
+const blockedTierBasis = ref('')
+
+const blockedState = computed(() => conclusionState(blockedRecord.value))
+const blockedConclusionText = computed(() => conclusionSummary(blockedRecord.value))
+const blockedCanSubmit = computed(() => canSubmitBlocked(blockedForm.value))
+
+function blockedMessage(error) {
+  return getPbMessage(error) || error?.message || String(error)
+}
+
+async function loadBlockedConclusion() {
+  blockedError.value = ''
+  blockedRecord.value = null
+  blockedForm.value = { reason: '', basis: '' }
+  blockedTier.value = ''
+  blockedTierBasis.value = ''
+  if (!blockedPageId.value) return
+  try {
+    blockedRecord.value = await getBlockedReason(blockedPageId.value)
+  } catch (error) {
+    blockedError.value = `读取失败：${blockedMessage(error)}`
+  }
+}
+
+// 写完一律重新读一次再显示：面板上那行结论必须是服务端此刻的值，
+// 不是 PUT/DELETE 的回显——两者不一致时，回显会让一个坏掉的值域看起来是成功的。
+async function reloadBlockedConclusion(result) {
+  const tier = result?.difficulty_tier ?? ''
+  const basis = result?.difficulty_basis ?? ''
+  await loadBlockedConclusion()
+  blockedTier.value = tier
+  blockedTierBasis.value = basis
+  await loadPages()
+}
+
+async function saveBlockedConclusion() {
+  if (blockedBusy.value || !blockedCanSubmit.value) return
+  blockedBusy.value = true
+  blockedError.value = ''
+  try {
+    await reloadBlockedConclusion(await setBlockedReason(blockedPageId.value, { ...blockedForm.value }))
+  } catch (error) {
+    blockedError.value = `登记失败：${blockedMessage(error)}`
+  } finally {
+    blockedBusy.value = false
+  }
+}
+
+// 撤销必须只针对"这条已经有结论"：把空串当一次 DELETE 发出去，
+// 症状是清掉了别人的值（选错条目时），而不是什么都没发生。
+async function clearBlockedConclusion() {
+  if (blockedBusy.value || blockedState.value === 'unset') return
+  blockedBusy.value = true
+  blockedError.value = ''
+  try {
+    await reloadBlockedConclusion(await clearBlockedReason(blockedPageId.value))
+  } catch (error) {
+    blockedError.value = `撤销失败：${blockedMessage(error)}`
+  } finally {
+    blockedBusy.value = false
+  }
+}
+
 watch(
   () => project.value?.capabilities?.canManage,
   (manageable) => {
     if (!manageable) return
     loadAssistFindings()
-    loadAssistDismissals()
-  },
+    loadAssistDismissals()  },
   { immediate: true }
 )
 
