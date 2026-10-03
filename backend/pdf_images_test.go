@@ -186,6 +186,10 @@ func TestImageCommandTimeoutAndCancellation(t *testing.T) {
 		return
 	}
 	t.Setenv("WANYU_IMAGE_COMMAND_TEST", "1")
+	// Race-instrumented test binaries wait one second at exit by default,
+	// even after PASS. Disable only that helper-process delay so the command
+	// budget measures its work; keep race reporting and existing GORACE options.
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
 	for range 2 {
 		if out, err := runImageCommand(context.Background(), time.Second, os.Args[0], "-test.run=^TestImageCommandTimeoutAndCancellation$"); err != nil {
 			t.Fatalf("separate process budget: %v %s", err, out)
