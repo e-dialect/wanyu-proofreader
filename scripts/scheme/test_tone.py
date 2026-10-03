@@ -102,10 +102,27 @@ class RaiseTests(unittest.TestCase):
         self.assertEqual(tone.UNSUPPORTED, convert("ju4", XIANYOU).status)
 
     def test_placeholder_digits_are_never_raised(self):
-        for value in ("qa@12345", "ka@12", "ka@ABC"):
+        for value in ("qa@12345", "qa@12", "qa@ABC"):
             result = convert(value)
             self.assertEqual(value, result.text)
             self.assertEqual(tone.NO_TONE, result.status, value)
+
+    def test_a_six_character_placeholder_is_the_longest_still_accepted(self):
+        # The boundary is counted in hex characters, and `G` is not one: a
+        # non-hex letter ends the marker and leaves what follows readable.
+        self.assertEqual(tone.NO_TONE, convert("qa@ABCDEF").status)
+        self.assertEqual(tone.UNSUPPORTED, convert("qa@ABCDEF1").status)
+        self.assertEqual(tone.NO_TONE, convert("qa@ABCDEFG").status)
+
+    def test_an_over_long_placeholder_refuses_the_cell_instead_of_guessing(self):
+        # `5` and `3` are hex digits too, so past the 6-character spec there is no
+        # way to tell where the register number ends. Before this rule the tail was
+        # silently raised — `qa@ABCDEF533` came back EXACT as `qa@ABCDEF⁵³³`, and
+        # because flatten() still round-tripped, verify() could not see it either.
+        result = convert("qa@ABCDEF533")
+        self.assertEqual("qa@ABCDEF533", result.text)
+        self.assertEqual(tone.UNSUPPORTED, result.status)
+        self.assertEqual("placeholder_out_of_spec_length", result.reason)
 
     def test_a_cell_mixing_placeholder_and_real_tones_converts_only_the_tones(self):
         result = convert("qa533@12345vi21")
@@ -199,7 +216,7 @@ class CliTests(unittest.TestCase):
         code, out, err = run_main(["--csv", str(FIXTURE)])
         self.assertEqual(0, code, err)
         self.assertIn("scheme: puxian-dict-reading", out)
-        self.assertIn("rows: 12", out)
+        self.assertIn("rows: 13", out)
         for expected in ("AMBIGUOUS", "UNSUPPORTED", "NO_TONE"):
             self.assertIn(expected, out)
 
@@ -222,7 +239,7 @@ class CliTests(unittest.TestCase):
         doc = json.loads(out)
         self.assertEqual("puxian-dict-reading", doc["scheme"])
         self.assertTrue(doc["rule_version"].startswith("puxian-tone-notation"))
-        self.assertEqual(12, doc["rows"])
+        self.assertEqual(13, doc["rows"])
         self.assertNotIn("cell", json.dumps(doc, ensure_ascii=False))
 
     def test_writing_a_file_preserves_everything_outside_the_target_columns(self):
