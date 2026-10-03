@@ -1,5 +1,10 @@
 // #190 拼音转换的运行面：一条目一个当前结论（落在 pages），一批一个作业（新集合）。
 //
+// 索引只留队列那一条。「规则升版后列出受影响记录」是一次罕见的运维查询，
+// 为它再往 pages 上挂一个索引不值：pages 是导入热路径上写入最频繁的表，
+// 每加一条索引都要在每次插入时维护（#289 的 CI 就是在这里被竞态检测作业卡住的）。
+// 那条查询按项目扫一遍即可，并在文档里写明它是离线查询。
+//
 // 为什么结论落在 pages 而不是独立的结果集合：本仓已经不止一次把「派生值」物化在
 // pages 上（difficulty_tier、entry_identity_key、quality_state），理由都是同一个——
 // 它们要能被筛、被排序、被导出直读，而派生集合会让每一次读取都多一次 join 或回查。
@@ -15,7 +20,6 @@
 // 要撤掉更早的迁移先备份 pb_data。
 
 const QUEUE_INDEX = "CREATE INDEX idx_pages_normalization_queue ON pages (project, normalization_status)"
-const RULE_INDEX = "CREATE INDEX idx_pages_normalization_rule ON pages (project, normalization_rule_version)"
 const ACTIVE_INDEX = "CREATE UNIQUE INDEX idx_conversion_jobs_active ON conversion_jobs (project) WHERE status IN ('queued','processing')"
 const JOB_INDEX = "CREATE INDEX idx_conversion_jobs_project ON conversion_jobs (project, created DESC)"
 
@@ -107,7 +111,7 @@ migrate((app) => {
     pages.fields.add(field.build())
     pagesChanged = true
   }
-  for (const sql of [QUEUE_INDEX, RULE_INDEX]) {
+  for (const sql of [QUEUE_INDEX]) {
     const marker = sql.split(" ")[2]
     if (pages.indexes.some((existing) => existing.includes(marker))) continue
     pages.indexes = [...pages.indexes, sql]
