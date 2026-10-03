@@ -6,16 +6,20 @@
 
 ## 流水线
 
-`Convert(input, adapter)` 按 #114 §6 的顺序走六级，每一级都在 `convert.go` 里单独可测：
+`Convert(input, adapter)` 走 #114 §6 的六级，每一级都在 `convert.go` 里单独可测。表里第 5 级同时写明了**它在代码里的实际查表时机**——两者故意不一致，理由与补偿机制都写在那一行，不留给读者猜：
 
-| 级 | 做什么 | 失败时的状态 |
+| 级（§6 编号） | 做什么 | 失败时的状态 |
 | --- | --- | --- |
 | 1 Unicode 规范化 | 只做 NFC。不做 NFD/NFKC——那会把 `ɑ` 与 `a`、预组合鼻化与裸附标之间的区别抹掉 | — |
 | 2 音节解析 | 声母/韵母/声调三段，最长匹配优先，顺序固定不依赖 map 遍历 | `UNSUPPORTED` |
 | 3 分段映射 | `segment_map` 逐段查；命中一对多即停 | `AMBIGUOUS` |
-| 4 上下文规则 | 只在指定邻接下改写，用于凡例三.2 那类「一个字符串两层音系」 | — |
-| 5 例外表 | 整条覆盖，承载人工复核结论（#190 第 4 条的反哺落点） | 取其声明状态 |
+| 4 上下文规则 | 只在指定邻接下改写，用于凡例三.2 那类「一个字符串两层音系」。邻接必须至少写一个、且必须是源清单里真实存在的片段，否则这条规则永不命中——加载即拒 | — |
+| 5 例外表 | 整条覆盖，承载人工复核结论（#190 第 4 条的反哺落点）。**查表发生在第 1 级之后、第 2 级之前** | 取其声明状态 |
 | 6 目标合法性 | 产出的每一段都必须在目标清单里 | `UNSUPPORTED` |
+
+例外表前置是有意的：人工结论存在的理由恰恰是「前面几级处理不了这个写法」——`sa533` 的声母 `s` 没有任何映射规则，按 §6 的顺序它会在第 3 级就被判 `UNSUPPORTED`，例外永远轮不到（`TestConvertCoversAllFourStatuses` 里那条用例的名字就是这个）。
+
+代价很实在：这条出口绕开了第 2 级的拆解与第 6 级的清单核对，而它偏偏是唯一允许携带 `EXACT`/`REVIEWED` 的出口——下游把这两个状态当作确定值，再也分不出「查过的」和「没查过的」。所以那两道检查没有取消，只是**从运行时搬到加载时**：`LoadAdapter` 用与第 2 级同一个拆解函数（`splitSyllables`），把每一条例外的 `canonical_pronunciation` 对着**目标**清单走一遍，拆不成「一个声母 + 一个韵母 + 正好一个调值」就整文件拒绝。这比第 6 级还严一点：它要求整串消费干净，第 6 级只查各段是否在清单里。
 
 第 2 级有一条硬规矩，与 `scripts/scheme/tone.py` 同源：**一个音节位上的数字串必须正好是一个合法调值**。`533453` 不拆、不猜、不"取最长"，直接判解析失败——字母丢光是损坏，不是留给程序解的题。
 
@@ -35,6 +39,7 @@ normalization_status / normalization_rule_version / normalization_trace
 
 1. **只有 `EXACT` 与 `REVIEWED` 能带 `canonical_pronunciation`。** `AMBIGUOUS` 带一个猜出来的值，下游就再也分不出它和确定值——所以 `TestDeclinedResultsNeverCarryACanonicalValue` 对每个拒绝用例都断言该字段为空。
 2. **`normalization_trace` 必须点名每一条实际生效的规则 ID**，包括触发歧义的那条。#189 要的是"规则升版后能列出受影响记录"，只记 `rule_version` 做不到这件事。
+3. **不存在静默失效的规则。** 一条规则要么可能在运行时生效、要么在加载时被拒。第 2 条成立的前提是「进了 trace 的规则就是被查的那条」，而规则文件是手抄数据，最容易出的不是报错而是写一行永不生效的对应关系：同键两行、`part` 拼错、邻接拼错，全都属于这一类。
 
 ## 加载器的拒绝面
 
@@ -45,7 +50,12 @@ normalization_status / normalization_rule_version / normalization_trace
 - 缺 `rule_version`（没有它 trace 无意义）；
 - `annotation_system != tone_value`——《文读字汇》的 1–7 是**调类**，与大词典的**调值**同形不同义，字符串层面无法区分，所以必须由登记方声明，程序不猜；
 - 规则 ID 重复；某条映射的目标值不在目标清单里；一对多规则同时写了 `to` 与 `candidates`；
-- 例外条目声明了 `AMBIGUOUS`/`UNSUPPORTED`（例外是人工结论，只能断言确定值），或 `REVIEWED` 却没写 `basis`。
+- **同一个源片段写了两条规则**（`part`+`from` 相同，含一对一与一对多混用）。运行时按 `part:from` 查表，两行同键必然有一行永不生效、也永不出现在 trace 里——那正是「没人知道它已经死了」的形状，而 #189 要的是反过来：升版时能点名受影响记录；
+- 分段规则的 `part` 不是 `onset`/`rime`/`tone`；一对多的 `candidates` 里有目标清单外的值（复核员面对一个根本不该出现的候选）；
+- 上下文规则**永远不可能命中**：既没写 `when_onset` 也没写 `when_rime`（引擎没有「无条件改写」这个概念），或写的邻接在源清单里不存在。它与「`rewrites nothing`」是同一个缺陷的两半，过去只拦了后一半。至于 `rewrite_*` 是否在目标清单里，**故意不在这里查**——它只在特定邻接下才触发，静态证不了，留给第 6 级（`testdata/adapter_illegal_rewrite.json` 与 `TestTargetLegalityRejectsAHandBuiltIllegalSyllable` 钉的就是这件事）；
+- 例外条目声明了 `AMBIGUOUS`/`UNSUPPORTED`（例外是人工结论，只能断言确定值），或 `REVIEWED` 却没写 `basis`；
+- **例外的 `canonical_pronunciation` 拆不成目标方案能拼的音节**（见流水线第 5 级：这条出口在运行时绕开了拆解与合法性两级，只能在这里补回来）；例外条目规范化后撞在同一个源形上（两行只能有一行被查到）；
+- 例外条目的键与值都以 NFC 存储。源侧真实材料本就 NFC/NFD 混排，值不规范化就会以手抄的字节形式出门，第 6 级又正好被绕开。
 
 ## 关于 #189 第 6 条「一套定义两处使用」
 
@@ -76,5 +86,5 @@ normalization_status / normalization_rule_version / normalization_trace
 - 存储：`normalization_*` 字段落库与迁移（本包不碰 schema）；
 - 作业面：`conversion_jobs`、批次游标、四行汇总；
 - 复核队列：`AMBIGUOUS` 的 `candidates` 与 `trace` 已经在结果里，队列只是把它们摊开给人看；
-- 反哺：人工结论写回 `exceptions`，本包的 `REVIEWED` 状态与 `basis` 字段就是为此留的形状；
+- 反哺：人工结论写回 `exceptions`，本包的 `REVIEWED` 状态与 `basis` 字段就是为此留的形状。写回的通道必须经过本包的加载与校验——例外值是全场唯一在运行时不做清单核对的出口（理由见流水线第 5 级），绕过校验直接改文件就等于把 `EXACT` 发给一个拼错的值；
 - **部署**：`backend/Dockerfile` 目前只 COPY `*.go`、`reviewbundle/`、`pb_migrations/`、`keyboards/`。真实规则文件一旦放进 `backend/scheme/data/`，必须同步加一条 COPY，否则镜像里读不到——这是本包故意把路径交给调用方、不写死默认值的另一个原因。

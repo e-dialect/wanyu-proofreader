@@ -177,6 +177,33 @@ func TestExceptionMatchesRegardlessOfEncodingForm(t *testing.T) {
 	}
 }
 
+func TestExceptionValueIsStoredInNFCForm(t *testing.T) {
+	// The exception path returns its value directly, without the normalisation the
+	// pipeline applies at the end, so a value hand-transcribed in NFD would go out
+	// in NFD. 仙游IPA is bimodal in the real corpus, and a reviewer comparing two
+	// byte-different spellings of the same syllable would see a difference.
+	nfcRime := "ã"
+	nfdValue := "ba\u0303" + "533"
+	nfcValue := "b" + nfcRime + "533"
+	if nfdValue == nfcValue {
+		t.Fatal("the fixture pair is not actually two encoding forms")
+	}
+	path := writeAdapter(t, func(d map[string]interface{}) {
+		canonical := d["canonical"].(map[string]interface{})
+		canonical["rimes"] = append(canonical["rimes"].([]interface{}), nfcRime)
+		d["exceptions"] = []interface{}{map[string]interface{}{
+			"id": "E-nfd", "source_pronunciation": "ma533",
+			"canonical_pronunciation": nfdValue, "status": "EXACT", "basis": "synthetic"}}
+	})
+	adapter, err := LoadAdapter(path)
+	if err != nil {
+		t.Fatalf("LoadAdapter: %v", err)
+	}
+	if got := Convert("ma533", adapter); got.CanonicalPronunciation != nfcValue {
+		t.Errorf("value %X is not the NFC spelling %X", got.CanonicalPronunciation, nfcValue)
+	}
+}
+
 func TestLoadAdapterHasNoDefaultPath(t *testing.T) {
 	if _, err := LoadAdapter(""); err == nil {
 		t.Fatal("an empty path resolved to something; a baked-in default is how #193 shipped a home directory")
@@ -213,6 +240,33 @@ func TestLoadAdapterRefusesUntrustworthyRuleFiles(t *testing.T) {
 				"id": "BAD", "part": "rime", "from": "o", "to": "u",
 				"candidates": []string{"e"}, "basis": "x"})
 		}, "cannot also declare to"},
+		{"two rules for the same source segment", func(d map[string]interface{}) {
+			d["segment_map"] = append(d["segment_map"].([]interface{}), map[string]interface{}{
+				"id": "BAD", "part": "rime", "from": "a", "to": "u", "basis": "x"})
+		}, "both map source segment"},
+		{"one-to-one and one-to-many share a source segment", func(d map[string]interface{}) {
+			d["segment_map"] = append(d["segment_map"].([]interface{}), map[string]interface{}{
+				"id": "BAD", "part": "rime", "from": "a",
+				"candidates": []string{"e", "u"}, "basis": "x"})
+		}, "both map source segment"},
+		{"unknown segment part", func(d map[string]interface{}) {
+			d["segment_map"] = append(d["segment_map"].([]interface{}), map[string]interface{}{
+				"id": "BAD", "part": "vowel", "from": "o",
+				"candidates": []string{"u"}, "basis": "x"})
+		}, "unknown segment part"},
+		{"one-to-many offers a value the target cannot hold", func(d map[string]interface{}) {
+			d["segment_map"] = append(d["segment_map"].([]interface{}), map[string]interface{}{
+				"id": "BAD", "part": "rime", "from": "o",
+				"candidates": []string{"ɨ"}, "basis": "x"})
+		}, "canonical inventory"},
+		{"context rule names no neighbour", func(d map[string]interface{}) {
+			d["context_rules"] = append(d["context_rules"].([]interface{}), map[string]interface{}{
+				"id": "BAD", "rewrite_rime": "e", "basis": "x"})
+		}, "can never match"},
+		{"context rule keyed to a neighbour the source cannot have", func(d map[string]interface{}) {
+			d["context_rules"] = append(d["context_rules"].([]interface{}), map[string]interface{}{
+				"id": "BAD", "when_onset": "n", "rewrite_rime": "e", "basis": "x"})
+		}, "not a source onset"},
 		{"reviewed exception without a basis", func(d map[string]interface{}) {
 			d["exceptions"] = []interface{}{map[string]interface{}{
 				"id": "E", "source_pronunciation": "pa533",
@@ -223,6 +277,21 @@ func TestLoadAdapterRefusesUntrustworthyRuleFiles(t *testing.T) {
 				"id": "E", "source_pronunciation": "pa533",
 				"canonical_pronunciation": "be533", "status": "AMBIGUOUS", "basis": "x"}}
 		}, "EXACT or REVIEWED"},
+		{"exception value outside the target inventory", func(d map[string]interface{}) {
+			d["exceptions"] = []interface{}{map[string]interface{}{
+				"id": "E", "source_pronunciation": "pa533",
+				"canonical_pronunciation": "ga533", "status": "EXACT", "basis": "x"}}
+		}, "target scheme can spell"},
+		{"exception value is not a target syllable", func(d map[string]interface{}) {
+			d["exceptions"] = []interface{}{map[string]interface{}{
+				"id": "E", "source_pronunciation": "pa533",
+				"canonical_pronunciation": "be5334", "status": "EXACT", "basis": "x"}}
+		}, "target scheme can spell"},
+		{"two exceptions for the same source form", func(d map[string]interface{}) {
+			d["exceptions"] = append(d["exceptions"].([]interface{}), map[string]interface{}{
+				"id": "BAD", "source_pronunciation": "pa21",
+				"canonical_pronunciation": "de533", "status": "EXACT", "basis": "x"})
+		}, "same source form once normalised"},
 		{"empty canonical inventory", func(d map[string]interface{}) {
 			d["canonical"] = map[string]interface{}{"onsets": []string{}, "rimes": []string{}, "tone_values": []string{}}
 		}, "must declare"},

@@ -22,7 +22,12 @@ type Result struct {
 type syllable struct{ onset, rime, tone string }
 
 // Convert runs the #114 §6 pipeline: Unicode normalisation, syllable parsing,
-// segment mapping, context rules, exception table, target legality check.
+// segment mapping, context rules, exception table, target legality check. The
+// exception table is looked up right after normalisation, not at §6's fifth
+// position: a human conclusion exists precisely for sources the earlier stages
+// cannot handle, and running them first would decline before it was consulted.
+// Stage 6's guarantee moves to LoadAdapter for that one exit, which is why
+// Convert trusts the values it finds in adapter.exceptions.
 //
 // The input is never mutated and never returned in a rewritten form: the source
 // layer is the proofreader's work and stays as it was (#114 §2).
@@ -162,18 +167,29 @@ func (a *Adapter) legal(onset, rime, tone string) string {
 // refuses rather than guessing: a digit run that is not exactly one legal tone
 // value means letters were lost upstream, which the mapping stage cannot repair.
 func (a *Adapter) parse(value string) ([]syllable, bool) {
+	return splitSyllables(value, a.sourceOnsets, a.sourceRimes, a.sourceTones)
+}
+
+// parseCanonical answers the same question of the target scheme. It exists
+// because the exception table is looked up before the pipeline runs: this is the
+// only place that can tell a hand-transcribed value from a typo.
+func (a *Adapter) parseCanonical(value string) ([]syllable, bool) {
+	return splitSyllables(value, a.canonicalOnsets, a.canonicalRimes, a.canonicalTones)
+}
+
+func splitSyllables(value string, onsets, rimes, tones []string) ([]syllable, bool) {
 	var out []syllable
 	rest := value
 	for rest != "" {
-		onset := longestPrefix(rest, a.sourceOnsets)
+		onset := longestPrefix(rest, onsets)
 		rest = rest[len(onset):]
-		rime := longestPrefix(rest, a.sourceRimes)
+		rime := longestPrefix(rest, rimes)
 		if rime == "" {
 			return nil, false
 		}
 		rest = rest[len(rime):]
 		digits := leadingDigits(rest)
-		tone := longestPrefix(digits, a.sourceTones)
+		tone := longestPrefix(digits, tones)
 		if tone == "" || tone != digits {
 			return nil, false
 		}

@@ -109,19 +109,25 @@ type Adapter struct {
 	Contexts   []ContextRule `json:"context_rules"`
 	Exceptions []Exception   `json:"exceptions"`
 
-	// compiled, not serialised. The source inventories are sorted longest-first
-	// so syllable parsing is deterministic and cannot depend on map order.
-	sourceOnsets []string
-	sourceRimes  []string
-	sourceTones  []string
-	onsetMap     map[string]string
-	onsetIDs     map[string]string
-	rimeIDs      map[string]string
-	toneIDs      map[string]string
-	rimeMap      map[string]string
-	toneMap      map[string]string
-	ambiguous    map[string]Segment
-	exceptions   map[string]Exception
+	// compiled, not serialised. Both inventories are sorted longest-first so
+	// syllable parsing is deterministic and cannot depend on map iteration order.
+	// The canonical side is compiled because load-time validation uses it too: it
+	// is the only thing that can prove a hand-written exception value is a
+	// syllable the target scheme can spell.
+	sourceOnsets    []string
+	sourceRimes     []string
+	sourceTones     []string
+	canonicalOnsets []string
+	canonicalRimes  []string
+	canonicalTones  []string
+	onsetMap        map[string]string
+	onsetIDs        map[string]string
+	rimeIDs         map[string]string
+	toneIDs         map[string]string
+	rimeMap         map[string]string
+	toneMap         map[string]string
+	ambiguous       map[string]Segment
+	exceptions      map[string]Exception
 }
 
 // ErrInvalidRule marks a rule file that cannot be trusted to load. LoadAdapter
@@ -169,6 +175,9 @@ func (a *Adapter) validate() error {
 	a.sourceOnsets = byLengthDesc(a.Source.Onsets)
 	a.sourceRimes = byLengthDesc(a.Source.Rimes)
 	a.sourceTones = byLengthDesc(a.Source.ToneValues)
+	a.canonicalOnsets = byLengthDesc(a.Canonical.Onsets)
+	a.canonicalRimes = byLengthDesc(a.Canonical.Rimes)
+	a.canonicalTones = byLengthDesc(a.Canonical.ToneValues)
 	a.onsetMap = map[string]string{}
 	a.rimeMap = map[string]string{}
 	a.toneMap = map[string]string{}
@@ -178,6 +187,10 @@ func (a *Adapter) validate() error {
 	a.ambiguous = map[string]Segment{}
 	a.exceptions = map[string]Exception{}
 	seen := map[string]bool{}
+	// Keyed by part:from, which is what the conversion looks up: two rows on one
+	// key meant the first never fired and never appeared in a trace.
+	owner := map[string]string{}
+	exceptionKey := map[string]string{}
 
 	for _, seg := range a.Segments {
 		if seg.ID == "" || seg.From == "" {
@@ -187,11 +200,34 @@ func (a *Adapter) validate() error {
 			return ErrInvalidRule{Reason: "duplicate segment rule id " + seg.ID}
 		}
 		seen[seg.ID] = true
+		var values, ids map[string]string
+		switch seg.Part {
+		case "onset":
+			values, ids = a.onsetMap, a.onsetIDs
+		case "rime":
+			values, ids = a.rimeMap, a.rimeIDs
+		case "tone":
+			values, ids = a.toneMap, a.toneIDs
+		default:
+			return ErrInvalidRule{Reason: seg.ID + ": unknown segment part " + seg.Part}
+		}
+		key := seg.Part + ":" + seg.From
+		if previous, ok := owner[key]; ok {
+			return ErrInvalidRule{Reason: fmt.Sprintf(
+				"%s and %s both map source segment %s, so only one of them can ever take effect", previous, seg.ID, key)}
+		}
+		owner[key] = seg.ID
 		if len(seg.Targets) > 0 {
 			if seg.To != "" {
 				return ErrInvalidRule{Reason: seg.ID + ": a one-to-many rule cannot also declare to"}
 			}
-			a.ambiguous[seg.Part+":"+seg.From] = seg
+			for _, candidate := range seg.Targets {
+				if !inInventory(a.Canonical, seg.Part, candidate) {
+					return ErrInvalidRule{Reason: seg.ID + ": offers " + candidate +
+						", which the canonical inventory does not have, so the reviewer cannot pick it"}
+				}
+			}
+			a.ambiguous[key] = seg
 			continue
 		}
 		if seg.To == "" {
@@ -200,16 +236,8 @@ func (a *Adapter) validate() error {
 		if !inInventory(a.Canonical, seg.Part, seg.To) {
 			return ErrInvalidRule{Reason: seg.ID + ": maps to " + seg.To + ", which the canonical inventory does not have"}
 		}
-		parts := map[string]struct{ values, ids *map[string]string }{
-			"onset": {&a.onsetMap, &a.onsetIDs},
-			"rime":  {&a.rimeMap, &a.rimeIDs},
-			"tone":  {&a.toneMap, &a.toneIDs}}[seg.Part]
-		destination, idDestination := parts.values, parts.ids
-		if destination == nil {
-			return ErrInvalidRule{Reason: seg.ID + ": unknown segment part " + seg.Part}
-		}
-		(*destination)[seg.From] = seg.To
-		(*idDestination)[seg.From] = seg.ID
+		values[seg.From] = seg.To
+		ids[seg.From] = seg.ID
 	}
 
 	for _, rule := range a.Contexts {
@@ -222,6 +250,19 @@ func (a *Adapter) validate() error {
 		seen[rule.ID] = true
 		if rule.RewriteOnset == "" && rule.RewriteRime == "" {
 			return ErrInvalidRule{Reason: rule.ID + ": rewrites nothing"}
+		}
+		// "rewrites nothing" was refused; "matches nothing" is the same defect and
+		// was not. A rule with no neighbour is unconditional, which the pipeline has
+		// no word for, and one whose neighbour no source syllable can ever have is
+		// inert forever — inert also means stage 6 never sees its rewrite.
+		if rule.WhenOnset == "" && rule.WhenRime == "" {
+			return ErrInvalidRule{Reason: rule.ID + ": names no neighbour, so it can never match"}
+		}
+		if rule.WhenOnset != "" && !a.Source.onsetSet()[rule.WhenOnset] {
+			return ErrInvalidRule{Reason: rule.ID + ": when_onset " + rule.WhenOnset + " is not a source onset, so it can never match"}
+		}
+		if rule.WhenRime != "" && !a.Source.rimeSet()[rule.WhenRime] {
+			return ErrInvalidRule{Reason: rule.ID + ": when_rime " + rule.WhenRime + " is not a source rime, so it can never match"}
 		}
 	}
 
@@ -242,7 +283,20 @@ func (a *Adapter) validate() error {
 		if item.Status == Reviewed && item.Basis == "" {
 			return ErrInvalidRule{Reason: item.ID + ": a human conclusion needs a basis"}
 		}
-		a.exceptions[norm.NFC.String(item.Source)] = item
+		item.Canonical = norm.NFC.String(item.Canonical)
+		key := norm.NFC.String(item.Source)
+		if previous, ok := exceptionKey[key]; ok {
+			return ErrInvalidRule{Reason: fmt.Sprintf(
+				"%s and %s are the same source form once normalised, so only one of them can ever be found", previous, item.ID)}
+		}
+		exceptionKey[key] = item.ID
+		// This value goes out having passed neither the parse nor stage 6, because
+		// the table is consulted before the pipeline runs. Same code, load time.
+		if _, ok := a.parseCanonical(item.Canonical); !ok {
+			return ErrInvalidRule{Reason: item.ID + ": canonical value " + item.Canonical +
+				" is not a syllable the target scheme can spell"}
+		}
+		a.exceptions[key] = item
 	}
 
 	return nil
