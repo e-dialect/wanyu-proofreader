@@ -21,6 +21,7 @@ func (s *importService) registerPDFPreview() {
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		e.Router.GET("/api/fangji/pages/{pageId}/pdf", s.taskPDF).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/pages/{pageId}/pdf/descriptor", s.taskPDFDescriptor).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/fangji/pages/{pageId}/images/{number}/{kind}", s.taskPageImage).Bind(apis.RequireAuth("users"))
 		go func() {
 			ticker := time.NewTicker(time.Minute)
 			defer ticker.Stop()

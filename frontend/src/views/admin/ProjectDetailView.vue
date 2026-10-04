@@ -246,6 +246,23 @@
         </div>
         <div v-if="mutationSuccess" class="alert alert-success" role="status">{{ mutationSuccess }}</div>
         <div v-if="mutationError" class="alert alert-error" role="alert">{{ mutationError }}</div>
+        <!-- 质量状态汇总：#172 要求管理端能回答「还有多少未收口」。计数走服务端的
+             COUNT(*) GROUP BY（quality-summary），不是把当前这页的条目数一遍——
+             后者会把「本页有 2 条暂缓」说成「项目有 2 条暂缓」。 -->
+        <div v-if="qualitySummaryError" class="alert alert-error mb-2" role="alert">
+          {{ qualitySummaryError }}
+          <button type="button" class="btn btn-secondary btn-sm ml-2" @click="loadQualitySummary">重新加载</button>
+        </div>
+        <div v-else-if="qualitySummary" class="mb-2 flex gap-2 items-center">
+          <span class="text-sm text-muted">质量状态：</span>
+          <span
+            v-for="row in qualitySummaryRows"
+            :key="row.state"
+            :class="qualityStateBadgeClass(row.state)"
+            :title="QUALITY_STATE_HINTS[row.state] || '取值表外的状态，见迁移与代码的差异'"
+          >{{ row.label }} · {{ row.count }}</span>
+          <span class="text-sm text-muted">共 {{ qualitySummary.total }} 条</span>
+        </div>
         <div v-if="pageStats.total" class="admin-list-filters mb-4">
           <label class="admin-filter-field">
             <span>搜索条目</span>
@@ -262,6 +279,15 @@
               <option value="">全部状态</option>
               <option :value="ACTIVE_STATUS_FILTER">处理中（已认领/校对中）</option>
               <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label class="admin-filter-field">
+            <span>质量状态</span>
+            <select v-model="selectedQualityState" class="form-control">
+              <option value="">全部质量状态</option>
+              <option v-for="option in qualityStateOptions" :key="option.value" :value="option.value">
                 {{ option.label }}
               </option>
             </select>
@@ -339,6 +365,7 @@
                 <th>校对进度</th>
                 <th>当前校对员</th>
                 <th>不一致次数</th>
+                <th>质量状态</th>
                 <th>OCR文本预览</th>
                 <th style="width:100px">操作</th>
                 <th style="width:160px">顺序</th>
@@ -360,6 +387,18 @@
                 <td class="text-sm text-muted"><strong>{{ pg.proofread_count || 0 }} / {{ project?.required_proofreads || 2 }}</strong></td>
                 <td class="text-sm text-muted">{{ pg.expand?.proofreader?.name || pg.expand?.proofreader?.email || '—' }}</td>
                 <td class="text-sm text-muted">{{ pg.mismatch_count || 0 }}</td>
+                <td>
+                  <span :class="qualityStateBadgeClass(pg.quality_state)">{{ qualityStateLabel(pg.quality_state) }}</span>
+                  <button
+                    type="button"
+                    class="btn btn-quiet btn-sm ml-2"
+                    :disabled="mutatingRows"
+                    :aria-label="`设置第 ${pg.page_number} 条的质量状态`"
+                    @click="openQualityDialog(pg)"
+                  >
+                    标注
+                  </button>
+                </td>
                 <td class="text-sm text-muted" style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                   {{ Array.from(pg.ocr_text || '').slice(0, 80).join('') || '—' }}
                 </td>
@@ -553,6 +592,37 @@
         <p v-else class="text-muted assist-empty">还没有把任何分组标为「不是冲突」。</p>
       </section>
     </template>
+
+    <AppModal
+      :open="Boolean(qualityTarget)"
+      title-id="quality-state-dialog-title"
+      @close="closeQualityDialog"
+    >
+      <h3 id="quality-state-dialog-title">设置条目质量状态</h3>
+      <p class="text-sm text-muted">
+        第 {{ qualityTarget?.page_number }} 条 · 当前「{{ qualityStateLabel(qualityTarget?.quality_state) }}」
+      </p>
+      <label class="form-group">
+        <span class="form-label">目标状态</span>
+        <select v-model="qualityDraftState" class="form-control">
+          <option v-for="option in qualityStateOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+      </label>
+      <p class="text-sm text-muted">{{ QUALITY_STATE_HINTS[qualityDraftState] }}</p>
+      <label class="form-group">
+        <span class="form-label">依据{{ qualityBasisRequired ? '（必填）' : '（可留空）' }}</span>
+        <textarea v-model="qualityDraftBasis" class="form-control" rows="3" maxlength="500"></textarea>
+      </label>
+      <div v-if="qualityDialogError" class="alert alert-error" role="alert">{{ qualityDialogError }}</div>
+      <template #actions>
+        <button type="button" class="btn btn-secondary" :disabled="qualitySubmitting" @click="closeQualityDialog">取消</button>
+        <button type="button" class="btn btn-primary" :disabled="qualitySubmitDisabled" @click="submitQualityChange">
+          {{ qualitySubmitting ? '保存中...' : '保存' }}
+        </button>
+      </template>
+    </AppModal>
   </main>
 </template>
 
@@ -607,6 +677,16 @@ import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors
 import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
 import { toSafeCsvCell } from '@/lib/csvExport'
 import { getProject } from '@/services/projectsService'
+import { getProjectQualitySummary, setPageQualityState } from '@/services/qualityStateService'
+import { QUALITY_STATES, QUALITY_STATE_LABELS, QUALITY_STATE_HINTS, QUALITY_STATE } from '@/constants/qualityState'
+import {
+  normalizeQualityState,
+  qualityStateBadgeClass,
+  qualityStateLabel,
+  qualityStateNeedsBasis,
+  qualityStateSummaryRows
+} from '@/lib/qualityState'
+import AppModal from '@/components/AppModal.vue'
 import { getPbMessage, getPbStatus, getUploadErrorMessage, isRetryablePdfUploadError } from '@/utils/pbErrors'
 
 const route = useRoute()
@@ -669,10 +749,26 @@ const selectedStatus = ref(
 )
 const currentListPage = ref(1)
 const listPageSize = ref(25)
+const selectedQualityState = ref('')
+const qualitySummary = ref(null)
+const qualitySummaryError = ref('')
+const qualityTarget = ref(null)
+const qualityDraftState = ref(QUALITY_STATE.VALIDATED)
+const qualityDraftBasis = ref('')
+const qualitySubmitting = ref(false)
+const qualityDialogError = ref('')
 let pdfPollGeneration = 0
 let csvPollGeneration = 0
 
 const statusOptions = Object.entries(PAGE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
+const qualityStateOptions = QUALITY_STATES.map((value) => ({ value, label: QUALITY_STATE_LABELS[value] }))
+const qualitySummaryRows = computed(() => qualityStateSummaryRows(qualitySummary.value))
+// 这里只挡「目标需要依据而依据为空」。同值写入**不**在按钮上挡：它由服务端拒绝
+// （同值写入会刷新审计三列，见 backend/quality_state.go），界面负责把那条理由显示出来——
+// backend/tests/quality_state_browser.cjs 的第 4 步正是走这条路径截的图，删掉服务端那半边会让它失去意义。
+const qualityBasisRequired = computed(() => qualityStateNeedsBasis(qualityDraftState.value))
+const qualitySubmitDisabled = computed(() =>
+  qualitySubmitting.value || (qualityBasisRequired.value && !qualityDraftBasis.value.trim()))
 
 const approvedPct = computed(() => pageStats.value.completionPct)
 
@@ -680,7 +776,7 @@ const filteredPages = computed(() => pages.value)
 const listPagination = computed(() => ({ page: currentListPage.value, perPage: listPageSize.value, totalItems: totalFilteredItems.value, totalPages: serverTotalPages.value }))
 const displayedPages = computed(() => pages.value)
 const displayedPageOffset = computed(() => (currentListPage.value - 1) * listPageSize.value)
-const hasActiveListFilter = computed(() => Boolean(searchQuery.value.trim() || selectedStatus.value || minPdfPage.value || maxPdfPage.value))
+const hasActiveListFilter = computed(() => Boolean(searchQuery.value.trim() || selectedStatus.value || selectedQualityState.value || minPdfPage.value || maxPdfPage.value))
 const allPendingSelected = computed(() => {
   return pageStats.value.unstarted > 0 && selectedPendingIds.value.length === pageStats.value.unstarted
 })
@@ -711,7 +807,7 @@ const ocrJobStatusLabel = computed(() => ({
 const csvPreviewHeaders = computed(() => csvInspection.value?.headers.slice(0, 6) || [])
 const pdfResumeExpired = computed(() => Boolean(pdfResume.value?.expired))
 
-watch([searchQuery, selectedStatus, listPageSize, minPdfPage, maxPdfPage], () => {
+watch([searchQuery, selectedStatus, selectedQualityState, listPageSize, minPdfPage, maxPdfPage], () => {
   currentListPage.value = 1
   clearTimeout(searchTimer)
   searchTimer = setTimeout(loadPages, 200)
@@ -744,7 +840,7 @@ onMounted(async () => {
     return
   }
   loadingProject.value = false
-  await Promise.all([loadPages(), loadPdfResume()])
+  await Promise.all([loadPages(), loadQualitySummary(), loadPdfResume()])
   if (selectedStatus.value) {
     await nextTick()
     scrollToEntries()
@@ -767,6 +863,7 @@ async function loadPages() {
     const result = await listAdminProjectPages(projectId, {
       page: currentListPage.value, perPage: listPageSize.value,
       q: searchQuery.value, status: selectedStatus.value,
+      qualityState: selectedQualityState.value,
       minPage: minPdfPage.value, maxPage: maxPdfPage.value
     })
     if (generation !== pageLoadGeneration) return
@@ -788,11 +885,67 @@ async function operationRows() {
   try { return await listAllProjectPages(projectId, { fields: 'id,status,page_number', sort: 'page_number,id' }) } finally { mutatingRows.value = false }
 }
 
+// 汇总单独一次请求，不与条目分页耦合：切页不该重算汇总，改动状态才该。
+async function loadQualitySummary() {
+  try {
+    qualitySummary.value = await getProjectQualitySummary(projectId)
+    qualitySummaryError.value = ''
+  } catch (e) {
+    qualitySummary.value = null
+    qualitySummaryError.value = getPbMessage(e, '质量状态汇总加载失败。')
+  }
+}
+
+function openQualityDialog(page) {
+  qualityTarget.value = page
+  qualityDialogError.value = ''
+  qualityDraftBasis.value = ''
+  const current = normalizeQualityState(page.quality_state)
+  qualityDraftState.value = current === QUALITY_STATE.VALIDATED ? QUALITY_STATE.WITHHELD : QUALITY_STATE.VALIDATED
+}
+
+function closeQualityDialog() {
+  qualityTarget.value = null
+  qualitySubmitting.value = false
+}
+
+async function submitQualityChange() {
+  if (!qualityTarget.value || qualitySubmitDisabled.value) return
+  qualitySubmitting.value = true
+  qualityDialogError.value = ''
+  try {
+    const updated = await setPageQualityState(projectId, qualityTarget.value.id, {
+      state: qualityDraftState.value,
+      basis: qualityDraftBasis.value.trim()
+    })
+    const index = pages.value.findIndex((page) => page.id === qualityTarget.value.id)
+    if (index >= 0) {
+      pages.value[index] = {
+        ...pages.value[index],
+        quality_state: updated.qualityState,
+        quality_state_by: updated.qualityBy,
+        quality_state_at: updated.qualityAt,
+        quality_state_basis: updated.qualityBasis
+      }
+    }
+    mutationSuccess.value = `第 ${qualityTarget.value.page_number} 条已标为「${qualityStateLabel(updated.qualityState)}」。`
+    closeQualityDialog()
+    await loadQualitySummary()
+  } catch (e) {
+    // 状态转移的裁决只在服务端（backend/quality_state.go），这里原样显示它的理由，
+    // 不在前端复算一遍规则——复算会漂，而漂了的症状是「界面允许、后端 400」。
+    qualityDialogError.value = getPbMessage(e, '保存质量状态失败，请稍后重试。')
+  } finally {
+    qualitySubmitting.value = false
+  }
+}
+
 function resetListFilters() {
   searchQuery.value = ''
   minPdfPage.value = ''
   maxPdfPage.value = ''
   selectedStatus.value = ''
+  selectedQualityState.value = ''
   currentListPage.value = 1
   syncStatusQuery('')
 }
@@ -1033,7 +1186,9 @@ async function confirmCsvImport() {
       csvImportErrors.value = result.items
     }
     selectedPendingIds.value = []
-    await loadPages()
+    // 导入会改变条目总数，汇总必须跟着走：只刷表格的话，三枚分桶芯片与「共 N 条」
+    // 会停在旧数字上，与正下方刚刷新出来的表格对不上账（#172 验收第 4 条问的就是这个数）。
+    await Promise.all([loadPages(), loadQualitySummary()])
   } catch (e) {
     csvError.value = getPbMessage(e, '确认导入失败，请稍后重试。')
   } finally {
@@ -1262,7 +1417,8 @@ async function deleteSelectedRows() {
   try {
     await deletePendingPages(projectId, selectedPendingIds.value)
     selectedPendingIds.value = []
-    await loadPages()
+    // 同上：删除同样改变条目总数，汇总不跟着走就会与表格对不上账。
+    await Promise.all([loadPages(), loadQualitySummary()])
     mutationSuccess.value = `已删除 ${deleteCount} 条待校对条目，并重新整理条号。`
   } catch (e) {
     mutationError.value = getPbMessage(e, '批量删除失败，请重试')
