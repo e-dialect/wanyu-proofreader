@@ -161,7 +161,10 @@ jobs:
       - name: Integration suite with a race-detected server
         env:
           SUITE: ${{ matrix.suite }}
-        run: python3 backend/tests/run_integration.py "${SUITE}_integration.mjs" --race
+        # race 检测下服务端约慢一个量级，1200 行导入在共享 runner 上会贴边撞 20s 的等待预算。
+        # 给 upload_jobs 的 waitFor 更高预算；task_leases 不读这个变量，不受影响。等待的是
+        # 终态而非正确性，见 upload_jobs_integration.mjs 里 waitFor 的注释。
+        run: python3 backend/tests/run_integration.py "${SUITE}_integration.mjs" --race --env IMPORT_WAIT_TIMEOUT_MS=120000
 
   seed-demo:
     name: Demo seed remains runnable

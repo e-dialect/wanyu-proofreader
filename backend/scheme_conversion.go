@@ -240,7 +240,7 @@ func (s *importService) startConversion(c *core.RequestEvent) error {
 		// 重查一次把在跑的那个还给调用方，而不是报一个看不出原因的错误。
 		if running, lookupErr := s.activeConversionJob(projectID); lookupErr == nil && running != nil {
 			return c.JSON(http.StatusConflict, map[string]any{
-				"message": "该项目已有一个转换作业在跑，请等它结束或先取消。",
+				"message": "该项目已有一个转换作业在跑，请等它结束。",
 				"job":     running,
 			})
 		}
@@ -393,6 +393,9 @@ func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	page.Set("normalization_basis", basis)
 	page.Set("normalization_reviewed_by", auth.Id)
 	page.Set("normalization_reviewed_at", time.Now().UTC())
+	// 与 convertPage 同一口径：这里「读一条 → 写一条」，窗口只有一次请求，风险远低于批处理，
+	// 但统一只写改动过的字段，避免同一个仓里出现两种 Save 语义（整行快照 vs 只写改动）。
+	page.IgnoreUnchangedFields(true)
 	if err := s.app.Save(page); err != nil {
 		return apis.NewBadRequestError("保存人工结论失败。", err)
 	}
@@ -534,6 +537,10 @@ func (s *importService) processConversion(work importWork) {
 		failed:      job.GetInt("failed_count"),
 	}
 
+	// 语义是一次点状快照：只处理「本次读取时 page_number 大于断点」的条目。转换期间
+	// 新导入、且 page_number 不大于当前断点的条目不在本次范围内——这是有意的，不是漏转：
+	// 它属于下一次转换作业；而重跑时人工结论仍被保护（convertPage 跳过 normalization_reviewed_by
+	// 非空的条目），所以「再来一次」是安全的收敛方式，不会变成覆盖历史的重算。
 	const batchSize = 200
 	for {
 		pages, err := s.app.FindRecordsByFilter(
@@ -631,6 +638,11 @@ func (s *importService) convertPage(page *core.Record, adapter *scheme.Adapter, 
 		return
 	}
 	page.Set("normalization_candidates_json", string(candidates))
+	// 只写本函数改动过的字段。processConversion 一次读 200 条进内存，逐条 Save 默认会
+	// 把「批次读取那一刻」的整行快照写回库，覆盖掉这个窗口里任何并发的校对提交
+	// （proofread_row_json / proofread_at / first_proofreader 等）。IgnoreUnchangedFields(true)
+	// 让 Save 只导出本实例 Set 过的字段，未动过的列一律不写。
+	page.IgnoreUnchangedFields(true)
 	if err := s.app.Save(page); err != nil {
 		counters.failed++
 		counters.total++
