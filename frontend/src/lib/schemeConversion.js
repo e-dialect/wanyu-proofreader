@@ -41,8 +41,13 @@ export function conversionJobStatusLabel(status) {
 // 已经给出过的结论），把它们分开列会让「跑了 10000 条、其中 9720 条自动确定」这句话
 // 对不上——而那正是 #114 §8 用来判断这批数据要不要人工介入的数字。
 //
-// 「跳过」不属于那四行：它是「这一次没有转换它」（没有可转换的值、或已经有人复核过）。
-// 单列出来，四行之和与它加起来才等于共处理；混进去会让差额无从解释。
+// 「跳过」与「处理失败」都不属于那四行：前者是「这一次没有转换它」（没有可转换的值、
+// 或已经有人复核过），后者是「试过但没写进去」。两条各自单列出来，四行之和与它们
+// 加起来才等于共处理；混进去会让差额无从解释。
+//
+// 失败必须单列，不能像原来那样被丢掉：后端三个失败分支都是 failed++ **且** total++，
+// 所以漏掉它时「完成，部分条目写入失败」的作业在界面上会呈现一个 共处理 比其余行
+// 之和大出一截、且没有任何一行能解释的差额——而这一行的存在正是为了让差额可解释。
 export function conversionSummaryLines(job) {
   const value = (key) => Number(job?.[`${key}_count`] || 0)
   const exact = value('exact')
@@ -52,7 +57,8 @@ export function conversionSummaryLines(job) {
     { key: 'auto', label: '自动确定', count: exact + reviewed },
     { key: 'ambiguous', label: '需人工确认', count: value('ambiguous') },
     { key: 'unsupported', label: '暂未支持', count: value('unsupported') },
-    { key: 'skipped', label: '跳过', count: value('skipped') }
+    { key: 'skipped', label: '跳过', count: value('skipped') },
+    { key: 'failed', label: '处理失败', count: value('failed') }
   ]
 }
 

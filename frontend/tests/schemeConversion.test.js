@@ -28,17 +28,31 @@ test('自动确定 sums EXACT and REVIEWED', () => {
   assert.equal(byKey.unsupported, 39)
 })
 
-test('四行之和加跳过等于共处理', () => {
-  // 两条不变式一起钉：四行互不重叠，且没有第 6 个没被列出来的分支。
-  for (const sample of [job(), job({ skipped_count: 12, total_count: 10012 }), job({ total_count: 0, exact_count: 0, reviewed_count: 0, ambiguous_count: 0, unsupported_count: 0 })]) {
+test('四行之和加跳过与处理失败等于共处理', () => {
+  // 三条不变式一起钉：四行互不重叠、没有没被列出来的分支、失败也进求和。
+  // 最后那条样例是必需的：后端三个失败分支都是 failed++ 且 total++，夹具全是
+  // failed_count: 0 时这条断言恒真，覆盖不到「完成，部分条目写入失败」那种作业。
+  for (const sample of [
+    job(),
+    job({ skipped_count: 12, total_count: 10012 }),
+    job({ total_count: 0, exact_count: 0, reviewed_count: 0, ambiguous_count: 0, unsupported_count: 0 }),
+    job({ failed_count: 7, total_count: 10007 })
+  ]) {
     const lines = conversionSummaryLines(sample)
     const byKey = Object.fromEntries(lines.map((line) => [line.key, line.count]))
     assert.equal(
-      byKey.auto + byKey.ambiguous + byKey.unsupported + byKey.skipped,
+      byKey.auto + byKey.ambiguous + byKey.unsupported + byKey.skipped + byKey.failed,
       byKey.total,
       JSON.stringify(sample)
     )
   }
+})
+
+test('处理失败单列一行，不让差额无从解释', () => {
+  const byKey = Object.fromEntries(conversionSummaryLines(job({ failed_count: 7 })).map((line) => [line.key, line.count]))
+  assert.equal(byKey.failed, 7)
+  // 单列而不是并进「跳过」：两者成因不同，合并会掩盖掉「写库失败」这个可行动的信号。
+  assert.equal(byKey.skipped, 0)
 })
 
 test('缺字段的作业显示 0 而不是 NaN', () => {

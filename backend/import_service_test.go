@@ -492,3 +492,58 @@ func TestCSVPreservesExplicitColumnOrder(t *testing.T) {
 		t.Fatalf("text reordered: %s", row.entryText)
 	}
 }
+
+// markFatal 的分派表必须认识每一个 kind：conversion 的记录在 conversion_jobs，既不是
+// markFatal 默认的 import_jobs，也不是 pdf 的 project_files。
+//
+// 这一格是评审那段的复现。漏掉这条分支时，runWorker 的 panic 兜底（不分 kind 一律调
+// markFatal）会把记录查空、只留一条 fatal_record_lookup_failed 日志，作业永远停在
+// processing；而 idx_conversion_jobs_active 是 `WHERE status IN ('queued','processing')`
+// 的部分唯一索引，于是该项目此后每次发起转换都撞 409，管理员只能靠重启进程恢复。
+func TestMarkFatalRoutesConversionJobsToTheirOwnCollection(t *testing.T) {
+	app := newSchemaTestApp(t)
+
+	// 初始 schema 里没有 conversion_jobs（它由 1789200700 建），这里按同一形状补上。
+	conversionJobs := &core.Collection{
+		Name: "conversion_jobs",
+		Type: core.CollectionTypeBase,
+		Fields: core.NewFieldsList(
+			&core.TextField{Name: "project"},
+			&core.SelectField{Name: "status", MaxSelect: 1, Values: []string{"queued", "processing", "completed", "completed_with_errors", "failed"}},
+			&core.TextField{Name: "error_code"},
+			&core.TextField{Name: "error_message"},
+			&core.DateField{Name: "finished_at"},
+		),
+	}
+	if err := app.Save(conversionJobs); err != nil {
+		t.Fatalf("create conversion_jobs: %v", err)
+	}
+
+	job := core.NewRecord(conversionJobs)
+	job.Set("status", "processing")
+	if err := app.Save(job); err != nil {
+		t.Fatal(err)
+	}
+
+	service := newImportService(app)
+	service.markFatal(
+		importWork{kind: "conversion", id: job.Id, requestID: "test-panic"},
+		"WORKER_PANIC", "服务器处理文件时发生内部错误。",
+		fmt.Errorf("boom"),
+	)
+
+	updated, err := app.FindRecordById("conversion_jobs", job.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := updated.GetString("status"); got != "failed" {
+		t.Fatalf("conversion job status = %q, want failed：panic 不能把作业留在 processing，"+
+			"否则 idx_conversion_jobs_active 会让这个项目再也发不出新的转换作业", got)
+	}
+	if got := updated.GetString("error_code"); got != "WORKER_PANIC" {
+		t.Fatalf("error_code = %q, want WORKER_PANIC", got)
+	}
+	if updated.GetDateTime("finished_at").IsZero() {
+		t.Fatal("finished_at 没被写上：作业在恢复扫描与活跃唯一索引眼里仍是进行中")
+	}
+}
