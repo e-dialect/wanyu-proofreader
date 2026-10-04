@@ -203,13 +203,16 @@ func loadZipFiles(data []byte) (map[string][]byte, *Report, error) {
 }
 
 // Field 是 payload 里一个字段：名字 + 原样的 JSON 值。
-// Value 不预先规整成 string——契约允许字段值不是字符串，导入侧要能如实落库。
+// Value 不预先规整成 string——契约允许字段值不是字符串，校验器因此不替调用方
+// 决定该拒绝什么。导入侧只接受文本列，非文本值逐条报出来（见 backend/bundle_import.go
+// 的 FIELD_VALUE_NOT_TEXT），页码列例外：它本来就落到整数列。
 type Field struct {
 	Name  string
 	Value any
 }
 
-// Entry 是一个待导入条目。Fields 保留清单里的字段顺序，落库时表头顺序由它决定。
+// Entry 是一个待导入条目。Fields 保留 JSONL 里的书写顺序，仅此而已——
+// 落库的表头顺序由 bundle.RequestedFields 决定，见 backend/bundle_import.go。
 type Entry struct {
 	File    string
 	Line    int

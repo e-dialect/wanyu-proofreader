@@ -36,7 +36,8 @@ func TestBuildBundlePageKeepsFieldOrderAndSourceKey(t *testing.T) {
 	if page.entryID != "e-1" || page.sourceSystem != "xiangsheng-jihe" || page.sourceVersion != "2026-10-02" {
 		t.Fatalf("source key not carried: %+v", page)
 	}
-	// 键顺序就是列顺序：Go 的 map 会按键排序，这里不能退回 map。
+	// 列顺序取 requested_fields（不是条目键序，也不是 Go map 的字母序）；
+	// 夹具的键序恰好与 requested_fields 一致，所以这一格同时也钉住了它对不上 map 排序。
 	if got, want := page.rowJSON, `{"headword":"甲","reading":"kah"}`; got != want {
 		t.Fatalf("rowJSON = %s, want %s", got, want)
 	}
@@ -73,6 +74,64 @@ func TestBuildBundlePageRoutesPageColumnOutOfHeaders(t *testing.T) {
 	// 超出当前主 PDF 的页码拒绝落库，而不是把越界页写进去。
 	if _, rowErr := buildBundlePage(bundle, entry, 5); rowErr == nil || rowErr.code != "PDF_PAGE_OUT_OF_RANGE" {
 		t.Fatalf("out-of-range page was not rejected: %+v", rowErr)
+	}
+}
+
+// 页码列先于文本断言分流：契约只保证 requested_fields 的键**存在**，不保证值是字符串，
+// 所以 JSON 数字页码是能过校验的合法包。判据必须是「能不能取出一个正整数页号」，
+// 而不是「这个值是不是字符串」——否则 `3`（更好解析）被整行拒，`"三"`（垃圾）反而通过。
+func TestBuildBundlePageAcceptsNonStringPageColumn(t *testing.T) {
+	cases := []struct {
+		name    string
+		value   any
+		want    int
+		rawNote string
+	}{
+		{"JSON 数字", float64(3), 3, "encoding/json 把 JSON 数字解成 float64"},
+		{"整数浮点", float64(7), 7, "上游写 3 与 3.0 同义"},
+		{"数字字符串", "3", 3, "契约 §2 的样例形状"},
+		{"带空白的数字字符串", " 12 ", 12, "与文本列同样 TrimSpace"},
+		{"解析不出的字符串", "三", 0, "解析不出来按『这一行没有页码』处理，不整行失败"},
+		{"小数", float64(3.5), 0, "3.5 不是页号，但不该让整行消失"},
+		{"非正数", float64(0), 0, "页号从 1 起"},
+		{"负数字符串", "-2", 0, "同 CSV 侧口径"},
+		{"布尔", true, 0, "契约允许任意 JSON 类型，非数字形状一律当作没有页码"},
+		{"超出 int32", float64(1 << 40), 0, "按没有页码处理，与 Atoi 在超范围字符串上的行为一致"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bundle := testBundle()
+			bundle.RequestedFields = []string{"headword", "pdf_page"}
+			entry := testEntry("e-1",
+				reviewbundle.Field{Name: "headword", Value: "甲"},
+				reviewbundle.Field{Name: "pdf_page", Value: tc.value},
+			)
+			page, rowErr := buildBundlePage(bundle, entry, 100)
+			if rowErr != nil {
+				t.Fatalf("页码列 %v 不该让整行失败（%s）：%+v", tc.value, tc.rawNote, rowErr)
+			}
+			if page.pdfPage != tc.want {
+				t.Fatalf("pdfPage = %d, want %d", page.pdfPage, tc.want)
+			}
+			if strings.Contains(page.rowJSON, "pdf_page") {
+				t.Fatalf("页码列漏进了行数据：%s", page.rowJSON)
+			}
+		})
+	}
+}
+
+// 文本列的文本断言不受上面那条分流影响：非文本值仍然逐条报出来（§7.5）。
+func TestBuildBundlePageStillRejectsNonTextContentColumn(t *testing.T) {
+	entry := testEntry("e-1",
+		reviewbundle.Field{Name: "headword", Value: float64(42)},
+		reviewbundle.Field{Name: "reading", Value: "kah"},
+	)
+	_, rowErr := buildBundlePage(testBundle(), entry, 0)
+	if rowErr == nil || rowErr.code != "FIELD_VALUE_NOT_TEXT" {
+		t.Fatalf("content column accepted a non-text value: %+v", rowErr)
+	}
+	if rowErr.column != "headword" {
+		t.Fatalf("row error blames %q, want headword", rowErr.column)
 	}
 }
 

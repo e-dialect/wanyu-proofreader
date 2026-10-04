@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -81,6 +82,33 @@ func isPDFPageHeader(name string) bool {
 	return false
 }
 
+// bundlePageNumber 从页码列的值里取出页号。
+//
+// 契约只要求 requested_fields 里的键**存在**（checkInboundFields 不查值的类型），
+// 所以 `{"PDF页码": 3}` 是能过校验的合法包，而 encoding/json 会把它解成 float64。
+// 数字与数字字符串都接受；解析不出、非正整数、非数字形状一律返回 false，
+// 由调用方按「这一行没有页码」处理——与 CSV 侧「解析不出来就当作没有页码」同口径。
+func bundlePageNumber(value any) (int, bool) {
+	switch typed := value.(type) {
+	case string:
+		number, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil || number <= 0 {
+			return 0, false
+		}
+		return number, true
+	case float64:
+		// 只接受整数值：上游写 `3` 与 `3.0` 同义，`3.5` 不是页号。
+		// 上界防 int 溢出——超出 int32 的值按「没有页码」处理，与 Atoi 在超范围
+		// 数字字符串上的行为一致。
+		if typed != math.Trunc(typed) || typed <= 0 || typed > math.MaxInt32 {
+			return 0, false
+		}
+		return int(typed), true
+	default:
+		return 0, false
+	}
+}
+
 // rowValidationError 复用 CSV 导入的错误形状，让 import_job_errors 的四个字段
 // （row_number / column_name / error_code / raw_value）在两条导入路径上同义。
 type bundleRowError struct {
@@ -131,6 +159,19 @@ func buildBundlePage(bundle reviewbundle.Bundle, entry reviewbundle.Entry, maxPD
 		if !ok {
 			continue // 校验器保证每个 requested 字段都在；这里是防御性跳过
 		}
+		if isPDFPageHeader(field.Name) {
+			// 与 CSV 导入一致：页码列不进表头，它落到 pdf_page。
+			//
+			// 这一列**先于文本断言分流**，因为它本来就不是文本列：pdf_page 是整数列，
+			// 页码永远不会进 row_headers_json / ocr_row_json，对它做 FIELD_VALUE_NOT_TEXT
+			// 没有收益，只会让「上游把页码写成 JSON 数字」这种**过了契约校验的合法包**
+			// 整行被拒——而 `3` 比 `"三"` 更好解析。数字与数字字符串都接受；
+			// 其余形状按「这一行没有页码」处理，不是整行失败（契约里页码不是必填字段）。
+			if number, parsed := bundlePageNumber(field.Value); parsed {
+				pdfPage = number
+			}
+			continue
+		}
 		value, ok := field.Value.(string)
 		if !ok {
 			return bundlePage{}, &bundleRowError{
@@ -141,15 +182,6 @@ func buildBundlePage(bundle reviewbundle.Bundle, entry reviewbundle.Entry, maxPD
 			}
 		}
 		trimmed := strings.TrimSpace(value)
-		if isPDFPageHeader(field.Name) {
-			// 与 CSV 导入一致：页码列不进表头，它落到 pdf_page。
-			// 解析不出来时按「这一行没有页码」处理，而不是整行失败——
-			// 契约里页码不是必填字段（requested_fields 是词汇字段）。
-			if number, err := strconv.Atoi(trimmed); err == nil && number > 0 {
-				pdfPage = number
-			}
-			continue
-		}
 		fields = append(fields, reviewbundle.Field{Name: field.Name, Value: trimmed})
 		headers = append(headers, field.Name)
 		if trimmed != "" {
@@ -577,21 +609,22 @@ func (s *importService) flushBundleBatch(
 		inserted, writeErr := writeBundlePage(s.app, job.Id, projectID, projectFileID, number, page)
 		counters.processed++
 		counters.recordIgnored([]bundlePage{page})
-		switch {
-		case writeErr != nil:
+		if writeErr != nil {
 			counters.failed++
 			s.addJobError(job.Id, page.line, "", "DATABASE_WRITE_ERROR",
 				"该条通过格式校验，但写入数据库失败。", truncateText(writeErr.Error(), 500), true)
-		case !inserted:
-			counters.skipped++
-			// success 与事务成功路径（+= len(pages)）同口径：只排除 failed，
-			// skipped（重放）也算「非失败已处理」。漏掉它会让一个已经把条目写进库
-			// 的作业落到 failed（processBundle 的 `success == 0 && failed > 0`）。
-			counters.success++
-		default:
-			counters.success++
-			number++
+			continue
 		}
+		// success 只与「这一条有没有写错」有关，所以它在错误分支之外只出现一次——
+		// 重放（!inserted）与新建同口径：success 是「非失败已处理」，skipped 也算。
+		// 与事务成功路径的 `+= len(pages)` 同义。收成一处是为了让这两条路径不可能
+		// 再各自漂移（正常单线程导入走不到这里，CI 的套件覆盖不到回退分支）。
+		counters.success++
+		if !inserted {
+			counters.skipped++
+			continue
+		}
+		number++
 	}
 	return number
 }
