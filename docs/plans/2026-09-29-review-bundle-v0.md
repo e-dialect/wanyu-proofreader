@@ -105,7 +105,7 @@ JSONL 使用 LF。`lines` 按物理行计数：末尾换行不另算空行。`by
 
 - 同一 `(project, bundle_id)` 且**未失败**的作业：重放直接返回原作业，不新建、不重导。
 - `failed` **不在**短路范围内。`bundle_id` 是来源侧身份、上游不能随意改，把 failed 也算进幂等等于让一个瞬时失败的批次永久无法经由 API 重试。
-- 作业级由部分唯一索引 `idx_import_jobs_bundle (project, bundle_id) WHERE status != 'failed'` 兜底，条目级由 `idx_pages_source_entry (project, source_system, source_id, source_version, source_entry_id)` 兜底。并发下两边都是同一套写法：先查后写，唯一索引挡住后来者，再重查一次区分「重复」与「真失败」。
+- 作业级由部分唯一索引 `idx_import_jobs_bundle (project, bundle_id) WHERE status != 'failed' AND bundle_id != ''` 兜底，条目级由 `idx_pages_source_entry (project, source_system, source_id, source_version, source_entry_id)` 兜底。`bundle_id != ''` 那半边与 pages 的来源键同理由：空串表示「这一行没有这个键」，CSV / OCR 作业的 `bundle_id` 都是空串，不排除它们就会在 `(project, '')` 上互相撞唯一约束。并发下两边都是同一套写法：先查后写，唯一索引挡住后来者，再重查一次区分「重复」与「真失败」。
 
 ### 7.3 版本变化与已有校对记录
 

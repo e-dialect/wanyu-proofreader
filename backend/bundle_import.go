@@ -584,7 +584,12 @@ func (s *importService) flushBundleBatch(
 				"该条通过格式校验，但写入数据库失败。", truncateText(writeErr.Error(), 500), true)
 		case !inserted:
 			counters.skipped++
+			// success 与事务成功路径（+= len(pages)）同口径：只排除 failed，
+			// skipped（重放）也算「非失败已处理」。漏掉它会让一个已经把条目写进库
+			// 的作业落到 failed（processBundle 的 `success == 0 && failed > 0`）。
+			counters.success++
 		default:
+			counters.success++
 			number++
 		}
 	}
