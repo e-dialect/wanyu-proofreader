@@ -112,4 +112,4 @@ gold 表头顺序判定。不同物理字段表的语料应分别打分，报告
 
 ## 外部依赖
 
-- `extract_text.py` 依赖系统安装 `pdftotext`（poppler-utils，GPL-2.0-or-later）。**未 vendoring**：不随仓库分发、不进入 `THIRD_PARTY_NOTICES.md`（该文件只登记 vendored 进 `frontend/public/**` 等路径的组件），仅在运行 `extract_text.py` 的机器上按需系统安装并加入 `PATH`。本仓库代码不链接、不封装 poppler 库，只以外部命令方式调用其可执行文件，因此不构成衍生作品，亦不影响本仓 AGPL 边界。
+- `extract_text.py` 依赖系统安装 `pdftotext`（poppler-utils，GPL-2.0-or-later），以外部命令调用，不 vendoring 或链接 Poppler 库。单独运行此脚本时按需安装并加入 `PATH`。后台运行镜像为页图预览分发 `poppler-utils` 和 `libwebp-tools` 包；这些分发依赖及其许可证登记在 `THIRD_PARTY_NOTICES.md`，该文件也登记仓库内 vendored 组件。资料与派生资产的授权边界见 `ASSET_BOUNDARIES.md`。
