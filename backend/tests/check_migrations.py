@@ -142,6 +142,20 @@ SPECS = {
         ],
         'collection_indexes': ('project_artifacts', 'idx_project_artifacts_project'),
     },
+    # #172 的筛选谓词就是「某项目里 quality_state = ?」（管理端筛待定/已确认/暂缓外发），
+    # 不带排序——与 #162 的 tier 同形。fields 断言另外钉住 required=False：
+    # 这条列一旦被改成必填，既有的导入与校对创建路径会在校验期集体失败。
+    '1789200400_page_quality_state.js': {
+        'indexes': ['idx_pages_project_quality'],
+        'plans': [('pages',
+                   'SELECT id FROM pages WHERE project=? AND quality_state=?',
+                   ('p', 'candidate'), 'idx_pages_project_quality')],
+        'collection_indexes': ('pages', 'idx_pages_project_quality'),
+        'fields': ('pages', {
+            'quality_state': {'required': False, 'values_contains': 'withheld'},
+            'quality_state_basis': {'required': False},
+        }),
+    },
 }
 FIRST = '1788940000_initial_schema.js'
 
