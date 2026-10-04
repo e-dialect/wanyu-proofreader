@@ -677,6 +677,17 @@ func (s *importService) recoverPendingWork() {
 }
 
 func (s *importService) markFatal(work importWork, code, message string, cause error) {
+	// conversion 的记录在 conversion_jobs：它既不属于这里认识的两个集合，形状也不同
+	// （有自己的 finished_at 与错误列语义），所以整支交给它自己的收尾函数。
+	//
+	// 漏掉这一支的代价不是「少一个字段」：runWorker 的 panic 兜底不分 kind（见 runWorker），
+	// 记录查不到时作业会永远停在 processing，而 idx_conversion_jobs_active 是
+	// `WHERE status IN ('queued','processing')` 的部分唯一索引——该项目此后每次发起转换
+	// 都会撞上它拿到 409，管理员唯一的重拾手段是重启进程。新增 kind 时要同步这张分派表。
+	if work.kind == "conversion" {
+		s.markConversionFatal(work, code, message)
+		return
+	}
 	collection := "import_jobs"
 	if work.kind == "pdf" {
 		collection = "project_files"
