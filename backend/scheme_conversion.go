@@ -472,9 +472,13 @@ func utf8Len(value string) int {
 	return len([]rune(value))
 }
 
-// conversionCounters 是 #114 §8 那四行汇总的来源。五个状态计数两两不重叠，
-// 且 skipped + 四个状态计数 == total；skipped 是「这一次没有转换它」（没有可转换的值、
-// 或已经有人复核过），failed 是写入出错，都不属于四行里的任何一行。
+// conversionCounters 是 #114 §8 那几行汇总的来源。六个数两两不重叠，且
+// skipped + 四个状态计数 + failed == total：每一条被本次作业看到的条目恰好落进一格。
+//
+// skipped 是「这一次没有转换它」（没有可转换的值，或已经人工复核过）；failed 是写入出错。
+// 两者都不进那四行，但**都计入 total**——convertPage 的三个失败分支都是 failed++ 且 total++。
+// 所以「四行之和 == total」不成立，差额由 skipped 与 failed 解释，而管理端把这两行都画出来了
+// （frontend/src/lib/schemeConversion.js 的 conversionSummaryLines），差额因此有据可查。
 type conversionCounters struct {
 	total       int
 	exact       int
@@ -496,18 +500,18 @@ func (s *importService) processConversion(work importWork) {
 	projectID := job.GetString("project")
 	project, err := s.app.FindRecordById("projects", projectID)
 	if err != nil {
-		s.markConversionFatal(work, "CONVERSION_PROJECT_MISSING", "项目不存在或已被删除。")
+		s.markConversionFatal(work, "CONVERSION_PROJECT_MISSING", "项目不存在或已被删除。", err)
 		return
 	}
 	adapter, ok := s.schemes.adapters[job.GetString("source_scheme")]
 	if !ok {
 		s.markConversionFatal(work, "CONVERSION_SCHEME_UNKNOWN",
-			fmt.Sprintf("规则目录里已经没有「%s」这套方案了，请先把它放回规则目录再重跑。", job.GetString("source_scheme")))
+			fmt.Sprintf("规则目录里已经没有「%s」这套方案了，请先把它放回规则目录再重跑。", job.GetString("source_scheme")), nil)
 		return
 	}
 	columns, problem := projectReadingColumns(project)
 	if problem != "" {
-		s.markConversionFatal(work, "CONVERSION_READING_COLUMN_UNKNOWN", problem)
+		s.markConversionFatal(work, "CONVERSION_READING_COLUMN_UNKNOWN", problem, nil)
 		return
 	}
 	column := columns[0]
@@ -550,7 +554,7 @@ func (s *importService) processConversion(work importWork) {
 			dbx.Params{"project": projectID, "cursor": cursor},
 		)
 		if err != nil {
-			s.markConversionFatal(work, "CONVERSION_READ_FAILED", "读取项目条目失败。")
+			s.markConversionFatal(work, "CONVERSION_READ_FAILED", "读取项目条目失败。", err)
 			return
 		}
 		if len(pages) == 0 {
@@ -577,7 +581,7 @@ func (s *importService) processConversion(work importWork) {
 	job.Set("error_message", "")
 	job.Set("finished_at", types.NowDateTime())
 	if err := s.app.Save(job); err != nil {
-		s.markConversionFatal(work, "JOB_FINALIZE_FAILED", "条目已处理，但作业状态更新失败。")
+		s.markConversionFatal(work, "JOB_FINALIZE_FAILED", "条目已处理，但作业状态更新失败。", err)
 		return
 	}
 	logUpload("info", "conversion_completed", map[string]any{
@@ -683,11 +687,15 @@ func (s *importService) persistConversionProgress(job *core.Record, cursor int, 
 	}
 }
 
-func (s *importService) markConversionFatal(work importWork, code, message string) {
+// markConversionFatal 收尾一个失败的转换作业。cause 与其它 kind 的 markFatal 同口径：
+// 作业状态只写「失败了」，具体是哪个 panic / 哪次读库出错只有日志里有，而 panic 的值
+// 是复现线上问题的唯一线索——不带上它，conversion 这条路上的 panic 就查不下去了。
+func (s *importService) markConversionFatal(work importWork, code, message string, cause error) {
 	job, err := s.app.FindRecordById("conversion_jobs", work.id)
 	if err != nil {
 		logUpload("error", "conversion_fatal_persist_failed", map[string]any{
-			"request_id": work.requestID, "job_id": work.id, "error_code": code, "error": err.Error(),
+			"request_id": work.requestID, "job_id": work.id, "error_code": code,
+			"error": err.Error(), "cause": errorText(cause),
 		})
 		return
 	}
@@ -697,10 +705,12 @@ func (s *importService) markConversionFatal(work importWork, code, message strin
 	job.Set("finished_at", types.NowDateTime())
 	if err := s.app.Save(job); err != nil {
 		logUpload("error", "conversion_fatal_persist_failed", map[string]any{
-			"request_id": work.requestID, "job_id": work.id, "error_code": code, "error": err.Error(),
+			"request_id": work.requestID, "job_id": work.id, "error_code": code,
+			"error": err.Error(), "cause": errorText(cause),
 		})
 	}
 	logUpload("warn", "conversion_failed", map[string]any{
 		"request_id": work.requestID, "job_id": work.id, "error_code": code, "message": message,
+		"cause": errorText(cause),
 	})
 }
