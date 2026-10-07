@@ -39,11 +39,42 @@ func TestHinghwaSchemeLoadsWithTheDocumentedInventory(t *testing.T) {
 	if len(doc.Tones) != 7 {
 		t.Errorf("tones = %d, want 7", len(doc.Tones))
 	}
-	if doc.Accent == "" || doc.Name == "" || doc.SchemeID == "" {
-		t.Errorf("scheme is not identified: id=%q name=%q accent=%q", doc.SchemeID, doc.Name, doc.Accent)
+	// The three names are pinned rather than merely non-empty because they answer
+	// three different questions and are easy to conflate: the id is the repo's
+	// (#189's working name, referenced by adapter files), the name is the page's
+	// own 定名, and the accent is what neither of the other two tells you —
+	// 「莆仙话拼音」 reads as covering 莆仙, while the page says 莆田城里口音.
+	if doc.SchemeID != "puxian-xiangyin" {
+		t.Errorf("scheme_id = %q, want puxian-xiangyin", doc.SchemeID)
+	}
+	if doc.Name != "莆仙话拼音" {
+		t.Errorf("name = %q, want the page's own 定名 莆仙话拼音", doc.Name)
+	}
+	if doc.Accent != "莆田城里口音" {
+		t.Errorf("accent = %q, want 莆田城里口音", doc.Accent)
 	}
 	if len(doc.Provenance) == 0 {
 		t.Error("no provenance, which is the gap #189 was actually blocked on")
+	}
+}
+
+// #189 asks for the target side's basis to name the page, its 定名, its 口径 and
+// the date it was read. Splitting the id from the name is what makes the missing
+// half visible: a scheme called 莆仙话拼音 with no accent would be applied to
+// 仙游 idioms it was never documented for.
+func TestHinghwaProvenancePointsAtThePageThatNamesIt(t *testing.T) {
+	doc := loadHinghwa(t)
+	var locales string
+	for _, item := range doc.Provenance {
+		locales += item.What + " " + item.Locator + "\n"
+	}
+	for _, want := range []string{"https://hinghwa.cn/pinyin", "莆仙话拼音", "莆田城里口音"} {
+		if !strings.Contains(locales, want) {
+			t.Errorf("provenance never mentions %q", want)
+		}
+	}
+	if doc.Retrieved == "" {
+		t.Error("retrieved is empty, so a reader cannot tell which revision of the page this is")
 	}
 }
 

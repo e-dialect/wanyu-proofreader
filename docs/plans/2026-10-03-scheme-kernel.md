@@ -2,7 +2,7 @@
 
 本文件说明 `backend/scheme/` 的流水线、数据形状、加载器的拒绝面，以及**哪些决定被有意留在引擎之外**。
 
-一句话定位：这是一个**没有装真实规则**的转换内核。**目标端**的清单已经有了——`data/hinghwa_canonical.json` 是莆仙乡音社拼音（莆田城里口音）的声母 15 / 韵母 44 / 声调 7，含逐条 IPA、例字与出处，由 `LoadScheme` 加载校验；**源端**仍然没有：每本书凡例写的符号与它自己的 IPA 要逐本登记，在此之前往 `segment_map` 里填任何一条对应表都等于凭空推断，正是 #114 §7 与 #189 非目标禁止的事。本包交付的是 #189 点名的结构、状态机与门槛，规则是数据，材料已有的那半已经落地。
+一句话定位：这是一个**没有装真实规则**的转换内核。**目标端**的清单已经有了——`data/hinghwa_canonical.json` 是目标方案 `puxian-xiangyin`（页面定名「莆仙话拼音」，社群内亦称「莆仙乡音社拼音」；口径：莆田城里口音）的声母 15 / 韵母 44 / 声调 7，含逐条 IPA、例字与出处，由 `LoadScheme` 加载校验；**源端**仍然没有：每本书凡例写的符号与它自己的 IPA 要逐本登记，在此之前往 `segment_map` 里填任何一条对应表都等于凭空推断，正是 #114 §7 与 #189 非目标禁止的事。本包交付的是 #189 点名的结构、状态机与门槛，规则是数据，材料已有的那半已经落地。
 
 ## 流水线
 
@@ -47,8 +47,15 @@ normalization_status / normalization_rule_version / normalization_trace
 | --- | --- | --- | --- |
 | adapter（`testdata/adapter_*.json`，将来的 `data/*.json`） | **源方案**的规则：源清单、目标清单、`segment_map`、`context_rules`、`exceptions` | `LoadAdapter` | ❌ 只有合成件，源端要逐本登记凡例 |
 | scheme（`data/hinghwa_canonical.json`） | **目标方案**的清单：每个 notation 的 IPA、例字、出处、取回日期 | `LoadScheme` | ✅ 莆田城里口音一份 |
+| 离线侧的 `scripts/scheme/data/tone_notation.json` | 同一目标方案的**登记行**（`schemes.puxian-xiangyin`）：调号集、页面出处、以及指向上一行的 `inventory_file` | `tone.py`（**拒绝**，见下） | ✅ 同一份，不另抄 |
 
 分开的理由是 #114 §7 让转换走 `source notation → documented IPA → target notation`，两端都要记自己的 IPA。源端逐书不同、目标端全场一份；把目标端折进每个 adapter 文件就是同一件事抄 N 份，而抄本正是会各自漂的东西。
+
+第三行的存在要交代清楚，因为它看起来像是在同一个方案上开了两处定义：
+
+- **`tone.py` 会拒绝它，这是设计而不是缺口。** 那套调号 `gi1` 的 `1` 是**调类号**（阴平），与大词典的**调值**同形不同义——同一条理由已经写在 `puxian-wendu` 那一行上。`tone.py` 转换的是语料列，而语料里没有目标方案这一列，所以它对这个方案无话可做。
+- **登记行不含第二份调值。** 目标侧合法性检查要的是「调号集 1–7 + 声母 + 韵母」，这三项都在 `data/hinghwa_canonical.json` 里；把 7 个调值在 `tone_notation.json` 再抄一份，只会得到一份 `tone.py` 永远读不到（它 `annotation_system` 就把门关上了）的副本——那正是本仓库在别处明确拒绝的「静默失效」形状。
+- **两处是不是同源同版，由测试钉住而不是靠人眼**：`scripts/scheme/test_tone.py` 的 `TargetSchemeTests` 顺着 `inventory_file` 打开引擎那一份，断言两边 `scheme_id` 相同、调号集相同、页面定名与口径都出现在 `basis` 里，并断言登记行确实没有夹带第二份调值。这一根桩照的是 `test_long_tones_agree_with_the_shared_detector_constant` 的先例。
 
 `Scheme` 给出两个接口：`Inventory()` 返回 `Adapter.Canonical` 要的那三个列表，`Pronunciations()` 返回 `part:notation → IPA` 的对照（零声母在 `onset:` 下）。**本包还没把目标端接到 adapter 上**：`Adapter.Canonical` 今天仍从 adapter 文件里读，接过去不改任何规则语义，属于下一步。
 
@@ -81,18 +88,16 @@ normalization_status / normalization_rule_version / normalization_trace
 
 **选 ①：把调值/声母/韵母词表与合法性判据导出成数据文件，两边各自加载。**
 
-但**本 PR 不做导出**，理由是现在没有可导出的东西：要导出的核心是**目标方案**的清单，而目标方案没有定义。先建一个只有 `source` 侧的共享文件，等真清单到手时形状必然要改，那才是真正会漂移的地方。
+选 ① 的第一半已经落地：**目标方案的词表现在有且只有一份**，即 `data/hinghwa_canonical.json`，由 `LoadScheme` 在载入期校验。离线侧不再复写它，只在 `scripts/scheme/data/tone_notation.json` 里登记一行 `puxian-xiangyin` 并指向它（见上表第三行）——两边各自加载，一份定义。第二半（把 `LoadScheme` 接成 `Adapter.Canonical` 的来源、并让目标侧合法性检查真的读它）仍然没做，因为它要等下面那条 `schema_version` 的决定。
 
-当前状态与代价说清楚：
-
-- 调值合法性今天存在于三处：`scripts/corpus_probe/detectors.py`（`LEGAL_LONG_TONES`）、`scripts/scheme/data/tone_notation.json`（每列一套，且已有测试与前者对齐）、`backend/pb_hooks/lib/assist_rules.js`（R6）。**Go 侧目前是第四处的空壳**——它不硬编码任何调值，只读 adapter 自带的 `canonical.tone_values`。
-- 因此本 PR 不新增第四份词表，也**没有**消除已有的三份。消除它是拿到目标方案之后的独立一步。
+调值合法性今天仍存在于三处：`scripts/corpus_probe/detectors.py`（`LEGAL_LONG_TONES`）、`scripts/scheme/data/tone_notation.json`（每列一套，且已有测试与前者对齐）、`backend/pb_hooks/lib/assist_rules.js`（R6）。**Go 侧是第四处的空壳**——它不硬编码任何调值，只读 adapter 自带的 `canonical.tone_values`。#189 提醒过 R6 不能直接当目标方案的判据（它的判据是「≥3 位且不是 533/453」，看不见目标方案那 5 个两位调值），所以「消除已有的三份」不是把 R6 抄过来，而是让它们都改读同一份数据——那是拿到目标清单之后紧接着的一步，本 PR 只把目标清单摆到位。
 
 ## 材料缺口（阻塞真实规则）
 
 | 需要的东西 | 现状 |
 | --- | --- |
-| 莆仙乡音社方案清单（声母/韵母/调号） | ✅ **目标端已有**，源端仍缺。`backend/scheme/data/hinghwa_canonical.json` 是莆田城里口音的 15 声母 / 44 韵母 / 7 声调，逐条带 IPA、例字、出处与取回日期，由 `LoadScheme` 加载并在载入期校验（重复 IPA、无 IPA、无出处、非 NFC 编码都会拒绝加载）。出处 `https://hinghwa.cn/pinyin`，清单原文在该页的构建产物 chunk `js/166.c91cbba4.js` 的组件 `data()` 里。**只登记这一个口音**——页面原文明写「下面介绍的拼音方案为莆田城里口音」，其它口音要另登记。**源端**（各书凡例的符号 ↔ IPA）仍要逐本登记，这半没有材料 |
+| 莆仙乡音社方案清单（声母/韵母/调号） | ✅ **目标端已有**，源端仍缺。`backend/scheme/data/hinghwa_canonical.json` 是目标方案 `puxian-xiangyin`（页面定名「莆仙话拼音」）在莆田城里口音下的 15 声母 / 44 韵母 / 7 声调，逐条带 IPA、例字、出处与取回日期，由 `LoadScheme` 加载并在载入期校验（重复 IPA、无 IPA、无出处、非 NFC 编码都会拒绝加载）。出处 `https://hinghwa.cn/pinyin`，清单原文在该页的构建产物 chunk `js/166.c91cbba4.js` 的组件 `data()` 里。**只登记这一个口音**——页面原文明写「下面介绍的拼音方案为莆田城里口音」，其它口音要另登记；`scheme_id`、`name`、`accent` 三个字段分开正是为这件事。**源端**（各书凡例的符号 ↔ IPA）仍要逐本登记，这半没有材料 |
+| 该页清单是否已抽全 | ✅ 是。页面上声母/韵母各有一个「1 2」翻页器，#189 因此写过「完整清单仍需逐页取全，本文只录已核对到的部分，**不声称已抽完**」。已核对：整个 chunk 里 `pagination`/`pageSize`/`total`/`fetch`/`axios`/`api.` 全部零命中，表格数据整份作为 props 传给组件，翻页只是前端切片、不触发任何请求。所以 15 / 44 / 7 就是该页发布的全部，不是一个分页面的第一页 |
 | 大词典「拼音方案 ↔ 国际音标对应关系」 | 凡例三.1 明写「请参见附录」。扫描版正文是 606 页，末页 p601–606 仍是 Z 段词条，**附录不在这个文件里** |
 | 文读字汇方案清单 | ✅ 有。其凡例 p10–11 给了 18 声母 / 36 韵母 / 调类 1–7 全表 |
 | 大词典罗马字清单 | 🟡 隐式。正本 `拼音` 列 + 键盘 `dictionary-romanization` 段可反推，但缺显式清单 |
