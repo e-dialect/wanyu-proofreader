@@ -1,0 +1,378 @@
+{
+  "schema_version": 1,
+  "scheme_id": "phousengua-putian-city",
+  "name": "莆仙乡音社拼音",
+  "accent": "莆田城里口音",
+  "retrieved": "2026-10-07",
+  "note": "本文件是本仓库第一份真实目标方案清单。#114 / #189 把「莆仙乡音社方案清单」记为材料缺口，缺口在这里补上。除下面点名的三处派生，notation / ipa / example 一律照抄页面原文，未作任何调整。\n派生一：声调行的 value 与 mark 由页面原文「533 gī」按第一个空格拆开，前段是调值、后段是调符。\n派生二：声调的 notation（调号）不在页面的数据里，取自同一行例字末尾的数字（枝 gi1 → 1）。页面正文写明「调号则是以数字表示对应的调类」，且七行例字的尾数字恰为 1..7、无重复无缺号，所以这个取法没有歧义。\n派生三：两条例字原文缺一个空格（ieo 的「油 iu2 救giu4」、uang 的「弯 uang1 团duang2」），照抄未补——补它属于改来源文本，要改应由上游页面改。\n未登记的一项：页面另记「莆仙话还有一个用在代词的声调，并且伴有喉塞音，这里把它标记成第三调，如「我」guoh3/guôh，「这」zeh3/zêh」。它和上声共用调号 3 但带喉塞音，塞进下面七行会让那七行不再是一套完整划分，所以不单列；它只影响个别代词，不是一条通用韵母。",
+  "provenance": [
+    {
+      "what": "声母 15、韵母 44（开尾 19 + 鼻尾 12 + 塞尾 13）、声调 7 的清单，以及每条的 IPA 与例字",
+      "locator": "https://hinghwa.cn/pinyin"
+    },
+    {
+      "what": "清单原文实际所在的构建产物。该页是 SPA，HTML 外壳里没有正文；四组数据在按需加载的 chunk 的组件 data() 里，键名 shengmu / kai / bi / se / tone",
+      "locator": "https://hinghwa.cn/js/166.c91cbba4.js"
+    },
+    {
+      "what": "口音口径：「下面介绍的拼音方案为莆田城里口音」。本文件只登记这一个口音，不代表整个莆仙地区",
+      "locator": "同上 chunk 的页面正文段"
+    },
+    {
+      "what": "来源归属：莆仙乡音社（微信公众号 PhouSengUa）；例字音频由 cos.edialect.top 托管",
+      "locator": "同上 chunk"
+    }
+  ],
+  "onsets": [
+    {
+      "notation": "b",
+      "ipa": "p",
+      "example": "布 bou4 班 bang1"
+    },
+    {
+      "notation": "p",
+      "ipa": "pʰ",
+      "example": "破 pua4 片 peng4"
+    },
+    {
+      "notation": "m",
+      "ipa": "m",
+      "example": "骂 mor4 免 meng3"
+    },
+    {
+      "notation": "d",
+      "ipa": "t",
+      "example": "刀 do1 东 dorng1"
+    },
+    {
+      "notation": "t",
+      "ipa": "tʰ",
+      "example": "桃 to2 头 tao2"
+    },
+    {
+      "notation": "n",
+      "ipa": "n",
+      "example": "脑 nor3 年 ning2"
+    },
+    {
+      "notation": "l",
+      "ipa": "l",
+      "example": "老 lao5 梨 li2"
+    },
+    {
+      "notation": "z",
+      "ipa": "ts",
+      "example": "纸 zyo3 粽 zang4"
+    },
+    {
+      "notation": "c",
+      "ipa": "tsʰ",
+      "example": "厝 cou4 葱 cang1"
+    },
+    {
+      "notation": "s",
+      "ipa": "ɬ",
+      "example": "洗 se3 收 siu1"
+    },
+    {
+      "notation": "g",
+      "ipa": "k",
+      "example": "狗 gao3 讲 gorng3"
+    },
+    {
+      "notation": "k",
+      "ipa": "kʰ",
+      "example": "裤 kou4 轻 king1"
+    },
+    {
+      "notation": "ng-",
+      "ipa": "ŋ",
+      "example": "硬 nge5 颜 ngang2"
+    },
+    {
+      "notation": "h",
+      "ipa": "h",
+      "example": "雨 hou5 喜 hi3"
+    },
+    {
+      "notation": "",
+      "ipa": "ʔ/不标",
+      "example": "乌 ou1 云 ong2",
+      "note": "页面这一行记作「零声母」，IPA 栏原文是「ʔ/不标」：作声母时是喉塞音，非首音节亦可不标。引擎里零声母就是空串——convert.go 的 longestPrefix 跳过空选项，legal 对空 onset 不作成员校验——所以 notation 取空串，这一条不进 Inventory().onsets。"
+    }
+  ],
+  "rimes": [
+    {
+      "notation": "a",
+      "ipa": "a",
+      "example": "家 ga1 百 ba5"
+    },
+    {
+      "notation": "or",
+      "ipa": "ɒ",
+      "example": "下 or5 马 bor3"
+    },
+    {
+      "notation": "ae",
+      "ipa": "ɛ",
+      "example": "十 sae2"
+    },
+    {
+      "notation": "e",
+      "ipa": "e",
+      "example": "鞋 e2 鸡 ge1"
+    },
+    {
+      "notation": "oe",
+      "ipa": "ø",
+      "example": "退 toe4 所 soe3"
+    },
+    {
+      "notation": "o",
+      "ipa": "o",
+      "example": "学 o2 刀 do1"
+    },
+    {
+      "notation": "i",
+      "ipa": "i",
+      "example": "枝 gi1 戏 hi4"
+    },
+    {
+      "notation": "y",
+      "ipa": "y",
+      "example": "鱼 hy2 猪 dy1"
+    },
+    {
+      "notation": "u",
+      "ipa": "u",
+      "example": "有 u5 牛 gu2"
+    },
+    {
+      "notation": "ai",
+      "ipa": "ai",
+      "example": "菜 cai4 海 hai3"
+    },
+    {
+      "notation": "ao",
+      "ipa": "au",
+      "example": "后 ao5 豆 dao5"
+    },
+    {
+      "notation": "ou",
+      "ipa": "ɔu",
+      "example": "乌 ou1 古 gou3"
+    },
+    {
+      "notation": "ia",
+      "ipa": "ia",
+      "example": "车 cia1 谢 sia5"
+    },
+    {
+      "notation": "ieo",
+      "ipa": "ieu",
+      "example": "药 ieo2 鸟 zieo3"
+    },
+    {
+      "notation": "iu",
+      "ipa": "iu",
+      "example": "油 iu2 救giu4"
+    },
+    {
+      "notation": "ua",
+      "ipa": "ua",
+      "example": "画 ua5 花 hua1"
+    },
+    {
+      "notation": "ue",
+      "ipa": "uei",
+      "example": "歪 ue1 飞 bue1"
+    },
+    {
+      "notation": "ui",
+      "ipa": "ui",
+      "example": "位 ui5 水 zui3"
+    },
+    {
+      "notation": "yo",
+      "ipa": "yɒ",
+      "example": "蛇 syo2 鹅 gyo2"
+    },
+    {
+      "notation": "ang",
+      "ipa": "aŋ",
+      "example": "红 ang2 重 dang5"
+    },
+    {
+      "notation": "orng",
+      "ipa": "ɒŋ",
+      "example": "王 orng2 公 gorng1"
+    },
+    {
+      "notation": "eng",
+      "ipa": "ɛŋ",
+      "example": "灯 deng1 生 seng1"
+    },
+    {
+      "notation": "oeng",
+      "ipa": "œŋ",
+      "example": "宫 goeng1 窗 toeng1"
+    },
+    {
+      "notation": "ong",
+      "ipa": "ɔŋ",
+      "example": "云 ong2 分 bong1"
+    },
+    {
+      "notation": "ing",
+      "ipa": "iŋ",
+      "example": "冰 bing1 心 sing1"
+    },
+    {
+      "notation": "ieng",
+      "ipa": "iɛŋ",
+      "example": "盐 ieng2 尖 zieng1"
+    },
+    {
+      "notation": "ung",
+      "ipa": "uŋ",
+      "example": "光 gung1 霜 sung1"
+    },
+    {
+      "notation": "uang",
+      "ipa": "uaŋ",
+      "example": "弯 uang1 团duang2"
+    },
+    {
+      "notation": "yng",
+      "ipa": "yŋ",
+      "example": "斤 gyng1 银 ngyng2"
+    },
+    {
+      "notation": "yong",
+      "ipa": "yɒŋ",
+      "example": "上 syong5 场 dyong2"
+    },
+    {
+      "notation": "ng",
+      "ipa": "ŋ̍",
+      "example": "黄 ng2 方 hng1"
+    },
+    {
+      "notation": "ah",
+      "ipa": "aʔ",
+      "example": "合 hah7 读 tah7"
+    },
+    {
+      "notation": "orh",
+      "ipa": "ɒʔ",
+      "example": "盒 orh7 国 gorh6"
+    },
+    {
+      "notation": "eh",
+      "ipa": "ɛʔ",
+      "example": "踢 teh6 热 zeh7"
+    },
+    {
+      "notation": "oeh",
+      "ipa": "œʔ",
+      "example": "竹 doeh6 玉 goeh7"
+    },
+    {
+      "notation": "oh",
+      "ipa": "ɔʔ",
+      "example": "出 coh6 骨 goh6"
+    },
+    {
+      "notation": "ih",
+      "ipa": "iʔ",
+      "example": "笔 bih6 七 cih6"
+    },
+    {
+      "notation": "iah",
+      "ipa": "iaʔ",
+      "example": "食 siah7 揲 iah7(扇动)"
+    },
+    {
+      "notation": "ieh",
+      "ipa": "iɛʔ",
+      "example": "页 ieh7 业 gieh7"
+    },
+    {
+      "notation": "uh",
+      "ipa": "uʔ",
+      "example": "*",
+      "note": "页面这一行的例字就是星号，该韵母在本页没有例字；IPA 有，所以这一条仍然可用。"
+    },
+    {
+      "notation": "uah",
+      "ipa": "uaʔ",
+      "example": "刷 suah6 发 huah6"
+    },
+    {
+      "notation": "uoh",
+      "ipa": "uoʔ",
+      "example": "我 guoh3"
+    },
+    {
+      "notation": "yh",
+      "ipa": "yʔ",
+      "example": "疫 yh7 域 yh7"
+    },
+    {
+      "notation": "yoh",
+      "ipa": "yɒʔ",
+      "example": "约 yoh6 雀 cyoh6"
+    }
+  ],
+  "tones": [
+    {
+      "notation": "1",
+      "category": "阴平",
+      "value": "533",
+      "mark": "gī",
+      "example": "枝 gi1"
+    },
+    {
+      "notation": "2",
+      "category": "阳平",
+      "value": "13",
+      "mark": "gí",
+      "example": "期 gi2"
+    },
+    {
+      "notation": "3",
+      "category": "上声",
+      "value": "453",
+      "mark": "gî",
+      "example": "指 gi3"
+    },
+    {
+      "notation": "4",
+      "category": "阴去",
+      "value": "42",
+      "mark": "gì",
+      "example": "记 gi4"
+    },
+    {
+      "notation": "5",
+      "category": "阳去",
+      "value": "11",
+      "mark": "gĭ",
+      "example": "义 gi5"
+    },
+    {
+      "notation": "6",
+      "category": "阴入",
+      "value": "21",
+      "mark": "gĭh",
+      "example": "急 gih6"
+    },
+    {
+      "notation": "7",
+      "category": "阳入",
+      "value": "4",
+      "mark": "gíh",
+      "example": "及 gih7"
+    }
+  ]
+}
