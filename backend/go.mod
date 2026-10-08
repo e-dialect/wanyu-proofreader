@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/labstack/echo/v5 v5.4.0
-	github.com/pdfcpu/pdfcpu v0.16.0
+	github.com/pdfcpu/pdfcpu v0.16.1
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.40.4
 	golang.org/x/image v0.46.0
@@ -31,7 +31,7 @@ require (
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/pprof v0.0.0-20260902005441-ca85771921e4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hhrutter/tiff v1.0.6 // indirect
+	github.com/hhrutter/tiff v1.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
