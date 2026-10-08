@@ -14,6 +14,7 @@
         <a href="#project-export">导出结果</a>
         <a href="#project-entries">条目管理</a>
         <a v-if="project?.capabilities?.canManage" href="#project-assist">机器疑点</a>
+        <a v-if="project?.capabilities?.canManage" href="#project-scheme">拼音归一</a>
       </nav>
     </header>
 
@@ -591,6 +592,90 @@
         </ul>
         <p v-else class="text-muted assist-empty">还没有把任何分组标为「不是冲突」。</p>
       </section>
+
+      <!-- #190 拼音归一：机器判不出来的进复核队列，人工结论写在条目上 -->
+      <section v-if="project?.capabilities?.canManage" id="project-scheme" class="card project-section mb-6">
+        <div class="section-heading">
+          <div>
+            <h2>拼音归一</h2>
+            <p class="text-sm text-muted">
+              按<strong>声明的</strong>方案把校对后的记音转换成统一方案；系统不会替你判断某批资料用的是哪一套。
+              机器判不出来的条目会进入下面的复核队列。
+            </p>
+          </div>
+        </div>
+
+        <p v-if="schemeNotice" class="alert alert-warning" role="alert">{{ schemeNotice }}</p>
+
+        <template v-else>
+          <div class="admin-list-filters mb-4">
+            <label class="admin-filter-field">
+              <span>本批资料用的是哪套方案</span>
+              <select v-model="schemeSourceId" class="form-control">
+                <option value="">请选择</option>
+                <option v-for="item in schemeOptions" :key="item.source_scheme_id" :value="item.source_scheme_id">
+                  {{ item.source_scheme_id }} → {{ item.canonical_scheme_id }}（{{ item.rule_version }}）
+                </option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-primary" :disabled="schemeBusy || !schemeSourceId" @click="runConversion">
+              {{ schemeBusy ? '转换中…' : '生成统一拼音' }}
+            </button>
+            <button type="button" class="btn btn-secondary" :disabled="schemeBusy" @click="loadSchemeState">刷新</button>
+          </div>
+          <p v-if="schemeError" class="alert alert-error" role="alert">{{ schemeError }}</p>
+          <p v-if="schemeSuccess" class="alert alert-success" role="status">{{ schemeSuccess }}</p>
+
+          <h3>最近一次转换</h3>
+          <p v-if="!schemeJob" class="text-muted">还没有跑过转换。</p>
+          <template v-else>
+            <p class="text-sm text-muted">
+              状态：{{ conversionJobStatusLabel(schemeJob.status) }} · 规则版本 {{ schemeJob.rule_version }} ·
+              方案 {{ schemeJob.source_scheme }} → {{ schemeJob.canonical_scheme }}
+            </p>
+            <div class="flex gap-2 items-center mb-2">
+              <span v-for="line in schemeSummary" :key="line.key" class="badge">{{ line.label }} · {{ line.count }}</span>
+            </div>
+            <p v-if="schemeJob.error_message" class="alert alert-error" role="alert">{{ schemeJob.error_message }}</p>
+          </template>
+
+          <h3>复核队列（需人工确认）</h3>
+          <p class="text-muted">
+            这些条目机器判不出来，需要人给出统一方案的写法。结论会记下判定人与依据，重跑时保留，
+            不会被下一次批处理推回机器判断。
+          </p>
+          <p v-if="!reviewRows.length" class="text-muted">当前没有待复核的条目。</p>
+          <ul v-else class="assist-list">
+            <li v-for="row in reviewRows" :key="row.id" class="assist-row">
+              <div>
+                <strong>第 {{ row.page_number }} 条</strong>
+                <span :class="normalizationBadgeClass(row.normalization_status)">
+                  {{ normalizationStatusLabel(row.normalization_status) }}
+                </span>
+                <p class="text-sm">原值：<code>{{ row.source_pronunciation || '（空）' }}</code></p>
+                <p v-if="row.normalization_trace.length" class="text-sm text-muted">
+                  经过规则：{{ row.normalization_trace.join(' → ') }}
+                </p>
+                <p v-if="row.candidates.length" class="text-sm text-muted">候选：{{ row.candidates.join(' / ') }}</p>
+                <label class="admin-filter-field">
+                  <span>统一方案的写法</span>
+                  <input v-model="reviewDraft[row.id].canonical" class="form-control" />
+                </label>
+                <label class="admin-filter-field">
+                  <span>依据（必填）</span>
+                  <input v-model="reviewDraft[row.id].basis" class="form-control" maxlength="500" />
+                </label>
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  :disabled="reviewBusy || !reviewDraft[row.id].canonical.trim() || !reviewDraft[row.id].basis.trim()"
+                  @click="saveReview(row)"
+                >确认结论</button>
+              </div>
+            </li>
+          </ul>
+        </template>
+      </section>
     </template>
 
     <AppModal
@@ -687,6 +772,20 @@ import {
   qualityStateSummaryRows
 } from '@/lib/qualityState'
 import AppModal from '@/components/AppModal.vue'
+import {
+  decideNormalization,
+  listConversions,
+  listNormalizations,
+  listSchemeAdapters,
+  startConversion
+} from '@/services/schemeConversionService'
+import {
+  adapterNotice,
+  conversionJobStatusLabel,
+  conversionSummaryLines,
+  normalizationBadgeClass,
+  normalizationStatusLabel
+} from '@/lib/schemeConversion'
 import { getPbMessage, getPbStatus, getUploadErrorMessage, isRetryablePdfUploadError } from '@/utils/pbErrors'
 
 const route = useRoute()
@@ -759,6 +858,99 @@ const qualitySubmitting = ref(false)
 const qualityDialogError = ref('')
 let pdfPollGeneration = 0
 let csvPollGeneration = 0
+
+// ---------- #190 拼音归一 ----------
+const schemeOptions = ref([])
+const schemeNotice = ref('')
+const schemeSourceId = ref('')
+const schemeJob = ref(null)
+const schemeBusy = ref(false)
+const schemeError = ref('')
+const schemeSuccess = ref('')
+const reviewRows = ref([])
+const reviewDraft = ref({})
+const reviewBusy = ref(false)
+// 轮询代际：离开页面或再次发起时旧的那条循环必须自己停，否则它会一直打接口。
+let schemePollGeneration = 0
+
+const schemeSummary = computed(() => conversionSummaryLines(schemeJob.value))
+
+async function loadReviews() {
+  const queue = await listNormalizations(projectId, { status: 'AMBIGUOUS', perPage: 10 })
+  reviewRows.value = queue.items || []
+  // 草稿按条目 id 存：刷新后原来的输入不该串到别的条目上。
+  reviewDraft.value = Object.fromEntries(reviewRows.value.map((row) => [row.id, { canonical: '', basis: '' }]))
+}
+
+async function loadSchemeState() {
+  try {
+    const adapters = await listSchemeAdapters()
+    schemeOptions.value = adapters.schemes || []
+    schemeNotice.value = adapterNotice(adapters)
+    schemeError.value = ''
+    if (schemeNotice.value) return
+    const conversions = await listConversions(projectId)
+    schemeJob.value = (conversions.items || [])[0] || null
+    await loadReviews()
+  } catch (e) {
+    schemeError.value = getPbMessage(e, '拼音归一状态加载失败。')
+  }
+}
+
+async function runConversion() {
+  schemeBusy.value = true
+  schemeError.value = ''
+  schemeSuccess.value = ''
+  try {
+    const job = await startConversion(projectId, schemeSourceId.value)
+    schemeJob.value = job
+    schemeSuccess.value = '转换作业已排队，完成后这里会显示汇总。'
+    pollConversion()
+  } catch (e) {
+    schemeError.value = getPbMessage(e, '发起转换失败，请稍后重试。')
+  } finally {
+    schemeBusy.value = false
+  }
+}
+
+// 服务端没有推送，作业状态只能轮询。这里刻意不设总时长上限：跑一万条本来就慢，
+// 中途放弃会让管理员以为作业停了；真正的停止条件是「代际变了」（离开页面或又发起了一次）。
+function pollConversion() {
+  const generation = ++schemePollGeneration
+  const tick = async () => {
+    if (generation !== schemePollGeneration) return
+    try {
+      const conversions = await listConversions(projectId)
+      const latest = (conversions.items || [])[0]
+      if (latest) schemeJob.value = latest
+      if (latest && ['queued', 'processing'].includes(latest.status)) {
+        setTimeout(tick, 1500)
+        return
+      }
+      await loadReviews()
+    } catch {
+      // 轮询失败不打扰用户：手动刷新能补上，报错反而会盖住上一次的成功提示。
+    }
+  }
+  setTimeout(tick, 1500)
+}
+
+async function saveReview(row) {
+  const draft = reviewDraft.value[row.id]
+  if (!draft) return
+  reviewBusy.value = true
+  schemeError.value = ''
+  schemeSuccess.value = ''
+  try {
+    await decideNormalization(row.id, { canonical: draft.canonical.trim(), basis: draft.basis.trim() })
+    schemeSuccess.value = `第 ${row.page_number} 条已记为「已复核」，重跑时不会被推回机器判断。`
+    await loadReviews()
+  } catch (e) {
+    schemeError.value = getPbMessage(e, '保存人工结论失败。')
+  } finally {
+    reviewBusy.value = false
+  }
+}
 
 const statusOptions = Object.entries(PAGE_STATUS_LABELS).map(([value, label]) => ({ value, label }))
 const qualityStateOptions = QUALITY_STATES.map((value) => ({ value, label: QUALITY_STATE_LABELS[value] }))
@@ -840,7 +1032,7 @@ onMounted(async () => {
     return
   }
   loadingProject.value = false
-  await Promise.all([loadPages(), loadQualitySummary(), loadPdfResume()])
+  await Promise.all([loadPages(), loadQualitySummary(), loadPdfResume(), loadSchemeState()])
   if (selectedStatus.value) {
     await nextTick()
     scrollToEntries()
@@ -852,6 +1044,7 @@ onBeforeUnmount(() => {
   pdfPollGeneration += 1
   csvPollGeneration += 1
   pageLoadGeneration += 1
+  schemePollGeneration += 1
   clearTimeout(searchTimer)
 })
 

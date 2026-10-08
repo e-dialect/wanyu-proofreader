@@ -28,7 +28,12 @@ async function request(path, { method = 'GET', token = '', body, expected = 200 
   return payload
 }
 
-async function waitFor(path, token, terminalStatuses, timeoutMs = 20_000) {
+async function waitFor(path, token, terminalStatuses, timeoutMs = Number(process.env.IMPORT_WAIT_TIMEOUT_MS) || 20_000) {
+  // 默认 20s 是本机/常规 CI 下「一次导入应能到终态」的合理预算；race 检测下服务端约慢一个
+  // 量级，1200 行的导入在共享 runner 上会贴边超时。CI 的 race-integration 作业通过
+  // `--env IMPORT_WAIT_TIMEOUT_MS` 给它更高预算。这不是掩盖回归：这里只在等一个**终态**
+  // （completed / completed_with_errors / failed），真正的回归要么让作业落到 failed、要么
+  // 让后面的 success_count / failed_count 断言失败——那两种情况都不是「等得更久」能救的。
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const record = await request(path, { token })

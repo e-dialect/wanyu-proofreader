@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"log"
 	"strings"
@@ -490,5 +491,101 @@ func TestCSVPreservesExplicitColumnOrder(t *testing.T) {
 	}
 	if row.entryText != "𢶀 十 意思 二" {
 		t.Fatalf("text reordered: %s", row.entryText)
+	}
+}
+
+// addConversionJobsCollection 把 conversion_jobs 按迁移 1789200700_scheme_conversion.js
+// 的形状补进测试库。
+//
+// 为什么必须手抄：newSchemaTestApp 只 import 初始快照（1788940000），不跑后续迁移——
+// 那是给 schema 与安全边界用的（见它的注释）。手抄的取值必须与迁移一致：status 的取值表
+// 来自该文件 :27 的 JOB_STATUSES，error_code 在 :91 是 type:"text"（**不是**带固定取值
+// 表的 select），所以 WORKER_PANIC 这个值不会撞枚举。迁移收窄了取值表而这里没跟上时，
+// 本测试会以「Save 失败 / 状态没变」的形式红，而不是静默放过。
+func addConversionJobsCollection(t testing.TB, app *pocketbase.PocketBase) *core.Collection {
+	t.Helper()
+	conversionJobs := &core.Collection{
+		Name: "conversion_jobs",
+		Type: core.CollectionTypeBase,
+		Fields: core.NewFieldsList(
+			&core.TextField{Name: "project"},
+			&core.SelectField{Name: "status", MaxSelect: 1, Values: []string{"queued", "processing", "completed", "completed_with_errors", "failed"}},
+			&core.TextField{Name: "error_code"},
+			&core.TextField{Name: "error_message"},
+			&core.DateField{Name: "finished_at"},
+		),
+	}
+	if err := app.Save(conversionJobs); err != nil {
+		t.Fatalf("create conversion_jobs: %v", err)
+	}
+	return conversionJobs
+}
+
+// markFatal 的分派表必须认识每一个 kind：conversion 的记录在 conversion_jobs，既不是
+// markFatal 默认的 import_jobs，也不是 pdf 的 project_files。
+//
+// 这一格是评审那段的复现。漏掉这条分支时，runWorker 的 panic 兜底（不分 kind 一律调
+// markFatal）会把记录查空、只留一条 fatal_record_lookup_failed 日志，作业永远停在
+// processing；而 idx_conversion_jobs_active 是 `WHERE status IN ('queued','processing')`
+// 的部分唯一索引，于是该项目此后每次发起转换都撞 409，管理员只能靠重启进程恢复。
+func TestMarkFatalRoutesConversionJobsToTheirOwnCollection(t *testing.T) {
+	app := newSchemaTestApp(t)
+	conversionJobs := addConversionJobsCollection(t, app)
+
+	job := core.NewRecord(conversionJobs)
+	job.Set("status", "processing")
+	if err := app.Save(job); err != nil {
+		t.Fatal(err)
+	}
+
+	service := newImportService(app)
+	service.markFatal(
+		importWork{kind: "conversion", id: job.Id, requestID: "test-panic"},
+		"WORKER_PANIC", "服务器处理文件时发生内部错误。",
+		fmt.Errorf("boom"),
+	)
+
+	updated, err := app.FindRecordById("conversion_jobs", job.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := updated.GetString("status"); got != "failed" {
+		t.Fatalf("conversion job status = %q, want failed：panic 不能把作业留在 processing，"+
+			"否则 idx_conversion_jobs_active 会让这个项目再也发不出新的转换作业", got)
+	}
+	if got := updated.GetString("error_code"); got != "WORKER_PANIC" {
+		t.Fatalf("error_code = %q, want WORKER_PANIC", got)
+	}
+	if updated.GetDateTime("finished_at").IsZero() {
+		t.Fatal("finished_at 没被写上：作业在恢复扫描与活跃唯一索引眼里仍是进行中")
+	}
+}
+
+// TestEveryWorkKindHasAFinalizeTarget 遍历 workRoutes——runWorker 的分派与 markFatal 的
+// 兜底共用的那张表——断言每一格都指向一个真实存在的收尾集合，且有处理函数。
+//
+// 上面那一格证明「表里有 conversion，且它能落库」；这一格证明的是**表本身**没有指向不存在的
+// 集合。两者分工明确：前者是行为（真的写进去了），这一格是结构（集合名不是拼错的）。
+// 「新增 kind 忘了给它归属」这一类比拼错更严重，已经由表本身消除了——runWorker 与 markFatal
+// 都只从这张表读，没有第二处 switch 可以漏。
+func TestEveryWorkKindHasAFinalizeTarget(t *testing.T) {
+	app := newSchemaTestApp(t)
+	conversionJobs := addConversionJobsCollection(t, app)
+
+	for kind, route := range workRoutes {
+		t.Run(kind, func(t *testing.T) {
+			if route.process == nil {
+				t.Fatalf("%s 在表里没有处理函数：入队后不会有人处理它", kind)
+			}
+			collection := route.collection
+			if collection == "" {
+				// 空 collection 是 conversion 的约定：它的记录在 conversion_jobs。
+				collection = conversionJobs.Name
+			}
+			if _, err := app.FindCollectionByNameOrId(collection); err != nil {
+				t.Fatalf("%s 的收尾集合 %q 不存在：panic 兜底会查空记录、只留一条日志，"+
+					"作业永远停在 processing", kind, collection)
+			}
+		})
 	}
 }
