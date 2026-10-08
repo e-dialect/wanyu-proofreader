@@ -26,6 +26,7 @@
 - [项目结构](#项目结构)
 - [开发说明](#开发说明)
 - [常见问题](#常见问题)
+- [界面契约](docs/DESIGN.md)
 
 ## 当前流程与边界
 
@@ -605,7 +606,7 @@ wanyu-proofreader/
 
 - 前端：Vue 3、Vite、Vue Router、Pinia
 - 后端：PocketBase 0.40 自定义 Go 构建
-- 样式：纯 CSS
+- 样式：纯 CSS。跨领域界面约定见 [docs/DESIGN.md](docs/DESIGN.md)，分层与边界见 [docs/plans/2026-10-02-ui-architecture.md](docs/plans/2026-10-02-ui-architecture.md)
 - PDF 预览：静态引入 PDF.js
 - 部署：Docker Compose
 

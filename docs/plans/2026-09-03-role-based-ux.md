@@ -1,5 +1,7 @@
 # Role-based UX Implementation Plan
 
+> **已被取代（2026-10-05）。** 本计划不再作为验收依据。界面的可核对约定以 [docs/DESIGN.md](../DESIGN.md) 与 [2026-10-02-ui-architecture.md](2026-10-02-ui-architecture.md) 为准。下文保留作当时的实现记录。`IpaKeyboard.vue` 已改名为 `frontend/src/components/editor/ProjectKeyboard.vue`。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make Fangji's proofreading and administration workflows easier to understand, safer to operate, and faster to navigate without changing backend contracts.
@@ -31,7 +33,7 @@
 - Modify: `frontend/src/composables/useTaskNeighbors.js`
 - Modify: `frontend/src/views/proofreader/TaskHallView.vue`
 - Modify: `frontend/src/views/proofreader/ProofreadEditorView.vue`
-- Modify: `frontend/src/components/editor/IpaKeyboard.vue`
+- Modify: `frontend/src/components/editor/ProjectKeyboard.vue`（原 `IpaKeyboard.vue`，文件已改名）
 - Modify: `frontend/src/style.css`
 
 **Steps:**
