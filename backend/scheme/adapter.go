@@ -6,10 +6,13 @@
 // status and the rule identifiers that produced it.
 //
 // What it deliberately is not: it reads no database, writes no import, and holds
-// no rule of its own. There is no canonical 莆仙乡音社 inventory in the repo yet
-// (#114 names it, nothing defines it), so shipping a real adapter here would mean
-// inventing the mapping — which #114 §7 and #189's non-goals forbid. The rules in
-// testdata are synthetic and labelled as such.
+// no rule of its own. The target end of the mapping now has a real, cited
+// inventory in data/ — 莆仙乡音社's 莆仙话拼音 under scheme id puxian-xiangyin (see
+// Scheme), where #114 used to name that community with nothing defining it — but
+// the source end still has none: every book's 凡例 states its own notation and its
+// own IPA, and until those are transcribed per book there is no honest way to
+// write a segment_map, which is what #114 §7 and #189's non-goals forbid. The
+// rules in testdata therefore stay synthetic and labelled as such.
 package scheme
 
 import (

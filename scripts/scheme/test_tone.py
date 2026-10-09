@@ -211,6 +211,62 @@ class RuleFileTests(unittest.TestCase):
         self.assertIn("puxian-wendu", str(caught.exception))
 
 
+class TargetSchemeTests(unittest.TestCase):
+    """The target scheme's row in the shared table, and its link to the engine.
+
+    The row exists because #189 asks for one table, split by scheme, that both
+    runtimes load. The target end is the case where that is not a figure of
+    speech: the values live in the Go engine's own inventory file, and the row
+    points at it rather than copying it — so the two are compared here instead of
+    being trusted to stay in step by hand.
+    """
+
+    def setUp(self):
+        with open(RULES, encoding="utf-8") as handle:
+            self.doc = json.load(handle)
+        self.row = self.doc["schemes"]["puxian-xiangyin"]
+
+    def test_the_target_scheme_is_registered_and_refused_by_design(self):
+        # Its 调号 is a class number (gi1's 1 is 阴平, whose value is 533), the same
+        # layer as 《文读字汇》 and not the same layer as the dictionary's 调值. The
+        # codec converts corpus columns and this scheme has none, so being refused
+        # here is the correct outcome, not a gap: what the row registers is the ID
+        # and the tone-class set a target-side legality check needs.
+        with self.assertRaises(tone.SchemeError) as caught:
+            tone.load_tone_rules(str(RULES), "puxian-xiangyin")
+        self.assertIn("tone_category", str(caught.exception))
+        self.assertEqual([str(n) for n in range(1, 8)], self.row["tone_categories"])
+
+    def test_the_target_row_and_the_engine_load_one_definition(self):
+        inventory = HERE.parents[1] / self.row["inventory_file"]
+        self.assertTrue(inventory.is_file(),
+                        "the row points at %s, which does not exist" % inventory)
+        with inventory.open(encoding="utf-8") as handle:
+            scheme = json.load(handle)
+
+        # One ID on both sides: an adapter names its canonical scheme by this
+        # string, so a rename on either side has to be a rename on both.
+        self.assertEqual("puxian-xiangyin", scheme["scheme_id"])
+        self.assertEqual(self.row["tone_categories"],
+                         [t["notation"] for t in scheme["tones"]],
+                         "the two tone-class sets have drifted apart")
+
+        # #189 asks the target side's basis to carry the page, its 定名 and its
+        # 口径 together. The page name is what makes the accent necessary: read on
+        # its own it looks like it covers all of 莆仙.
+        basis = self.row["basis"] + " " + self.row["title"]
+        self.assertIn("https://hinghwa.cn/pinyin", basis)
+        self.assertIn(scheme["name"], basis)
+        self.assertIn(scheme["accent"], basis)
+
+    def test_the_target_row_does_not_carry_a_second_copy_of_the_tone_values(self):
+        # A copy here would be inert — the codec stops at annotation_system — and
+        # inert is the shape this repository refuses elsewhere: nobody would ever
+        # find out when the two copies stopped agreeing.
+        self.assertNotIn("tone_value_sets", self.row)
+        self.assertNotIn("column_tone_value_sets", self.row)
+
+
 class CliTests(unittest.TestCase):
     def test_report_counts_match_a_hand_check_of_the_fixture(self):
         code, out, err = run_main(["--csv", str(FIXTURE)])
