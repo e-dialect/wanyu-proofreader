@@ -135,6 +135,16 @@ try {
   const batch = generatedResponse.payload
   assert.equal(batch.count, 3)
   assert.equal(batch.accounts.length, 3)
+  // A different username batch with an overlapping nickname must roll back in full.
+  await request(endpoint, {
+    method: 'POST', token: manager.token, expected: 400,
+    body: { ...baseBody, count: 2, startNumber: 0, usernamePattern: `nickconf${suffix}{n}` }
+  })
+  const nicknameRollback = await request(
+    `/api/collections/users/records?filter=${encodeURIComponent(`username="nickconf${suffix}000"`)}`,
+    { token: superAuth.token }
+  )
+  assert.equal(nicknameRollback.totalItems, 0, 'nickname conflict rolls back the earlier account too')
   assert.ok(batch.csv.startsWith('\uFEFF'))
   const csv = parseCsv(batch.csv)
   assert.deepEqual(csv[0], ['项目', '昵称', '用户名', '初始密码', '登录地址'])
@@ -177,6 +187,10 @@ try {
     method: 'POST', body: { identity: firstUsername, password: initialPassword }
   })
   assert.equal(volunteerAuth.record.must_change_password, true)
+  const volunteerNicknameAuth = await request('/api/collections/users/auth-with-password', {
+    method: 'POST', body: { identity: csv[1][1], password: initialPassword }
+  })
+  assert.equal(volunteerNicknameAuth.record.id, volunteerAuth.record.id)
   await request(`/api/fangji/projects/${projectId}/claim`, {
     method: 'POST', token: volunteerAuth.token, expected: 403
   })

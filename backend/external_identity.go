@@ -114,7 +114,7 @@ func (s *externalIdentityService) login(c *core.RequestEvent) error {
 		return apis.NewApiError(http.StatusInternalServerError, "外部账号登录暂时不可用，请稍后重试。", nil)
 	}
 
-	user = s.syncExternalProfile(c.Request.Context(), provider, subject, user)
+	user = s.syncExternalProfile(c.Request.Context(), provider, subject, user, created)
 	s.logAuthResult(provider.ID(), "success")
 	return apis.RecordAuthResponse(c, user, "external", map[string]any{
 		"provider": provider.ID(),
@@ -242,6 +242,12 @@ func (s *externalIdentityService) resolveOrCreateUserWithName(provider, subject,
 		}
 
 		username := availableExternalUsername(txDao, users.Id, provider, subject)
+		if users.Fields.GetByName("name").(*core.TextField).Required {
+			name, err = availableNickname(txDao, name, username, "")
+			if err != nil {
+				return err
+			}
+		}
 		user = core.NewRecord(users)
 		user.Set("username", username)
 		user.Set("name", name)
@@ -437,7 +443,7 @@ func externalLimitKey(provider, ip string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func usernameAvailable(app core.App, collectionID, username string) bool {
-	_, err := app.FindFirstRecordByFilter(collectionID, "username = {:username}", dbx.Params{"username": username})
-	return errors.Is(err, sql.ErrNoRows)
+func usernameAvailable(app core.App, _ string, username string) bool {
+	available, err := nicknameAvailable(app, username, "")
+	return err == nil && available
 }

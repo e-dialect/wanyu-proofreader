@@ -27,12 +27,12 @@
 
       <form @submit.prevent="handleLogin">
         <div class="form-group">
-          <label class="form-label">{{ selectedProvider ? `${selectedProvider.name}账号` : '用户名或邮箱' }}</label>
+          <label class="form-label">{{ selectedProvider ? `${selectedProvider.name}账号` : '昵称或邮箱' }}</label>
           <input
             v-model.trim="email"
             type="text"
             class="form-control"
-            :placeholder="selectedProvider ? `请输入${selectedProvider.name}账号` : '请输入用户名或邮箱'"
+            :placeholder="selectedProvider ? `请输入${selectedProvider.name}账号` : '请输入昵称或邮箱'"
             autocomplete="username"
             :disabled="loading"
             required
@@ -77,6 +77,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listExternalProviders } from '@/services/authService'
 import { useAuthStore } from '@/stores/auth'
+import { getPbMessage } from '@/utils/pbErrors'
 
 const emit = defineEmits(['close'])
 
@@ -141,9 +142,9 @@ async function handleLogin() {
     password.value = ''
     await redirectAfterLogin()
   } catch (e) {
-    error.value = e?.response?.message || (selectedProvider.value
+    error.value = getPbMessage(e, selectedProvider.value
       ? '外部账号登录失败，请检查账号和密码'
-      : '登录失败，请检查用户名、邮箱或密码')
+      : '登录失败，请检查昵称、邮箱或密码')
   } finally {
     loading.value = false
   }

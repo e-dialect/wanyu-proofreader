@@ -36,8 +36,13 @@ export function getUploadErrorMessage(error, kind) {
 
 export function getPbMessage(error, fallback = '请求失败，请稍后重试') {
   const response = error?.response
-  const details = Object.values(response?.data || {})
-    .map((item) => String(item?.message || '').trim())
+  const details = Object.entries(response?.data || {})
+    .map(([field, item]) => {
+      if (field === 'name' && ['validation_not_unique', 'validation_identity_conflict'].includes(item?.code)) {
+        return '昵称已被占用，请换一个昵称。'
+      }
+      return String(item?.message || '').trim()
+    })
     .filter(Boolean)
 
   if (details.length) return details.join('；')

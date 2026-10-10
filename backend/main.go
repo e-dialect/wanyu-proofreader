@@ -49,6 +49,7 @@ func main() {
 		Dir:          migrationsDir,
 	})
 	registerTrustedClientIP(app)
+	registerNicknameLogin(app)
 	registerProfile(app)
 	registerBundleValidation(app)
 	registerJoinAttemptCleanup(app)

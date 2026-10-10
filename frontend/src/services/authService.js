@@ -56,9 +56,15 @@ export async function registerProofreader({ email, password, passwordConfirm, na
     email,
     password,
     passwordConfirm,
-    name,
+    name: name.trim(),
     role: 'user'
   }, { requestKey: null })
+}
+
+export async function checkNicknameAvailable(name) {
+  return pb.send('/api/fangji/auth/nickname-available', {
+    method: 'GET', query: { name: name.trim() }, requestKey: null
+  })
 }
 
 export async function changeInitialPassword({ currentPassword, newPassword, newPasswordConfirm }) {
