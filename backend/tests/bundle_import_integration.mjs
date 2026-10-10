@@ -300,7 +300,7 @@ await waitJob(attemptsJob.id, token, ['completed'])
 const readerEmail = `bundle-reader-${suffix}@example.com`
 const reader = await api('/api/collections/users/records', {
   method: 'POST',
-  body: { email: readerEmail, password: 'BundleTest12345!', passwordConfirm: 'BundleTest12345!', name: '校对员', role: 'user' }
+  body: { email: readerEmail, password: 'BundleTest12345!', passwordConfirm: 'BundleTest12345!', name: `校对员-${suffix}`, role: 'user' }
 })
 const readerAuth = await api('/api/collections/users/auth-with-password', {
   method: 'POST', body: { identity: readerEmail, password: 'BundleTest12345!' }
