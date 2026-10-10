@@ -43,6 +43,13 @@ func registerProfile(app core.App) {
 					return apis.NewBadRequestError("昵称不能为空且不能超过 255 个字符。", nil)
 				}
 				values["name"] = name
+				available, err := nicknameAvailable(app, name, record.Id)
+				if err != nil {
+					return err
+				}
+				if !available {
+					return apis.NewBadRequestError(nicknameTaken, nil)
+				}
 			}
 			if raw, exists := data["email"]; exists {
 				email, ok := raw.(string)

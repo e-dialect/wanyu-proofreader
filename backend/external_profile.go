@@ -27,7 +27,7 @@ type externalProfileProvider interface {
 
 // Import only empty local fields, after authenticating and resolving the stable
 // provider/subject mapping. A remote email never selects or links local accounts.
-func (s *externalIdentityService) syncExternalProfile(ctx context.Context, provider externalIdentityProvider, subject string, user *core.Record) *core.Record {
+func (s *externalIdentityService) syncExternalProfile(ctx context.Context, provider externalIdentityProvider, subject string, user *core.Record, newlyCreated ...bool) *core.Record {
 	source, ok := provider.(externalProfileProvider)
 	if !ok {
 		return user
@@ -49,7 +49,9 @@ func (s *externalIdentityService) syncExternalProfile(ctx context.Context, provi
 			if err != nil {
 				return err
 			}
-			if current.GetString(field) != "" {
+			// Replace the seed only during creation, never a later local nickname edit.
+			seedNickname := field == "name" && len(newlyCreated) > 0 && newlyCreated[0] && current.GetString("name") == current.GetString("username")
+			if current.GetString(field) != "" && !seedNickname {
 				return nil
 			}
 			switch field {
@@ -57,6 +59,10 @@ func (s *externalIdentityService) syncExternalProfile(ctx context.Context, provi
 				name := strings.TrimSpace(profile.Name)
 				if name == "" || !utf8.ValidString(name) || utf8.RuneCountInString(name) > 255 {
 					return nil
+				}
+				name, err = availableNickname(tx, name, current.GetString("username"), current.Id)
+				if err != nil {
+					return err
 				}
 				current.Set("name", name)
 			case "email":

@@ -11,6 +11,7 @@
   { "suite": "keyboards_integration.mjs", "ci_matrix": true },
   { "suite": "column_order_integration.mjs", "ci_matrix": true },
   { "suite": "volunteer_accounts_integration.mjs", "ci_matrix": true },
+  { "suite": "nickname_login_integration.mjs", "ci_matrix": true },
   { "suite": "findings_integration.mjs", "ci_matrix": true },
   { "suite": "assist_rules_integration.mjs", "ci_matrix": true },
   { "suite": "assist_baseline_integration.mjs", "ci_matrix": true },
