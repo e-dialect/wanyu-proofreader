@@ -1166,7 +1166,33 @@ try {
     assert.equal(healed.offsets_unbaselined, 0, '重算之后不该还有无基准条目留着')
     assert.equal(sliceBySpans(afterRow['莆田IPA'], healedSpan.evidence.char_offsets[0]), '91234',
       '高亮必须切回被标记的那段数字串本身，切回空白或别的字都算没修好')
-    console.log('PASS: 写回后旧区间被剥且疑点仍在，重算后区间重新锚在新串上（#304）')
+
+    // 复审 P2 之二点名要的那条链路：旧批次 → 部署新读侧 → 管理员写回。这里对 legacyPage 做
+    // 与 wbPage **完全相同的那次编辑**（同一个 `afterRow`），于是同一次改写被两个计数分到两边：
+    // 带基准的报 stale，没有基准的仍报 unbaselined。两个数因此不是顺序巧合，而是成因标签。
+    await request(`/api/fangji/projects/${wbProject.id}/pages/${legacyPage.id}/content`, {
+      method: 'POST', token: boss.token,
+      body: {
+        rowJson: JSON.stringify(afterRow),
+        headersJson: JSON.stringify(['词条', '拼音', '莆田IPA', '释义']),
+        expectedUpdated: (await request(`/api/collections/pages/records/${legacyPage.id}`, { token: boss.token })).updated
+      }
+    })
+    const legacyWritten = await request(`/api/fangji/pages/${legacyPage.id}/findings`, { token: boss.token })
+    assert.equal(legacyWritten.hints.length, 1, JSON.stringify(legacyWritten))
+    assert.equal(legacyWritten.hints[0].evidence.char_offsets, undefined,
+      `无基准的旧批次被写回之后仍下发旧下标：${JSON.stringify(legacyWritten.hints[0].evidence)}`)
+    assert.equal(legacyWritten.offsets_unbaselined, 1, JSON.stringify(legacyWritten.offsets_unbaselined))
+    assert.equal(legacyWritten.offsets_stale, 0,
+      '根本没有基准的记录不该被报成"原文变了"——那会把部署日的正常存量说成有人改过内容')
+    // 库里这条记录被读三次、被写回一次之后仍然没有基准：盖章只有写侧一个入口
+    // （`assist_writer.js:99`），读侧没有任何补章出口。它同时是「写回自动触发重算」那条
+    // 收尾路线的哨兵——真接上那条，这里就会变成带基准，本段的降级叙述要跟着重写。
+    // 这条是仓库状态断言，没有用变异证明它会红（改动读侧的内存视图不会写回库里）。
+    const legacyStored = JSON.parse((await currentFindingRow(legacyPage.id, 'long_digit_run')).evidence_json)
+    assert.equal(legacyStored.offsets_basis, undefined,
+      `库里这条旧批次已经有了基准，与"只有写侧盖章"不符：${JSON.stringify(legacyStored)}`)
+    console.log('PASS: 写回后旧区间被剥且疑点仍在，重算后区间重新锚在新串上，旧批次被写回仍按无基准计数（#304）')
   }
 
   console.log('Assist rules integration test passed.')
