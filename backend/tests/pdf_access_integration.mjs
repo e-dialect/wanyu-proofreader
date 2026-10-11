@@ -71,6 +71,9 @@ assert.equal(firstBytes.subarray(0,5).toString(),'%PDF-')
 const warm = await check(url,users[0].token,200)
 assert.deepEqual(Buffer.from(await warm.arrayBuffer()),firstBytes,'warm preview should reuse the watermarked artifact')
 await check(url,users[1].token,403) // Warm cache never bypasses ownership.
+const pdfDescriptor=url+'/descriptor'
+await check(pdfDescriptor,'',401)
+await check(pdfDescriptor,users[1].token,403)
 
 if(process.env.PDF_BROWSER_FIXTURE){
  await writeFile(process.env.PDF_BROWSER_FIXTURE,JSON.stringify({base,auth:users[0],claim,page,project,fileURL,imageInfo}))
@@ -81,8 +84,10 @@ const last=await check(url,users[0].token,200);assert.equal(last.headers.get('x-
 const lease=(await api(`/api/collections/task_leases/records?filter=${encodeURIComponent(`page="${page.id}"`)}`,{token:superAuth.token})).items[0]
 await api(`/api/collections/task_leases/records/${lease.id}`,{method:'PATCH',token:superAuth.token,body:{expires_at:'2020-01-01 00:00:00.000Z'}})
 await check(url,users[0].token,403)
+await check(pdfDescriptor,users[0].token,403)
 await check(imageDescriptor,users[0].token,403)
 if(imageInfo) await check(imageInfo.url,users[0].token,403)
 await api(`/api/collections/pages/records/${page.id}`,{method:'PATCH',token:superAuth.token,body:{status:'pending',proofreader:''}})
 await check(url,users[0].token,403)
+await check(pdfDescriptor,users[0].token,403)
 console.log('PASS: authenticated two-page/last-page preview; anonymous, other-user, full-file/file-token/Range, expired/released access blocked; manager original access preserved')

@@ -11,6 +11,7 @@ test('reuses only the same user/version/range/window and releases old blob URLs'
  assert.equal(cache.get('bob',descriptor),null)
  assert.equal(cache.get('alice',{...descriptor,key:'replacement'}),null)
  now=5000;assert.equal(cache.get('alice',descriptor),null)
+ assert.equal(cache.get('alice',{...descriptor,expiresAt:new Date(9000).toISOString()}),null,'a fresh authorization window must not resurrect an expired browser blob even when the shared asset key is unchanged')
  cache.put('alice',{...descriptor,key:'new'},new Blob(['pdf2']))
  assert.deepEqual(revoked,['blob:1']);cache.clear();assert.deepEqual(revoked,['blob:1','blob:2'])
 })

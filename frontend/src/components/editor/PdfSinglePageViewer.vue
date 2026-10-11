@@ -24,7 +24,9 @@
       >
         <img v-if="pageImage" class="pdf-page-image" :src="src" :width="pageImage.width" :height="pageImage.height" :style="imageStyle" alt="原文页面" @error="emit('image-error')" />
         <canvas v-else ref="canvasRef" class="pdf-canvas"></canvas>
-        <div v-if="pageImage" class="pdf-identity-watermark" aria-hidden="true">{{ identityStamp }}</div>
+        <div v-if="src && watermarkUserId" class="pdf-identity-watermark" aria-hidden="true">
+          <span v-for="tile in watermarkTileCount" :key="tile" class="pdf-identity-watermark-tile">{{ identityStamp }}</span>
+        </div>
         <div v-if="loading || rendering" class="pdf-loading-mask">PDF 加载中...</div>
 
       </div>
@@ -34,13 +36,14 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import pb from '@/lib/pocketbase'
 
 const emit = defineEmits(['image-error'])
 
 const props = defineProps({
   src: { type: String, default: '' },
   pageImage: { type: Object, default: null },
+  watermarkUserId: { type: String, default: '' },
+  watermarkProjectId: { type: String, default: '' },
   pageNumber: { type: Number, default: 1 },
   sourcePageNumber: { type: Number, default: 0 },
   sourceTotalPages: { type: Number, default: 0 }
@@ -66,7 +69,14 @@ let resizeObserver = null
 let pdfjsLib = null
 let loadGeneration = 0
 let renderGeneration = 0
-const identityStamp = computed(() => `Wanyu | ${pb.authStore.record?.id || ''}`)
+// Keep the access time stable while reading; renew it for a new viewer or
+// asset without changing the underlying shared image/PDF.
+const accessedAt = ref('')
+watch([() => props.src, () => props.watermarkUserId, () => props.watermarkProjectId], () => {
+  accessedAt.value = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+}, { immediate: true })
+const identityStamp = computed(() => `万语校坊 · UID ${props.watermarkUserId}\n项目 ${props.watermarkProjectId}\n${accessedAt.value}`)
+const watermarkTileCount = computed(() => Math.max(1, Math.floor(canvasCssWidth.value / 210)) * Math.max(1, Math.ceil(canvasCssHeight.value / 100)))
 const imageStyle = computed(() => {
   if (!props.pageImage) return {}
   const odd = rotation.value % 180 !== 0
@@ -381,14 +391,22 @@ onBeforeUnmount(async () => {
 .pdf-identity-watermark {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  z-index: var(--z-mask);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-auto-rows: 100px;
   pointer-events: none;
+  user-select: none;
   color: var(--pdf-grid);
-  transform: rotate(-25deg);
-  font-size: 16px;
   overflow: hidden;
+}
+.pdf-identity-watermark-tile {
+  align-self: center;
+  justify-self: center;
+  transform: rotate(-15deg);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  white-space: pre;
 }
 
 .pdf-loading-mask {

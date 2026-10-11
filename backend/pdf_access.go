@@ -100,9 +100,11 @@ type pdfPreviewDescriptor struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-func describePDF(file *core.Record, start, end int, userID string, now time.Time) pdfPreviewDescriptor {
+// The asset identity is independent of the viewer and authorization window.
+// ExpiresAt still bounds browser reuse; every request must pass resolveTaskPDF.
+func describePDF(file *core.Record, start, end int, now time.Time) pdfPreviewDescriptor {
 	bucket := now.UTC().Truncate(pdfPreviewTTL)
-	return pdfPreviewDescriptor{Key: pdfCacheKey(pdfSourceKey(file), userID, fmt.Sprint(start), fmt.Sprint(end), bucket.Format(time.RFC3339)), Start: start, End: end, Total: file.GetInt("page_count"), ExpiresAt: bucket.Add(pdfPreviewTTL)}
+	return pdfPreviewDescriptor{Key: pdfCacheKey("public-pdf-v1", pdfSourceKey(file), fmt.Sprint(start), fmt.Sprint(end)), Start: start, End: end, Total: file.GetInt("page_count"), ExpiresAt: bucket.Add(pdfPreviewTTL)}
 }
 func (s *importService) taskPDFDescriptor(c *core.RequestEvent) error {
 	file, start, end, err := s.resolveTaskPDF(c)
@@ -110,18 +112,20 @@ func (s *importService) taskPDFDescriptor(c *core.RequestEvent) error {
 		return err
 	}
 	c.Response.Header().Set("Cache-Control", "private, no-store")
-	return c.JSON(http.StatusOK, describePDF(file, start, end, c.Auth.Id, time.Now()))
+	return c.JSON(http.StatusOK, describePDF(file, start, end, time.Now()))
 }
 func (s *importService) taskPDF(c *core.RequestEvent) error {
 	file, start, end, err := s.resolveTaskPDF(c)
 	if err != nil {
 		return err
 	}
-	descriptor := describePDF(file, start, end, c.Auth.Id, time.Now())
-	output, err := s.cachedTaskPDF(file, descriptor, c.Auth.Id)
+	started := time.Now()
+	descriptor := describePDF(file, start, end, started)
+	output, err := s.cachedTaskPDF(file, descriptor)
 	if err != nil {
 		return apis.NewBadRequestError("PDF 分页或水印生成失败，请联系项目管理员。", err)
 	}
+	logUpload("info", "pdf_preview_access", map[string]any{"user_id": c.Auth.Id, "asset_id": descriptor.Key, "source_key": pdfSourceKey(file)[:12], "page_range": fmt.Sprintf("%d-%d", start, end), "total_ms": time.Since(started).Milliseconds()})
 	c.Response.Header().Set("Cache-Control", "private, no-store")
 	c.Response.Header().Set("X-Content-Type-Options", "nosniff")
 	c.Response.Header().Set("Content-Disposition", `inline; filename="task-preview.pdf"`)

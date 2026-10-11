@@ -1,0 +1,46 @@
+{
+  "desktop": {
+    "initialMs": 331,
+    "network": [
+      "/api/fangji/pages/uratgh430uj97jz/pdf/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/asset",
+      "/api/fangji/pages/uratgh430uj97jz/images/3/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/3/asset",
+      "/api/fangji/pages/uratgh430uj97jz/images/3/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/descriptor"
+    ],
+    "identityStamp": "万语校坊 · UID bma5ze8jm7wyd96\n项目 p45mlvqkan418hz\n2026-10-11 06:43:36 UTC"
+  },
+  "mobile": {
+    "initialMs": 229,
+    "network": [
+      "/api/fangji/pages/uratgh430uj97jz/pdf/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/asset",
+      "/api/fangji/pages/uratgh430uj97jz/images/3/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/3/asset",
+      "/api/fangji/pages/uratgh430uj97jz/images/3/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/descriptor"
+    ],
+    "identityStamp": "万语校坊 · UID bma5ze8jm7wyd96\n项目 p45mlvqkan418hz\n2026-10-11 06:43:37 UTC"
+  },
+  "fallback": {
+    "initialMs": 433,
+    "network": [
+      "/api/fangji/pages/uratgh430uj97jz/pdf/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/pdf"
+    ],
+    "identityStamp": "万语校坊 · UID bma5ze8jm7wyd96\n项目 p45mlvqkan418hz\n2026-10-11 06:43:37 UTC"
+  },
+  "fallback-mobile": {
+    "initialMs": 423,
+    "network": [
+      "/api/fangji/pages/uratgh430uj97jz/pdf/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/images/2/descriptor",
+      "/api/fangji/pages/uratgh430uj97jz/pdf"
+    ],
+    "identityStamp": "万语校坊 · UID bma5ze8jm7wyd96\n项目 p45mlvqkan418hz\n2026-10-11 06:43:38 UTC"
+  }
+}
