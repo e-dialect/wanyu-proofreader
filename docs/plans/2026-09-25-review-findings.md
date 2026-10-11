@@ -24,7 +24,7 @@
 | `severity` | select `info \| warn \| strong` | 是 | finding 自身属性，**不是规则档位** |
 | `message_key` | text | 是 | 措辞键，前端按 key 渲染中文（§4）。**它是规则身份的组成部分** |
 | `params_json` | text（JSON 字符串） | 是 | 措辞参数，只允许结构信息（码位、计数、列名），见 §6 |
-| `evidence_json` | text（JSON 字符串） | 否 | `{bbox?, char_offsets?, offsets_basis?, excerpt?, page?, anchor?, partners?}`。`char_offsets` 是 `[[start, end), …]` 的**码位**半开区间，与消费端 `frontend/src/lib/fieldHints.js` 的 `locateSpan` 同口径（它再换算成 UTF-16 选区）。有格内命中位置的生产者必须带：R1 越界字符、R2 可混淆字符、R3 格级组合符、R6 长数字串，以及 `merged_columns` 两类；不带的是「空格里没有字符可标」的 R5，以及判据本身看不到单格的列级 R3/R4 与页级 R7 |
+| `evidence_json` | text（JSON 字符串） | 否 | `{bbox?, char_offsets?, offsets_basis?, excerpt?, page?, anchor?, partners?}`。`char_offsets` 是 `[[start, end), …]` 的**码位**半开区间，与消费端 `frontend/src/lib/fieldHints.js` 的 `locateSpan` 同口径（它再换算成 UTF-16 选区）。有格内命中位置的生产者必须带：R1 越界字符、R2 可混淆字符、R3 格级组合符、R6 长数字串，以及 `merged_columns` 两类；不带的是「空格里没有字符可标」的 R5，以及判据本身看不到单格的列级 R3/R4 与页级 R7。保留下来的区间都带 `offsets_basis`（形状与判据见 §1.1），该字段不下发给校对端（§3.1） |
 | `producer` | select `rule \| ocr \| bundle_import` | 是 | 谁产的 |
 | `producer_version` | text | 是 | 规则/模型版本，升版即新批次 |
 | `produced_at` | date | 是 | 批次时间 |
@@ -43,23 +43,38 @@
 （`POST /api/fangji/projects/{projectId}/pages/{pageId}/content`）允许项目管理员随时改写
 `ocr_row_json`，且按 2026-10-06 的裁定不做版本化、不触发重算。旧下标切到新串上不报错、不越界，
 只是标在别的字上——所以写入侧的诚实性闸门（`backend/pb_hooks/lib/assist_writer.js`
-`dropUnfaithfulOffsets`）在「判据串与渲染串逐字相等、因此保留区间」的同一支路里，
-把渲染串的**码位数**记进 `evidence_json.offsets_basis`；读侧（`lib/findings.js`
-`dropStaleOffsets`）下发前用它复核一次，对不上就删掉 `char_offsets`。
+`dropUnfaithfulOffsets`）在「判据串与渲染串逐字相等、因此保留区间」的同一支路里，把**每个区间
+所切片段**的摘要按顺序记进 `evidence_json.offsets_basis`（`{"digests": ["…", …]}`，每段 32 个
+十六进制字符）；读侧（`lib/findings.js` `dropStaleOffsets`）下发前用同一份实现逐区间重切、
+逐摘要比对，任一对不上就把 `char_offsets` 删掉。
 
-三条口径要记住：
+基准为什么必须是内容级而不是长度：总码位数相等证明不了命中没动。管理员写回支持整格改写，
+`aŋ1234` → `1234aŋ` 长度不变而数字命中已从 `[2,6)` 移到 `[0,4)`，只比长度会把高亮留在 `34aŋ` 上
+（#304 复审 P2 的反例）。片段摘要同时覆盖位置与内容：区间挪了、或那段字改了，摘要都变。
+反过来改动落在区间之外时摘要不变，于是**不再误伤**——旧版按总长度判会把 `aŋ1234` → `aŋ12345`
+这种区间之后的追加一并剥掉。两种情形都由 `assist_rules_integration.mjs` 的纯函数段钉住。
+
+四条口径要记住：
 
 - **删区间不等于删疑点**。前端 `locateSpan` 拿不到区间时降级为「聚焦该字段」，归因不变。
-  被删的条数经 `offsets_stale` 回给两个路由（与 `suppressed_by_gate` 同一个立场：
-  「没下发」与「没东西可下发」必须分开说）。
-- **长度判据分不清改动发生在区间前还是区间后**，区间之后的追加也会剥。方向是保守的
-  （少一次高亮，任何一次重算都能恢复），不是把它当成完备判据。等长原地改写看不出来——
-  那种情形位置本身没错。要收紧成内容级判据，先给 `review_findings` 的数据形状定案（未拍板）。
-- **`offsets_basis` 缺失 = 不判**。写回面出现之前 `ocr_row_json` 是 create-only
-  （`import_service.go` 的 `savePage` 用 `core.NewRecord`），无从失配；把历史批次一律剥掉
-  只会凭空削平现成的定位帮助。
+  被删的条数按**原因**分两个数回给两个路由（与 `suppressed_by_gate` 同一个立场：
+  「没下发」与「没东西可下发」必须分开说，见 §3.1）。
+- **盖不出基准就当场摘掉**。片段为空或区间越界时 `offsetsBasis` 返回 `null`——空片段与
+  「区间掉出串外」切出来的空串无法区分，给它盖章等于把后者伪装成已验证。写侧因此删掉
+  `char_offsets` 并计入 `offsets_dropped`。
+- **没有可验证基准 = 保守剥掉，不是不判**，计入 `offsets_unbaselined`。这涵盖本修复之前落库的
+  全部批次（只有整数长度基准，或根本没有基准）。整数基准不能沿用：它已被上面那个等长反例证伪，
+  留着它就是继续下发已知会错位的区间。**部署后果**：上线后现成条目的区间会被整批判为无基准而
+  剥掉高亮，所以部署步骤包含一次全量重算（`POST /api/fangji/projects/{projectId}/findings/recompute`）
+  来重新盖章；重算之前那个数冲高只说明「这批还没基准」，**不**说明原文被大面积改写。
+- **旧批次改不动**：`backend/pb_hooks/findings.pb.js` 的不可覆写守卫覆盖 `evidence_json`
+  （对 superuser 同样生效），存量批次只能被 supersede、不能回溯补盖基准。测试要复现旧批次
+  因此只能新造一条「有区间、无基准」的记录，而不是改写现成的那条。
 
-`offsets_basis` 是一个整数计数，按 §6 属结构信息，不含任何字形序列。
+摘要算法是 4 段 32 位 FNV 变体拼成 128 位（`excerptDigest`），纯 JS：写侧在 JSVM 盖章、
+读侧在 JSVM 复核，而 `backend/tests/assist_rules_integration.mjs` 的纯函数段直接 `require`
+`lib/findings.js` 在 node 下跑，所以既不能用 `$security.sha256`（node 下没有这个全局），
+也不用 BigInt（goja 支持面不同）。两端各算一套基准的话，早晚只有一端在防这件事。
 
 ### 1.2 `assist_rule_gates`（门控登记表）
 
@@ -109,15 +124,20 @@ manager/平台管理员直通；否则要求「该条目正被你认领」或「
       "severity": "strong",
       "message": { "key": "long_digit_run", "params": { "runs": ["5333"], "run_count": 1 } },
       "highlight": true,
-      "evidence": { "char_offsets": [[4, 8]], "offsets_basis": 11 }
+      "evidence": { "char_offsets": [[4, 8]] }
     }
   ],
   "truncated": false,
   "suppressed_by_gate": 0,
   "offsets_stale": 0,
+  "offsets_unbaselined": 0,
   "gate_rows_truncated": false
 }
 ```
+
+`evidence` 里**没有** `offsets_basis`：它是内容派生的摘要（§1.1），在客户端没有任何消费者
+（前端只读 `char_offsets`），因此下发前被摘掉，只留在库里供读侧复核与管理端排查用。
+这与 `scoring_channel` 只下发给管理端是同一个立场。
 
 响应级字段（#228 验收标准第 6、7 条）：
 
@@ -126,11 +146,14 @@ manager/平台管理员直通；否则要求「该条目正被你认领」或「
   gate 全 off 与这批资料真的干净长得一模一样，而后者会被读成「这批可以放心」。
   它只是一个计数：不含规则身份、不含内容、不含档位，因此不触碰盲校纪律。
   `info` 级永不进校对端（§2），不计入这个数字。
-- `offsets_stale` 是本条目上「疑点仍然下发、但**区间**因原文已改写而对不上基准、
-  因此不画高亮」的条数（#304，见 §1.1）。它与 `suppressed_by_gate` 分开的正是两件事：
-  后者是「有疑点但规则没放行」，前者是「疑点给了、定位给不了」。
-  管理端 `listForProject` 同样回这个字段，但两端数字可以不同——管理端不做门控过滤（§3.2），
-  所以 `off` 档规则被剥掉的区间只在这里计数。
+- `offsets_stale` 是本条目上「疑点仍然下发、但**区间**因原文已改写（或读不到原文）而对不上
+  片段摘要基准、因此不画高亮」的条数（#304，见 §1.1）。它与 `suppressed_by_gate` 分开的正是
+  两件事：后者是「有疑点但规则没放行」，前者是「疑点给了、定位给不了」。
+- `offsets_unbaselined` 是同一件事的**另一种原因**：这批根本没有可验证的基准（本修复之前落库的
+  全部批次都是这种）。两个数必须分开——把它并成一个数，部署当天就会把「还没有基准」
+  报成「原文被大面积改写」。两者都只影响画不画高亮，不影响疑点条数；`listForProject`
+  （§3.2）回同样两个字段，但两端数字可以不同——管理端不做门控过滤，所以 `off` 档规则被剥掉的
+  区间只在这里计数。两端过的是同一个 `dropStaleOffsets`，判据不重复。
 - `gate_rows_truncated` 为真表示 `assist_rule_gates` 读到了 `MAX_GATE_ROWS` 上限，
   落不进内存映射的规则一律按 `off` 处理——这条必须有可判定出口，否则「某条规则突然不显示」
   是查不出来的幽灵。
@@ -153,6 +176,10 @@ manager/平台管理员直通；否则要求「该条目正被你认领」或「
 **不做门控过滤**：`off` 档与 `info` 级照样可见，并附上 `gate` / `gate_sample_n` / `gate_precision_hat`。
 门槛文件要求「未达标规则仍计算、仍写库、只在管理端统计」，这个读取口是那句话成立的前提——
 如果这里也过滤，`off` 就等价于「不运行」，档位再也无法被数据推翻。
+
+与校对端的另一处差别：`evidence` 里**保留** `offsets_basis`（§1.1）。项目管理员本来就读得到
+整行内容，摘要在这一口不新增暴露面，而「这条为什么突然没有高亮」只能靠它查；
+响应同样回 `offsets_stale` / `offsets_unbaselined` 两个计数，过的是同一个 `dropStaleOffsets`。
 
 ```json
 {
@@ -222,6 +249,13 @@ superuser 走 API 也一样被拒。`findings_integration.mjs` 对 9 个字段�
 判据同 `scripts/corpus_probe/README.md`——**码位是结构信息，字形序列是内容**。
 `evidence_json.excerpt` 是唯一的例外字段（为 #125 的 bbox 对齐预留），
 写入方必须遵守「只截与该字段本身有关的最小片段」，且该字段只在条目在手者请求时返回。
+
+`evidence_json.offsets_basis`（§1.1）是内容**派生**的第三个东西：它由被标记的那段字算出，
+既不是码位也不是计数。它按本节红线的处理是——只存摘要不存片段，且不下发给校对端（§3.1）。
+但不要把它当保密手段：区间通常只有三五个字符，摘要可以被字典穷举反推。这里接受它，是因为
+相对本契约已经允许的 `excerpt` 它不多给出可读内容，而不给它落库的话区间就只能靠总长度自证，
+那条判据已被 #304 复审证伪。若要把红线收得更紧（内容派生物一律不进 `evidence_json`），
+基准得挪去一个新列并配迁移——未拍板，本文件不假装这条已经想清楚。
 
 响应绝不含他人提交内容：`row_json` / `text` / `first_*` / `second_*` / `proofread_*`
 都不在本契约的两个响应形状里，`findings_integration.mjs` 用一份 `concealedKeys` 清单

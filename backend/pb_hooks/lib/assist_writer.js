@@ -73,9 +73,9 @@ function rowForRules(page) {
 // 省略 `char_offsets` 不等于丢掉疑点：前端会降级为"聚焦该字段"（fieldHints.js 的定位降级分支），
 // 归因照旧、只是不画高亮。丢了几条要回给调用方（`offsets_dropped`），漏报不许静默。
 //
-// 逐字相等而保留区间时，顺手把**被切那份串的码位数**记进 `offsets_basis`：#293 之后
+// 逐字相等而保留区间时，顺手把**每个区间所切片段**的摘要记进 `offsets_basis`：#293 之后
 // `ocr_row_json` 可以被管理员随时改写，而改写不触发重算，库里留下的下标就成了旧串的下标。
-// 读侧（`findings.js` 的 `dropStaleOffsets`）拿这个基准再核一次。基准只能在这里盖章——
+// 读侧（`findings.js` 的 `dropStaleOffsets`）拿这份基准再核一次。基准只能在这里盖章——
 // 它是「闸门判定通过」这一事实的副产品，写在规则文件里会让每条规则各自抄一遍。
 function dropUnfaithfulOffsets(findings, lookup) {
   const { offsetsBasis } = require(`${__hooks}/lib/findings.js`)
@@ -88,7 +88,15 @@ function dropUnfaithfulOffsets(findings, lookup) {
     const judged = String(source.row?.[item.field] ?? "")
     const shown = String(source.shown?.[item.field] ?? "")
     if (judged === shown) {
-      item.evidence.offsets_basis = offsetsBasis(shown)
+      const basis = offsetsBasis(shown, item.evidence.char_offsets)
+      // 盖不出可验证基准（空片段或越界区间）就当场摘掉区间：留着一个无从复核的下标，
+      // 读侧也只会在「无基准」那条保守分支上剥掉它，不如在这里按不忠实处理并计入 dropped。
+      if (!basis) {
+        delete item.evidence.char_offsets
+        dropped += 1
+        continue
+      }
+      item.evidence.offsets_basis = basis
       continue
     }
     delete item.evidence.char_offsets
