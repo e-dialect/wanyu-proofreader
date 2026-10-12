@@ -327,6 +327,8 @@ try {
   const otherPage = held === pageA.id ? pageB.id : pageA.id
   for (const [field, value] of [['severity', 'info'], ['kind', 'merged_columns'],
     ['message_key', 'tampered'], ['produced_at', '2020-01-01'], ['params_json', '{"tampered":true}'],
+    // #304 之后区间基准也住在这一列：能覆写 `evidence_json` 就等于能把过期的区间伪装成已复核。
+    ['evidence_json', '{"tampered":true}'],
     ['field_name', '释义'], ['round', 3], ['producer_version', 'v9'], ['page', otherPage]]) {
     await request(`/api/collections/review_findings/records/${fresh.id}`, {
       method: 'PATCH', token: superAuth.token, expected: 403, body: { [field]: value }
