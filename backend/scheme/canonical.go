@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"golang.org/x/text/unicode/norm"
 	"os"
-	"slices"
 	"time"
 )
 
 // Scheme is a documented target scheme: the inventory a reviewer may pick from,
-// with the IPA the documentation gives for each notation.
+// with the pronunciation documented for each notation. One row follows this
+// project's convention rather than the page's own cell — see Option.IPA.
 //
 // Why this is a document of its own rather than a section of Adapter: #114 §7
 // steers conversion through source notation → documented IPA → target notation,
@@ -51,30 +51,19 @@ type Citation struct {
 // file nobody can check against that source.
 type Option struct {
 	Notation string `json:"notation"`
-	// IPA is the documentation's own cell, verbatim. It is what a reader checks
-	// against the page, which is why it is not reshaped to suit a comparison.
-	IPA string `json:"ipa"`
-	// IPAForms are the readings a source may actually write for this notation, and
-	// they exist because one of the cells is a display string rather than a value:
-	// 零声母's is "ʔ/不标", the page's own either/or. That string is neither the
-	// glottal stop nor the absence of one, so a source book that writes ʔ — or
-	// writes nothing at all, which the page calls 不标 — matches neither reading if
-	// the display string is used as the pivot, and both would fall to UNSUPPORTED.
-	// Here IPA keeps the cell for the reader and IPAForms holds what a comparison
-	// can use. Absent on every other option, where it means the notation is reached
-	// by IPA alone.
-	IPAForms []string `json:"ipa_forms,omitempty"`
-	Example  string   `json:"example,omitempty"`
-	Note     string   `json:"note,omitempty"`
-}
-
-// optionForms is what a source-side segment is compared against. Every option but
-// 零声母 has exactly one, which is why the field is usually absent.
-func optionForms(option Option) []string {
-	if len(option.IPAForms) == 0 {
-		return []string{option.IPA}
-	}
-	return option.IPAForms
+	// IPA is the documented pronunciation, and it is what a source segment is
+	// matched against — one value, not the page's cell wherever the two differ.
+	//
+	// Exactly one row differs. 零声母's cell is "ʔ/不标", an either/or written for a
+	// reader, and no source book writes that string; used as a match key it hits
+	// neither the glottal stop nor an onset a book leaves unmarked (the page's
+	// 不标), so every syllable without an onset — most of them in 莆仙 — would fall
+	// to UNSUPPORTED. That row carries this project's own convention ∅ instead and
+	// keeps the page's cell in Note. It is the one place in the file where the
+	// machine value is not the source's: 一处有说明的归一化，不是照抄。
+	IPA     string `json:"ipa"`
+	Example string `json:"example,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // Tone is one tone class. Notation is the 调号, Value the 调值, Mark the 调符 —
@@ -189,19 +178,19 @@ func requireNFC(where, value string) error {
 	return nil
 }
 
-// checkOptions enforces the invariant the IPA pivot rests on: inside one part,
-// neither the notation nor the pronunciation may repeat.
+// checkOptions enforces what the file itself has to satisfy: one notation per
+// part, and at most one unwritten notation, only where the engine can spell one.
 //
-// A repeated pronunciation is the serious one. If two target notations are
-// documented with the same pronunciation, then a source segment resolved through
-// IPA has two equally defensible targets and nothing in the file says which to
-// take — that is the situation AMBIGUOUS exists for at the rule level, and it must
-// not be baked into the inventory where no reviewer ever gets to see it. The check
-// is over the comparable forms (see Option.IPAForms), because those are the ones
-// a lookup can collide on; the display cell is not a key anywhere.
+// A repeated pronunciation is deliberately not one of them. Two notations
+// documented with the same reading is a real possibility in these sources, and a
+// source segment resolved through IPA then has two equally defensible targets —
+// which is the situation #114 §5 gives AMBIGUOUS to, with the candidates kept for
+// a reviewer to settle. Refusing the file here would not remove that ambiguity,
+// only hide it: the scheme a reviewer most needs to see is exactly the one with a
+// homophone in it. So the collision is left in the data and answered with a list
+// (see Pivot), and the rule layer decides.
 func checkOptions(part string, options []Option, allowZero bool) error {
 	notations := map[string]bool{}
-	forms := map[string]string{}
 	empty := 0
 	for _, option := range options {
 		if option.Notation == "" {
@@ -224,25 +213,6 @@ func checkOptions(part string, options []Option, allowZero bool) error {
 		if option.IPA == "" {
 			return ErrInvalidScheme{Reason: part + " " + option.Notation +
 				" has no ipa: the documented pronunciation is the point of this file"}
-		}
-		for _, form := range optionForms(option) {
-			// Only the notation that is itself unwritten may be reached by an
-			// unwritten segment. Any other option claiming the empty form would
-			// collect every source syllable a book leaves unmarked, which is a
-			// much larger claim than the page's 不标 supports.
-			if form == "" && option.Notation != "" {
-				return ErrInvalidScheme{Reason: part + " " + option.Notation +
-					" claims the unwritten form, which only the " + part + " with no notation can have"}
-			}
-			if err := requireNFC(part+" "+option.Notation+" ipa form", form); err != nil {
-				return err
-			}
-			if previous, ok := forms[form]; ok {
-				return ErrInvalidScheme{Reason: fmt.Sprintf(
-					"two %ss are documented as %q (%s and %s), so a source segment resolved through ipa could not pick one",
-					part, form, previous, option.Notation)}
-			}
-			forms[form] = option.Notation
 		}
 	}
 	return nil
@@ -271,55 +241,51 @@ func (s *Scheme) Inventory() Inventory {
 	return inv
 }
 
-// Pronunciations returns, for every notation, the readings a source may write
-// for it, keyed by "part:notation". The empty onset is included under "onset:" so
-// the map answers for every syllable the inventory can spell.
+// Pronunciations returns the reading documented for each notation, keyed
+// "part:notation", for onsets and rimes. The empty onset is included under
+// "onset:" so the map answers for every syllable the inventory can spell.
 //
-// The values are comparable forms, never the page's display cell: 零声母 is
-// ["ʔ", ""] and not ["ʔ/不标"], because the either/or string is not something a
-// book writes. Pivot is the same relation read in the other direction, which is
-// the direction conversion looks it up in.
-func (s *Scheme) Pronunciations() map[string][]string {
-	out := make(map[string][]string, len(s.Onsets)+len(s.Rimes)+len(s.Tones))
+// Tones are not in here, and Tone.Value is not a key anywhere. A tone's 调值 is
+// one scheme's record of a 调类 rather than a shared match value — 阴平 is
+// documented as 533 in one source, 544 in another and 33 in a third — so matching
+// on it would refuse the sources that differ, which is the case the conversion is
+// supposed to carry. The tone correspondence is 调号 → 调类 → 调号, and the two
+// fields to read for it are Tone.Category and Tone.Notation; a source's own
+// numbering is interpreted by that source's 说明 before it reaches this file.
+func (s *Scheme) Pronunciations() map[string]string {
+	out := make(map[string]string, len(s.Onsets)+len(s.Rimes))
 	for _, option := range s.Onsets {
-		out["onset:"+option.Notation] = slices.Clone(optionForms(option))
+		out["onset:"+option.Notation] = option.IPA
 	}
 	for _, option := range s.Rimes {
-		out["rime:"+option.Notation] = slices.Clone(optionForms(option))
-	}
-	for _, tone := range s.Tones {
-		out["tone:"+tone.Notation] = []string{tone.Value}
+		out["rime:"+option.Notation] = option.IPA
 	}
 	return out
 }
 
-// Pivot is the shape conversion actually needs: documented IPA form → the target
-// notation that spells it, keyed "part:form". It is the second arrow of #114 §7's
+// Pivot is the shape conversion actually needs: documented IPA → the target
+// notations that spell it, keyed "part:ipa". It is the second arrow of #114 §7's
 // source notation → documented IPA → target notation, read from the target end,
-// and it is where 零声母's 不标 reading has to be answered — a source that marks no
-// onset resolves to the empty notation exactly as one that writes ʔ does.
+// and it is where the zero onset has to be answered — a source that marks no
+// onset lands on ∅ through its own adapter, and ∅ is what the empty notation was
+// documented as.
 //
-// One form reaches one notation, not a choice of them, because checkOptions
-// refuses a part whose two notations share a reading. A value that held a choice
-// would be the AMBIGUOUS case, and that belongs to the rule layer, where a
-// reviewer actually gets to see it. Keys are the comparable forms (see
-// Option.IPAForms), never the display cell: "ʔ/不标" is what the page prints, and
-// no book writes it.
-func (s *Scheme) Pivot() map[string]string {
-	out := make(map[string]string, len(s.Onsets)+len(s.Rimes)+len(s.Tones)+1)
+// The value is a list rather than one notation because checkOptions lets two
+// notations share a reading; when they do, which one is right is the reviewer's
+// question, and returning the first would turn AMBIGUOUS into an EXACT that
+// nobody actually checked. Every list in the inventory that ships today holds one
+// entry — that is a fact about this file, not an invariant of the loader.
+func (s *Scheme) Pivot() map[string][]string {
+	out := make(map[string][]string, len(s.Onsets)+len(s.Rimes))
 	add := func(part string, option Option) {
-		for _, form := range optionForms(option) {
-			out[part+":"+form] = option.Notation
-		}
+		key := part + ":" + option.IPA
+		out[key] = append(out[key], option.Notation)
 	}
 	for _, option := range s.Onsets {
 		add("onset", option)
 	}
 	for _, option := range s.Rimes {
 		add("rime", option)
-	}
-	for _, tone := range s.Tones {
-		out["tone:"+tone.Value] = tone.Notation
 	}
 	return out
 }

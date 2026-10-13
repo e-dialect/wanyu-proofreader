@@ -89,7 +89,10 @@ func TestHinghwaSchemeCarriesTheSourcesOwnIPA(t *testing.T) {
 		{"onset", "p", "pʰ"},  // 送气靠 -h，靠 ASCII h
 		{"onset", "s", "ɬ"},   // 边擦音，不是 s
 		{"onset", "ng-", "ŋ"}, // 这一行在页面上带连字符
-		{"onset", "", "ʔ/不标"},
+		// 零声母 is the one cell the file does not copy: the page prints the
+		// either/or "ʔ/不标", and the machine value is this project's ∅. The page's
+		// own cell is checked where it is kept — in that row's note.
+		{"onset", "", "∅"},
 		{"rime", "or", "ɒ"}, // ɒ 与 o 在这一页是不同的两行
 		{"rime", "o", "o"},
 		{"rime", "ng", "ŋ̍"}, // 成音节鼻音
@@ -142,12 +145,12 @@ func TestHinghwaTonesKeepNotationValueAndMarkApart(t *testing.T) {
 	}
 }
 
-// The invariant the IPA pivot rests on, stated as a test rather than left inside
-// checkOptions: if this ever stops holding for the shipped file, conversion
-// through IPA has no defined answer and the file has to be fixed, not the check.
-//
-// It is over the comparable forms, not over the ipa cell: 零声母's cell is the
-// display string "ʔ/不标", and what a lookup can collide on is "ʔ" and "".
+// Not a loader invariant — checkOptions now accepts a repeated reading on purpose
+// — but a fact about the file that ships, and one conversion leans on: while every
+// reading has a single notation, resolving a source segment through IPA gives one
+// target and needs no reviewer. If this fails, the inventory gained a homophone:
+// Pivot answers with two candidates and the failure message is the notice, not a
+// defect to repair.
 func TestHinghwaIPAIsUniqueInsideEachPart(t *testing.T) {
 	doc := loadHinghwa(t)
 	for _, part := range []struct {
@@ -156,51 +159,64 @@ func TestHinghwaIPAIsUniqueInsideEachPart(t *testing.T) {
 	}{{"onset", doc.Onsets}, {"rime", doc.Rimes}} {
 		seen := map[string]string{}
 		for _, option := range part.options {
-			for _, form := range optionForms(option) {
-				if previous, ok := seen[form]; ok {
-					t.Errorf("%s %q and %q are both documented as %q",
-						part.name, previous, option.Notation, form)
-					continue
-				}
-				seen[form] = option.Notation
+			if previous, ok := seen[option.IPA]; ok {
+				t.Errorf("%s %q and %q are both documented as %q, so Pivot answers with a list of two here",
+					part.name, previous, option.Notation, option.IPA)
+				continue
 			}
+			seen[option.IPA] = option.Notation
 		}
 	}
 }
 
-// The page prints 零声母's IPA as "ʔ/不标", which is an either/or written for a
-// reader: no source book writes that string. Used directly as the IPA a source
-// segment is resolved through, it matches neither ʔ nor an unmarked onset, so
-// every syllable without an onset — which in 莆仙 is most of them — would be
-// refused. The file therefore keeps the cell verbatim in ipa and carries the two
-// comparable readings in ipa_forms, and this test is the end-to-end statement of
-// it: source IPA ʔ reaches the empty notation, and so does writing nothing at all.
-func TestHinghwaZeroOnsetIsReachableFromBothOfItsReadings(t *testing.T) {
+// The page prints 零声母's IPA as "ʔ/不标", an either/or written for a reader: no
+// source book writes that string. As the value a source segment is resolved
+// through it matches neither ʔ nor an onset left unmarked, so every syllable
+// without an onset — most of them in 莆仙 — would be refused. The file therefore
+// records this project's own convention ∅ as the machine value and keeps the
+// page's cell in the note, and this test is the whole of that bargain: the machine
+// answers for ∅, the display string is not a key, the page's cell is still
+// readable, and the glottal stop the page describes survives everywhere it is a
+// segment rather than a category.
+func TestHinghwaZeroOnsetUsesTheProjectConvention(t *testing.T) {
 	doc := loadHinghwa(t)
 	zero, ok := findOption(doc, "onset", "")
 	if !ok {
 		t.Fatal("the zero onset is missing from the inventory")
 	}
-	if zero.IPA != "ʔ/不标" {
-		t.Errorf("zero onset ipa = %q, want the page's own cell ʔ/不标 kept for the reader", zero.IPA)
+	if zero.IPA != "∅" {
+		t.Errorf("zero onset ipa = %q, want the project's ∅: the page's cell is a display string, not a reading", zero.IPA)
+	}
+	// Keeping the cell is what makes a normalized value acceptable at all: the
+	// page's own text has to be readable here, next to the value that replaced it.
+	if !strings.Contains(zero.Note, "ʔ/不标") {
+		t.Errorf("the zero onset's note no longer carries the page's own cell %q: %q", "ʔ/不标", zero.Note)
 	}
 	pivot := doc.Pivot()
-	for _, form := range []string{"ʔ", ""} {
-		got, ok := pivot["onset:"+form]
-		if !ok || got != "" {
-			t.Errorf("Pivot()[onset:%q] = %q (present %v), want the empty notation: a source segment documented as %q has to land on the unwritten onset",
-				form, got, ok, form)
-		}
+	if got, ok := pivot["onset:∅"]; !ok || !slices.Equal(got, []string{""}) {
+		t.Errorf("Pivot()[onset:∅] = %q (present %v), want the empty notation: ∅ is what the unwritten onset is documented as",
+			got, ok)
 	}
-	// The display string is exactly what must not be a key: if it ever becomes
-	// one, the file has been reshaped for a comparison somewhere upstream of it.
+	// The display string is exactly what must not be a key: if it ever becomes one,
+	// the machine value has been reshaped to quote the page instead of to be used.
 	if got, ok := pivot["onset:ʔ/不标"]; ok {
 		t.Errorf("Pivot() answers for the page's display string ʔ/不标 (= %q); it is a cell, not a reading", got)
 	}
-	// And the other parts do not inherit the empty form: an unmarked rime is not
-	// an unwritten rime, there is no such thing.
-	if got, ok := pivot["rime:"]; ok {
-		t.Errorf("Pivot()[rime:] = %q, want no such key", got)
+	// And no other part inherits ∅: there is no unwritten rime.
+	if got, ok := pivot["rime:∅"]; ok {
+		t.Errorf("Pivot()[rime:∅] = %q, want no such key", got)
+	}
+	// Normalizing the onset is not a global ʔ replacement. In these cells ʔ is a
+	// segment — the 塞尾 half of the 韵母 table — and it stays one.
+	for _, notation := range []string{"ah", "oh", "uh", "uoh"} {
+		option, ok := findOption(doc, "rime", notation)
+		if !ok {
+			t.Fatalf("rime %q is missing from the inventory", notation)
+		}
+		if !strings.HasSuffix(option.IPA, "ʔ") {
+			t.Errorf("rime %q ipa = %q, want a glottal-stop coda kept: the zero onset's normalization must not reach the rimes",
+				notation, option.IPA)
+		}
 	}
 }
 
@@ -225,24 +241,28 @@ func TestSchemePronunciationsCoverEverySpelling(t *testing.T) {
 	ipa := doc.Pronunciations()
 	cases := []struct {
 		key    string
-		want   []string
+		want   string
 		absent bool
 	}{
 		// The zero onset is reached as "onset:" with nothing after the colon —
 		// that is what the engine looks up when a syllable has no onset — and its
-		// two readings are the segment and the page's 不标, never the cell.
-		{key: "onset:", want: []string{"ʔ", ""}},
-		{key: "onset:s", want: []string{"ɬ"}},
-		{key: "onset:ng-", want: []string{"ŋ"}},
-		{key: "rime:ng", want: []string{"ŋ̍"}},
-		{key: "rime:oeng", want: []string{"œŋ"}},
-		{key: "rime:orng", want: []string{"ɒŋ"}},
-		{key: "rime:ieng", want: []string{"iɛŋ"}},
-		{key: "rime:uoh", want: []string{"uoʔ"}},
-		{key: "rime:ieo", want: []string{"ieu"}},
-		{key: "rime:uh", want: []string{"uʔ"}},
-		{key: "tone:1", want: []string{"533"}},
-		{key: "tone:7", want: []string{"4"}},
+		// reading is this project's ∅, not the page's display cell.
+		{key: "onset:", want: "∅"},
+		{key: "onset:s", want: "ɬ"},
+		{key: "onset:ng-", want: "ŋ"},
+		{key: "rime:ng", want: "ŋ̍"},
+		{key: "rime:oeng", want: "œŋ"},
+		{key: "rime:orng", want: "ɒŋ"},
+		{key: "rime:ieng", want: "iɛŋ"},
+		{key: "rime:uoh", want: "uoʔ"},
+		{key: "rime:ieo", want: "ieu"},
+		{key: "rime:uh", want: "uʔ"},
+		// Tones are not in this map at all. A 调值 is one source's record of a
+		// 调类, not a value two sources can be matched on — 阴平 is 533 in one, 544
+		// in another — so the correspondence is read off Tones by category instead
+		// (see TestHinghwaToneCategoriesNameTheToneNotations).
+		{key: "tone:1", absent: true},
+		{key: "tone:533", absent: true},
 		// ng is a rime here, not an onset: 硬 nge5 is onset ng- plus rime e.
 		{key: "onset:ng", absent: true},
 		{key: "rime:not-a-rime", absent: true},
@@ -255,29 +275,102 @@ func TestSchemePronunciationsCoverEverySpelling(t *testing.T) {
 			}
 			continue
 		}
-		if !ok || !slices.Equal(got, c.want) {
+		if !ok || got != c.want {
 			t.Errorf("Pronunciations()[%q] = %q (present %v), want %q", c.key, got, ok, c.want)
+		}
+	}
+	for key := range ipa {
+		if strings.HasPrefix(key, "tone:") {
+			t.Errorf("Pronunciations() carries %q: Tone.Value is not a shared match key", key)
 		}
 	}
 }
 
-// The same relation read the way conversion reads it. If this and Pronunciations
-// ever disagree the file has two answers for one segment, which is the shape
-// #114 §5 gives AMBIGUOUS precisely so it never happens between two notations.
+// 调类 is the join key of the tone half of the conversion: a source's own 调号 or
+// 调值 is interpreted by that source's 说明 and resolved to a 调类, and the 调类
+// names the target 调号 here. Written as a table rather than a presence check
+// because the seven rows are the page's own division — a slipped row would still
+// leave seven of them, and would silently answer for the wrong tone class.
+func TestHinghwaToneCategoriesNameTheToneNotations(t *testing.T) {
+	doc := loadHinghwa(t)
+	want := map[string]string{
+		"阴平": "1", "阳平": "2", "上声": "3", "阴去": "4",
+		"阳去": "5", "阴入": "6", "阳入": "7",
+	}
+	if len(doc.Tones) != len(want) {
+		t.Fatalf("tones = %d, want %d", len(doc.Tones), len(want))
+	}
+	seen := map[string]string{}
+	for _, tone := range doc.Tones {
+		if got, ok := want[tone.Category]; !ok || got != tone.Notation {
+			t.Errorf("调类 %q maps to 调号 %q, want %q", tone.Category, tone.Notation, want[tone.Category])
+		}
+		// Same standing as TestHinghwaIPAIsUniqueInsideEachPart: a fact about the
+		// file, not a rule checkOptions enforces. A repeated 调类 would put two
+		// target 调号 behind one key, which is a candidate list, not a defect.
+		if previous, ok := seen[tone.Category]; ok {
+			t.Errorf("调类 %q is used by both 调号 %q and %q, so it no longer names one target",
+				tone.Category, previous, tone.Notation)
+		}
+		seen[tone.Category] = tone.Notation
+	}
+}
+
+// The same relation read the way conversion reads it, in both directions: every
+// candidate Pivot names has to be a notation Pronunciations knows, spelled the way
+// Pronunciations spells it, and every notation has to be reachable from Pivot. A
+// segment that resolves one way and not the other is a dead rule waiting to be
+// written into an adapter.
+//
+// The two counts agree because this file documents each reading once. With a
+// homophone Pivot would hold the shorter map, with a list of two on that key —
+// which is what TestSchemeLoadsWhenTwoNotationsShareAReading pins down.
 func TestSchemePivotInvertsPronunciations(t *testing.T) {
 	doc := loadHinghwa(t)
-	for key, notation := range doc.Pivot() {
+	reached := map[string]bool{}
+	for key, notations := range doc.Pivot() {
 		part, form, _ := strings.Cut(key, ":")
-		if forms := doc.Pronunciations()[part+":"+notation]; !slices.Contains(forms, form) {
-			t.Errorf("Pivot() sends %q to %s %q, but Pronunciations() says that notation is %q",
-				key, part, notation, forms)
+		for _, notation := range notations {
+			if got := doc.Pronunciations()[part+":"+notation]; got != form {
+				t.Errorf("Pivot() sends %q to %s %q, but Pronunciations() says that notation is %q",
+					key, part, notation, got)
+			}
+			reached[part+":"+notation] = true
 		}
 	}
-	// Spelling out the shape of the whole thing rather than only its interior: the
-	// counts differ because the zero onset answers for two readings.
-	if got := len(doc.Pivot()); got != len(doc.Pronunciations())+1 {
-		t.Errorf("Pivot() = %d keys, want one more than Pronunciations()'s %d: the zero onset's second reading",
-			got, len(doc.Pronunciations()))
+	for key := range doc.Pronunciations() {
+		if !reached[key] {
+			t.Errorf("Pronunciations() has %q, which Pivot() never answers with", key)
+		}
+	}
+	if got, want := len(doc.Pivot()), len(doc.Pronunciations()); got != want {
+		t.Errorf("Pivot() = %d keys, Pronunciations() = %d: they agree only while no reading is shared", got, want)
+	}
+}
+
+// The loader's side of that decision, and the reason it is a decision rather than
+// an oversight: a scheme whose material really does document one reading twice is
+// not a broken file. Refusing it would not remove the ambiguity — it would keep
+// the scheme out of the repository, where no reviewer ever sees it — so the file
+// loads and Pivot answers with both candidates for the rule layer to weigh.
+func TestSchemeLoadsWhenTwoNotationsShareAReading(t *testing.T) {
+	// b and p are the first two onsets; giving p the reading of b makes them a
+	// homophone pair without inventing a row.
+	doc := loadMutatedScheme(t, func(doc map[string]any) {
+		options, _ := doc["onsets"].([]any)
+		entry, _ := options[1].(map[string]any)
+		entry["ipa"] = "p"
+	})
+	if got := doc.Pivot()["onset:p"]; !slices.Equal(got, []string{"b", "p"}) {
+		t.Errorf("Pivot()[onset:p] = %q, want both candidates in file order: neither is more correct than the other", got)
+	}
+	if got := doc.Pronunciations()["onset:b"]; got != "p" {
+		t.Errorf("Pronunciations()[onset:b] = %q, want p", got)
+	}
+	// The count is the whole shape of it: two spellings, one reading, so the
+	// reverse map is one key shorter than the forward one.
+	if got, want := len(doc.Pivot()), len(doc.Pronunciations())-1; got != want {
+		t.Errorf("Pivot() = %d keys, want %d: one shared reading collapses two notations into one key", got, want)
 	}
 }
 
@@ -296,7 +389,6 @@ func TestSchemeRejectsBrokenFiles(t *testing.T) {
 		mutate func(map[string]any)
 		want   string
 	}{
-		{"two rimes on one ipa", withOption("rimes", 1, func(o map[string]any) { o["ipa"] = "a" }), "are documented as"},
 		{"a rime with no ipa", withOption("rimes", 0, func(o map[string]any) { delete(o, "ipa") }), "has no ipa"},
 		{"two rimes on one notation", withOption("rimes", 1, func(o map[string]any) { o["notation"] = "a" }), "duplicate rime notation"},
 		{"a rime with no notation", withOption("rimes", 0, func(o map[string]any) { o["notation"] = "" }), "has no notation"},
@@ -315,20 +407,10 @@ func TestSchemeRejectsBrokenFiles(t *testing.T) {
 		{"a decomposed tone mark", withOption("tones", 0, func(o map[string]any) { o["mark"] = "g\u0304" }), "is not in Unicode NFC"},
 		{"a decomposed onset ipa", withOption("onsets", 0, func(o map[string]any) { o["ipa"] = "a\u0301" }), "is not in Unicode NFC"},
 		// The notation side of the same guard. Without this case, deleting the
-		// requireNFC call on the notation leaves the whole table green — every other
-		// rejection here is reachable through the ipa or the uniqueness check, so the
-		// notation half was an untested promise.
+		// requireNFC call on the notation leaves the whole table green — the ipa
+		// half of the guard keeps every other row reachable — so the notation half
+		// was an untested promise.
 		{"a decomposed rime notation", withOption("rimes", 0, func(o map[string]any) { o["notation"] = "a\u0301" }), "is not in Unicode NFC"},
-		// The comparable forms are held to the same encoding and the same
-		// uniqueness as the cell they come from: they are what a lookup hits.
-		{"a decomposed ipa form", withOption("onsets", 0, func(o map[string]any) { o["ipa_forms"] = []any{"a\u0301"} }), "is not in Unicode NFC"},
-		{"two onsets on one ipa form", withOption("onsets", 1, func(o map[string]any) { o["ipa_forms"] = []any{"p"} }), "are documented as"},
-		// An unwritten segment is only evidence for the notation that is itself
-		// unwritten; any other option claiming it would swallow every unmarked
-		// syllable in every book.
-		{"a written onset claiming the unwritten form", withOption("onsets", 0, func(o map[string]any) {
-			o["ipa_forms"] = []any{"p", ""}
-		}), "claims the unwritten form"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -347,7 +429,7 @@ func TestSchemeRejectsBrokenFiles(t *testing.T) {
 	}
 }
 
-func loadMutated(t *testing.T, mutate func(map[string]any)) error {
+func writeMutated(t *testing.T, mutate func(map[string]any)) string {
 	t.Helper()
 	raw, err := os.ReadFile(hinghwaPath)
 	if err != nil {
@@ -366,8 +448,27 @@ func loadMutated(t *testing.T, mutate func(map[string]any)) error {
 	if err := os.WriteFile(path, patched, 0o600); err != nil {
 		t.Fatalf("write mutated scheme: %v", err)
 	}
-	_, loadErr := LoadScheme(path)
+	return path
+}
+
+// loadMutated is for the files that must be refused: the caller only ever wants
+// the error.
+func loadMutated(t *testing.T, mutate func(map[string]any)) error {
+	t.Helper()
+	_, loadErr := LoadScheme(writeMutated(t, mutate))
 	return loadErr
+}
+
+// loadMutatedScheme is the other half — a mutation the loader must accept. Keeping
+// both means an "allowed" case is written the same way as a rejected one, so the
+// difference between them is the rule and not the fixture.
+func loadMutatedScheme(t *testing.T, mutate func(map[string]any)) *Scheme {
+	t.Helper()
+	doc, err := LoadScheme(writeMutated(t, mutate))
+	if err != nil {
+		t.Fatalf("LoadScheme refused a file it must accept: %v", err)
+	}
+	return doc
 }
 
 func findOption(doc *Scheme, part, notation string) (Option, bool) {
