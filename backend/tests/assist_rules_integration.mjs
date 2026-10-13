@@ -110,6 +110,91 @@ assert.equal(mergedMeaning.evidence.char_offsets.map((span) => sliceBySpans('解
 
 console.log('PASS: 命中区间按码位半开区间产出，占位符与补充平面两种偏移场景都切得回原文')
 
+// ---- 区间基准与读侧复核（#304）：纯函数段，不需要起服务 ----
+//
+// #293 之后 `ocr_row_json` 可以被管理员随时改写而不触发重算，库里存的 `char_offsets`
+// 于是成了旧串的下标。这一段钉读侧判据的边界，重点是**每一格都要能失败**：只写
+// 「变了就剥」会让闸门退化成"永远剥区间"，所以该保留的、该剥的、以及剥的理由，分开钉。
+const findings = require('../pb_hooks/lib/findings.js')
+
+const faithfulBasis = findings.offsetsBasis('aŋ1234', [[2, 6]])
+assert.equal(typeof faithfulBasis.digests[0], 'string', '基准必须是摘要')
+assert.notEqual(faithfulBasis.digests[0], '1234',
+  '§6 红线：evidence 里不许出现字形序列，摘要必须是不可读的摘要而不是摘录')
+assert.notDeepEqual(findings.offsetsBasis('1234aŋ', [[2, 6]]), faithfulBasis,
+  '等长移动必须改摘要，否则总长度判据的漏洞原样留着')
+assert.deepEqual(findings.offsetsBasis('aŋ', [[5, 9]]), null, '越界区间切出空串：不给基准')
+assert.deepEqual(findings.offsetsBasis('', [[0, 1]]), null, '空片段：不给基准')
+assert.deepEqual(findings.offsetsBasis('aŋ1234', []), null, '没有区间就没有可盖章的东西')
+
+function probe(evidence, shownRow, field = '莆田IPA') {
+  const view = { field, evidence: { ...evidence } }
+  return { reason: findings.dropStaleOffsets(view, shownRow), view }
+}
+
+const basisOf = (spans) => ({ offsets_basis: faithfulBasis, char_offsets: spans })
+
+// 前提本身要先成立：管理员在数字串**前面**补了一个「9」，旧区间 [2,6) 在新串上切到
+// '9123'；而等长改写 `1234aŋ` 切到 '34aŋ'。两种都不越界、不报错，只是标错了地方。
+assert.deepEqual(sliceBySpans('aŋ91234', [2, 6]), '9123', '用例前提：前插把区间切到别的字上')
+assert.deepEqual(sliceBySpans('1234aŋ', [2, 6]), '34aŋ', '用例前提：等长移动同样切到别的字上')
+
+{
+  const faithful = probe(basisOf([[2, 6]]), { 莆田IPA: 'aŋ1234' })
+  assert.equal(faithful.reason, '', JSON.stringify(faithful.view))
+  assert.deepEqual(faithful.view.evidence.char_offsets, [[2, 6]],
+    '基准相符却剥了区间：高亮会凭空全灭')
+
+  // 复审 P2 之一：总码位数相等证明不了命中没动。`aŋ1234` → `1234aŋ` 长度不变，
+  // 数字命中已移到 [0,4)，只比长度就会把高亮留在 '34aŋ' 上。
+  const sameLengthMoved = probe(basisOf([[2, 6]]), { 莆田IPA: '1234aŋ' })
+  assert.equal(sameLengthMoved.reason, 'stale', '等长改写却保留区间：标到了 ' + JSON.stringify(sliceBySpans('1234aŋ', [2, 6])))
+  assert.equal(sameLengthMoved.view.evidence.char_offsets, undefined,
+    '剥区间必须是真删除，不能留空数组')
+
+  const grown = probe(basisOf([[2, 6]]), { 莆田IPA: 'aŋ91234' })
+  assert.equal(grown.reason, 'stale', '串变长却没剥区间：旧下标切到新串上是别的位置')
+  assert.equal(sameLengthMoved.view.evidence.offsets_basis, faithfulBasis,
+    '只剥区间，基准要留着（重算之外没人再算得出它）')
+
+  // 判据换成片段摘要之后，区间之后的追加**不再误伤**：[2,6) 在新串上仍切到 '1234'，
+  // 也就是仍然标在判据命中的那段数字上。旧版按总长度判时会把这种一并剥掉。
+  const trailingAppend = probe(basisOf([[2, 6]]), { 莆田IPA: 'aŋ12345' })
+  assert.equal(trailingAppend.reason, '', '该保留的被剥了：判据退化成"永远剥区间"')
+  assert.deepEqual(sliceBySpans('aŋ12345', [2, 6]), '1234', '被保留的这条确实还切得对')
+
+  const shrunk = probe(basisOf([[2, 6]]), { 莆田IPA: 'aŋ1' })
+  assert.equal(shrunk.reason, 'stale', '串变短同样要剥')
+
+  // 复审 P2 之二：没有可验证基准的区间一律保守降级。#293 与本 PR 之间的批次、以及更早
+  // 落库的全部批次都在这里——它们在部署后同样会被管理员改写，而库里无从区分。
+  const legacy = probe({ char_offsets: [[2, 6]] }, { 莆田IPA: 'aŋ1234' })
+  assert.equal(legacy.reason, 'unbaselined', `无基准的批次必须与"原文变了"分开计数：${JSON.stringify(legacy.view)}`)
+  assert.equal(legacy.view.evidence.char_offsets, undefined, '无基准 = 剥区间，疑点本身仍在')
+  // 本 PR 未合并前那一版盖过整数长度基准，同样按无基准处理（不给它伪装成已验证）。
+  const lengthOnly = probe({ char_offsets: [[2, 6]], offsets_basis: 6 }, { 莆田IPA: 'aŋ1234' })
+  assert.equal(lengthOnly.reason, 'unbaselined', '旧的整数基准不能算可验证基准')
+  // 摘要条数与区间条数不等 = 这份 evidence 不完整，同样不判为忠实。
+  assert.equal(probe({ char_offsets: [[2, 6]], offsets_basis: { digests: ['aa', 'bb'] } },
+    { 莆田IPA: 'aŋ1234' }).reason, 'unbaselined')
+
+  // 读不到那份串（pages 读失败）⇒ 无法证明忠实，按不忠实处理。
+  assert.equal(probe(basisOf([[2, 6]]), null).reason, 'stale',
+    '读不到原文却保留区间，等于回到 #304 的症状')
+  // 字段整列消失（写回时被换掉列名）⇒ 切出来是空串，与摘要对不上。
+  assert.equal(probe(basisOf([[2, 6]]), { 拼音: 'lang2' }).reason, 'stale',
+    '该列已经不在原文里，区间无处可标')
+  // 本来就没有区间的疑点不进任何计数：否则会把"从没标过"说成"标不了"。
+  const noOffsets = probe({ anchor: 'entry' }, { 莆田IPA: 'aŋ12345' })
+  assert.equal(noOffsets.reason, '', JSON.stringify(noOffsets.view))
+  // 未知原因必须抛，不许静默不计数。
+  assert.throws(() => findings.tallyOffsets('whatever', { stale: 0, unbaselined: 0 }))
+  assert.deepEqual(findings.tallyOffsets('stale', findings.tallyOffsets('unbaselined',
+    { stale: 0, unbaselined: 0 })), { stale: 1, unbaselined: 1 }, '两个计数各归各的')
+}
+
+console.log('PASS: 区间基准是片段摘要：等长移动与前插都剥，尾追加保留，无基准另计一笔')
+
 const baseUrl = process.env.PB_URL || 'http://127.0.0.1:18091'
 const platformEmail = process.env.APP_ADMIN_EMAIL
 const platformPassword = process.env.APP_ADMIN_PASSWORD
@@ -917,6 +1002,197 @@ try {
     // 当前租约凭据，用假凭据打一次只会测到权限分支而不是闸门。
     assert.ok(confusableOnDrift.every((item) => shownRow[item.field] !== judgedRow[item.field]),
       `只有"判据行 != 渲染行"的列才该被剥掉区间：${JSON.stringify(confusableOnDrift.map((i) => i.field))}`)
+  }
+
+  // #304：管理员写回（#293 的 POST .../pages/{pageId}/content）之后，`ocr_row_json` 变了，
+  // 而这一页的疑点批次不会自动重算——库里留下的 `char_offsets` 因此是**旧串**的下标，
+  // 校对端 `locateSpan` 拿它切新串，症状是「高亮标在错字上，界面上看起来完全正常」。
+  // 这一段走真实路由，把三件事钉在一起：写回后区间被剥、疑点本身仍在、显式重算后区间恢复
+  // 且切在**新串**的实义内容上（降级是临时的，不是把高亮功能做没了）。
+  {
+    const wbProject = await createProject('Assist writeback offsets', [worker], [boss])
+    // 校对端只放行 R6（strong 档在上一节已登记，同一个 gate 表全局按
+    // producer_version/kind/message_key 生效，所以这里不再插第二行同名登记）；
+    // R2 也会命中这格（项目没配键盘时按莆仙词表回退，#238），它档位是 off、
+    // 只出现在管理端——两端计数不同正是下面要各钉一条的东西。
+    const beforeRow = { 词条: '人', 拼音: 'lang2', 莆田IPA: 'aŋ1234', 释义: '人类' }
+    const wbPage = await createPage(wbProject.id, 1, beforeRow)
+
+    const firstRun = await request(`/api/fangji/pages/${wbPage.id}/findings/recompute`,
+      { method: 'POST', token: boss.token })
+    assert.equal(firstRun.offsets_dropped, 0, JSON.stringify(firstRun))
+
+    const hintKeys = (body) => body.hints.map((hint) => hint.message.key).sort()
+    // 基准只在服务端与库里流动（见下面校对端那条断言），所以取证要读原始记录而不是响应。
+    const currentFindingRow = async (pageId, key) => {
+      const { items } = await request(
+        `/api/collections/review_findings/records?filter=${encodeURIComponent(
+          `page = "${pageId}" && message_key = "${key}" && superseded_at = ""`)}`,
+        { token: superAuth.token })
+      assert.equal(items.length, 1,
+        `这一页上 ${key} 应当只有一条当前批次：${JSON.stringify(items.map((item) => item.id))}`)
+      return items[0]
+    }
+    const before = await request(`/api/fangji/pages/${wbPage.id}/findings`, { token: boss.token })
+    assert.ok(hintKeys(before).includes('long_digit_run'), JSON.stringify(hintKeys(before)))
+    const beforeSpan = before.hints.find((hint) => hint.message.key === 'long_digit_run')
+    assert.deepEqual(beforeSpan.evidence.char_offsets, [[2, 6]], JSON.stringify(beforeSpan.evidence))
+    // 校对端不下发基准：前端只消费 `char_offsets`（fieldHints.js / ProofreadEditorView.vue），
+    // 而基准是内容派生的摘要，没有消费者的字段不该为了调试留在给校对员的响应里。
+    // 管理端保留它——项目管理员本来就读得到整行内容，与 `scoring_channel` 只给管理端同一立场。
+    assert.equal(beforeSpan.evidence.offsets_basis, undefined,
+      `校对端把内容派生的基准一起下发了：${JSON.stringify(beforeSpan.evidence)}`)
+    assert.equal(before.offsets_stale, 0, '写回之前不该有任何过期计数')
+    assert.equal(before.offsets_unbaselined, 0, '这批是盖章之后产的，不该有无基准计数')
+
+    // 复审 P2 之一：基准必须能证明「区间仍然切在同一段内容上」，而不只是长度没变。
+    // 盖章发生在 JSVM，这里的期望值由 node 加载同一份实现算出——两边对不上就说明
+    // 摘要随引擎漂移，读侧会把所有基准判成过期。
+    const stampedRow = await currentFindingRow(wbPage.id, 'long_digit_run')
+    const stampedEvidence = JSON.parse(stampedRow.evidence_json)
+    assert.deepEqual(stampedEvidence.char_offsets, [[2, 6]], stampedRow.evidence_json)
+    assert.deepEqual(stampedEvidence.offsets_basis, findings.offsetsBasis('aŋ1234', [[2, 6]]),
+      '写侧闸门要在保留区间的同一支路里盖章基准，否则读侧无从复核（基准与判定同源）')
+    assert.notEqual(stampedEvidence.offsets_basis.digests[0], '1234',
+      '§6 红线：落在 evidence 里的必须是摘要而不是摘录片段')
+
+    // 复审 P2 之二：#293 与本 PR 之间落库的批次、以及更早的全部批次**没有基准**，而它们在
+    // 部署之后照样会被管理员改写。那种行的形状就是「有 char_offsets、无 offsets_basis」。
+    // 这种行只能新造、不能把现成的改成那样——先钉住这件事本身：`findings.pb.js` 的守卫连
+    // superuser 都挡，所以存量批次永远拿不到回溯补盖的基准，保守降级必须真的发生。
+    await request(`/api/collections/review_findings/records/${stampedRow.id}`, {
+      method: 'PATCH', token: superAuth.token, expected: 403,
+      body: { evidence_json: JSON.stringify({ char_offsets: [[2, 6]] }) }
+    })
+    const legacyPage = await createPage(wbProject.id, 2, beforeRow)
+    await request('/api/collections/review_findings/records', {
+      method: 'POST', token: superAuth.token,
+      body: {
+        page: legacyPage.id, project: wbProject.id, field_name: '莆田IPA',
+        kind: 'reading_format_invalid', severity: 'strong', message_key: 'long_digit_run',
+        params_json: '{}', evidence_json: JSON.stringify({ char_offsets: [[2, 6]] }),
+        producer: 'rule', producer_version: rules.RULES_VERSION,
+        produced_at: new Date().toISOString().slice(0, 10)
+      }
+    })
+
+    const legacyView = await request(`/api/fangji/pages/${legacyPage.id}/findings`, { token: boss.token })
+    assert.equal(legacyView.hints.length, 1, JSON.stringify(legacyView))
+    const legacySpan = legacyView.hints[0]
+    assert.equal(legacySpan.evidence.char_offsets, undefined,
+      `无基准的旧批次仍下发旧下标：${JSON.stringify(legacySpan.evidence)}`)
+    assert.equal(legacySpan.highlight, true, '降级只该影响"画不画高亮"，不该改档位与高亮意图')
+    assert.equal(legacyView.offsets_unbaselined, 1, JSON.stringify(legacyView))
+    assert.equal(legacyView.offsets_stale, 0, '「没有基准」不许混进「原文变了」那个数')
+    // 管理端过同一道复核，两个数也要同一口径（两端各写一套的话早晚只有一端在防）。
+    const legacyAdmin = await request(`/api/fangji/projects/${wbProject.id}/findings?per=200`, { token: boss.token })
+    assert.equal(legacyAdmin.offsets_unbaselined, 1, JSON.stringify(legacyAdmin.offsets_unbaselined))
+    assert.equal(legacyAdmin.offsets_stale, 0, '旧批次不该被算成原文改写')
+
+    // 重算是这条保守降级的恢复出口（写进契约文档 §1.1 的部署步骤）：wbPage 那一条本来就带基准，
+    // 重算之后必须仍然带——基准只能由写侧闸门盖，读侧没有第二个地方能算出它。
+    await request(`/api/fangji/pages/${wbPage.id}/findings/recompute`, { method: 'POST', token: boss.token })
+    const restored = await request(`/api/fangji/pages/${wbPage.id}/findings`, { token: boss.token })
+    const restoredSpan = restored.hints.find((hint) => hint.message.key === 'long_digit_run')
+    assert.deepEqual(restoredSpan.evidence.char_offsets, [[2, 6]], JSON.stringify(restoredSpan.evidence))
+    assert.deepEqual(JSON.parse((await currentFindingRow(wbPage.id, 'long_digit_run')).evidence_json).offsets_basis,
+      findings.offsetsBasis('aŋ1234', [[2, 6]]),
+      '重算必须把可验证基准补回库里，否则降级就成了永久状态')
+    assert.equal(restored.offsets_unbaselined, 0, '重算之后不该还有无基准的区间留着')
+
+    // 管理员在数字串前面补一个「9」：旧区间 [2,6) 从此切到 '9123'，片段摘要对不上。
+    // （等长移动已经在纯函数段钉过；这里走真实路由，要的是「改写→不重算→读侧剥」这条链。）
+    const afterRow = { 词条: '人', 拼音: 'lang2', 莆田IPA: 'aŋ91234', 释义: '人类' }
+    await request(`/api/fangji/projects/${wbProject.id}/pages/${wbPage.id}/content`, {
+      method: 'POST', token: boss.token,
+      body: {
+        rowJson: JSON.stringify(afterRow),
+        headersJson: JSON.stringify(['词条', '拼音', '莆田IPA', '释义']),
+        expectedUpdated: (await request(`/api/collections/pages/records/${wbPage.id}`, { token: boss.token })).updated
+      }
+    })
+
+    const after = await request(`/api/fangji/pages/${wbPage.id}/findings`, { token: boss.token })
+    const staleSpan = after.hints.find((hint) => hint.message.key === 'long_digit_run')
+    assert.ok(staleSpan, `剥区间不许把归因一起剥掉：${JSON.stringify(hintKeys(after))}`)
+    assert.equal(staleSpan.evidence.char_offsets, undefined,
+      `原文已改写却仍下发旧下标：${JSON.stringify(staleSpan.evidence)}`)
+    assert.equal(staleSpan.highlight, true, '降级只该影响"画不画高亮"，不该改档位与高亮意图')
+    assert.equal(after.offsets_stale, 1, JSON.stringify({ keys: hintKeys(after), stale: after.offsets_stale }))
+    assert.equal(after.offsets_unbaselined, 0, '这一格是"原文变了"，不该同时记成"没有基准"')
+    // 没有区间的疑点（同页的 tone_token_count_differs）不许被计入过期数：
+    // 那会把"从没标过"说成"标不了"，正是本仓反复要求分开的那两件事。
+    assert.equal(after.hints.length, before.hints.length, '写回复核不得增减疑点条数')
+
+    // 管理端读的是同一份下标，所以必须过同一道复核（两端各写一套判据的话早晚只有一端在防）。
+    // 这一口不做门控过滤（门槛文件 §2「仍计算、仍写库、只在管理端统计」），所以 off 档的 R2
+    // 也在这里可见，而校对端那条被 gate 挡在 suppressed_by_gate 里。
+    const adminView = await request(`/api/fangji/projects/${wbProject.id}/findings?per=200`, { token: boss.token })
+    const onWbPage = adminView.items.filter((item) => item.page === wbPage.id)
+    // 项目没配键盘，R2 按莆仙词表回退（#238），所以这格同时中了 R2 与 R6；第三条
+    // tone_token_count_differs 本来就没有区间。名字列出来，下面那两个数才不是匿名数字。
+    assert.deepEqual(onWbPage.map((item) => item.message.key).sort(),
+      ['confusable_ascii_in_reading', 'long_digit_run', 'tone_token_count_differs'],
+      JSON.stringify(onWbPage.map((item) => [item.message.key, item.evidence])))
+    const baselinedKeys = onWbPage
+      .filter((item) => Array.isArray(item.evidence?.offsets_basis?.digests))
+      .map((item) => item.message.key).sort()
+    assert.deepEqual(baselinedKeys, ['confusable_ascii_in_reading', 'long_digit_run'])
+    // 复审 P2 之要：'aŋ1234' → 'aŋ91234' 只在 index 2 插入，[0,1) 上那个可混淆的 'a' 一个字没动。
+    // 按总长度判的旧版会因为 6→7 把两条一起剥；片段摘要只剥真正切到别处的那条。
+    // 所以这里必须是「两条带基准、一条过期、一条区间原样保留」，而不是一个笼统的全剥。
+    assert.equal(adminView.offsets_stale, 1,
+      `带基准的两条里只该有一条对不上：${JSON.stringify(onWbPage.map((item) => [item.message.key, item.evidence]))}`)
+    assert.equal(adminView.offsets_unbaselined, 1, '无基准那一条来自上面造的 legacyPage，不该来自这页')
+    const keptSpan = onWbPage.find((item) => item.message.key === 'confusable_ascii_in_reading')
+    assert.deepEqual(keptSpan.evidence.char_offsets, [[0, 1]],
+      `区间仍然忠实却被顺带剥掉：${JSON.stringify(keptSpan.evidence)}`)
+    const staleOnAdmin = onWbPage.find((item) => item.message.key === 'long_digit_run')
+    assert.equal(staleOnAdmin.evidence.char_offsets, undefined,
+      `基准对不上却仍下发旧下标：${JSON.stringify(staleOnAdmin.evidence)}`)
+    assert.equal(onWbPage.find((item) => item.message.key === 'tone_token_count_differs').evidence.char_offsets,
+      undefined, '本来就没有区间的疑点不该凭空长出区间')
+
+    // 重算是既有出口（提交后、裁决后、这两个管理端口都会跑）：跑一次之后区间重新锚在**新串**上。
+    await request(`/api/fangji/pages/${wbPage.id}/findings/recompute`, { method: 'POST', token: boss.token })
+    const healed = await request(`/api/fangji/pages/${wbPage.id}/findings`, { token: boss.token })
+    const healedSpan = healed.hints.find((hint) => hint.message.key === 'long_digit_run')
+    assert.deepEqual(healedSpan.evidence.char_offsets, [[2, 7]],
+      `重算后区间要跟着新串走：${JSON.stringify(healedSpan.evidence)}`)
+    assert.deepEqual(JSON.parse((await currentFindingRow(wbPage.id, 'long_digit_run')).evidence_json).offsets_basis,
+      findings.offsetsBasis(afterRow['莆田IPA'], [[2, 7]]),
+      '重算要把基准一起重新锚到新串上，否则下一轮改写又会把新切好的区间判成过期')
+    assert.equal(healed.offsets_stale, 0, '重算之后不该还有过期条目留着')
+    assert.equal(healed.offsets_unbaselined, 0, '重算之后不该还有无基准条目留着')
+    assert.equal(sliceBySpans(afterRow['莆田IPA'], healedSpan.evidence.char_offsets[0]), '91234',
+      '高亮必须切回被标记的那段数字串本身，切回空白或别的字都算没修好')
+
+    // 复审 P2 之二点名要的那条链路：旧批次 → 部署新读侧 → 管理员写回。这里对 legacyPage 做
+    // 与 wbPage **完全相同的那次编辑**（同一个 `afterRow`），于是同一次改写被两个计数分到两边：
+    // 带基准的报 stale，没有基准的仍报 unbaselined。两个数因此不是顺序巧合，而是成因标签。
+    await request(`/api/fangji/projects/${wbProject.id}/pages/${legacyPage.id}/content`, {
+      method: 'POST', token: boss.token,
+      body: {
+        rowJson: JSON.stringify(afterRow),
+        headersJson: JSON.stringify(['词条', '拼音', '莆田IPA', '释义']),
+        expectedUpdated: (await request(`/api/collections/pages/records/${legacyPage.id}`, { token: boss.token })).updated
+      }
+    })
+    const legacyWritten = await request(`/api/fangji/pages/${legacyPage.id}/findings`, { token: boss.token })
+    assert.equal(legacyWritten.hints.length, 1, JSON.stringify(legacyWritten))
+    assert.equal(legacyWritten.hints[0].evidence.char_offsets, undefined,
+      `无基准的旧批次被写回之后仍下发旧下标：${JSON.stringify(legacyWritten.hints[0].evidence)}`)
+    assert.equal(legacyWritten.offsets_unbaselined, 1, JSON.stringify(legacyWritten.offsets_unbaselined))
+    assert.equal(legacyWritten.offsets_stale, 0,
+      '根本没有基准的记录不该被报成"原文变了"——那会把部署日的正常存量说成有人改过内容')
+    // 库里这条记录被读三次、被写回一次之后仍然没有基准：盖章只有写侧一个入口
+    // （`assist_writer.js:99`），读侧没有任何补章出口。它同时是「写回自动触发重算」那条
+    // 收尾路线的哨兵——真接上那条，这里就会变成带基准，本段的降级叙述要跟着重写。
+    // 这条是仓库状态断言，没有用变异证明它会红（改动读侧的内存视图不会写回库里）。
+    const legacyStored = JSON.parse((await currentFindingRow(legacyPage.id, 'long_digit_run')).evidence_json)
+    assert.equal(legacyStored.offsets_basis, undefined,
+      `库里这条旧批次已经有了基准，与"只有写侧盖章"不符：${JSON.stringify(legacyStored)}`)
+    console.log('PASS: 写回后旧区间被剥且疑点仍在，重算后区间重新锚在新串上，旧批次被写回仍按无基准计数（#304）')
   }
 
   console.log('Assist rules integration test passed.')
