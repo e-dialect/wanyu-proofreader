@@ -591,8 +591,9 @@ func TestMarkFatalRoutesConversionJobsToTheirOwnCollection(t *testing.T) {
 //
 // 上面那一格证明「表里有 conversion，且它能落库」；这一格证明的是**表本身**没有指向不存在的
 // 集合。两者分工明确：前者是行为（真的写进去了），这一格是结构（集合名不是拼错的）。
-// 「新增 kind 忘了给它归属」这一类比拼错更严重，已经由表本身消除了——runWorker 与 markFatal
-// 都只从这张表读，没有第二处 switch 可以漏。
+// 「新增 kind 忘了给它归属」这一类比拼错更严重——runWorker 与 markFatal 都只从这张表读，
+// 没有第二处 switch 可以漏，但**表里少一格**这件事这个方向看不见，所以由下面那一格从
+// enqueue 侧反向断言。
 func TestEveryWorkKindHasAFinalizeTarget(t *testing.T) {
 	app := newSchemaTestApp(t)
 	conversionJobs := addConversionJobsCollection(t, app)
@@ -612,5 +613,26 @@ func TestEveryWorkKindHasAFinalizeTarget(t *testing.T) {
 					"作业永远停在 processing", kind, collection)
 			}
 		})
+	}
+}
+
+// TestEveryEnqueueableWorkKindIsInTheTable 是上一格的**反方向**。上一格遍历表里的每一格，
+// 所以「某个 kind 根本没进表」它看不见：表里少一格，那个方向一个子测试都不会跑。
+//
+// 运行时表现：入队照常成功（enqueue 不看表），worker 取到它时打一条 worker_unknown_kind
+// 日志后 return，作业永远停在 queued，而且没有任何重试。
+//
+// 这份清单是手抄的，边界要说清：将来新增第 7 个入队调用点时，这里不会自己变长，这一格也
+// 不会红——接住那种漂的是各 kind 自己的集成套件（作业要真走队列走到终态）。它挡住的是
+// 「表被人整格删掉 / 某个 kind 被从表里挪走」这一类单测层完全不可见的漂。
+func TestEveryEnqueueableWorkKindIsInTheTable(t *testing.T) {
+	// 六个来源：import_service.go 的 workKind（csv / csv_inspect）、三处字面量
+	// （csv / pdf / conversion），以及 recoverPendingWork 按 mode 分流的 ocr 与 bundle。
+	enqueueable := []string{"csv_inspect", "csv", "pdf", "ocr", "bundle", "conversion"}
+	for _, kind := range enqueueable {
+		if _, known := workRoutes[kind]; !known {
+			t.Fatalf("入队侧会产生 %q 这种作业，但 workRoutes 里没有它："+
+				"worker 只会打一条 worker_unknown_kind 日志就 return，作业永远停在 queued", kind)
+		}
 	}
 }

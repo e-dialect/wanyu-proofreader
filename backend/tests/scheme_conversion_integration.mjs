@@ -414,6 +414,25 @@ if (process.argv.includes('--prepare-resume')) {
     assert.equal(drifted[key], 0, `${key} 不该有值：被拦下的作业没有处理过任何条目`)
   }
   console.log('PASS: a mid-job rule upgrade stops the resume instead of re-counting under two rule sets')
+
+  // 人工复核这一侧的同一件事：条目上还留着旧版规则跑出来的 status / trace / candidates，
+  // 而目录里已经是新版。整套套件只有这一刻版本是对不上的，所以这条断言只能放在这里。
+  // 用交接项目里那批旧条目，不能用本次运行新建的项目——它是在新版规则下转换的，版本本来就一致。
+  const stalePages = (await api(
+    `/api/collections/pages/records?perPage=50&filter=${encodeURIComponent(`project="${handoff.projectId}" && normalization_status="UNSUPPORTED"`)}`,
+    { token: superAuth.token })).items
+  assert.ok(stalePages.length > 0, '换版之后要留下一条旧规则跑出来的待复核条目，这条断言才有对象')
+  const staleRow = await api(`/api/fangji/pages/${stalePages[0].id}/normalization`, {
+    method: 'POST', token, expected: 400,
+    body: { canonical_pronunciation: 'de533', basis: '我觉得对' }
+  })
+  assert.match(staleRow.message, /规则版本/, JSON.stringify(staleRow))
+  assert.match(staleRow.message, /重跑一次转换/, `要给出一条可走的路，不能只说「不允许」：${JSON.stringify(staleRow)}`)
+  assert.match(staleRow.message, /synthetic-v1/, '要点名这一条是哪个版本跑出来的')
+  const untouched = (await api(`/api/collections/pages/records/${stalePages[0].id}`, { token: superAuth.token }))
+  assert.equal(untouched.normalization_status, 'UNSUPPORTED', '被拒绝的结论不得改动这一行')
+  assert.equal(untouched.normalization_reviewed_by, '')
+  console.log('PASS: an entry produced under the previous rule version cannot collect a human conclusion')
 } else {
   console.log('PASS: scheme conversion job, four-line summary, review queue and exception drafts')
 }
