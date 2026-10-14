@@ -280,8 +280,10 @@ await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
 await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
   method: 'POST', token, expected: 400, body: { basis: '看过了' }
 })
-// 第 2 道闸：写法必须是目标方案拼得出来的音节。adapter 自带目标侧清单（韵母 e/u/ə，调值 533/21/4），
-// 所以「拼不出来」与「超长」是两句不同的话。
+// 第 3 道闸：写法必须是目标方案拼得出来的音节。adapter 自带目标侧清单（韵母 e/u/ə，调值 533/21/4），
+// 所以「拼不出来」与「超长」是两句不同的话。编号沿用 decideNormalization 里那三个注释，
+// 中间的「第 2 道闸」（规则版本绑定）的取证不在这一段——整套套件只有 --verify-rule-change
+// 那一刻版本是对不上的，见那边。
 const notSpellable = await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
   method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'za533', basis: '我觉得对' }
 })
@@ -303,7 +305,8 @@ assert.equal(decided.canonical_pronunciation, 'gu533')
 assert.equal(decided.normalization_basis, '对照原书凡例，n 在 k 后作 u')
 assert.equal(decided.normalization_reviewed_by, admin.record.id)
 assert.ok(decided.normalization_reviewed_at, '人工结论必须记时间')
-// 第 3 道闸的结果：人工结论也要记下「在哪个规则版本下判的」，否则升版时找不出该重看的结论。
+// 三道路闸都过了之后写回的值：人工结论也要记下「在哪个规则版本下判的」，
+// 否则升版时找不出该重看的结论。
 assert.equal(decided.normalization_rule_version, runnable.rule_version)
 // 结论针对的原值仍然是转换那一刻的那个：上面的改动没把它带走。
 assert.equal(decided.source_pronunciation, 'kn533')
