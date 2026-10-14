@@ -744,6 +744,7 @@ jobs:
       - chunk-upload-browser
       - assist-browser
       - quality-state-browser
+      - scheme-conversion-browser
       - frontend
       - frontend-image-parity
       - backend-unicode
