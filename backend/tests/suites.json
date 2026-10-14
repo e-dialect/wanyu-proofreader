@@ -11,6 +11,7 @@
   { "suite": "keyboards_integration.mjs", "ci_matrix": true },
   { "suite": "column_order_integration.mjs", "ci_matrix": true },
   { "suite": "volunteer_accounts_integration.mjs", "ci_matrix": true },
+  { "suite": "nickname_login_integration.mjs", "ci_matrix": true },
   { "suite": "findings_integration.mjs", "ci_matrix": true },
   { "suite": "assist_rules_integration.mjs", "ci_matrix": true },
   { "suite": "assist_baseline_integration.mjs", "ci_matrix": true },
@@ -31,5 +32,6 @@
   { "suite": "artifact_export_integration.mjs", "ci_matrix": true },
   { "suite": "quality_state_integration.mjs", "ci_matrix": true },
   { "suite": "quality_state_browser_integration.mjs", "ci_matrix": false, "requires_env": "QUALITY_BROWSER_SCRIPT", "note": "需要 playwright 与已构建的 frontend/dist；截图由 quality-state-browser 作业产出" },
-  { "suite": "bundle_import_integration.mjs", "ci_matrix": false, "ci_runner": "run_bundle_import_integration.py", "note": "restarts the server to prove an interrupted bundle job reaches a terminal state" }
+  { "suite": "bundle_import_integration.mjs", "ci_matrix": false, "ci_runner": "run_bundle_import_integration.py", "note": "restarts the server to prove an interrupted bundle job reaches a terminal state" },
+  { "suite": "page_content_integration.mjs", "ci_matrix": true }
 ]

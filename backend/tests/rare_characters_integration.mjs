@@ -51,8 +51,9 @@ try {
  assert.equal(project.description,sample)
  for(let n=0;n<2;n++){
   const email=`rare-${suffix}-${n}@example.com`
-  const user=await request('/api/collections/users/records',{method:'POST',body:{email,password,passwordConfirm:password,name:sample,role:'user'}})
-  assert.equal(user.name,sample)
+  const nickname=`${sample}-${n}`
+  const user=await request('/api/collections/users/records',{method:'POST',body:{email,password,passwordConfirm:password,name:nickname,role:'user'}})
+  assert.equal(user.name,nickname)
   const auth=await request('/api/collections/users/auth-with-password',{method:'POST',body:{identity:email,password}})
   users.push(auth)
   await request(`/api/fangji/projects/${project.id}/members/${user.id}`,{method:'PUT',token,body:{role:'proofreader'}})

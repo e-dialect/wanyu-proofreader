@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "captured_from": "e044f69 (upstream/main, 2026-10-04)",
-  "reason": "Initial warning-only inventory for #264. Token declarations are excluded; count semantics are documented in CONTRIBUTING.md.",
+  "captured_from": "chore/ui-265-a11y (2026-10-05)",
+  "reason": "Token layer moved literal colors, radii, z-index and font stacks into :root. Alert tags now carry role. Limits drop to the measured now. inline_styles stays at 27: main was already 28 against the #264 baseline, and this change does not authorize that extra attribute.",
   "kinds": {
     "hardcoded_colors": {
-      "limit": 145,
+      "limit": 0,
       "mode": "warn"
     },
     "border_radius_literals": {
-      "limit": 15,
+      "limit": 0,
       "mode": "warn"
     },
     "z_index_literals": {
-      "limit": 8,
+      "limit": 0,
       "mode": "warn"
     },
     "inline_styles": {
@@ -24,19 +24,19 @@
       "mode": "warn"
     },
     "alerts_without_role": {
-      "limit": 30,
+      "limit": 0,
       "mode": "warn"
     },
     "custom_modals": {
-      "limit": 1,
+      "limit": 0,
       "mode": "warn"
     },
     "undefined_variables": {
-      "limit": 1,
+      "limit": 0,
       "mode": "warn"
     },
     "font_family_stacks": {
-      "limit": 20,
+      "limit": 0,
       "mode": "warn"
     }
   }

@@ -22,7 +22,7 @@
 - 从最新 `main` 创建分支；一个分支只处理一个可独立合并的问题。
 - 推荐分支名：`feat/<summary>`、`fix/<summary>`、`docs/<summary>`、`ci/<summary>`、`chore/<summary>`。
 - 提交信息与 PR 标题使用 Conventional Commits，例如 `fix(auth): preserve session on transient errors`、`ci: add frontend checks`。
-- `scope` 必须是有归属的领域或模块，从现有词表里选：`auth`、`identity`、`projects`、`proofreading`、`onboarding`、`keyboards`、`pdf`、`upload`、`import`、`profiles`、`rare-chars`、`pagination`、`probe`（`scripts/corpus_probe/**`，离线语料探测与疑点规则）、`scheme`（`scripts/scheme/**`，离线拼音方案记法转换与规则发现，是 #189 那个 Go 引擎的前置，不是产品代码）、`findings`（`review_findings` 数据模型、门控与只读接口）、`assist`（辅助层：`scripts/assist/**` 的弱标注与打分、`backend/pb_hooks/lib/assist_*.js` 的规则/难度/跨行判定）、`registry`（来源登记 `sources` / `source_usages`、用途权利门闩与管理端清单）、`quality`、`migrations`、`ops`、`deps`、`ci`、`governance`（`.github/**` 与仓库治理文档、审批与权限边界）。词表里没有合适项时，在 PR 描述中说明新 scope 对应哪个目录或领域，再补进本表。
+- `scope` 必须是有归属的领域或模块，从现有词表里选：`auth`、`identity`、`projects`、`proofreading`、`onboarding`、`keyboards`、`pdf`、`upload`、`import`、`profiles`、`rare-chars`、`pagination`、`probe`（`scripts/corpus_probe/**`，离线语料探测与疑点规则）、`scheme`（`scripts/scheme/**`，离线拼音方案记法转换与规则发现，是 #189 那个 Go 引擎的前置，不是产品代码）、`findings`（`review_findings` 数据模型、门控与只读接口）、`assist`（辅助层：`scripts/assist/**` 的弱标注与打分、`backend/pb_hooks/lib/assist_*.js` 的规则/难度/跨行判定）、`registry`（来源登记 `sources` / `source_usages`、用途权利门闩与管理端清单）、`quality`、`migrations`、`ops`、`deps`、`ci`、`governance`（`.github/**` 与仓库治理文档、审批与权限边界）、`ui`（`frontend/src` 里跨领域的界面契约：令牌、共享组件、焦点、断点、四态标记。只改一个领域内部的文案或流程时仍用该领域 scope，例如 `proofreading`、`assist`、`rare-chars`；同一支 PR 既改契约又改某一领域时，scope 取主要改动，另一项写在 PR 描述里。契约正文是 `docs/DESIGN.md`）。词表里没有合适项时，在 PR 描述中说明新 scope 对应哪个目录或领域，再补进本表。
 - 不要用阶段、版本或计划代号作 scope（`v2`、`v3`、`phase1`、`M1` 等），也不要用整层名字（`frontend`、`backend`、`core`）：它们不携带责任域信息，changelog 无法据此归类。一支 PR 确实跨两个领域时，scope 写主要的那个，另一个写在 PR 描述里，不要用「A 与 B」拼标题回避 scope 选择。
 - PR 标题与提交信息的首行都不带 issue 编号（`(#131)`、`(#131) (#132)`、`fix #132` 等）。issue 关联只写在 PR 正文的「关联 Issue」里：完成用 `Closes #123` / `Fixes #123`，只覆盖一部分用 `Related to #123` 并说明遗留范围。Squash and merge 会把 PR 正文带进提交说明，关联不会因为标题里没有编号而丢失；标题里出现编号几乎总是一个来源错误：把合并后自动生成的提交信息回填成了 PR 标题。
 - 不提交构建产物、`.env`、PocketBase 数据目录或无关格式化改动。
@@ -137,8 +137,13 @@ blob 里存了 CR（`i/crlf`、`i/mixed`）就失败。`make verify-static` 与 
 | `font_family_stacks` | 非令牌、非 `var()` 的含逗号字体栈声明次数；单字体 `@font-face` 不计 | 20 |
 
 颜色包含渐变、阴影、fallback 与内联静态样式；`#fff` 不会匹配 `#fff7ed`，CSS/HTML 注释、
-选择器、URL 与内容字符串不算色值。全量色值的细分计数随报告输出（当前 `#fff` 为 36 次，
-另外列出各函数与调色板外的具体色值）。字体栈按声明次数计，而非只抽取某一种字体栈。
+选择器、URL 与内容字符串不算色值。全量色值的细分计数随报告输出。2026-10-04 的初始盘点里
+`#fff` 为 36 次；令牌层合入后这一口径为 0，剩下的两处 `#fff` 写在 `--surface` 与 `--on-fill`
+的定义上，并各有一行白名单注释。字体栈按声明次数计，而非只抽取某一种字体栈。
+同一次令牌层把 `hardcoded_colors`、`border_radius_literals`、`z_index_literals`、
+`font_family_stacks`、`undefined_variables`、`custom_modals` 的上限降到当时的 `now`。
+随后的可及性补丁把 `alerts_without_role` 降到 0。`inline_styles` 的上限未改。
+上表的「初始上限」保留 #264 落地时的数字，现行上限以 `scripts/ui_debt_baseline.json` 为准。
 解析跨行标签并识别绑定类表达式里的字符串、绑定样式对象里的常量值；不执行 JavaScript，
 运行时拼接的样式/类、外部 CSS 不在覆盖范围。变量定义按整个源码目录判断，不证明运行时作用域可用。
 

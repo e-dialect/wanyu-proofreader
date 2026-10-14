@@ -16,7 +16,7 @@
       </div>
     </div>
 
-    <div v-if="error" class="alert alert-error" style="margin:1rem">{{ error }}</div>
+    <div v-if="error" class="alert alert-error" role="alert" style="margin:1rem">{{ error }}</div>
     <div v-else ref="wrapRef" class="pdf-scroll">
       <div
         class="pdf-canvas-stage"
@@ -311,12 +311,12 @@ onBeforeUnmount(async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #e2e8f0;
+  background: var(--pdf-track);
 }
 
 .pdf-viewer:fullscreen {
   min-height: 100vh;
-  background: #cbd5e1;
+  background: var(--pdf-track-strong);
 }
 
 .pdf-toolbar {
@@ -326,8 +326,8 @@ onBeforeUnmount(async () => {
   justify-content: space-between;
   gap: .75rem;
   padding: .5rem .75rem;
-  border-bottom: 1px solid #cbd5e1;
-  background: #f8fafc;
+  border-bottom: 1px solid var(--pdf-track-strong);
+  background: var(--pdf-toolbar);
 }
 
 .pdf-toolbar-group {
@@ -338,10 +338,10 @@ onBeforeUnmount(async () => {
 
 .pdf-tool {
   padding: .3rem .6rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 5px;
-  background: #fff;
-  color: #334155;
+  border: 1px solid var(--pdf-track-strong);
+  border-radius: var(--radius-nav);
+  background: var(--surface);
+  color: var(--pdf-ink);
   cursor: pointer;
 }
 
@@ -353,7 +353,7 @@ onBeforeUnmount(async () => {
 .pdf-zoom-label,
 .pdf-page-label {
   min-width: 48px;
-  color: #475569;
+  color: var(--ink-muted);
   font-size: .8rem;
   text-align: center;
 }
@@ -368,13 +368,13 @@ onBeforeUnmount(async () => {
 .pdf-canvas-stage {
   position: relative;
   margin: 0 auto;
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, .18);
+  background: var(--surface);
+  box-shadow: 0 2px 8px var(--slate-shadow);
 }
 
 .pdf-canvas {
   display: block;
-  background: #fff;
+  background: var(--surface);
 }
 
 .pdf-page-image { display: block; }
@@ -385,7 +385,7 @@ onBeforeUnmount(async () => {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  color: rgba(80, 80, 80, .22);
+  color: var(--pdf-grid);
   transform: rotate(-25deg);
   font-size: 16px;
   overflow: hidden;
@@ -397,8 +397,8 @@ onBeforeUnmount(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(248, 250, 252, 0.68);
-  color: #475569;
+  background: var(--pdf-mask);
+  color: var(--ink-muted);
   font-size: 14px;
   pointer-events: none;
 }

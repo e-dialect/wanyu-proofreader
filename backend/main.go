@@ -49,6 +49,7 @@ func main() {
 		Dir:          migrationsDir,
 	})
 	registerTrustedClientIP(app)
+	registerNicknameLogin(app)
 	registerProfile(app)
 	registerBundleValidation(app)
 	registerJoinAttemptCleanup(app)
@@ -65,6 +66,7 @@ func main() {
 	importer.registerArtifacts()
 	importer.registerQualityState()
 	importer.registerBundleImports()
+	importer.registerPageContent()
 
 	identityProviders := make([]externalIdentityProvider, 0, 1)
 	if hinghwaBaseURL := os.Getenv("HINGHWA_IDENTITY_BASE_URL"); hinghwaBaseURL != "" {

@@ -171,7 +171,8 @@ try {
   // The member picker reads this route. users.listRule limits account listing to
   // platform admins, so a project manager must only see accounts already
   // connected to projects they manage, and never an email address.
-  const twins = [await createUser('twin-a', '重名候选'), await createUser('twin-b', '重名候选')]
+  // Nicknames are now login identities; similar candidates still need distinct IDs.
+  const twins = [await createUser('twin-a', '重名候选'), await createUser('twin-b', '重名候选-2')]
   const candidatesPath = `/api/fangji/projects/${privateProject.id}/member-candidates`
   const candidates = await request(candidatesPath, { token: manager.token })
   assert.ok(Array.isArray(candidates), 'candidates must be a plain array, not a paginated result')
@@ -207,10 +208,10 @@ try {
   }
   assert.ok(asPlatformAdmin.length > candidates.length,
     'the platform admin view must be broader than the project-scoped one')
-  // Same-name accounts must fall through to the username tiebreak, not collapse.
-  const twinPair = asPlatformAdmin.filter((item) => item.name === '重名候选')
-  assert.equal(twinPair.length, 2, 'both same-name accounts must be listed')
-  assert.ok(codeUnitOrder(twinPair[0], twinPair[1]) < 0, 'equal names must fall through to the username tiebreak')
+  // Similar nicknames must remain distinct, in deterministic name/username order.
+  const twinPair = asPlatformAdmin.filter((item) => item.name.startsWith('重名候选'))
+  assert.equal(twinPair.length, 2, 'both similar-name accounts must be listed')
+  assert.ok(codeUnitOrder(twinPair[0], twinPair[1]) < 0, 'candidate order must be deterministic')
 
   // An owner holds no `role = "manager"` membership row, so the pool must be
   // derived from projects they own as well as ones they manage.

@@ -2,6 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getPbMessage, getUploadErrorMessage } from '../src/utils/pbErrors.js'
 
+test('nickname unique errors are localized even when a concurrent registration wins', () => {
+  assert.equal(getPbMessage({ response: {
+    message: 'Failed to create record.',
+    data: { name: { code: 'validation_not_unique', message: 'Value must be unique.' } }
+  } }), '昵称已被占用，请换一个昵称。')
+})
+
 test('upload 413 errors show the PDF and CSV limits instead of proxy error messages', () => {
   for (const error of [
     { status: 413, message: 'Request Entity Too Large' },

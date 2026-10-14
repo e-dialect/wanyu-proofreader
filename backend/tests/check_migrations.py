@@ -8,6 +8,7 @@ earlier check ever ran, and asserts that the initial schema refuses a rollback
 instead of dropping a populated database.
 """
 import json
+from contextlib import closing
 import os
 import sqlite3
 import subprocess
@@ -18,6 +19,13 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1791580800_unique_nickname_login.js': {
+        'indexes': ['idx_users_nickname'],
+        'collection_indexes': ('users', 'idx_users_nickname'),
+        'fields': ('users', {'name': {'required': True}}),
+        'plans': [('users', 'SELECT id FROM users WHERE name=? COLLATE NOCASE',
+                   ('nickname',), 'idx_users_nickname')],
+    },
     '1788941000_pagination_indexes.js': {
         'indexes': ['idx_pages_project_status_order',
                     'idx_attempts_page_round_kind_user',
@@ -222,13 +230,13 @@ def migrate(binary, data, *command, expect_success=True):
 
 def applied(data):
     """Only this repository's JS migrations; PocketBase also records its own Go ones."""
-    with sqlite3.connect(data / 'data.db') as db:
+    with closing(sqlite3.connect(data / 'data.db')) as db:
         return [row[0] for row in db.execute(
             "SELECT file FROM _migrations WHERE file LIKE '%.js' ORDER BY file")]
 
 
 def index_names(data):
-    with sqlite3.connect(data / 'data.db') as db:
+    with closing(sqlite3.connect(data / 'data.db')) as db:
         return {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 
 
@@ -241,12 +249,12 @@ def assert_applied(data, migration, problems):
     collection = spec.get('collection_indexes')
     if collection:
         table, name = collection
-        with sqlite3.connect(data / 'data.db') as db:
+        with closing(sqlite3.connect(data / 'data.db')) as db:
             declared = json.loads(db.execute('SELECT indexes FROM _collections WHERE name=?', (table,)).fetchone()[0])
         if not any(name in sql for sql in declared):
             problems.append(f'{migration}: {table} collection metadata lost index {name}')
     for table, query, parameters, name in spec.get('plans', []):
-        with sqlite3.connect(data / 'data.db') as db:
+        with closing(sqlite3.connect(data / 'data.db')) as db:
             plan = str(db.execute(f'EXPLAIN QUERY PLAN {query}', parameters).fetchall())
         if name not in plan:
             problems.append(f'{migration}: {table} query plan does not use {name}: {plan}')
@@ -277,7 +285,7 @@ def _assert_fields(data, migration, field_spec, problems, expect):
     「加字段」类迁移永远不能声明 fields 断言——而那正是这类迁移唯一能写的断言。
     """
     collection, fields = field_spec
-    with sqlite3.connect(data / 'data.db') as db:
+    with closing(sqlite3.connect(data / 'data.db')) as db:
         row = db.execute('SELECT fields FROM _collections WHERE name=?', (collection,)).fetchone()
     if row is None:
         if expect:

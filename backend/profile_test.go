@@ -29,6 +29,7 @@ func TestProfileUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	other.SetEmail("taken@example.com")
+	other.Set("name", "TakenNick")
 	if err := app.Save(other); err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +71,10 @@ func TestProfileUpdate(t *testing.T) {
 		request(body, token, 400)
 	}
 	request(`{"name":"changed"}`, "", 401)
+	conflict := request(`{"name":"takennick"}`, token, 400)
+	if !strings.Contains(conflict["message"].(string), nicknameTaken) {
+		t.Fatalf("missing Chinese nickname conflict: %#v", conflict)
+	}
 	result := request(`{"name":"  测试𢶀  ","email":"new@example.com"}`, token, 200)
 	if result["name"] != "测试𢶀" || result["email"] != "new@example.com" || result["verified"] != false || result["role"] != "user" {
 		t.Fatalf("unexpected profile %#v", result)

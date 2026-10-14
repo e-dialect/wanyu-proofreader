@@ -14,6 +14,6 @@ const initial = computed(() => Array.from(String(props.user?.name || props.user?
 watch(src, () => { failed.value = false })
 </script>
 <style scoped>
-.user-avatar { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: #e2e8f0; color: #475569; }
+.user-avatar { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: var(--radius-circle); overflow: hidden; flex-shrink: 0; background: var(--slate-fill); color: var(--ink-muted); }
 .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
 </style>

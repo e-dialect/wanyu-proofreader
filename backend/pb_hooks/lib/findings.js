@@ -93,6 +93,114 @@ function parseJson(value, fallback) {
   }
 }
 
+// ---- 命中区间的读侧复核（#304）----
+//
+// `evidence.char_offsets` 是「判据当时跑的那份串」上的码位下标。写入侧的诚实性闸门
+// （`assist_writer.js` 的 `dropUnfaithfulOffsets`）只在**落库那一刻**确认它和校对端要切的
+// `ocr_row_json` 逐字相等，并把**每个区间所切片段**的摘要记进 `offsets_basis`（见下方
+// 「基准为什么是片段摘要」）。
+// #293 的管理侧写回路让 `ocr_row_json` 此后可以随时被改写（2026-10-06 裁定不做版本化、
+// 不触发重算），旧下标于是会切到新串的错位处——最坏症状是那段注释自己写的
+// 「高亮标在空白上，而在界面上看起来完全正常」：不报错、不 500、无日志。
+//
+// 这里用同一个基准再核一次，对不上就把区间摘掉。摘区间**不等于**丢疑点：
+// `locateSpan`（`frontend/src/lib/fieldHints.js:163`）见不到区间就降级为「聚焦该字段」，
+// 归因照旧——这是 `assist_writer.js:73-74` 已经写明的既有降级语义，不新造契约。
+// 剥掉的条数按原因分两个数回给调用方：`offsets_stale` 是原文确实变了或读不到，
+// `offsets_unbaselined` 是这批根本没有可验证基准。漏标不许静默，两种原因也不许混成一个数
+// ——部署当天那个数会很大，把它读成「原文被大面积改写」就是假的告警。
+//
+// 基准为什么是片段摘要而不是总长度：总码位数相等证明不了命中没动（#304 复审 P2）。管理员
+// 写回支持整格改写，`aŋ1234` → `1234aŋ` 长度不变而数字命中已从 [2,6) 移到 [0,4)，只比长度
+// 会把高亮留在 `34aŋ` 上。取「每个区间所切片段的摘要」则位置或内容任一变化都改摘要。
+// 存摘要而不是片段本身，是 §6 的红线：`evidence_json` 只允许结构信息，字形序列是内容。
+//
+// 摘要必须能在 JSVM 与 node 下算出同一个值：写侧在 JSVM 盖章、读侧在 JSVM 复核，而纯函数
+// 回归段直接 `require` 本文件跑（不起服务）。所以这里不用 `$security.sha256`（node 下没有），
+// 也不用 BigInt（goja 支持面不同），只用 `Math.imul` 的 32 位运算拼成 128 位。
+const FNV_SEEDS = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b]
+
+function excerptDigest(text) {
+  const units = String(text)
+  return FNV_SEEDS.map((seed) => {
+    let hash = seed >>> 0
+    for (let i = 0; i < units.length; i++) {
+      hash = Math.imul(hash ^ units.charCodeAt(i), 0x01000193) >>> 0
+    }
+    return hash.toString(16).padStart(8, "0")
+  }).join("")
+}
+
+// 空片段不给基准：它和「区间掉出串外」切出来的空串无法区分，盖章会把后者伪装成已验证。
+// 返回 null 让调用方走「无可验证基准」那条保守分支，读侧一律剥。
+function offsetsBasis(text, spans) {
+  if (!Array.isArray(spans) || !spans.length) return null
+  const chars = Array.from(String(text ?? ""))
+  const digests = []
+  for (const span of spans) {
+    if (!Array.isArray(span)) return null
+    const excerpt = chars.slice(span[0], span[1]).join("")
+    if (!excerpt) return null
+    digests.push(excerptDigest(excerpt))
+  }
+  return { digests }
+}
+
+// 返回 ""（区间忠实，保留）| "stale"（原文变了/读不到/形状对不上）|
+// "unbaselined"（没有可验证的基准，含本修复之前落库的全部批次）。
+function dropStaleOffsets(view, shownRow) {
+  const evidence = view.evidence
+  if (!Array.isArray(evidence?.char_offsets)) return ""
+  const basis = evidence.offsets_basis
+  const usable = basis && typeof basis === "object" && Array.isArray(basis.digests) &&
+    basis.digests.length === evidence.char_offsets.length &&
+    basis.digests.every((digest) => typeof digest === "string" && digest.length)
+  if (!usable) {
+    stripOffsets(evidence)
+    return "unbaselined"
+  }
+  // 读不到那份串时无法证明区间忠实，按不忠实处理；字段整列消失同理（切出来是空串）。
+  if (shownRow === null || shownRow === undefined) {
+    stripOffsets(evidence)
+    return "stale"
+  }
+  const chars = Array.from(String(shownRow[view.field] ?? ""))
+  const faithful = evidence.char_offsets.every((span, index) => {
+    if (!Array.isArray(span)) return false
+    const excerpt = chars.slice(span[0], span[1]).join("")
+    return excerpt !== "" && excerptDigest(excerpt) === basis.digests[index]
+  })
+  if (faithful) return ""
+  stripOffsets(evidence)
+  return "stale"
+}
+
+function stripOffsets(evidence) {
+  delete evidence.char_offsets
+}
+
+// 两个只读口共用同一份计数：各写一套的话，早晚只有一端在防这件事。
+// 未知原因直接抛——静默不计数就是把「漏标」重新变成无声的，本仓不接受这种形状。
+function tallyOffsets(reason, counts) {
+  if (reason === "") return counts
+  if (reason !== "stale" && reason !== "unbaselined") {
+    throw new Error(`unknown offset staleness reason: ${reason}`)
+  }
+  counts[reason] += 1
+  return counts
+}
+
+// 校对端一次请求只看一条条目，所以这里单取一次 pages；管理端复用 locatorOf 的缓存。
+function shownRowOf(dao, pageId) {
+  const id = String(pageId ?? "")
+  if (!id) return null
+  try {
+    return parseJson(dao.findRecordById("pages", id).get("ocr_row_json"), null)
+  } catch {
+    return null
+  }
+}
+
 // 当前批次：未被 superseded 的那一批。重算只写新批次并标旧批次，
 // 所以「未 superseded」本身就定义了当前批次（#176 期望结果 5）。
 function currentRecords(dao, filter, sort, limit, offset) {
@@ -123,8 +231,11 @@ function hintView(record, gate) {
 // cascadeDelete=true，条目删除会连带删掉疑点，所以库里不存在悬挂引用，
 // null 只可能是"该条没有 pdf_page（CSV 直接导入）"或读取异常，两者都由前端说成未知。
 // 同一次请求里一批疑点常挂在同几条上，所以带 cache，不做 N 次重复查库。
+//
+// 返回对象里额外挂一个 `shown`（该条导入原文的行对象），只给读侧复核区间用（#304），
+// **绝不下发**：statisticsView 逐字段挑选输出，不做展开，所以它不会漏进响应。
 function locatorOf(app, pageId, cache) {
-  const unknown = { page_number: null, pdf_page: null }
+  const unknown = { page_number: null, pdf_page: null, shown: null }
   const id = String(pageId ?? "")
   if (!id) return unknown
   if (cache && cache.has(id)) return cache.get(id)
@@ -138,7 +249,8 @@ function locatorOf(app, pageId, cache) {
     }
     value = {
       page_number: asOrdinal(entry.get("page_number")),
-      pdf_page: asOrdinal(entry.get("pdf_page"))
+      pdf_page: asOrdinal(entry.get("pdf_page")),
+      shown: parseJson(entry.get("ocr_row_json"), null)
     }
   } catch {
     value = unknown
@@ -188,11 +300,16 @@ function statisticsView(record, gate, row, locator) {
 // 只有 hints 数组时，gate 全 off 与这批资料真的干净，在响应里长得一模一样，
 // 而后者会被读成「这批可以放心」。它只是一个计数，不含规则身份、不含内容，
 // 因此不触碰盲校纪律（校对端仍看不到别人的结果、轮次与档位）。
+//
+// `offsets_stale` / `offsets_unbaselined` 说的又是另一件事：疑点仍然下发，只是**区间**画不
+// 得——前者是原文已改写或对不上，后者是这批根本没有可验证基准（#304，见 §1.1）。
 function hintsForPage(dao, pageId) {
   const { map: gates, truncated: gateTruncated } = gateMap(dao)
+  const shownRow = shownRowOf(dao, pageId)
   const records = currentRecords(dao, `page = "${pageId}"`, "kind,message_key", MAX_PAGE_SIZE + 1, 0)
   const hints = []
   let suppressed = 0
+  const offsets = { stale: 0, unbaselined: 0 }
   for (const record of records) {
     const { gate } = gateOf(gates, record)
     const severity = record.getString("severity")
@@ -201,12 +318,19 @@ function hintsForPage(dao, pageId) {
       if (gate === "off" && GATE_RELEASES.warn.includes(severity)) suppressed += 1
       continue
     }
-    hints.push(hintView(record, gate))
+    const view = hintView(record, gate)
+    tallyOffsets(dropStaleOffsets(view, shownRow), offsets)
+    // 基准是内容派生的摘要（片段摘要，§1.1），校对端没有它的消费者，所以下发前摘掉——
+    // 与上面 `scoring_channel` 只给管理端同一个立场。它留在库里供管理端和重算复核用。
+    if (view.evidence) delete view.evidence.offsets_basis
+    hints.push(view)
   }
   return {
     hints,
     truncated: records.length > MAX_PAGE_SIZE,
     suppressed_by_gate: suppressed,
+    offsets_stale: offsets.stale,
+    offsets_unbaselined: offsets.unbaselined,
     gate_rows_truncated: gateTruncated
   }
 }
@@ -225,11 +349,25 @@ function listForProject(dao, projectId, { page = 1, per = 50, kind = "", produce
   // 多取一条用来判断是否还有下一页，不依赖 count 查询。
   const records = currentRecords(dao, clauses.join(" && "), "-produced_at,kind,message_key", size + 1, (index - 1) * size)
   const locatorCache = new Map()
+  const offsets = { stale: 0, unbaselined: 0 }
   const items = records.slice(0, size).map((record) => {
     const { gate, row } = gateOf(gates, record)
-    return statisticsView(record, gate, row, locatorOf(dao, record.getString("page"), locatorCache))
+    const locator = locatorOf(dao, record.getString("page"), locatorCache)
+    const item = statisticsView(record, gate, row, locator)
+    // 管理端展示「命中区间」用的是同一份下标，所以也要过同一道复核（#304）：
+    // 两端各写一套判据的话，早晚只有一端在防这件事。
+    tallyOffsets(dropStaleOffsets(item, locator.shown), offsets)
+    return item
   })
-  return { items, hasMore: records.length > size, page: index, per: size, gate_rows_truncated: gateTruncated }
+  return {
+    items,
+    hasMore: records.length > size,
+    page: index,
+    per: size,
+    offsets_stale: offsets.stale,
+    offsets_unbaselined: offsets.unbaselined,
+    gate_rows_truncated: gateTruncated
+  }
 }
 
 module.exports = {
@@ -244,6 +382,10 @@ module.exports = {
   gateOf,
   gateMap,
   locatorOf,
+  offsetsBasis,
+  dropStaleOffsets,
+  tallyOffsets,
+  shownRowOf,
   hintsForPage,
   listForProject
 }

@@ -450,10 +450,10 @@ async function submitFinal() {
 </script>
 
 <style scoped>
-.arbitration-summary { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--gray-200); border-radius: var(--radius); background: #fff; }
-.arbitration-workspace { overflow: hidden; border: 1px solid var(--gray-200); border-radius: var(--radius); background: #fff; }
+.arbitration-summary { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
+.arbitration-workspace { overflow: hidden; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
 .arbitration-source-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-.arbitration-submit-card { margin-top: 1rem; padding: 1rem; border: 1px solid var(--gray-200); border-radius: var(--radius); background: #fff; }
+.arbitration-submit-card { margin-top: 1rem; padding: 1rem; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
 
 @media (max-width: 640px) {
   .arbitration-source-grid { grid-template-columns: 1fr; }
