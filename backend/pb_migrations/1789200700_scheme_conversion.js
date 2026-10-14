@@ -19,7 +19,17 @@
 // down 只删这些列、索引与整张 conversion_jobs：规范化结论与人工复核结论都会一起丢掉，
 // 要撤掉更早的迁移先备份 pb_data。
 
-const QUEUE_INDEX = "CREATE INDEX idx_pages_normalization_queue ON pages (project, normalization_status)"
+// 队列索引带 page_number, id，而不是只带 (project, normalization_status)。
+// 这不是「多带两列更保险」，是实测出来的：复核队列的生产查询是
+//   FindRecordsByFilter("pages", filter, "page_number,id", size, offset, params)
+// （backend/scheme_conversion.go 的 listNormalizations），它带 ORDER BY page_number, id
+// 与 LIMIT/OFFSET。本机 SQLite 对两种索引形状的 EXPLAIN QUERY PLAN：
+//   (project, normalization_status)                 → SEARCH pages USING INDEX idx_pages_project_page_number (project=?)
+//                                                     USE TEMP B-TREE FOR RIGHT PART OF ORDER BY
+//   (project, normalization_status, page_number, id) → SEARCH pages USING COVERING INDEX idx_pages_normalization_queue
+// 也就是说两列的版本**根本没被用上**，排序还得现搭临时 B 树；四列的版本既能选索引又是覆盖索引。
+// check_migrations.py 里那条计划断言现在按生产查询的形状写，所以这个错误不会再溜过去。
+const QUEUE_INDEX = "CREATE INDEX idx_pages_normalization_queue ON pages (project, normalization_status, page_number, id)"
 const ACTIVE_INDEX = "CREATE UNIQUE INDEX idx_conversion_jobs_active ON conversion_jobs (project) WHERE status IN ('queued','processing')"
 const JOB_INDEX = "CREATE INDEX idx_conversion_jobs_project ON conversion_jobs (project, created DESC)"
 
@@ -35,7 +45,15 @@ const pageFields = [
   { build: () => new TextField({ name: "normalization_source_column", required: false, max: 200 }),
     remove: "normalization_source_column" },
   { build: () => new TextField({ name: "canonical_scheme_id", required: false, max: 200 }), remove: "canonical_scheme_id" },
-  { build: () => new TextField({ name: "canonical_pronunciation", required: false }), remove: "canonical_pronunciation" },
+  { build: () => new TextField({ name: "canonical_pronunciation", required: false, max: 200 }),
+    remove: "canonical_pronunciation" },
+  // 转换那一刻读到的源值副本。复核队列与例外草案都要显示「这条结论是针对哪个原值下的」，
+  // 而现读 proofread_row_json 会随校对改动而变——一条已经定过的结论，它针对的对象却会
+  // 在背地里被换掉。所以转换时把值抄一份存下来，之后一律读这一份。
+  // **刻意不给 max**：它是源单元格的副本，源那一列本身没有长度上限，给它加 max 只会
+  // 新造一个「批次处理到某条就 Save 失败」的理由，而失败的那条恰恰是行长的那条。
+  { build: () => new TextField({ name: "normalization_source_snapshot", required: false }),
+    remove: "normalization_source_snapshot" },
   { build: () => new SelectField({ name: "normalization_status", maxSelect: 1, values: STATUSES, required: false }),
     remove: "normalization_status" },
   { build: () => new TextField({ name: "normalization_rule_version", required: false, max: 120 }),

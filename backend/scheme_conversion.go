@@ -37,6 +37,12 @@ const schemeAdapterDirEnv = "FANGJI_SCHEME_ADAPTER_DIR"
 
 const readingRole = "reading"
 
+// canonicalPronunciationMaxLength 与 source_scheme_id / canonical_scheme_id 的 200 同口径，
+// 也与迁移 1789200700 里 canonical_pronunciation 的 max 一致——两处必须一起改，
+// 否则会变成「界面能存、直接调接口存不进」这种只有一半人碰得到的差别。
+// 转换侧不设这道闸：那里的值来自引擎的输出，长度由目标清单决定，不是人打的。
+const canonicalPronunciationMaxLength = 200
+
 // schemeRegistry 是启动时载入的规则表。载入即校验：一个文件坏掉就整实例起不来
 // （#189 明确要求「非法即启动报错，不要静默半生效」），而不是半套规则在跑。
 type schemeRegistry struct {
@@ -81,17 +87,51 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 	return registry, nil
 }
 
-func (r *schemeRegistry) schemes() []map[string]string {
-	list := make([]map[string]string, 0, len(r.adapters))
+// schemeOption 是管理端方案选择器的一行。rule_status 必须一起发出去：
+// 「这一套不能用来发起真实作业」要让界面在点按钮之前就能说，而不是等 400 回来才知道。
+type schemeOption struct {
+	SourceSchemeID    string `json:"source_scheme_id"`
+	CanonicalSchemeID string `json:"canonical_scheme_id"`
+	RuleVersion       string `json:"rule_version"`
+	RuleStatus        string `json:"rule_status"`
+}
+
+func (r *schemeRegistry) schemes() []schemeOption {
+	list := make([]schemeOption, 0, len(r.adapters))
 	for _, adapter := range r.adapters {
-		list = append(list, map[string]string{
-			"source_scheme_id":    adapter.SourceScheme,
-			"canonical_scheme_id": adapter.CanonicalScheme,
-			"rule_version":        adapter.RuleVersion,
+		list = append(list, schemeOption{
+			SourceSchemeID:    adapter.SourceScheme,
+			CanonicalSchemeID: adapter.CanonicalScheme,
+			RuleVersion:       adapter.RuleVersion,
+			RuleStatus:        adapter.RuleStatus,
 		})
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i]["source_scheme_id"] < list[j]["source_scheme_id"] })
+	sort.Slice(list, func(i, j int) bool { return list[i].SourceSchemeID < list[j].SourceSchemeID })
 	return list
+}
+
+// jobAdapter 是「这套规则能不能拿来跑一个真实作业」的唯一判据，发起与续跑两处都走它。
+//
+// owner 对第 1 条阻断给的是替代方案：真实规则的形状是 #189 的事，本 PR 不发明它，
+// 但本 PR 必须让「没被声明为真实方案的规则」进不了真实作业。所以闸门判的是规则文件自己
+// 的声明（scheme.Adapter.MayDriveRealJobs），而不是它的来源、命名或目录。
+//
+// 返回的第二个值是给管理员看的中文拒绝理由；空串表示放行。三种情形是三句不同的话：
+//   - 根本没登记（reason 为空，由调用方给「本实例没有登记…」那句）；
+//   - 登记了，但声明是 test（本函数给出）；
+//   - 登记了且声明是 production，但作业记录与规则对不上（processConversion 给出）。
+func (r *schemeRegistry) jobAdapter(sourceScheme string) (*scheme.Adapter, string) {
+	adapter, ok := r.adapters[sourceScheme]
+	if !ok {
+		return nil, ""
+	}
+	if !adapter.MayDriveRealJobs() {
+		return adapter, fmt.Sprintf(
+			"「%s」声明的是 rule_status=%q，只能用于测试，不能创建真实转换作业。"+
+				"真实方案要等 #189 把各书凡例转写成 source 侧清单后交付（届时那份规则写 rule_status=%q 并给出 rule_status_basis）。",
+			adapter.SourceScheme, adapter.RuleStatus, scheme.RuleStatusProduction)
+	}
+	return adapter, ""
 }
 
 // projectReadingColumns 从 #170 的列角色里找出记音列。
@@ -205,9 +245,12 @@ func (s *importService) startConversion(c *core.RequestEvent) error {
 	if sourceScheme == "" {
 		return apis.NewBadRequestError("必须先声明本批资料用的是哪一套拼音方案（source_scheme_id），系统不会替你判断。", nil)
 	}
-	adapter, ok := s.schemes.adapters[sourceScheme]
-	if !ok {
+	adapter, refused := s.schemes.jobAdapter(sourceScheme)
+	if adapter == nil {
 		return apis.NewBadRequestError(fmt.Sprintf("本实例没有登记「%s」这套方案。可用方案见 /api/fangji/scheme-adapters。", sourceScheme), nil)
+	}
+	if refused != "" {
+		return apis.NewBadRequestError(refused, nil)
 	}
 	if _, problem := projectReadingColumns(project); problem != "" {
 		return apis.NewBadRequestError(problem, nil)
@@ -317,12 +360,53 @@ func (s *importService) listNormalizations(c *core.RequestEvent) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+// reviewableNormalizationStatus 是 decideNormalization 第一道闸的纯函数形态。
+// 抽出来是为了能单测：handler 要一整个 app 才跑得起来，而这条判据是策略，不是 I/O。
+func reviewableNormalizationStatus(status scheme.Status) bool {
+	switch status {
+	case scheme.Ambiguous, scheme.Unsupported:
+		return true
+	}
+	return false
+}
+
+// reviewBlockedReason 说明「为什么这一条现在不能写人工结论」，空串表示可以写。
+// 四种情形给四句不同的话：管理员要能凭这句话知道下一步做什么，而「不能复核」本身
+// 对「还没跑过转换」和「机器已经判定了」是两条完全不同的处置路径。
+func reviewBlockedReason(status string) string {
+	if reviewableNormalizationStatus(scheme.Status(status)) {
+		return ""
+	}
+	switch scheme.Status(status) {
+	case "":
+		return "这一条还没有跑过转换，不能直接写成复核结论。请先对项目发起一次转换——只有机器判不出来的条目才会进入复核队列。"
+	case scheme.Exact:
+		return "这一条机器已经判定了（EXACT）。复核队列只收机器判不出来的条目；要推翻一个确定结论得先说明机器错在哪里，本入口没有这个字段。"
+	case scheme.Reviewed:
+		return "这一条已经有人给过结论了。本入口不允许覆盖已复核的结论——覆盖会把判定人与判定时间刷成新的，而原来那条结论没有地方留痕。"
+	default:
+		return fmt.Sprintf("状态 %q 不在可复核的取值范围内，只有 AMBIGUOUS 与 UNSUPPORTED 可以给出人工结论。", status)
+	}
+}
+
 func isNormalizationStatus(value string) bool {
 	switch scheme.Status(value) {
 	case scheme.Exact, scheme.Reviewed, scheme.Ambiguous, scheme.Unsupported:
 		return true
 	}
 	return false
+}
+
+// normalizationSourceValue 取「这条结论是针对哪个原值下的」。
+//
+// 优先快照，只有在快照为空时才回落到现读：快照是 convertPage 在转换那一刻抄的，是稳定的；
+// 现读的校对行会随校对改动而变。回落的唯一合法场景是快照这一列存在之前就转换过的行
+// （迁移前的存量），对它们现读是唯一能给出的答案。新转换的行一律走快照。
+func normalizationSourceValue(page *core.Record) string {
+	if snapshot := page.GetString("normalization_source_snapshot"); snapshot != "" {
+		return snapshot
+	}
+	return pageReadingValue(page, page.GetString("normalization_source_column"))
 }
 
 func normalizationView(page *core.Record) map[string]any {
@@ -339,7 +423,7 @@ func normalizationView(page *core.Record) map[string]any {
 		"page_number":                page.GetInt("page_number"),
 		"pdf_page":                   page.GetInt("pdf_page"),
 		"source_scheme_id":           page.GetString("source_scheme_id"),
-		"source_pronunciation":       pageReadingValue(page, page.GetString("normalization_source_column")),
+		"source_pronunciation":       normalizationSourceValue(page),
 		"canonical_scheme_id":        page.GetString("canonical_scheme_id"),
 		"canonical_pronunciation":    page.GetString("canonical_pronunciation"),
 		"normalization_status":       page.GetString("normalization_status"),
@@ -368,6 +452,10 @@ func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	if _, problem := projectReadingColumns(project); problem != "" {
 		return apis.NewBadRequestError(problem, nil)
 	}
+	// 第 1 道闸：只有机器判不出来的条目才需要人。见 reviewBlockedReason。
+	if problem := reviewBlockedReason(page.GetString("normalization_status")); problem != "" {
+		return apis.NewBadRequestError(problem, nil)
+	}
 
 	payload := struct {
 		Canonical string `json:"canonical_pronunciation"`
@@ -387,12 +475,33 @@ func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	if utf8Len(basis) > 500 {
 		return apis.NewBadRequestError("依据最多 500 个字符。", nil)
 	}
+	if utf8Len(canonical) > canonicalPronunciationMaxLength {
+		return apis.NewBadRequestError(fmt.Sprintf("统一方案的写法最多 %d 个字符。", canonicalPronunciationMaxLength), nil)
+	}
+	// 第 2 道闸：写法必须是目标方案拼得出来的音节。判据取自这一条记录的 source_scheme_id
+	// 在规则目录里的那一套——它自带目标侧清单（adapter.Canonical）。#189 把目标端改成
+	// 共享的 puxian-xiangyin 之后，这条判据会跟着一起升级，不需要在这里改。
+	adapter, ok := s.schemes.adapters[page.GetString("source_scheme_id")]
+	if !ok {
+		return apis.NewBadRequestError(fmt.Sprintf(
+			"这一条记的是「%s」这套方案，但它已经不在规则目录里了，无法核对统一方案的写法是否合法。请先把规则放回目录再复核。",
+			page.GetString("source_scheme_id")), nil)
+	}
+	normalized, problem := adapter.NormalizeCanonical(canonical)
+	if problem != nil {
+		return apis.NewBadRequestError(problem.Error(), nil)
+	}
 
-	page.Set("canonical_pronunciation", canonical)
+	page.Set("canonical_pronunciation", normalized)
 	page.Set("normalization_status", string(scheme.Reviewed))
 	page.Set("normalization_basis", basis)
 	page.Set("normalization_reviewed_by", auth.Id)
 	page.Set("normalization_reviewed_at", time.Now().UTC())
+	// 第 3 道闸的结果：把「在哪个规则版本下判的」写下来。convertPage 写的是产出当前结论
+	// 的那一版；人工结论覆盖它之后，这一列就表示「当前值是在这一版规则下定的」。
+	// 升版时靠它找出需要重新过目的人工结论——没有它，一条三年前按旧规则拍的结论
+	// 与今天拍的看起来一模一样。
+	page.Set("normalization_rule_version", adapter.RuleVersion)
 	// 与 convertPage 同一口径：这里「读一条 → 写一条」，窗口只有一次请求，风险远低于批处理，
 	// 但统一只写改动过的字段，避免同一个仓里出现两种 Save 语义（整行快照 vs 只写改动）。
 	page.IgnoreUnchangedFields(true)
@@ -411,13 +520,19 @@ func (s *importService) exportNormalizationExceptions(c *core.RequestEvent) erro
 	}
 	query := c.Request.URL.Query()
 	sourceScheme := strings.TrimSpace(query.Get("source_scheme_id"))
-
-	params := dbx.Params{"project": projectID}
-	filter := `project = {:project} && normalization_status = "REVIEWED" && normalization_basis != ""`
-	if sourceScheme != "" {
-		filter += " && source_scheme_id = {:scheme}"
-		params["scheme"] = sourceScheme
+	// 必填，而且在册。草案是要贴进**某一套**方案的规则文件的 exceptions[] 的；
+	// 把两套来源方案的结论混成一张表，贴到哪个文件里都不对，而收件人多半不会逐条核。
+	// 原来不传就静默导出全部——那正是这样一张表。
+	if sourceScheme == "" {
+		return apis.NewBadRequestError(
+			"必须指定 source_scheme_id：草案要贴进某一套方案的规则文件，不能把多套来源方案的结论混成一张表。", nil)
 	}
+	if _, ok := s.schemes.adapters[sourceScheme]; !ok {
+		return apis.NewBadRequestError(fmt.Sprintf("本实例没有登记「%s」这套方案，无法导出它的规则草案。", sourceScheme), nil)
+	}
+
+	params := dbx.Params{"project": projectID, "scheme": sourceScheme}
+	filter := `project = {:project} && normalization_status = "REVIEWED" && normalization_basis != "" && source_scheme_id = {:scheme}`
 	records, err := s.app.FindRecordsByFilter("pages", filter, "page_number,id", 200000, 0, params)
 	if err != nil {
 		return apis.NewBadRequestError("读取人工结论失败。", err)
@@ -425,10 +540,9 @@ func (s *importService) exportNormalizationExceptions(c *core.RequestEvent) erro
 
 	drafts := make([]map[string]any, 0, len(records))
 	for _, page := range records {
-		if _, ok := s.schemes.adapters[page.GetString("source_scheme_id")]; !ok {
-			continue // 方案已经从规则目录里撤掉了，这条结论没有可回填的去处
-		}
-		source := pageReadingValue(page, page.GetString("normalization_source_column"))
+		// 这里不再逐条查方案在不在目录里：上面那一句已经保证 sourceScheme 在册，
+		// 而 filter 保证每条记录的 source_scheme_id 都等于它。
+		source := normalizationSourceValue(page)
 		drafts = append(drafts, map[string]any{
 			"id":                      "ex:" + page.Id,
 			"source_pronunciation":    source,
@@ -503,10 +617,31 @@ func (s *importService) processConversion(work importWork) {
 		s.markConversionFatal(work, "CONVERSION_PROJECT_MISSING", "项目不存在或已被删除。", err)
 		return
 	}
-	adapter, ok := s.schemes.adapters[job.GetString("source_scheme")]
-	if !ok {
+	sourceScheme := job.GetString("source_scheme")
+	adapter, refused := s.schemes.jobAdapter(sourceScheme)
+	if adapter == nil {
 		s.markConversionFatal(work, "CONVERSION_SCHEME_UNKNOWN",
-			fmt.Sprintf("规则目录里已经没有「%s」这套方案了，请先把它放回规则目录再重跑。", job.GetString("source_scheme")), nil)
+			fmt.Sprintf("规则目录里已经没有「%s」这套方案了，请先把它放回规则目录再重跑。", sourceScheme), nil)
+		return
+	}
+	if refused != "" {
+		// 发起侧那句话是「你不能建」，这里是「已经建的那个不能再跑了」——同一个判据、
+		// 两种处境。作业能走到这里只有一种可能：它是闸门装上之前建的，或者规则文件在
+		// 作业中途被改成了 test。续跑会把一半条目落在测试规则下，比直接失败更难查。
+		s.markConversionFatal(work, "CONVERSION_RULE_STATUS_DOWNGRADED",
+			fmt.Sprintf("作业用的是「%s」，但这套规则现在声明为 rule_status=%q，不能继续跑真实作业。"+
+				"请把真实规则放回规则目录，并重新发起一个作业。", sourceScheme, adapter.RuleStatus), nil)
+		return
+	}
+	// 规则身份校验。断点续跑会把同一个作业的条目分两次写；两次之间规则换了版本的话，
+	// 同一批条目就落在两套规则下，而汇总仍然只有一个数——比整批重跑更难对账。
+	// source_scheme 是查表的键，对上不是巧合；能变的是它指向的那份规则。
+	if adapter.CanonicalScheme != job.GetString("canonical_scheme") || adapter.RuleVersion != job.GetString("rule_version") {
+		s.markConversionFatal(work, "CONVERSION_RULE_VERSION_CHANGED",
+			fmt.Sprintf("规则已换版：作业记的是 %s → %s（%s），规则目录里现在是 %s → %s（%s）。"+
+				"续跑会让同一批条目落在两套规则下，请重新发起作业。",
+				sourceScheme, job.GetString("canonical_scheme"), job.GetString("rule_version"),
+				adapter.SourceScheme, adapter.CanonicalScheme, adapter.RuleVersion), nil)
 		return
 	}
 	columns, problem := projectReadingColumns(project)
@@ -622,6 +757,11 @@ func (s *importService) convertPage(page *core.Record, adapter *scheme.Adapter, 
 	result := scheme.Convert(value, adapter)
 	page.Set("source_scheme_id", result.SourceScheme)
 	page.Set("normalization_source_column", column)
+	// 抄下这一刻读到的源值。之后复核队列、例外草案读的都是这一份，而不是现读校对行：
+	// 一条 AMBIGUOUS 是「针对某个原值」判的，如果原值随校对改动而变，那条结论针对的
+	// 对象就被悄悄换掉了，而结论本身看不出来。每个走到这里的条目都写，不论结论是什么——
+	// 只给 AMBIGUOUS 写会让「为什么这一条没有快照」需要靠状态去猜。
+	page.Set("normalization_source_snapshot", value)
 	page.Set("canonical_scheme_id", result.CanonicalScheme)
 	page.Set("canonical_pronunciation", result.CanonicalPronunciation)
 	page.Set("normalization_status", string(result.Status))
