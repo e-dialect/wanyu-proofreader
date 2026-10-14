@@ -1,4 +1,5 @@
 """Exercise publication authorization and immutable manifest failure boundaries."""
+import datetime
 import hashlib
 import json
 import os
@@ -14,6 +15,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 RELEASE = yaml.safe_load((ROOT / '.github/workflows/release.yml').read_text())
 CI = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
 SHA = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+COMMIT_DATE = datetime.datetime.fromtimestamp(int(subprocess.check_output(['git', 'show', '-s', '--format=%ct', SHA], cwd=ROOT)), datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+def labels():
+    return {'org.opencontainers.image.revision': SHA, 'org.opencontainers.image.source': 'https://github.com/e-dialect/wanyu-proofreader', 'org.opencontainers.image.version': 'sha-' + SHA, 'org.opencontainers.image.created': COMMIT_DATE}
 
 
 def node(source, env=None):
@@ -65,19 +70,20 @@ try{await execute(github,context,core);console.log(JSON.stringify(outputs))}catc
         self.assertFalse(any('checkout' in step.get('uses', '') for step in RELEASE['jobs']['authorize']['steps']))
         self.assertEqual(RELEASE['jobs']['publish']['needs'], 'authorize')
         self.assertEqual(RELEASE['jobs']['publish']['permissions']['packages'], 'write')
+        steps = {step['id']: step for step in RELEASE['jobs']['publish']['steps'] if 'id' in step}
+        for service in ['backend', 'frontend']:
+            self.assertEqual(steps[service]['if'], f"steps.existing.outputs.{service}_digest == ''")
 
 
 class ManifestTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.directory = pathlib.Path(self.temp.name)
-        self.env = {'SOURCE_SHA': SHA, 'VERSION': 'sha-' + SHA, 'BUILD_DATE': '2026-10-14T00:00:00Z'}
+        self.env = {'SOURCE_SHA': SHA, 'VERSION': 'sha-' + SHA, 'BUILD_DATE': COMMIT_DATE}
         for service in ['backend', 'frontend']:
-            self.write_manifest(service, {'schemaVersion': 2,
-                'mediaType': 'application/vnd.oci.image.manifest.v1+json',
-                'config': {'digest': 'sha256:' + 'c' * 64}})
             self.write_config(service, {'os': 'linux', 'architecture': 'amd64',
-                'config': {'Labels': {'org.opencontainers.image.revision': SHA}}})
+                'config': {'Labels': labels()}})
+            self.bind_config(service)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -89,6 +95,12 @@ class ManifestTests(unittest.TestCase):
 
     def write_config(self, service, value):
         (self.directory / (service + '-config.json')).write_text(json.dumps(value))
+
+    def bind_config(self, service):
+        raw = (self.directory / (service + '-config.json')).read_bytes()
+        self.write_manifest(service, {'schemaVersion': 2,
+            'mediaType': 'application/vnd.oci.image.manifest.v1+json',
+            'config': {'digest': 'sha256:' + hashlib.sha256(raw).hexdigest(), 'size': len(raw)}})
 
     def create(self):
         return subprocess.run(['node', 'scripts/create-release-manifest.mjs', str(self.directory)], cwd=ROOT,
@@ -122,33 +134,83 @@ class ManifestTests(unittest.TestCase):
         self.assertNotEqual(self.create().returncode, 0)
         self.assertFalse((self.directory / 'release-manifest.json').exists())
 
+    def test_raw_config_must_match_manifest_digest(self):
+        raw = (self.directory / 'backend-config.json').read_bytes()
+        # Keep valid JSON and byte length so only the content hash detects this.
+        tampered = raw.replace(b'linux', b'linuz', 1)
+        self.assertEqual(len(raw), len(tampered))
+        (self.directory / 'backend-config.json').write_bytes(tampered)
+        self.assertNotEqual(self.create().returncode, 0)
+        self.assertFalse((self.directory / 'release-manifest.json').exists())
+
     def test_wrong_platform_or_revision_is_rejected(self):
         for key, value in [('architecture', 'arm64'), ('revision', 'a' * 40)]:
             with self.subTest(key=key):
-                config = {'os': 'linux', 'architecture': 'amd64', 'config': {'Labels': {'org.opencontainers.image.revision': SHA}}}
+                config = {'os': 'linux', 'architecture': 'amd64', 'config': {'Labels': labels()}}
                 if key == 'revision':
                     config['config']['Labels']['org.opencontainers.image.revision'] = value
                 else:
                     config[key] = value
                 self.write_config('backend', config)
+                self.bind_config('backend')
                 self.assertNotEqual(self.create().returncode, 0)
                 self.assertFalse((self.directory / 'release-manifest.json').exists())
 
 
 class ImmutableTagTests(unittest.TestCase):
     def check(self, responses):
-        script = (ROOT / 'scripts/assert-release-tags-absent.mjs').resolve().as_uri()
+        script = (ROOT / 'scripts/resolve-release-images.mjs').resolve().as_uri()
         code = '''import assert from 'node:assert/strict';
 const responses=RESPONSES;let count=0;
 globalThis.fetch=async(url)=>{assert.ok(url.startsWith('https://api.github.com/orgs/e-dialect/packages/container/wanyu-proofreader-'));const r=responses[count++];return {status:r.status,ok:r.status===200,json:async()=>r.body}};
 await import(SCRIPT);assert.equal(count,responses.length);
 '''.replace('RESPONSES', json.dumps(responses)).replace('SCRIPT', json.dumps(script))
-        return node(code, {'SOURCE_SHA': SHA, 'GHCR_TOKEN': 'synthetic-fixture-token'})
+        with tempfile.TemporaryDirectory() as temp:
+            return node(code, {'SOURCE_SHA': SHA, 'GHCR_TOKEN': 'synthetic-fixture-token', 'BUILD_DATE': COMMIT_DATE, 'GITHUB_OUTPUT': str(pathlib.Path(temp) / 'github-output')})
 
     def test_new_packages_can_publish_but_both_packages_are_checked(self):
         self.assertEqual(self.check([{'status': 404}, {'status': 200, 'body': []}]).returncode, 0)
         existing = {'status': 200, 'body': [{'metadata': {'container': {'tags': ['sha-' + SHA]}}}]}
         self.assertNotEqual(self.check([{'status': 404}, existing]).returncode, 0)
+
+    def test_retry_reuses_only_fully_verified_published_digest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = pathlib.Path(temp)
+            config = {'os': 'linux', 'architecture': 'amd64', 'config': {'Labels': labels()}}
+            def registry_response():
+                raw_config = json.dumps(config).encode()
+                raw = json.dumps({'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.manifest.v1+json', 'config': {'digest': 'sha256:' + hashlib.sha256(raw_config).hexdigest(), 'size': len(raw_config)}}).encode()
+                digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
+                (directory / 'manifest').write_bytes(raw)
+                return digest, raw_config
+            docker = directory / 'docker'
+            docker.write_text("#!/usr/bin/env python3\nimport pathlib,sys\np=pathlib.Path(__file__).parent\nassert sys.argv[1:4]==['buildx','imagetools','inspect']\nassert any('wanyu-proofreader-'+s+'@sha256:' in sys.argv[4] for s in ['backend','frontend'])\nsys.stdout.buffer.write((p/'manifest').read_bytes())\n")
+            docker.chmod(0o755)
+            script = (ROOT / 'scripts/resolve-release-images.mjs').resolve().as_uri()
+            def execute(redirect_host=None, both_existing=False):
+                (directory / 'github-output').unlink(missing_ok=True)
+                digest, raw_config = registry_response()
+                existing = {'status': 200, 'body': [{'name': digest, 'metadata': {'container': {'tags': ['sha-' + SHA]}}}]}
+                responses = [existing, existing if both_existing else {'status': 404}]
+                code = "import assert from 'node:assert/strict';const r=" + json.dumps(responses) + ";const blob=" + json.dumps(raw_config.decode()) + ";const redirect=" + json.dumps(redirect_host) + ";let n=0;globalThis.fetch=async(url,options)=>{url=String(url);if(url.startsWith('https://ghcr.io/token?'))return new Response(JSON.stringify({token:'synthetic-pull-token'}));if(url.includes('/blobs/'))return redirect?new Response(null,{status:307,headers:{location:'https://'+redirect+'/fixture?signature=synthetic'}}):new Response(blob);if(url.startsWith('https://pkg-containers.githubusercontent.com/')){assert.equal(options.headers?.Authorization,undefined);return new Response(blob)}const v=r[n++];return {status:v.status,ok:v.status===200,json:async()=>v.body}};await import(" + json.dumps(script) + ");"
+
+                env = {'PATH': str(directory) + os.pathsep + os.environ['PATH'], 'SOURCE_SHA': SHA, 'GHCR_TOKEN': 'synthetic-fixture-token', 'GITHUB_ACTOR': 'synthetic-actor', 'BUILD_DATE': COMMIT_DATE, 'GITHUB_OUTPUT': str(directory / 'github-output')}
+                return node(code, env), digest
+            for both_existing in (False, True):
+                with self.subTest(both_existing=both_existing):
+                    result, digest = execute(both_existing=both_existing)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual((directory / 'github-output').read_text(), 'backend_digest=' + digest + '\nfrontend_digest=' + (digest if both_existing else '') + '\n')
+            self.assertEqual(execute('pkg-containers.githubusercontent.com')[0].returncode, 0)
+            untrusted = execute('untrusted.example')[0]
+            self.assertNotEqual(untrusted.returncode, 0)
+            self.assertIn('Untrusted registry blob redirect', untrusted.stderr)
+            # Valid raw blobs with mismatched identity still must not be reused.
+            for key, value in [('org.opencontainers.image.revision', 'a' * 40), ('org.opencontainers.image.source', 'https://github.com/other/repo'), ('org.opencontainers.image.version', 'unexpected-version'), ('org.opencontainers.image.created', '2020-01-01T00:00:00Z')]:
+                with self.subTest(label=key):
+                    config['config']['Labels'] = labels()
+                    config['config']['Labels'][key] = value
+                    self.assertNotEqual(execute()[0].returncode, 0)
 
     def test_registry_api_errors_fail_closed(self):
         for status in [401, 403, 429, 500]:

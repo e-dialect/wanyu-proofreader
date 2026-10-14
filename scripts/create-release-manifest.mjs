@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { hash, verifyImage } from './release-image.mjs'
 
 const directory = process.argv[2] || 'release'
 const sourceSHA = process.env.SOURCE_SHA
@@ -11,24 +11,19 @@ const git = (...args) => execFileSync('git', args)
 assert.equal(git('rev-parse', 'HEAD').toString().trim(), sourceSHA, 'Manifest must describe checked-out source')
 assert.equal(process.env.VERSION, `sha-${sourceSHA}`)
 assert.match(process.env.BUILD_DATE ?? '', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
-const hash = bytes => `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+const commitDate = new Date(Number(git('show', '-s', '--format=%ct', sourceSHA).toString().trim()) * 1000).toISOString().replace('.000Z', 'Z')
+assert.equal(process.env.BUILD_DATE, commitDate, 'Retry must use the same commit-time build stamp')
 const images = {}
 for (const service of ['backend', 'frontend']) {
   const raw = await readFile(join(directory, `${service}-manifest.json`))
-  const manifest = JSON.parse(raw)
-  const config = JSON.parse(await readFile(join(directory, `${service}-config.json`), 'utf8'))
+  const configRaw = await readFile(join(directory, `${service}-config.json`))
   const digest = process.env[`${service.toUpperCase()}_DIGEST`]
-  assert.ok(hash(raw) === digest || (raw.at(-1) === 10 && hash(raw.subarray(0, -1)) === digest), `${service} registry digest`)
-  assert.ok(['application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'].includes(manifest.mediaType), 'A single-platform image manifest is required')
-  assert.match(manifest.config?.digest ?? '', /^sha256:[0-9a-f]{64}$/)
-  assert.equal(config.os, 'linux')
-  assert.equal(config.architecture, 'amd64')
-  assert.equal(config.config?.Labels?.['org.opencontainers.image.revision'], sourceSHA)
+  const configDigest = verifyImage(raw, configRaw, digest, sourceSHA, commitDate)
   images[service] = {
     image: `ghcr.io/e-dialect/wanyu-proofreader-${service}`,
     tag: `sha-${sourceSHA}`,
     digest,
-    configDigest: manifest.config.digest,
+    configDigest,
     platform: 'linux/amd64',
     revision: sourceSHA,
   }

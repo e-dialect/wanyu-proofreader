@@ -99,19 +99,26 @@ jobs:
             if (data.commit.sha !== process.env.SOURCE_SHA) throw new Error('main advanced; publish its CI run instead');
       - name: Set backend version stamps
         run: |
-          echo "VERSION=sha-$SOURCE_SHA" >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          python3 - >> "$GITHUB_ENV" <<'PY'
+          import datetime, os, subprocess
+          sha = os.environ['SOURCE_SHA']
+          stamp = int(subprocess.check_output(['git', 'show', '-s', '--format=%ct', sha]))
+          print('VERSION=sha-' + sha)
+          print('BUILD_DATE=' + datetime.datetime.fromtimestamp(stamp, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
+          PY
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Refuse to overwrite existing immutable source tags
+      - name: Resolve existing immutable images for safe retry
+        id: existing
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/assert-release-tags-absent.mjs
+        run: node scripts/resolve-release-images.mjs
       - name: Build and publish backend
         id: backend
+        if: steps.existing.outputs.backend_digest == ''
         uses: docker/build-push-action@v7
         with:
           context: ./backend
@@ -122,6 +129,7 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
             org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.source=https://github.com/e-dialect/wanyu-proofreader
           build-args: |
             VERSION=${{ env.VERSION }}
@@ -131,6 +139,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend
       - name: Build and publish frontend
         id: frontend
+        if: steps.existing.outputs.frontend_digest == ''
         uses: docker/build-push-action@v7
         with:
           context: ./frontend
@@ -141,6 +150,7 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
             org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.source=https://github.com/e-dialect/wanyu-proofreader
           # VITE_BACKEND_URL is runtime configuration. Empty uses the public
           # HTTPS origin and nginx proxies /api and realtime SSE to backend.
@@ -148,16 +158,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
       - name: Inspect immutable registry objects and create manifest
         env:
-          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
-          FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest }}
+          BACKEND_DIGEST: ${{ steps.backend.outputs.digest || steps.existing.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest || steps.existing.outputs.frontend_digest }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir release
-          for service in backend frontend; do
-            if [ "$service" = backend ]; then digest="$BACKEND_DIGEST"; else digest="$FRONTEND_DIGEST"; fi
-            image="ghcr.io/e-dialect/wanyu-proofreader-$service@$digest"
-            docker buildx imagetools inspect "$image" --raw > "release/$service-manifest.json"
-            docker buildx imagetools inspect "$image" --format '{{json .Image}}' > "release/$service-config.json"
-          done
+          node scripts/inspect-release-images.mjs release
           node scripts/create-release-manifest.mjs release
       - uses: actions/upload-artifact@v7
         with:
