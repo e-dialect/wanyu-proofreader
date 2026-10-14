@@ -67,3 +67,23 @@ export function conversionSummaryLines(job) {
 export function adapterNotice(adapters) {
   return String(adapters?.notice || '').trim()
 }
+
+// schemeOptionLabel 是方案选择器里的一行。rule_status 必须画出来：规则文件自己声明了
+// 它能不能创建真实作业，而这件事要在点「生成统一拼音」之前就看得见——等一个 400 回来
+// 才知道，管理员会以为是界面坏了。
+//
+// 判断写 `=== 'production'` 而不是 `!== 'test'`：将来多一个取值时，不认识的那个必须落在
+// 「不能跑真实作业」这一侧，与后端 scheme.MayDriveRealJobs 同一口径。
+export function schemeOptionLabel(item) {
+  const base = `${item?.source_scheme_id || '（未命名）'} → ${item?.canonical_scheme_id || '（未命名）'}（${item?.rule_version || '未标注版本'}）`
+  return item?.rule_status === 'production' ? base : `${base}· 仅测试`
+}
+
+// testOnlySchemeIds 挑出规则目录里声明为测试的那些方案 id，供选择器下面补一句说明。
+// 一句话说清「可以选中、但服务端会拒绝」，比在选项里塞一整句更长的话更读得下去。
+export function testOnlySchemeIds(schemes) {
+  return (schemes || [])
+    .filter((item) => item?.rule_status !== 'production')
+    .map((item) => item?.source_scheme_id)
+    .filter(Boolean)
+}

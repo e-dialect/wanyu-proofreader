@@ -623,7 +623,7 @@
               <select v-model="schemeSourceId" class="form-control">
                 <option value="">请选择</option>
                 <option v-for="item in schemeOptions" :key="item.source_scheme_id" :value="item.source_scheme_id">
-                  {{ item.source_scheme_id }} → {{ item.canonical_scheme_id }}（{{ item.rule_version }}）
+                  {{ schemeOptionLabel(item) }}
                 </option>
               </select>
             </label>
@@ -632,6 +632,12 @@
             </button>
             <button type="button" class="btn btn-secondary" :disabled="schemeBusy" @click="loadSchemeState">刷新</button>
           </div>
+          <!-- 规则文件自己声明了能不能跑真实作业。合成夹具在目录里是合法的一等公民
+               （引擎需要它），但它建不出真实作业——这句话必须在按钮旁边说。 -->
+          <p v-if="testOnlySchemes.length" class="text-sm text-muted">
+            {{ testOnlySchemes.join('、') }} 声明为「仅测试」（rule_status=test）：可以选中，但服务端会拒绝用它创建真实转换作业。
+            真实方案随 #189 交付，届时那份规则写 rule_status=production 并给出出处。
+          </p>
           <p v-if="schemeError" class="alert alert-error" role="alert">{{ schemeError }}</p>
           <p v-if="schemeSuccess" class="alert alert-success" role="status">{{ schemeSuccess }}</p>
 
@@ -654,35 +660,61 @@
             不会被下一次批处理推回机器判断。
           </p>
           <p v-if="!reviewRows.length" class="text-muted">当前没有待复核的条目。</p>
-          <ul v-else class="assist-list">
-            <li v-for="row in reviewRows" :key="row.id" class="assist-row">
-              <div>
-                <strong>第 {{ row.page_number }} 条</strong>
-                <span :class="normalizationBadgeClass(row.normalization_status)">
-                  {{ normalizationStatusLabel(row.normalization_status) }}
-                </span>
-                <p class="text-sm">原值：<code>{{ row.source_pronunciation || '（空）' }}</code></p>
-                <p v-if="row.normalization_trace.length" class="text-sm text-muted">
-                  经过规则：{{ row.normalization_trace.join(' → ') }}
-                </p>
-                <p v-if="row.candidates.length" class="text-sm text-muted">候选：{{ row.candidates.join(' / ') }}</p>
-                <label class="admin-filter-field">
-                  <span>统一方案的写法</span>
-                  <input v-model="reviewDraft[row.id].canonical" class="form-control" />
-                </label>
-                <label class="admin-filter-field">
-                  <span>依据（必填）</span>
-                  <input v-model="reviewDraft[row.id].basis" class="form-control" maxlength="500" />
-                </label>
-                <button
-                  type="button"
-                  class="btn btn-primary btn-sm"
-                  :disabled="reviewBusy || !reviewDraft[row.id].canonical.trim() || !reviewDraft[row.id].basis.trim()"
-                  @click="saveReview(row)"
-                >确认结论</button>
-              </div>
-            </li>
-          </ul>
+          <template v-else>
+            <p class="text-sm text-muted">共 {{ reviewTotalItems }} 条待复核。</p>
+            <ul class="assist-list">
+              <li v-for="row in reviewRows" :key="row.id" class="assist-row">
+                <div>
+                  <strong>第 {{ row.page_number }} 条</strong>
+                  <span :class="normalizationBadgeClass(row.normalization_status)">
+                    {{ normalizationStatusLabel(row.normalization_status) }}
+                  </span>
+                  <p class="text-sm">原值（转换时）：<code>{{ row.source_pronunciation || '（空）' }}</code></p>
+                  <p v-if="row.normalization_trace.length" class="text-sm text-muted">
+                    经过规则：{{ row.normalization_trace.join(' → ') }}
+                  </p>
+                  <p v-if="row.candidates.length" class="text-sm text-muted">候选：{{ row.candidates.join(' / ') }}</p>
+                  <label class="admin-filter-field">
+                    <span>统一方案的写法</span>
+                    <input v-model="reviewDraft[row.id].canonical" class="form-control" />
+                  </label>
+                  <label class="admin-filter-field">
+                    <span>依据（必填）</span>
+                    <input v-model="reviewDraft[row.id].basis" class="form-control" maxlength="500" />
+                  </label>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="reviewBusy || !reviewDraft[row.id].canonical.trim() || !reviewDraft[row.id].basis.trim()"
+                    @click="saveReview(row)"
+                  >确认结论</button>
+                </div>
+              </li>
+            </ul>
+          <!-- 队列也要能翻页：一次转换动辄留下几十上百条待复核，只给前 10 条会让
+               管理员以为「队列就这么长」，而剩下的那些没有任何入口能看到。 -->
+          <nav v-if="reviewTotalPages > 1" class="admin-pagination" aria-label="复核队列分页">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="reviewPage <= 1"
+              @click="gotoReviewPage(reviewPage - 1)"
+            >
+              上一页
+            </button>
+            <span class="text-sm text-muted">
+              第 {{ reviewPage }} / {{ reviewTotalPages }} 页
+            </span>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="reviewPage >= reviewTotalPages"
+              @click="gotoReviewPage(reviewPage + 1)"
+            >
+              下一页
+            </button>
+          </nav>
+          </template>
         </template>
       </section>
     </template>
@@ -802,7 +834,9 @@ import {
   conversionJobStatusLabel,
   conversionSummaryLines,
   normalizationBadgeClass,
-  normalizationStatusLabel
+  normalizationStatusLabel,
+  schemeOptionLabel,
+  testOnlySchemeIds
 } from '@/lib/schemeConversion'
 import { getPbMessage, getPbStatus, getUploadErrorMessage, isRetryablePdfUploadError } from '@/utils/pbErrors'
 
@@ -888,16 +922,39 @@ const schemeSuccess = ref('')
 const reviewRows = ref([])
 const reviewDraft = ref({})
 const reviewBusy = ref(false)
+// 队列分页。perPage 与服务端默认（25）不同是有意的：一屏 10 条够看清候选与依据，
+// 而队列的长度现在靠下面那句「共 N 条待复核」说，不靠把整页撑长。
+const reviewPage = ref(1)
+const reviewTotalItems = ref(0)
+const reviewTotalPages = ref(1)
 // 轮询代际：离开页面或再次发起时旧的那条循环必须自己停，否则它会一直打接口。
 let schemePollGeneration = 0
 
 const schemeSummary = computed(() => conversionSummaryLines(schemeJob.value))
+// 目录里声明为「仅测试」的方案。列表逐条从服务端读，不在这里猜哪一份是夹具：
+// 判断权在规则文件自己手里（rule_status），界面只负责把它画出来。
+const testOnlySchemes = computed(() => testOnlySchemeIds(schemeOptions.value))
 
 async function loadReviews() {
-  const queue = await listNormalizations(projectId, { status: 'AMBIGUOUS', perPage: 10 })
+  const queue = await listNormalizations(projectId, { status: 'AMBIGUOUS', perPage: 10, page: reviewPage.value })
   reviewRows.value = queue.items || []
+  reviewTotalItems.value = queue.totalItems || 0
+  reviewTotalPages.value = queue.totalPages || 1
+  // 服务端会把越界的 page 夹回最后一页，这里跟回去：不复写的话，界面上写的是
+  // 「第 3 / 2 页」而列表是第 2 页的内容——复核一条少一条时很容易走到这里。
+  reviewPage.value = queue.page || 1
   // 草稿按条目 id 存：刷新后原来的输入不该串到别的条目上。
   reviewDraft.value = Object.fromEntries(reviewRows.value.map((row) => [row.id, { canonical: '', basis: '' }]))
+}
+
+async function gotoReviewPage(page) {
+  if (page < 1 || page > reviewTotalPages.value) return
+  reviewPage.value = page
+  try {
+    await loadReviews()
+  } catch (e) {
+    schemeError.value = getPbMessage(e, '复核队列加载失败。')
+  }
 }
 
 async function loadSchemeState() {
@@ -922,6 +979,9 @@ async function runConversion() {
   try {
     const job = await startConversion(projectId, schemeSourceId.value)
     schemeJob.value = job
+    // 新作业会把队列重造一遍，退回第一页：留在第三页看一份已经被换掉的清单，
+    // 翻页控件上的「第 3 / 5 页」就成了一句没人能核对的话。
+    reviewPage.value = 1
     schemeSuccess.value = '转换作业已排队，完成后这里会显示汇总。'
     pollConversion()
   } catch (e) {

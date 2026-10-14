@@ -6,7 +6,9 @@ import {
   conversionJobStatusLabel,
   conversionSummaryLines,
   normalizationBadgeClass,
-  normalizationStatusLabel
+  normalizationStatusLabel,
+  schemeOptionLabel,
+  testOnlySchemeIds
 } from '../src/lib/schemeConversion.js'
 
 const style = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -66,6 +68,37 @@ test('未转换的条目要能与「转换过但不是这个状态」区分开',
   assert.equal(normalizationStatusLabel('AMBIGUOUS'), '需人工确认')
   assert.equal(normalizationStatusLabel('NOPE'), 'NOPE', '取值表外的状态原样显示，不能吞成空白')
   assert.equal(conversionJobStatusLabel('failed'), '失败')
+})
+
+test('状态到 badge 类的映射是逐条钉住的', () => {
+  // 只断言「类名在样式表里存在」是不够的：把 EXACT 与 UNSUPPORTED 的修饰类对调，
+  // 两侧的类名都仍然存在，而页面上「自动确定」会画成红色——正是 #129 那类静默错误。
+  // 所以取值在这里逐条写死，样式表检查只负责「这些类名真的定义了」。
+  assert.equal(normalizationBadgeClass('EXACT'), 'badge badge-approved')
+  assert.equal(normalizationBadgeClass('REVIEWED'), 'badge badge-proofread')
+  assert.equal(normalizationBadgeClass('AMBIGUOUS'), 'badge badge-arbitration')
+  assert.equal(normalizationBadgeClass('UNSUPPORTED'), 'badge badge-rejected')
+  // 未转换与取值表外的状态只给基础类，不冒充任何一种结论。
+  assert.equal(normalizationBadgeClass(''), 'badge')
+  assert.equal(normalizationBadgeClass('NOPE'), 'badge')
+})
+
+test('方案选择器把「仅测试」标在选项上', () => {
+  // 规则文件自己声明能不能跑真实作业。这句话要在按钮之前就看得见，否则管理员点下去
+  // 收到一个 400，只会以为是界面坏了。
+  const runnable = { source_scheme_id: 'a', canonical_scheme_id: 'b', rule_version: 'v1', rule_status: 'production' }
+  const fixture = { source_scheme_id: 'x', canonical_scheme_id: 'y', rule_version: 'v0', rule_status: 'test' }
+  assert.equal(schemeOptionLabel(runnable), 'a → b（v1）')
+  assert.match(schemeOptionLabel(fixture), /^x → y（v0）.*仅测试/)
+  // 判据是 === 'production'，不是 !== 'test'：服务端将来多一个取值时，不认识的那个
+  // 必须落在「不能跑真实作业」这一侧，与后端 MayDriveRealJobs 同口径。
+  assert.match(schemeOptionLabel({ ...fixture, rule_status: 'NOPE' }), /仅测试/)
+  assert.match(schemeOptionLabel({}), /仅测试/)
+
+  const ids = testOnlySchemeIds([runnable, fixture, { source_scheme_id: 'z' }])
+  assert.deepEqual(ids, ['x', 'z'])
+  assert.deepEqual(testOnlySchemeIds([runnable]), [])
+  assert.deepEqual(testOnlySchemeIds(undefined), [])
 })
 
 test('every badge class exists in the stylesheet', () => {

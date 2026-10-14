@@ -32,6 +32,13 @@ export async function decideNormalization(pageId, { canonical, basis }) {
   })
 }
 
-export async function listNormalizationExceptions(projectId) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/normalization-exceptions`, { requestKey: null })
+// 结论回流草案。本轮没有界面调用它（草案由人从接口直接取走），留在这里是为了
+// 服务层的形状与服务端一致：source_scheme_id 是必填的——草案要贴进**某一套**方案的
+// 规则文件，不传的话服务端会 400，而一个注定失败的包装比没有包装更糟。
+export async function listNormalizationExceptions(projectId, sourceSchemeId) {
+  const query = new URLSearchParams({ source_scheme_id: String(sourceSchemeId ?? '') })
+  return pb.send(
+    `/api/fangji/projects/${encodeURIComponent(projectId)}/normalization-exceptions?${query}`,
+    { requestKey: null }
+  )
 }
