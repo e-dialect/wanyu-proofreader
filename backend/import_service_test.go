@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/pocketbase/pocketbase/core"
 	"log"
+	"os"
 	"strings"
 	"testing"
 
@@ -490,5 +491,29 @@ func TestCSVPreservesExplicitColumnOrder(t *testing.T) {
 	}
 	if row.entryText != "𢶀 十 意思 二" {
 		t.Fatalf("text reordered: %s", row.entryText)
+	}
+}
+
+// pdfValidator is copied into every validated PDF's `validation_tool` field, so it is
+// provenance, not a label: a dependency bump never touches a Go constant, and the last
+// two pdfcpu upgrades left new records claiming v0.8.1 while the binary linked 0.16.x.
+// Read the required version straight from go.mod so the marker cannot drift again.
+func TestPDFValidatorMarkerMatchesRequiredModule(t *testing.T) {
+	mod, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := ""
+	for _, line := range strings.Split(string(mod), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "github.com/pdfcpu/pdfcpu" {
+			version = fields[1]
+		}
+	}
+	if version == "" {
+		t.Fatal("go.mod does not require github.com/pdfcpu/pdfcpu")
+	}
+	if want := "pdfcpu " + version; pdfValidator != want {
+		t.Fatalf("validation_tool provenance is stale: pdfValidator = %q, want %q", pdfValidator, want)
 	}
 }
