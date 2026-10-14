@@ -39,6 +39,7 @@ CSV 里的样子 qa533      ← 导出把上标降级成了普通数字
 
 - **每列一套合法调值**，不是一套全局：`拼音`/`莆田IPA` 用莆田集，`仙游IPA` 用仙游集。依据是凡例三.1「**拼音中的声调统一采用莆田话的调值**」，以及仙游有 23/2 两个莆田没有的调值、莆田有 4/1 两个仙游没有的。
 - **`puxian-wendu`（《文读字汇》）被显式拒绝**。那套用 1–7 标**调类**（阴平…阳入），大词典用数字标**调值**：同一个 `qa²`，在前者是阳平，在后者是阳入调值。**同形不同义，看字符串无法区分**，所以方案必须由人声明。#189 非目标「不自动判断某书用什么方案」在这里是可执行的，不是客套。
+- **`puxian-xiangyin`（莆仙话拼音，#189 的目标方案）被登记，但同样不可转换**。它在这里的作用是登记 ID 与调号集 1–7——`gi1` 的 `1` 是调类号（阴平），和大词典的调值同形不同义，所以走的是与 `puxian-wendu` 同一条拒绝路径。它的调值、声母、韵母**不在本文件里再抄一份**，只在 `inventory_file` 指向 `backend/scheme/data/hinghwa_canonical.json`，由 Go 侧的 `LoadScheme` 加载；两处是否同源同版由 `test_tone.py` 的 `TargetSchemeTests` 顺着那个字段钉住。
 - **上标字符集从键盘定义读**，不写死：`load_superscript_map()` 从 `backend/keyboards/hinghwa-dialect.json` 的 `superscript-digits` 段取可用字符，按 Unicode 名称（`SUPERSCRIPT ZERO`…）识别。莆仙键盘当前有 `⁰–⁸`、**没有 `⁹`**，所以真需要 ⁹ 时结果是 `UNSUPPORTED / superscript_untypeable:9`，而不是偷偷产出一个校对员敲不出来的字符。
 - `long_tones` 与 `detectors.LEGAL_LONG_TONES` 的一致性由 `test_long_tones_agree_with_the_shared_detector_constant` 钉住。#189 提醒过"一套定义两处使用"会漂成两份实现，这根桩就是防它漂的。
 
