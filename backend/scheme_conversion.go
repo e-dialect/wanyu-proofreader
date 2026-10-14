@@ -478,15 +478,32 @@ func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	if utf8Len(canonical) > canonicalPronunciationMaxLength {
 		return apis.NewBadRequestError(fmt.Sprintf("统一方案的写法最多 %d 个字符。", canonicalPronunciationMaxLength), nil)
 	}
-	// 第 2 道闸：写法必须是目标方案拼得出来的音节。判据取自这一条记录的 source_scheme_id
-	// 在规则目录里的那一套——它自带目标侧清单（adapter.Canonical）。#189 把目标端改成
-	// 共享的 puxian-xiangyin 之后，这条判据会跟着一起升级，不需要在这里改。
+	// 下面两道闸的判据都取自这一条记录的 source_scheme_id 在规则目录里的那一套——它自带
+	// 目标侧清单（adapter.Canonical）与版本号。#189 把目标端改成共享的 puxian-xiangyin
+	// 之后，这两条判据会跟着一起升级，不需要在这里改。
 	adapter, ok := s.schemes.adapters[page.GetString("source_scheme_id")]
 	if !ok {
 		return apis.NewBadRequestError(fmt.Sprintf(
 			"这一条记的是「%s」这套方案，但它已经不在规则目录里了，无法核对统一方案的写法是否合法。请先把规则放回目录再复核。",
 			page.GetString("source_scheme_id")), nil)
 	}
+	// 第 2 道闸：这一条的待复核状态必须是**当前**规则跑出来的。规则升版之后、重跑之前，
+	// 条目上留着的是旧版规则产生的 status / trace / candidates；这时让人写结论，写下去的
+	// 是「旧 trace + 新 rule_version」——一行两版规则，与续跑校验
+	// （CONVERSION_RULE_VERSION_CHANGED）挡的是同一件事，只是入口不同。
+	//
+	// 代价要知道：重跑**不会**处理的条目（记音那一格被清空 ⇒ convertPage 走 skipped，
+	// 状态留在原地）会一直停在旧版本上，因此一直收不了人工结论。这类条目的结论本来就没有
+	// 对象，挡住是对的；但话里要给出可走的路，不能只说一句「不允许」。
+	if page.GetString("normalization_rule_version") != adapter.RuleVersion {
+		return apis.NewBadRequestError(fmt.Sprintf(
+			"这一条是规则版本「%s」跑出来的，当前在用的是「%s」；请先用当前规则重跑一次转换再复核，"+
+				"否则这一行会同时带着两版规则的结论。若重跑之后它仍然停在这个状态，"+
+				"说明这一条的记音已经不在页面上了，它没有可复核的对象。",
+			page.GetString("normalization_rule_version"), adapter.RuleVersion), nil)
+	}
+
+	// 第 3 道闸：写法必须是目标方案拼得出来的音节（adapter.Canonical 那份清单）。
 	normalized, problem := adapter.NormalizeCanonical(canonical)
 	if problem != nil {
 		return apis.NewBadRequestError(problem.Error(), nil)
@@ -497,8 +514,9 @@ func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	page.Set("normalization_basis", basis)
 	page.Set("normalization_reviewed_by", auth.Id)
 	page.Set("normalization_reviewed_at", time.Now().UTC())
-	// 第 3 道闸的结果：把「在哪个规则版本下判的」写下来。convertPage 写的是产出当前结论
-	// 的那一版；人工结论覆盖它之后，这一列就表示「当前值是在这一版规则下定的」。
+	// 把「在哪个规则版本下判的」写下来。convertPage 写的是产出当前结论的那一版；
+	// 人工结论覆盖它之后，这一列就表示「当前值是在这一版规则下定的」——上面第 2 道闸
+	// 已经保证写之前它与在用的那一版是同一个，所以这里不会写出一个混合体。
 	// 升版时靠它找出需要重新过目的人工结论——没有它，一条三年前按旧规则拍的结论
 	// 与今天拍的看起来一模一样。
 	page.Set("normalization_rule_version", adapter.RuleVersion)
