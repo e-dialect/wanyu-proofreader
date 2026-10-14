@@ -562,6 +562,13 @@ func (s *importService) finishWork(work importWork) {
 // 二次代价（idx_conversion_jobs_active 是 `status IN ('queued','processing')` 的部分唯一
 // 索引，该项目此后每次发起转换都拿 409，管理员只能靠重启进程恢复，见 markFatal）。
 // 合成一张表后，「能入队但没有兜底」这个状态不存在了。
+//
+// #190 的 conversion 与导入共用这一条**串行**队列，是刻意的：一条 worker、先进先出，
+// 所以同一时刻只有一个作业在跑，一次转换不会和一次导入抢同一批 pages。代价是排队——
+// 一本两万条的转换排在一次全量导入后面，要等前面那条跑完才开始，管理端看到的
+// 「已排队」就是这件事。触发拆分的判据不是「队列里有两种作业」，而是 #94 的实测：
+// 两万条转换与两万条导入同时在场、排队时长真的成了用户能感觉到的问题时，再按 kind
+// 分池。owner 明确不要求现在拆（#289 评审），所以这里保留共用，把语义写下来。
 type workRoute struct {
 	process func(*importService, importWork)
 	// collection 是失败终态要写的集合；空串表示这个 kind 的作业记录形状与 import_jobs
