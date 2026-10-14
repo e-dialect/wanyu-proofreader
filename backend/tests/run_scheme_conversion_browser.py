@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Run the #190 admin screenshot suite against a disposable server.
 
-与 run_scheme_conversion_integration.py 同一套脚手架（临时规则目录 + 一次性服务端），
-差别只在本文件把 playwright 的脚本与产物目录一起交给套件，并在收尾校验三张图都在。
+与 run_scheme_conversion_integration.py 同一套脚手架（临时规则目录 + 一次性服务端，
+规则目录同样由 harness.write_scheme_adapters 铺成：夹具原样一份 + 只供本次实例使用的
+可运行副本一份），差别只在本文件把 playwright 的脚本与产物目录一起交给套件，
+并在收尾校验四张图都在。
 
 需要 playwright 与已构建的 frontend/dist；缺任何一步都显式失败——留这一层不是为了再看
 一次图，而是防「套件被静默 SKIP」：没设 SCHEME_BROWSER_SCRIPT 时套件退出 0。
@@ -16,14 +18,15 @@ import tempfile
 import time
 import urllib.request
 
+import harness
+
 backend = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='fangji-scheme-browser-') as temp:
     root = Path(temp)
     binary = root / 'pocketbase'
     data = root / 'data'
     adapters = root / 'adapters'
-    adapters.mkdir()
-    shutil.copy(backend / 'scheme/testdata/adapter_synthetic.json', adapters / 'adapter_synthetic.json')
+    harness.write_scheme_adapters(adapters)
 
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))

@@ -91,13 +91,43 @@ async function openProject (page, projectId) {
     for (const label of ['共处理', '自动确定', '需人工确认', '暂未支持']) {
       assert.match(text, new RegExp(label), `汇总缺「${label}」这一行：${text.slice(0, 400)}`)
     }
-    assert.match(text, /需人工确认 · 1/, `汇总数字与夹具不符：${text.slice(0, 400)}`)
-    assert.match(text, /原值/, '复核队列要显示原值')
+    assert.match(text, /需人工确认 · 12/, `汇总数字与夹具不符：${text.slice(0, 400)}`)
+    assert.match(text, /共 12 条待复核/, '队列要说清一共有多少条：只给一页会让人以为队列就这么长')
+    // 「原值（转换时）」而不是「原值」：快照下来的那个值才是结论针对的对象，
+    // 校对后来改过那一格也不该悄悄改变它。
+    assert.match(text, /原值（转换时）/, '复核队列要显示转换时的原值')
     assert.match(text, /候选/, '复核队列要显示候选解释')
+    // 规则文件自己声明能不能跑真实作业，界面必须在按钮之前把这句话画出来。临时规则
+    // 目录里两份文件都在（见 harness.write_scheme_adapters）：可运行副本 + 仓库夹具，
+    // 所以这一屏上「仅测试」和「能用」两种选项同时在场——只截到其中一种的话，
+    // 这条断言分不清「标记正确」与「给所有方案都盖了个章」。
+    assert.match(text, /仅测试/, '选择器要标出声明为 test 的方案')
+    assert.match(text, /拒绝用它创建真实转换作业/, '要说明标了「仅测试」意味着什么，而不是只贴一个标签')
+    const optionTexts = await schemeSection(manager).locator('select option').allInnerTexts()
+    assert.ok(optionTexts.some((one) => !/仅测试/.test(one)), `不能所有方案都被标成仅测试：${JSON.stringify(optionTexts)}`)
+    const pager = schemeSection(manager).getByRole('navigation', { name: '复核队列分页' })
+    assert.match(await pager.innerText(), /第 1 \/ 2 页/, '12 条待复核、每页 10 条，翻页控件必须出现')
     await shoot(manager, 'scheme-summary-and-queue')
+
+    // ---------- 2b. 队列翻页：第二页是真的另一批条目，不是同一页换个页码 ----------
+    const firstPageRows = await schemeSection(manager).locator('.assist-row strong').allInnerTexts()
+    assert.equal(firstPageRows.length, 10, `一页 10 条：${JSON.stringify(firstPageRows)}`)
+    await pager.getByRole('button', { name: '下一页' }).click()
+    await manager.waitForTimeout(1500)
+    assert.match(await pager.innerText(), /第 2 \/ 2 页/, '翻到第二页后页码要跟着走')
+    const secondPageRows = await schemeSection(manager).locator('.assist-row strong').allInnerTexts()
+    assert.equal(secondPageRows.length, 2, `第二页是剩下的 2 条：${JSON.stringify(secondPageRows)}`)
+    for (const label of secondPageRows) {
+      assert.ok(!firstPageRows.includes(label), `第二页不得重复第一页的条目：${label}`)
+    }
+    await shoot(manager, 'scheme-review-page-two')
+    await pager.getByRole('button', { name: '上一页' }).click()
+    await manager.waitForTimeout(1500)
+    assert.match(await pager.innerText(), /第 1 \/ 2 页/, '回退到第一页')
 
     // ---------- 3. 人工结论：填完依据才可提交 ----------
     const row = schemeSection(manager).locator('.assist-row').first()
+    const decidedLabel = await row.locator('strong').innerText()
     const confirm = row.getByRole('button', { name: '确认结论' })
     assert.equal(await confirm.isDisabled(), true, '原值与依据都空时不该能提交')
     await row.getByLabel('统一方案的写法').fill('gu533')
@@ -108,7 +138,10 @@ async function openProject (page, projectId) {
     await manager.waitForTimeout(1500)
     const after = await schemeSection(manager).innerText()
     assert.match(after, /已复核/, `提交后应回显结论：${after.slice(0, 300)}`)
-    assert.match(after, /当前没有待复核的条目/, '队列应清空')
+    // 复核一条、队列短一条：这条断言同时挡住「界面显示成功但队列没变」和反过来。
+    assert.match(after, /共 11 条待复核/, `提交后总数要跟着少一条：${after.slice(0, 400)}`)
+    const remaining = await schemeSection(manager).locator('.assist-row strong').allInnerTexts()
+    assert.ok(!remaining.includes(decidedLabel), `已复核的条目不该再留在队列里：${decidedLabel}`)
     await shoot(manager, 'scheme-review-done')
 
     for (const [page, label] of [[manager, 'manager']]) {

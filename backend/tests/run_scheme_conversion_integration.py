@@ -6,6 +6,9 @@
 1. **规则目录**：#190 刻意不给 FANGJI_SCHEME_ADAPTER_DIR 任何默认值（本仓在 #193/#195
    上学过写死路径这一课）。所以这里造一个临时目录，把 #281 的合成适配器放进去，
    再把环境变量指给它。用的是合成规则，不是任何一套真实莆仙方案。
+   目录里放**两份**文件，理由见 harness.write_scheme_adapters：一份是仓库里的夹具原样
+   （声明 rule_status=test，套件会实测它建不出作业），一份是只供本次一次性实例使用的
+   可运行副本（声明 production）。闸门两侧都要有证据。
 2. **重启**：验收里有一条「作业中途 kill 后重启进入确定态、无重复计数」，
    只有在真的重启过一次的实例上才有意义。两阶段与 run_bundle_import_integration.py 同一手法。
 """
@@ -18,26 +21,29 @@ import tempfile
 import time
 import urllib.request
 
+import harness
+
 backend = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='fangji-scheme-') as temp:
     root = Path(temp)
     binary = root / 'pocketbase'
     data = root / 'data'
     adapters = root / 'adapters'
-    adapters.mkdir()
-    shutil.copy(backend / 'scheme/testdata/adapter_synthetic.json', adapters / 'adapter_synthetic.json')
+    harness.write_scheme_adapters(adapters)
 
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
     handoff = str(root / 'scheme-handoff.json')
+    rule_change_handoff = str(root / 'scheme-rule-change-handoff.json')
     env = {**os.environ, 'PB_URL': f'http://127.0.0.1:{port}',
            'APP_ADMIN_EMAIL': 'scheme-admin@example.com', 'APP_ADMIN_PASSWORD': 'SchemeTest12345!',
            'PB_ADMIN_EMAIL': 'scheme-super@example.com', 'PB_ADMIN_PASSWORD': 'SchemeTest12345!',
            'PB_SUPER_EMAIL': 'scheme-super@example.com', 'PB_SUPER_PASSWORD': 'SchemeTest12345!',
            'FANGJI_SKIP_ADMIN_BOOTSTRAP': '0', 'HINGHWA_IDENTITY_BASE_URL': '',
            'FANGJI_SCHEME_ADAPTER_DIR': str(adapters),
-           'SCHEME_CONVERSION_HANDOFF': handoff}
+           'SCHEME_CONVERSION_HANDOFF': handoff,
+           'SCHEME_RULE_CHANGE_HANDOFF': rule_change_handoff}
     subprocess.run(['go', 'build', '-o', str(binary), '.'], cwd=backend, check=True)
     for migration in sorted((backend / 'pb_migrations').glob('*.js'), key=lambda p: int(p.name.split('_')[0])):
         with tempfile.TemporaryDirectory(dir=root) as one:
@@ -45,7 +51,12 @@ with tempfile.TemporaryDirectory(prefix='fangji-scheme-') as temp:
             subprocess.run([str(binary), 'migrate', 'up', f'--dir={data}', f'--migrationsDir={one}'],
                            env={**env, 'FANGJI_SKIP_ADMIN_BOOTSTRAP': '1'}, check=True, stdout=subprocess.DEVNULL)
 
-    for phase in ('--prepare-resume', '--verify-resume'):
+    # 三个阶段各起一次服务端：前两个验断点续跑（一个铺断点、一个验续跑），
+    # 第三个验「作业停在半程、规则文件换版、重启续跑」——换版必须发生在这个阶段的服务端
+    # 启动之前，因为规则目录是在启动时读进内存的。
+    for phase in ('--prepare-resume', '--verify-resume', '--verify-rule-change'):
+        if phase == '--verify-rule-change':
+            harness.upgrade_runnable_rule_version(adapters)
         with (root / 'server.log').open('a') as log:
             server = subprocess.Popen([str(binary), 'serve', f'--http=127.0.0.1:{port}', f'--dir={data}',
                                        f'--hooksDir={backend / "pb_hooks"}', f'--migrationsDir={backend / "pb_migrations"}',

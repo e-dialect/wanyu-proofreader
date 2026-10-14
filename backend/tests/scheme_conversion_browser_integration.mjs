@@ -48,6 +48,17 @@ if (admin.record.must_change_password) {
   })).token
 }
 
+// 规则目录里有两份文件（见 harness.write_scheme_adapters）：仓库里的夹具原样一份，声明
+// rule_status=test，闸门不允许它创建真实作业；以及只供本次一次性实例使用的副本一份，
+// 声明 production。这里按声明挑能跑的那一套，而不是写死 id——写死 id 会在夹具换名时
+// 以一个 400 的形式失败，而这条套件想失败的时机不是这个。
+async function runnableScheme (authToken) {
+  const schemes = (await api('/api/fangji/scheme-adapters', { token: authToken })).schemes
+  const runnable = schemes.find((item) => item.rule_status === 'production')
+  assert.ok(runnable, `没有声明为 production 的方案，无法发起转换：${JSON.stringify(schemes)}`)
+  return runnable.source_scheme_id
+}
+
 const suffix = Date.now()
 const project = await api('/api/fangji/projects', {
   method: 'POST', token, expected: 201, body: { name: `拼音归一截图 ${suffix}` }
@@ -56,11 +67,25 @@ await api(`/api/fangji/projects/${project.id}/column-roles`, {
   method: 'PUT', token, body: { roles: { 词头: 'headword', 读音: 'reading' } }
 })
 
-// 与集成套件同一份夹具：一条 AMBIGUOUS（kn533）留着给截图里的复核队列用。
-const rows = [
-  ['甲', 'pa533', 1], ['乙', 'ti21', 2], ['丙', 'kn533', 3],
-  ['丁', 'ma533', 4], ['戊', 'ki533', 5], ['己', 'sa533', 6], ['庚', 'pa21', 7]
+// 与集成套件同一份规则，但条目要多得多：复核队列一页 10 条，待复核的条目不足 11 条
+// 就翻不出第二页，截图也就证明不了分页控件真的工作。
+//
+// 合成规则里只有「韵母 n 一对多」这一条会判出 AMBIGUOUS，而源方案里有映射的声母只有
+// p/t/k，所以能造出的**不同**读音是 3×3=9 个。队列是按条目翻页的，所以余下几条用重复
+// 读音、不同词头补齐——真实书里的读音本来也会重复出现。
+const ambiguous = [
+  ['丙', 'kn533'], ['辛', 'kn21'], ['壬', 'kn4'],
+  ['癸', 'pn533'], ['子', 'pn21'], ['丑', 'pn4'],
+  ['寅', 'tn533'], ['卯', 'tn21'], ['辰', 'tn4'],
+  ['巳', 'kn533'], ['午', 'kn21'], ['未', 'kn4']
 ]
+const rows = [
+  ['甲', 'pa533', 1], ['乙', 'ti21', 2],
+  ['丁', 'ma533', 3], ['戊', 'ki533', 4], ['己', 'sa533', 5], ['庚', 'pa21', 6],
+  ...ambiguous.map(([headword, reading], index) => [headword, reading, index + 7])
+]
+// 18 条：自动确定 5（4 EXACT + 1 REVIEWED 的例外）、需人工确认 12、暂未支持 1。
+const EXPECTED_SUMMARY = { total: 18, exact: 4, reviewed: 1, ambiguous: 12, unsupported: 1 }
 const form = new FormData()
 form.set('file', new Blob([`词头,读音,PDF页码\n${rows.map((row) => row.join(',')).join('\n')}\n`]), 'scheme-browser.csv')
 form.set('inspect_only', 'true')
@@ -79,7 +104,7 @@ for (let attempt = 0; attempt < 100; attempt++) {
 }
 
 const started = await api(`/api/fangji/projects/${project.id}/conversions`, {
-  method: 'POST', token, expected: 202, body: { source_scheme_id: 'synthetic-source' }
+  method: 'POST', token, expected: 202, body: { source_scheme_id: await runnableScheme(token) }
 })
 let finished = null
 for (let attempt = 0; attempt < 200; attempt++) {
@@ -89,7 +114,10 @@ for (let attempt = 0; attempt < 200; attempt++) {
 }
 assert.ok(finished, '转换作业没有在预期时间内结束')
 assert.equal(finished.status, 'completed', JSON.stringify(finished))
-assert.equal(finished.ambiguous_count, 1, `截图夹具要有且只有一条待复核：${JSON.stringify(finished)}`)
+for (const [key, want] of Object.entries(EXPECTED_SUMMARY)) {
+  assert.equal(finished[`${key}_count`], want, `${key}: 实得 ${finished[`${key}_count`]}，手算 ${want}——截图上的汇总就是这些数`)
+}
+assert.ok(finished.ambiguous_count > 10, `复核队列要翻得出第二页：${JSON.stringify(finished)}`)
 
 const fixture = path.resolve(process.env.SCHEME_BROWSER_FIXTURE || 'scheme-browser-fixture.json')
 mkdirSync(path.dirname(fixture), { recursive: true })
@@ -106,7 +134,7 @@ const result = spawnSync('node', [script], {
 })
 assert.equal(result.status, 0, `scheme_conversion_browser.cjs 退出码 ${result.status}`)
 
-for (const name of ['scheme-summary-and-queue', 'scheme-review-draft', 'scheme-review-done']) {
+for (const name of ['scheme-summary-and-queue', 'scheme-review-page-two', 'scheme-review-draft', 'scheme-review-done']) {
   const file = path.join(outDir, `${name}.png`)
   assert.ok(existsSync(file), `缺截图：${file}`)
   assert.ok(statSync(file).size > 4096, `截图过小，疑似空白页：${file} ${statSync(file).size}`)

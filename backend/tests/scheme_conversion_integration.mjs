@@ -40,7 +40,7 @@ if (admin.record.must_change_password) {
   })).token
 }
 
-const SOURCE_SCHEME = 'synthetic-source'
+// SOURCE_SCHEME 由第 1 节的方案清单按 rule_status 挑出来（见那里），不在这里写死。
 const suffix = Date.now()
 
 // 夹具按合成适配器的规则表挑出来，覆盖四种状态与一个「没有值」的行：
@@ -64,29 +64,42 @@ const ROWS = [
 ]
 const EXPECTED = { total: 8, exact: 4, reviewed: 1, ambiguous: 1, unsupported: 1, skipped: 1, failed: 0 }
 
-const project = await api('/api/fangji/projects', {
-  method: 'POST', token, expected: 201, body: { name: `拼音转换夹具 ${suffix}` }
-})
-await api(`/api/fangji/projects/${project.id}/column-roles`, {
-  method: 'PUT', token, body: { roles: { 词头: 'headword', 读音: 'reading' } }
-})
+// 建项目 + 标列角色：#190 的一切都要求「恰好一个记音列」，所以夹具一律照这个形状铺。
+async function projectWithReadingColumn(name) {
+  const created = await api('/api/fangji/projects', {
+    method: 'POST', token, expected: 201, body: { name }
+  })
+  await api(`/api/fangji/projects/${created.id}/column-roles`, {
+    method: 'PUT', token, body: { roles: { 词头: 'headword', 读音: 'reading' } }
+  })
+  return created
+}
 
-const csv = new FormData()
-csv.set('file', new Blob([`词头,读音,PDF页码\n${ROWS.map((row) => row.join(',')).join('\n')}\n`]), 'scheme.csv')
-csv.set('inspect_only', 'true')
-const csvJob = await api(`/api/fangji/projects/${project.id}/imports/csv`, { method: 'POST', token, body: csv, expected: 202 })
-for (let attempt = 0; attempt < 100; attempt++) {
-  const job = await api(`/api/collections/import_jobs/records/${csvJob.id}`, { token })
-  assert.notEqual(job.status, 'failed', JSON.stringify(job))
-  if (job.status === 'validated') break
-  await new Promise((resolve) => setTimeout(resolve, 100))
+// CSV 导入是两段式的（inspect 校验 → commit 落库），套件里用两次，抽成一处。
+async function importCSV(projectId, rows, filename) {
+  const csv = new FormData()
+  csv.set('file', new Blob([`词头,读音,PDF页码\n${rows.map((row) => row.join(',')).join('\n')}\n`]), filename)
+  csv.set('inspect_only', 'true')
+  const inspect = await api(`/api/fangji/projects/${projectId}/imports/csv`, {
+    method: 'POST', token, body: csv, expected: 202
+  })
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const job = await api(`/api/collections/import_jobs/records/${inspect.id}`, { token })
+    assert.notEqual(job.status, 'failed', JSON.stringify(job))
+    if (job.status === 'validated') break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  await api(`/api/fangji/imports/${inspect.id}/commit`, { method: 'POST', token, expected: 202 })
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const job = await api(`/api/collections/import_jobs/records/${inspect.id}`, { token })
+    if (job.status === 'completed') break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return inspect
 }
-await api(`/api/fangji/imports/${csvJob.id}/commit`, { method: 'POST', token, expected: 202 })
-for (let attempt = 0; attempt < 100; attempt++) {
-  const job = await api(`/api/collections/import_jobs/records/${csvJob.id}`, { token })
-  if (job.status === 'completed') break
-  await new Promise((resolve) => setTimeout(resolve, 100))
-}
+
+const project = await projectWithReadingColumn(`拼音转换夹具 ${suffix}`)
+await importCSV(project.id, ROWS, 'scheme.csv')
 
 async function waitConversion(jobId, statuses = ['completed', 'completed_with_errors', 'failed']) {
   for (let attempt = 0; attempt < 200; attempt++) {
@@ -97,22 +110,45 @@ async function waitConversion(jobId, statuses = ['completed', 'completed_with_er
   throw new Error('conversion timeout')
 }
 
-const listPages = async () => (await api(
-  `/api/collections/pages/records?perPage=50&sort=page_number&filter=${encodeURIComponent(`project="${project.id}"`)}`,
+const listPages = async (projectId = project.id) => (await api(
+  `/api/collections/pages/records?perPage=50&sort=page_number&filter=${encodeURIComponent(`project="${projectId}"`)}`,
   { token: superAuth.token })).items
 
-// ---------- 1. 方案清单与「没有规则目录」的可诊断状态 ----------
+// ---------- 1. 方案清单、规则状态与「没有规则目录」的可诊断状态 ----------
+// 目录里有两份文件（见 harness.write_scheme_adapters）：仓库里的夹具原样一份（声明 test），
+// 以及只供本次一次性实例使用的可运行副本一份（声明 production）。这里不写死哪一份能跑，
+// 而是从清单里按 rule_status 挑——顺带就把清单新增的 rule_status 字段验了。
 const adapters = await api('/api/fangji/scheme-adapters', { token })
-assert.deepEqual(adapters.schemes.map((item) => item.source_scheme_id), [SOURCE_SCHEME])
 assert.equal(adapters.notice, '', '配置了规则目录时不应有 notice')
+const runnable = adapters.schemes.find((item) => item.rule_status === 'production')
+const fixture = adapters.schemes.find((item) => item.rule_status !== 'production')
+assert.ok(runnable, `清单里要有一套声明为 production 的方案：${JSON.stringify(adapters.schemes)}`)
+assert.ok(fixture, `清单里要有一套声明为 test 的夹具：${JSON.stringify(adapters.schemes)}`)
+assert.equal(fixture.source_scheme_id, 'synthetic-source', '夹具的 id 就是仓库文件里那个')
+// 规则版本不写死：--verify-rule-change 那一次跑之前，脚手架会把副本换成下一版，
+// 这条套件本身不该在换版之后失效。版本的正确性由第 3 节「作业记的就是 adapter 记的」保证。
+assert.ok(runnable.rule_version, `方案清单要给出规则版本：${JSON.stringify(runnable)}`)
+const SOURCE_SCHEME = runnable.source_scheme_id
+const FIXTURE_SCHEME = fixture.source_scheme_id
 
-// ---------- 2. 未声明方案必须被拒绝，不能猜 ----------
+// ---------- 2. 三种拒绝是三句不同的话：没声明 / 没登记 / 登记了但声明为测试夹具 ----------
 await api(`/api/fangji/projects/${project.id}/conversions`, {
   method: 'POST', token, expected: 400, body: {}
 })
 await api(`/api/fangji/projects/${project.id}/conversions`, {
   method: 'POST', token, expected: 400, body: { source_scheme_id: 'puxian-dictionary' }
 })
+// 第三条是 #289 新增的闸门。它必须连作业都不建出来：只回一句 400 但库里留了半条作业，
+// 会让「闸门拦住了」和「作业跑炸了」在管理端看起来一模一样。
+const refused = await api(`/api/fangji/projects/${project.id}/conversions`, {
+  method: 'POST', token, expected: 400, body: { source_scheme_id: FIXTURE_SCHEME }
+})
+assert.match(refused.message, /只能用于测试/, JSON.stringify(refused))
+assert.match(refused.message, new RegExp(FIXTURE_SCHEME), '拒绝理由要点名是哪套方案')
+const noJobs = await api(
+  `/api/collections/conversion_jobs/records?filter=${encodeURIComponent(`project="${project.id}"`)}`,
+  { token: superAuth.token })
+assert.equal(noJobs.totalItems, 0, `被闸门拒绝的请求不得留下作业记录：${JSON.stringify(noJobs)}`)
 
 // ---------- 3. 正式跑一次：四行汇总与手算一致 ----------
 const job = await api(`/api/fangji/projects/${project.id}/conversions`, {
@@ -120,8 +156,8 @@ const job = await api(`/api/fangji/projects/${project.id}/conversions`, {
 })
 const done = await waitConversion(job.id)
 assert.equal(done.status, 'completed', JSON.stringify(done))
-assert.equal(done.canonical_scheme, 'synthetic-canonical')
-assert.equal(done.rule_version, 'synthetic-v1')
+assert.equal(done.canonical_scheme, runnable.canonical_scheme_id)
+assert.equal(done.rule_version, runnable.rule_version, '作业记下的规则身份就是发起时那一套')
 for (const [key, want] of Object.entries(EXPECTED)) {
   const actual = done[`${key}_count`] ?? done[`${key}Count`]
   assert.equal(actual, want, `${key}: 实得 ${actual}，手算 ${want}`)
@@ -154,14 +190,110 @@ assert.deepEqual(queue.items[0].candidates, ['u', 'ə'])
 const unsupported = await api(`/api/fangji/projects/${project.id}/normalizations?status=UNSUPPORTED`, { token })
 assert.equal(unsupported.totalItems, 1)
 await api(`/api/fangji/projects/${project.id}/normalizations?status=NOPE`, { token, expected: 400 })
+// perPage 有上界：队列端点不能成为「一次拉全库」的后门。page 也有上界（夹到最后一页），
+// 翻过头不返回空页——空页会让界面显示「一共 0 条待复核」，而队列其实还有内容。
+const clamped = await api(`/api/fangji/projects/${project.id}/normalizations?perPage=1000&page=99`, { token })
+assert.equal(clamped.perPage, 100, `perPage 要被夹到 100：${JSON.stringify(clamped)}`)
+assert.equal(clamped.page, 1, '只有一页时 page 要夹回第 1 页')
+assert.equal(clamped.totalItems, 1)
+
+// ---------- 4b. 原值快照：转换之后有人动了那一格，结论针对的原值不能跟着变 ----------
+// 队列里的「原值」与例外草案里的 source_pronunciation 都要说明「这条结论是针对哪个值下的」。
+// 现读校对行的话，那个值会在校对之后被静默换掉——一条已经定过的结论，它针对的对象换了，
+// 界面上却看不出来。
+//
+// 那一格也只能这样改：pages 集合的 updateRule 是 null（只有服务端写），认领守卫又会挡下
+// 任何不是「认领」的直接改写（平台管理员也被这条守卫挡着）。所以这里走真实校对流程，
+// 按法定人数（默认 2 人）各自独立提交同一个新值：两名校对员都改口之后
+// page.proofread_row_json 才跟着变。这就是「有人动了那一格」在真实系统里的样子，
+// 不是给测试开的后门。
+//
+// 另起一个只放一条条目的项目，是为了让「领取」一次就拿到它，不必在别人的队列里
+// 领一条放一条地凑到 丙 面前。
+const snapshotProject = await projectWithReadingColumn(`原值快照夹具 ${suffix}`)
+await importCSV(snapshotProject.id, [['丙', 'kn533', 1]], 'snapshot.csv')
+const snapshotRun = await api(`/api/fangji/projects/${snapshotProject.id}/conversions`, {
+  method: 'POST', token, expected: 202, body: { source_scheme_id: SOURCE_SCHEME }
+})
+await waitConversion(snapshotRun.id)
+
+const [snapshotPage] = await listPages(snapshotProject.id)
+assert.equal(snapshotPage.normalization_status, 'AMBIGUOUS', '快照夹具本身要先落成「需人工确认」')
+for (const index of [1, 2]) {
+  const email = `scheme-reader-${index}-${suffix}@example.com`
+  const password = 'SchemeTest12345!'
+  const reader = await api('/api/collections/users/records', {
+    method: 'POST',
+    body: { email, password, passwordConfirm: password, name: `校对员${index}-${suffix}`, role: 'user' }
+  })
+  const readerAuth = await api('/api/collections/users/auth-with-password', {
+    method: 'POST', body: { identity: email, password }
+  })
+  await api(`/api/fangji/projects/${snapshotProject.id}/members/${reader.id}`, {
+    method: 'PUT', token, body: { role: 'proofreader' }
+  })
+  const claimed = await api(`/api/fangji/projects/${snapshotProject.id}/claim`, {
+    method: 'POST', token: readerAuth.token
+  })
+  assert.equal(claimed.id, snapshotPage.id, '这个项目只有一条条目，领取拿到的必须是它')
+  await api(`/api/fangji/pages/${claimed.id}/submit`, {
+    method: 'POST', token: readerAuth.token,
+    body: {
+      // 字段要与识别原文逐字一致（PDF页码 那一列落成 page/pdf_page，不进正文行）。
+      rowJson: JSON.stringify({ 词头: '丙', 读音: 'tu533' }),
+      leaseToken: claimed.leaseToken
+    }
+  })
+}
+// 反空转：先证明那一格真的被改掉了。少了这一步，「原值仍是 kn533」在「校对其实什么也没做」
+// 的时候也会绿，而那时这条断言什么都没证明。
+const editedPage = await api(`/api/collections/pages/records/${snapshotPage.id}`, { token: superAuth.token })
+assert.equal(editedPage.status, 'approved', '两名校对员改口一致后条目才定稿，那一格才落到页面上')
+assert.equal(JSON.parse(editedPage.proofread_row_json).读音, 'tu533',
+  `校对流程必须真的改掉那一格，否则下面那条断言是空的：${editedPage.proofread_row_json}`)
+assert.equal(editedPage.ocr_row_json, snapshotPage.ocr_row_json, '识别原文不该被动')
+const snapshotQueue = await api(`/api/fangji/projects/${snapshotProject.id}/normalizations`, { token })
+assert.equal(snapshotQueue.totalItems, 1)
+assert.equal(snapshotQueue.items[0].source_pronunciation, 'kn533',
+  `队列里的原值必须是转换那一刻的值，不是现在的校对值：${JSON.stringify(snapshotQueue.items[0])}`)
+assert.equal(snapshotQueue.items[0].normalization_status, 'AMBIGUOUS', '校对不改机器给出的状态')
 
 // ---------- 5. 人工结论：必须给值与依据 ----------
+// 第 1 道闸：只有机器判不出来的条目才收人工结论。三种「不该出现在这里」的条目各给一句话，
+// 且都必须原样留着不改——一个 400 把行写坏比不收更糟。
+const exactRow = await api(`/api/fangji/pages/${byHeadword.甲.id}/normalization`, {
+  method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'be533', basis: '我觉得对' }
+})
+assert.match(exactRow.message, /机器已经判定了/, JSON.stringify(exactRow))
+const reviewedRow = await api(`/api/fangji/pages/${byHeadword.庚.id}/normalization`, {
+  method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'bu533', basis: '我觉得对' }
+})
+assert.match(reviewedRow.message, /已经有人给过结论/, JSON.stringify(reviewedRow))
+const neverConverted = await api(`/api/fangji/pages/${byHeadword.辛.id}/normalization`, {
+  method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'be533', basis: '我觉得对' }
+})
+assert.match(neverConverted.message, /还没有跑过转换/, JSON.stringify(neverConverted))
+
 await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
   method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'gu533' }
 })
 await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
   method: 'POST', token, expected: 400, body: { basis: '看过了' }
 })
+// 第 2 道闸：写法必须是目标方案拼得出来的音节。adapter 自带目标侧清单（韵母 e/u/ə，调值 533/21/4），
+// 所以「拼不出来」与「超长」是两句不同的话。
+const notSpellable = await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
+  method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'za533', basis: '我觉得对' }
+})
+assert.match(notSpellable.message, /不是「synthetic-canonical」能拼出的音节/, JSON.stringify(notSpellable))
+await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
+  method: 'POST', token, expected: 400,
+  body: { canonical_pronunciation: 'b'.repeat(201), basis: '我觉得对' }
+})
+const stillUndecided = (await listPages()).find((page) => page.id === byHeadword.丙.id)
+assert.equal(stillUndecided.normalization_status, 'AMBIGUOUS', '被拒绝的结论不得改动这一行')
+assert.equal(stillUndecided.normalization_basis, '')
+
 const decided = await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
   method: 'POST', token,
   body: { canonical_pronunciation: 'gu533', basis: '对照原书凡例，n 在 k 后作 u' }
@@ -171,6 +303,10 @@ assert.equal(decided.canonical_pronunciation, 'gu533')
 assert.equal(decided.normalization_basis, '对照原书凡例，n 在 k 后作 u')
 assert.equal(decided.normalization_reviewed_by, admin.record.id)
 assert.ok(decided.normalization_reviewed_at, '人工结论必须记时间')
+// 第 3 道闸的结果：人工结论也要记下「在哪个规则版本下判的」，否则升版时找不出该重看的结论。
+assert.equal(decided.normalization_rule_version, runnable.rule_version)
+// 结论针对的原值仍然是转换那一刻的那个：上面的改动没把它带走。
+assert.equal(decided.source_pronunciation, 'kn533')
 assert.equal((await api(`/api/fangji/projects/${project.id}/normalizations`, { token })).totalItems, 0,
   '复核过的条目不该再留在队列里')
 
@@ -191,13 +327,21 @@ assert.equal(second.skipped_count, 2, '丙 已被人工复核、辛 没有值，
 assert.equal(second.ambiguous_count, 0, '丙 已有人工结论，重跑时不再落回「需人工确认」')
 
 // ---------- 7. 结论回流：只产草案，不改规则文件 ----------
-const drafts = await api(`/api/fangji/projects/${project.id}/normalization-exceptions`, { token })
+// source_scheme_id 是必填的：草案要回流到哪一套规则，只有调用方说得清，
+// 从这个项目的条目里推不出来（同一本书可能先按一套方案录、后来改按另一套录）。
+await api(`/api/fangji/projects/${project.id}/normalization-exceptions`, { token, expected: 400 })
+await api(`/api/fangji/projects/${project.id}/normalization-exceptions?source_scheme_id=nope`, {
+  token, expected: 400
+})
+const drafts = await api(
+  `/api/fangji/projects/${project.id}/normalization-exceptions?source_scheme_id=${SOURCE_SCHEME}`, { token })
 const draft = drafts.exceptions.find((item) => item.canonical_pronunciation === 'gu533')
 assert.ok(draft, JSON.stringify(drafts.exceptions))
 assert.equal(draft.source_pronunciation, 'kn533')
 assert.equal(draft.status, 'REVIEWED')
 assert.equal(draft.basis, '对照原书凡例，n 在 k 后作 u')
 assert.match(drafts.note, /不会自动写入任何规则文件/)
+assert.equal(drafts.source_scheme_id, SOURCE_SCHEME)
 
 // ---------- 8. 断点续跑：把作业停在半程，重启后接着跑而不是从头再数一遍 ----------
 if (process.argv.includes('--prepare-resume')) {
@@ -241,7 +385,35 @@ if (process.argv.includes('--prepare-resume')) {
     { token: superAuth.token })).items.filter((page) => page.normalization_basis !== '')
   assert.equal(humanDecided.length, 1, JSON.stringify(humanDecided))
   assert.equal(humanDecided[0].canonical_pronunciation, 'gu533')
+  // 为下一阶段铺前置：下一次启动之前脚手架会把规则文件换成下一版，所以这里先停一个
+  // 「记着当前版本、还没开始处理」的作业。cursor 与计数全部归零，好让下一阶段能断言
+  // 「拦在第一条之前」——只断言状态是 failed 的话，一个处理到一半才失败的作业也会通过。
+  const { writeFileSync } = await import('node:fs')
+  await api(`/api/collections/conversion_jobs/records/${again.id}`, {
+    method: 'PATCH', token: superAuth.token,
+    body: {
+      status: 'processing', cursor: 0, total_count: 0, exact_count: 0, reviewed_count: 0,
+      ambiguous_count: 0, unsupported_count: 0, skipped_count: 0, failed_count: 0
+    }
+  })
+  writeFileSync(process.env.SCHEME_RULE_CHANGE_HANDOFF,
+    JSON.stringify({ jobId: again.id, projectId: project.id }))
+  console.log(`PREPARED: conversion job ${again.id} parked across a rule upgrade`)
   console.log('PASS: conversion job resumed from its cursor without double counting')
+} else if (process.argv.includes('--verify-rule-change')) {
+  // 作业停在半程、规则文件换版、重启续跑。续跑会把一半条目落在旧规则下、一半落在新规则下，
+  // 而汇总只有一个数——比整批重跑更难对账，所以这一条必须是一个响亮的失败而不是静默续跑。
+  const handoff = JSON.parse(readFileSync(process.env.SCHEME_RULE_CHANGE_HANDOFF, 'utf8'))
+  const drifted = await waitConversion(handoff.jobId, ['failed'])
+  assert.equal(drifted.status, 'failed', `换版之后不得续跑：${JSON.stringify(drifted)}`)
+  assert.equal(drifted.error_code, 'CONVERSION_RULE_VERSION_CHANGED', JSON.stringify(drifted))
+  assert.match(drifted.error_message, /规则已换版/)
+  assert.equal(drifted.cursor, 0, '换版要在处理第一条之前拦下，不能留下半截进度')
+  for (const key of ['total_count', 'exact_count', 'reviewed_count', 'ambiguous_count',
+    'unsupported_count', 'skipped_count', 'failed_count']) {
+    assert.equal(drifted[key], 0, `${key} 不该有值：被拦下的作业没有处理过任何条目`)
+  }
+  console.log('PASS: a mid-job rule upgrade stops the resume instead of re-counting under two rule sets')
 } else {
   console.log('PASS: scheme conversion job, four-line summary, review queue and exception drafts')
 }
