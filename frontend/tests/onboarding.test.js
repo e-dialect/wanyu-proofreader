@@ -68,6 +68,7 @@ test('desktop onboarding names the four-screen path and editor docks', () => {
     'fields',
     'keyboard',
     'draft-lease',
+    'research-notice',
     'submit'
   ])
   assert.match(text, /工作台/)

@@ -142,6 +142,14 @@ async function submit(page, reader, overrides) {
   })
 }
 
+// make seed calls this file directly. The integration preload is not on that
+// path, so each demo reader has to record a choice before the first submit.
+for (const reader of proofreaders) {
+  await request('/api/fangji/research-notice', {
+    method: 'POST', token: reader.token, body: { choice: 'participate' }
+  })
+}
+
 const [agreeing, diverging] = pages.items
 await submit(agreeing, proofreaders[0], { 释义: '站、立', 读音: 'kiā' })
 await submit(agreeing, proofreaders[1], { 释义: '站、立', 读音: 'kiā' })

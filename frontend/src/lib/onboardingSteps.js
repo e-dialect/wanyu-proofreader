@@ -15,6 +15,13 @@ const SHARED_BEFORE_EDITOR = [
   }
 ]
 
+const RESEARCH_NOTICE_STEP = {
+  id: 'research-notice',
+  title: '提交前确认研究用途',
+  target: '研究用途选择',
+  body: '你之后提交的校对结论可能被用于语言研究。这只说明数据用途。如果不同意用于研究，可以选择退出。退出后仍然可以正常领取和提交，不影响其他任何权益。请在第一次提交之前做出选择。'
+}
+
 const SHARED_AFTER_FIELDS = [
   {
     id: 'keyboard',
@@ -47,6 +54,7 @@ export function onboardingSteps(isMobile = false) {
         body: '窄屏下一次显示一个字段。用底部导航切换，或打开总览检查全部。每张卡片上方是待校对原文，改错了可用「恢复原文」。'
       },
       ...SHARED_AFTER_FIELDS,
+      RESEARCH_NOTICE_STEP,
       {
         id: 'submit',
         title: '提交前会确认，提交后不能自行撤回',
@@ -71,6 +79,7 @@ export function onboardingSteps(isMobile = false) {
       body: '每张字段卡上方是待校对原文，下方填写你的结果。改错了可以用「恢复原文」回到导入内容。'
     },
     ...SHARED_AFTER_FIELDS,
+    RESEARCH_NOTICE_STEP,
     {
       id: 'submit',
       title: '提交前会确认，提交后不能自行撤回',

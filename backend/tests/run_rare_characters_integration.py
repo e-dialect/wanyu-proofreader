@@ -9,6 +9,8 @@ import tempfile
 import time
 import urllib.request
 
+import harness
+
 backend = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='fangji-unicode-') as temp:
     root = Path(temp)
@@ -48,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='fangji-unicode-') as temp:
                 args = ['node', str(backend / 'tests/rare_characters_integration.mjs')]
                 if verify:
                     args.append('--verify-persistence')
-                subprocess.run(args, env=env, check=True)
+                subprocess.run(args, env=harness.with_research_notice_preload(env), check=True)
             finally:
                 server.terminate()
                 try:

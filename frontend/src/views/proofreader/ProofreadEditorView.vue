@@ -219,6 +219,27 @@
           >{{ saving ? '正在提交…' : '确认提交' }}</button>
         </template>
     </AppModal>
+
+    <AppModal
+      :open="researchOpen"
+      title-id="research-notice-title"
+      mark="研"
+      :close-on-backdrop="false"
+      :close-on-esc="false"
+    >
+      <div class="page-eyebrow">提交之前</div>
+      <h2 id="research-notice-title">{{ researchCopy.title }}</h2>
+      <p>{{ researchCopy.body }}</p>
+      <p v-if="researchError" class="alert alert-error" role="alert">{{ researchError }}</p>
+      <template #actions>
+        <button type="button" class="btn btn-secondary" :disabled="researchSaving" @click="chooseResearchNotice('opt_out')">
+          {{ researchCopy.optOutLabel }}
+        </button>
+        <button type="button" class="btn btn-primary" :disabled="researchSaving" @click="chooseResearchNotice('participate')">
+          {{ researchSaving ? '正在记录…' : researchCopy.participateLabel }}
+        </button>
+      </template>
+    </AppModal>
 </template>
 
 <script setup>
@@ -264,11 +285,25 @@ import {
   submitTwoPassProofread
 } from '@/services/pagesService'
 import { CLAIM_NEXT_FAILURE_NOTICE, IRREVERSIBLE_SUBMIT_NOTICE } from '@/lib/proofreadNotices'
+import { RESEARCH_NOTICE_COPY } from '@/lib/researchNoticeCopy'
+import { chooseResearchNotice as saveResearchNotice, getResearchNotice } from '@/services/researchNoticeService'
 import { formatClaimConflict, getPbMessage } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
 const onboardingRef = inject('proofreaderOnboarding', ref(null))
+const researchNotice = ref(null)
+const researchLoaded = ref(false)
+const researchSaving = ref(false)
+const researchError = ref('')
+const researchDecided = computed(() => Boolean(researchNotice.value?.decided))
+const researchOpen = computed(() => researchLoaded.value && !researchDecided.value)
+const researchCopy = computed(() => ({
+  title: researchNotice.value?.title || RESEARCH_NOTICE_COPY.title,
+  body: researchNotice.value?.body || RESEARCH_NOTICE_COPY.body,
+  participateLabel: researchNotice.value?.participate_label || RESEARCH_NOTICE_COPY.participateLabel,
+  optOutLabel: researchNotice.value?.opt_out_label || RESEARCH_NOTICE_COPY.optOutLabel
+}))
 
 const page = ref(null)
 const loadingPage = ref(true)
@@ -409,6 +444,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleEditorShortcut)
   window.addEventListener('focus', handleLeaseActivation)
   document.addEventListener('visibilitychange', handleLeaseActivation)
+  void loadResearchNotice()
 })
 
 onBeforeUnmount(() => {
@@ -601,8 +637,34 @@ async function restoreField(header) {
   textareaRefs.get(header)?.focus()
 }
 
+async function loadResearchNotice() {
+  researchError.value = ''
+  try {
+    researchNotice.value = await getResearchNotice()
+  } catch (error) {
+    researchNotice.value = { decided: false }
+    researchError.value = getPbMessage(error, '研究用途告知暂时没有加载出来，请稍后再选择。')
+  } finally {
+    researchLoaded.value = true
+  }
+}
+
+async function chooseResearchNotice(choice) {
+  if (researchSaving.value) return
+  researchSaving.value = true
+  researchError.value = ''
+  try {
+    researchNotice.value = await saveResearchNotice(choice)
+  } catch (error) {
+    researchError.value = getPbMessage(error, '研究用途选择没有记下，请再试一次。')
+  } finally {
+    researchSaving.value = false
+  }
+}
+
 async function openSubmitReview() {
   if (mobile.value && !overview.value) { overview.value = true; return }
+  if (!researchDecided.value) return
   if (saving.value || loadingPage.value || !page.value || leaseLost.value || !leaseToken.value) return
   flushDraft()
   reviewingSubmission.value = true
@@ -690,6 +752,7 @@ function formatDraftTime(value) {
 }
 
 function handleEditorShortcut(event) {
+  if (researchOpen.value) return
   if (shouldIgnoreEditorShortcut(event, onboardingRef.value)) return
   if (event.key === 'Escape' && reviewingSubmission.value) {
     event.preventDefault()
@@ -719,7 +782,7 @@ function handleEditorShortcut(event) {
 }
 
 async function submitProofread() {
-  if (saving.value || !page.value || leaseLost.value || !leaseToken.value) return
+  if (saving.value || !page.value || leaseLost.value || !leaseToken.value || !researchDecided.value) return
   saving.value = true
   saved.value = ''
   saveError.value = ''

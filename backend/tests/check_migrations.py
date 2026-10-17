@@ -26,6 +26,13 @@ SPECS = {
         'plans': [('users', 'SELECT id FROM users WHERE name=? COLLATE NOCASE',
                    ('nickname',), 'idx_users_nickname')],
     },
+    '1792166400_research_notice.js': {
+        'indexes': ['idx_research_notice_latest'],
+        'collection_indexes': ('research_notice_decisions', 'idx_research_notice_latest'),
+        'plans': [('research_notice_decisions',
+                   'SELECT id FROM research_notice_decisions WHERE user=? AND notice_version=? ORDER BY decided_at DESC',
+                   ('u', '2026-10-17'), 'idx_research_notice_latest')],
+    },
     '1788941000_pagination_indexes.js': {
         'indexes': ['idx_pages_project_status_order',
                     'idx_attempts_page_round_kind_user',
