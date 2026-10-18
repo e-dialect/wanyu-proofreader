@@ -35,6 +35,9 @@ type syllable struct{ onset, rime, tone string }
 // The input is never mutated and never returned in a rewritten form: the source
 // layer is the proofreader's work and stays as it was (#114 §2).
 func Convert(input string, adapter *Adapter) Result {
+	if adapter.v2 != nil {
+		return convertV2(input, adapter)
+	}
 	result := Result{
 		SourceScheme:        adapter.SourceScheme,
 		SourcePronunciation: input,

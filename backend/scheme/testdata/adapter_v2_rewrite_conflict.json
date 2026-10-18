@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "source_scheme_id": "synthetic-v2-rewrite-conflict",
+  "canonical_scheme_id": "puxian-xiangyin",
+  "rule_version": "synthetic-v2-rewrite-conflict",
+  "annotation_system": "tone_value",
+  "rule_status": "test",
+  "rule_status_basis": "synthetic: 两条上下文规则对同一段改写出不同 IPA，用来验证冲突判 AMBIGUOUS",
+  "coverage": "synthetic",
+  "provenance": [
+    {"what": "合成源侧清单", "locator": "synthetic-fixture:adapter_v2_rewrite_conflict.json"}
+  ],
+  "source": {
+    "onsets": [
+      {"id": "c-o-k", "notation": "k", "ipa": "k", "basis": "synthetic"}
+    ],
+    "rimes": [
+      {"id": "c-r-a", "notation": "a", "ipa": "a", "basis": "synthetic"}
+    ],
+    "tones": [
+      {"id": "c-t-1", "notation": "1", "category": "阴平", "basis": "synthetic"}
+    ]
+  },
+  "context_rules": [
+    {"id": "x-one", "when_onset": "k", "rewrite_onset_ipa": "kʰ", "basis": "synthetic: 第一条改写"},
+    {"id": "x-two", "when_onset": "k", "rewrite_onset_ipa": "k", "basis": "synthetic: 第二条改写与第一条不同"}
+  ]
+}
