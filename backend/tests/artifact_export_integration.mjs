@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { toSafeCsvCell } from '../../frontend/src/lib/csvExport.js'
+import { spawnSync } from 'node:child_process'
+import { toSafeCsvCell } from './legacy_csv_oracle.mjs'
 import { safeParseRowJson, orderedRowHeaders } from '../../frontend/src/lib/structuredRow.js'
 
 const baseUrl = process.env.PB_URL || 'http://127.0.0.1:18095'
@@ -32,14 +33,13 @@ async function waitJob(id, token, statuses) {
   throw new Error('import timeout')
 }
 
-// buildExpectedCsv 复刻前端 ProjectDetailView.vue:922-945 的纯计算部分，
-// 直接用前端 toSafeCsvCell / orderedRowHeaders / safeParseRowJson，作为逐字节比对基准。
+// The frozen historical oracle verifies content bytes before the new status columns.
 function buildExpectedCsv(pages) {
   const headers = []
   const rows = pages.map((item) => {
     const proofObj = item.status === 'approved' ? safeParseRowJson(item.proofread_row_json) : null
     const ocrObj = safeParseRowJson(item.ocr_row_json)
-    const rowObj = proofObj || ocrObj || { 内容: item.proofread_text || item.ocr_text || '' }
+    const rowObj = proofObj || ocrObj || { 内容: (item.status === 'approved' && item.proofread_text) || item.ocr_text || '' }
     for (const key of orderedRowHeaders(item, rowObj)) {
       if (!headers.includes(key)) headers.push(key)
     }
@@ -52,6 +52,19 @@ function buildExpectedCsv(pages) {
     lines.push(values.map(toSafeCsvCell).join(','))
   }
   return '﻿' + lines.join('\r\n')
+}
+
+function assertContentColumns(text, pages) {
+  const actualLines = text.split('\r\n')
+  const originalLines = buildExpectedCsv(pages).split('\r\n')
+  assert.equal(actualLines.length, originalLines.length)
+  for (let i = 0; i < originalLines.length; i++) assert.ok(actualLines[i].startsWith(originalLines[i] + ','), 'content bytes/column order are preserved before status columns')
+}
+
+function parseDownloadedCsv(bytes) {
+  const parsed = spawnSync(process.env.PYTHON || 'python', ['-c', 'import sys,csv,json; rows=list(csv.DictReader(sys.stdin.read().lstrip("\\ufeff").splitlines(keepends=True))); print(json.dumps(rows,ensure_ascii=False))'], { input: bytes, encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } })
+  assert.equal(parsed.status, 0, parsed.stderr)
+  return JSON.parse(parsed.stdout)
 }
 
 const admin = await request('/api/collections/users/auth-with-password', {
@@ -105,9 +118,7 @@ try {
   const bytes = Buffer.from(await downloaded.arrayBuffer())
   const expected = buildExpectedCsv(pages)
   const actualLines = bytes.toString('utf8').split('\r\n')
-  const originalLines = expected.split('\r\n')
-  assert.equal(actualLines.length, originalLines.length)
-  for (let i = 0; i < originalLines.length; i++) assert.ok(actualLines[i].startsWith(originalLines[i] + ','), 'content bytes/column order are preserved before status columns')
+  assertContentColumns(bytes.toString('utf8'), pages)
   assert.match(actualLines[0], /__wanyu_workflow_status/)
   assert.match(actualLines[0], /__wanyu_value_source/)
   assert.match(actualLines[1], /imported_fallback/)
@@ -123,6 +134,55 @@ try {
   assert.equal(list.length, 2)
   assert.ok(list[0].created >= list[1].created)
   console.log('PASS: repeated export produces versioned artifacts ordered by created desc')
+
+  // The retained storage route must not bypass withheld exclusion either.
+  await request(`/api/fangji/projects/${project.id}/pages/${pages[1].id}/quality-state`, {
+    method: 'POST', token, body: { state: 'withheld', basis: 'synthetic restriction' }
+  })
+  const restricted = await request(`/api/fangji/projects/${project.id}/exports/csv`, { method: 'POST', token, expected: 201 })
+  const restrictedText = await fetch(`${baseUrl}/api/fangji/artifacts/${restricted.id}/download`, { headers: { Authorization: token } }).then((r) => r.arrayBuffer())
+  assertContentColumns(Buffer.from(restrictedText).toString('utf8'), pages.filter((page) => page.id !== pages[1].id))
+  const optedIn = await request(`/api/fangji/projects/${project.id}/exports/csv?include_withheld=1`, { method: 'POST', token, expected: 201 })
+  const optedInText = await fetch(`${baseUrl}/api/fangji/artifacts/${optedIn.id}/download`, { headers: { Authorization: token } }).then((r) => r.arrayBuffer())
+  assertContentColumns(Buffer.from(optedInText).toString('utf8'), pages)
+  console.log('PASS: retained artifacts exclude withheld by default and require explicit opt-in')
+
+  for (const query of ['include_withheld=yes', 'include_withheld=0&include_withheld=1', 'status=approved']) {
+    await request(`/api/fangji/projects/${project.id}/exports/csv?${query}`, { method: 'POST', token, expected: 400 })
+  }
+
+  // Plain-text fallbacks and metadata-name collisions retain their real source.
+  const extra = []
+  for (const [index, fields] of [
+    { status: 'pending', ocr_text: '未完成条目的原文', proofread_text: '未完成条目的修改不能导出' },
+    { status: 'approved', ocr_text: '已完成条目的原文', proofread_text: '已完成条目的纯文本成果' },
+    { status: 'approved', ocr_row_json: JSON.stringify({ 内容: '缺最终行时回退原文', __wanyu_value_source: '业务来源列', __wanyu_value_source_: '业务下划线列' }) }
+  ].entries()) {
+    extra.push(await request('/api/collections/pages/records', { method: 'POST', token: superAuth.token, body: { project: project.id, page_number: 10000 + index, ...fields } }))
+  }
+  const fallbacks = await request(`/api/fangji/projects/${project.id}/exports/csv`, { method: 'POST', token, expected: 201 })
+  const fallbackResponse = await fetch(`${baseUrl}/api/fangji/artifacts/${fallbacks.id}/download`, { headers: { Authorization: token } })
+  assert.equal(fallbackResponse.status, 200)
+  const fallbackRows = parseDownloadedCsv(Buffer.from(await fallbackResponse.arrayBuffer()))
+  const byId = Object.fromEntries(fallbackRows.map((row) => [row.__wanyu_id, row]))
+  assert.equal(fallbackRows.length, pages.length - 1 + extra.length)
+  assert.equal(byId[pages[1].id], undefined, 'withheld stays excluded after adding fallback rows')
+  assert.equal(byId[extra[0].id].内容, '未完成条目的原文')
+  assert.equal(byId[extra[0].id].__wanyu_value_source__, 'imported_fallback')
+  assert.equal(byId[extra[1].id].内容, '已完成条目的纯文本成果')
+  assert.equal(byId[extra[1].id].__wanyu_value_source__, 'final_adopted_value')
+  assert.equal(byId[extra[2].id].内容, '缺最终行时回退原文')
+  assert.equal(byId[extra[2].id].__wanyu_value_source, '业务来源列')
+  assert.equal(byId[extra[2].id].__wanyu_value_source_, '业务下划线列')
+  assert.equal(byId[extra[2].id].__wanyu_value_source__, 'imported_fallback')
+  for (const row of fallbackRows) {
+    assert.equal(row.__wanyu_business_completion, 'not_evaluated_use_completed_export')
+    assert.equal(row.__wanyu_source_judgment, 'see_linked_process_export')
+    assert.equal(row.__wanyu_independent_reference, 'see_independent_research_records')
+    assert.ok(row.__wanyu_workflow_status)
+    assert.ok(row.__wanyu_verification_record)
+  }
+  console.log('PASS: invalid opt-ins rejected, plain-text source/final selection and collision-safe verification metadata preserved')
 
   // 非管理员下载应 403。
   const readerEmail = `artifact-${suffix}@example.com`

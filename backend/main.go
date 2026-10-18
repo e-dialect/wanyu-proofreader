@@ -65,6 +65,7 @@ func main() {
 	importer.registerPagination()
 	importer.registerArtifacts()
 	importer.registerDeliveries(hooksDir)
+	importer.registerProjectExport()
 	importer.registerQualityState()
 	importer.registerImportLedger()
 	importer.registerBundleImports()
