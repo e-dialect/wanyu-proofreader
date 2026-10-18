@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "source_scheme_id": "puxian-dict",
+  "canonical_scheme_id": "puxian-xiangyin",
+  "rule_version": "puxian-dict-yanli-2026-10-18",
+  "annotation_system": "tone_value",
+  "rule_status": "test",
+  "rule_status_basis": "只登记《莆仙方言大词典》凡例正文能直接确证的音节。凡例三.1 写明完整对应表「请参见附录」，而附录不在已取得的 PDF 里（606 页正文末页 p601–606 仍是 Z 段词条）；凡例三.2 又说明正文里的例子是连读变调后的读法。因此这份文件不是一套可用的源侧规则，不能驱动真实作业（rule_status=test），只用于证明「按材料登记、缺了就 decline」这条路径。",
+  "coverage": "部分登记：只有凡例 §三.1、§三.2 两组例子里成对出现的 4 个声母、3 个韵母、3 个调值，共 4 个音节（腹肚 bɑk4dou453、骹肚 kô21lou453）。声调只登记调值，不登记调类——凡例没有给出调值→调类的对应表。",
+  "provenance": [
+    {
+      "what": "腹肚 bɑk4dou453 的国际音标是 [paʔ4tɔu453]：b=[p]、ɑk=[aʔ]、d=[t]、ou=[ɔu]、4 与 453 为调值",
+      "locator": "《莆仙方言大词典》凡例 §三.1（PDF 第 2 页，2026-10-18 收到；完整对应表在未取得的附录里）"
+    },
+    {
+      "what": "骹肚 kô21lou453 的国际音标是 [khɒ21lɔu453]：k=[kh]（原文用 ASCII kh，不是 kʰ）、ô=[ɒ]、l=[l]、ou=[ɔu]、21 与 453 为调值",
+      "locator": "《莆仙方言大词典》凡例 §三.2（PDF 第 2 页；该节说明正文例子是连读变调后的读法）"
+    },
+    {
+      "what": "声调采用调值标注法；拼音与国际音标的完整对应关系参见附录",
+      "locator": "《莆仙方言大词典》凡例 §三.1（PDF 第 1–2 页）"
+    }
+  ],
+  "source": {
+    "onsets": [
+      {"id": "pd-o-b", "notation": "b", "ipa": "p", "basis": "腹肚 bɑk4 ↔ [paʔ4]（凡例 §三.1）", "example": "腹肚"},
+      {"id": "pd-o-d", "notation": "d", "ipa": "t", "basis": "腹肚 dou453 ↔ [tɔu453]（凡例 §三.1）", "example": "腹肚"},
+      {"id": "pd-o-k", "notation": "k", "ipa": "kh", "basis": "骹肚 kô21 ↔ [khɒ21]（凡例 §三.2；原文是 ASCII kh，未登记为 kʰ）", "example": "骹肚", "note": "这里照录凡例的 ASCII kh。它与目标清单的 kʰ（U+02B0）在字形上不同，凡例也没有说二者等价，所以本文件不建 ipa_correspondences——二号箭头会如实 decline，而不是静默等同。"},
+      {"id": "pd-o-l", "notation": "l", "ipa": "l", "basis": "骹肚 lou453 ↔ [lɔu453]（凡例 §三.2）", "example": "骹肚"}
+    ],
+    "rimes": [
+      {"id": "pd-r-ak", "notation": "ɑk", "ipa": "aʔ", "basis": "腹肚 bɑk4 ↔ [paʔ4]（凡例 §三.1）", "example": "腹肚"},
+      {"id": "pd-r-ou", "notation": "ou", "ipa": "ɔu", "basis": "腹肚 dou453 ↔ [tɔu453]；骹肚 lou453 ↔ [lɔu453]（凡例 §三.1、§三.2）", "example": "腹肚、骹肚"},
+      {"id": "pd-r-o-circ", "notation": "ô", "ipa": "ɒ", "basis": "骹肚 kô21 ↔ [khɒ21]（凡例 §三.2）", "example": "骹肚"}
+    ],
+    "tones": [
+      {"id": "pd-t-4", "notation": "4", "category": "", "missing_category_reason": "凡例只说明声调采用调值标注法，没有给出调值→调类（阴平/阳平/…）的对应表；目标清单里恰好也有 4，但那是阳入的调值，不能用同形数字判等。", "basis": "腹肚 bɑk4 ↔ [paʔ4]（凡例 §三.1）", "example": "腹肚"},
+      {"id": "pd-t-21", "notation": "21", "category": "", "missing_category_reason": "同上：凡例没有调值→调类表。", "basis": "骹肚 kô21 ↔ [khɒ21]（凡例 §三.2）", "example": "骹肚"},
+      {"id": "pd-t-453", "notation": "453", "category": "", "missing_category_reason": "同上：凡例没有调值→调类表。", "basis": "腹肚 dou453 ↔ [tɔu453]；骹肚 lou453 ↔ [lɔu453]（凡例 §三.1、§三.2）", "example": "腹肚、骹肚"}
+    ]
+  }
+}
