@@ -134,7 +134,7 @@ const result = spawnSync('node', [script], {
 })
 assert.equal(result.status, 0, `scheme_conversion_browser.cjs 退出码 ${result.status}`)
 
-for (const name of ['scheme-summary-and-queue', 'scheme-review-page-two', 'scheme-review-draft', 'scheme-review-done']) {
+for (const name of ['scheme-summary-and-queue', 'scheme-review-page-two', 'scheme-review-draft', 'scheme-review-done', 'scheme-review-unsupported']) {
   const file = path.join(outDir, `${name}.png`)
   assert.ok(existsSync(file), `缺截图：${file}`)
   assert.ok(statSync(file).size > 4096, `截图过小，疑似空白页：${file} ${statSync(file).size}`)

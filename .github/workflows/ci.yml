@@ -405,7 +405,7 @@ jobs:
         run: |
           # 名字与 scheme_conversion_browser_integration.mjs 的清单一一对应。
           # 没设 SCHEME_BROWSER_SCRIPT 时套件会退出 0，只有这里能发现产物不存在。
-          for state in scheme-summary-and-queue scheme-review-page-two scheme-review-draft scheme-review-done; do
+          for state in scheme-summary-and-queue scheme-review-page-two scheme-review-draft scheme-review-done scheme-review-unsupported; do
             test -s "output/playwright/scheme-conversion/${state}.png" || {
               echo "Missing or empty scheme conversion screenshot: ${state}.png" >&2
               exit 1

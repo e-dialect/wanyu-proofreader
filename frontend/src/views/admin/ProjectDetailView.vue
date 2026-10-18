@@ -654,12 +654,32 @@
             <p v-if="schemeJob.error_message" class="alert alert-error" role="alert">{{ schemeJob.error_message }}</p>
           </template>
 
-          <h3>复核队列（需人工确认）</h3>
+          <h3>复核队列（机器判不出来）</h3>
           <p class="text-muted">
-            这些条目机器判不出来，需要人给出统一方案的写法。结论会记下判定人与依据，重跑时保留，
-            不会被下一次批处理推回机器判断。
+            这些条目机器判不出来——要么规则给出多个候选（需人工确认），要么规则根本接不住（暂未支持）——
+            需要人给出统一方案的写法。结论会记下判定人与依据，重跑时保留，不会被下一次批处理推回机器判断。
           </p>
-          <p v-if="!reviewRows.length" class="text-muted">当前没有待复核的条目。</p>
+          <div class="flex gap-2 items-center mb-2" role="group" aria-label="复核队列状态筛选">
+            <button
+              type="button"
+              class="btn btn-sm"
+              :class="reviewStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'"
+              @click="setReviewFilter('all')"
+            >全部待复核</button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              :class="reviewStatusFilter === 'AMBIGUOUS' ? 'btn-primary' : 'btn-secondary'"
+              @click="setReviewFilter('AMBIGUOUS')"
+            >需人工确认</button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              :class="reviewStatusFilter === 'UNSUPPORTED' ? 'btn-primary' : 'btn-secondary'"
+              @click="setReviewFilter('UNSUPPORTED')"
+            >暂未支持</button>
+          </div>
+          <p v-if="!reviewRows.length" class="text-muted">{{ reviewEmptyMessage }}</p>
           <template v-else>
             <p class="text-sm text-muted">共 {{ reviewTotalItems }} 条待复核。</p>
             <ul class="assist-list">
@@ -927,6 +947,15 @@ const reviewBusy = ref(false)
 const reviewPage = ref(1)
 const reviewTotalItems = ref(0)
 const reviewTotalPages = ref(1)
+// 机器判不出来的有两种：AMBIGUOUS（规则给出多个候选）与 UNSUPPORTED（规则根本接不住）。
+// 默认一起列，因为汇总里的「暂未支持」如果没有入口，管理员就知道有问题却没法处理。
+// 筛选项保留给「只处理某一类」的场景。
+const reviewStatusFilter = ref('all') // all | AMBIGUOUS | UNSUPPORTED
+const reviewEmptyMessage = computed(() => {
+  if (reviewStatusFilter.value === 'UNSUPPORTED') return '当前没有「暂未支持」的条目。'
+  if (reviewStatusFilter.value === 'AMBIGUOUS') return '当前没有「需人工确认」的条目。'
+  return '当前没有待复核的条目。'
+})
 // 轮询代际：离开页面或再次发起时旧的那条循环必须自己停，否则它会一直打接口。
 let schemePollGeneration = 0
 
@@ -936,7 +965,10 @@ const schemeSummary = computed(() => conversionSummaryLines(schemeJob.value))
 const testOnlySchemes = computed(() => testOnlySchemeIds(schemeOptions.value))
 
 async function loadReviews() {
-  const queue = await listNormalizations(projectId, { status: 'AMBIGUOUS', perPage: 10, page: reviewPage.value })
+  const status = reviewStatusFilter.value === 'all'
+    ? 'AMBIGUOUS,UNSUPPORTED'
+    : reviewStatusFilter.value
+  const queue = await listNormalizations(projectId, { status, perPage: 10, page: reviewPage.value })
   reviewRows.value = queue.items || []
   reviewTotalItems.value = queue.totalItems || 0
   reviewTotalPages.value = queue.totalPages || 1
@@ -945,6 +977,18 @@ async function loadReviews() {
   reviewPage.value = queue.page || 1
   // 草稿按条目 id 存：刷新后原来的输入不该串到别的条目上。
   reviewDraft.value = Object.fromEntries(reviewRows.value.map((row) => [row.id, { canonical: '', basis: '' }]))
+}
+
+async function setReviewFilter(value) {
+  if (reviewStatusFilter.value === value) return
+  reviewStatusFilter.value = value
+  // 换了筛选条件就是换了一份清单，页码必须从头开始。
+  reviewPage.value = 1
+  try {
+    await loadReviews()
+  } catch (e) {
+    schemeError.value = getPbMessage(e, '复核队列加载失败。')
+  }
 }
 
 async function gotoReviewPage(page) {
