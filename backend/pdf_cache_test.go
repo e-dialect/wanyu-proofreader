@@ -50,8 +50,8 @@ func TestCachedTaskPDFDegradesWithoutSplittingTheBook(t *testing.T) {
 	record, collectionID := sourcePDFRecord(t, app)
 	writeSourcePDF(t, app, collectionID, record.Id, renderingTestPDF())
 
-	descriptor := describePDF(record, 1, 2, "alice", time.Now())
-	output, err := s.cachedTaskPDF(record, descriptor, "proofreader0001")
+	descriptor := describePDF(record, 1, 2, time.Now())
+	output, err := s.cachedTaskPDF(record, descriptor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,8 +106,8 @@ func TestCachedTaskPDFKeepsAHitWarm(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	descriptor := describePDF(record, 1, 2, "alice", time.Now())
-	if _, err := s.cachedTaskPDF(record, descriptor, "proofreader0001"); err != nil {
+	descriptor := describePDF(record, 1, 2, time.Now())
+	if _, err := s.cachedTaskPDF(record, descriptor); err != nil {
 		t.Fatal(err)
 	}
 
@@ -142,8 +142,8 @@ func TestCachedTaskPDFReportsAnUnreadablePageDirectory(t *testing.T) {
 	log.SetOutput(&logged)
 	defer log.SetOutput(previous)
 
-	descriptor := describePDF(record, 1, 2, "alice", time.Now())
-	output, err := s.cachedTaskPDF(record, descriptor, "proofreader0001")
+	descriptor := describePDF(record, 1, 2, time.Now())
+	output, err := s.cachedTaskPDF(record, descriptor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,16 +262,62 @@ func TestPDFDescriptorWindowAndIdentity(t *testing.T) {
 	file.Set("file_hash", "v1")
 	file.Set("page_count", 10)
 	now := time.Date(2026, 9, 10, 0, 1, 0, 0, time.UTC)
-	first := describePDF(file, 2, 3, "alice", now)
-	if first.Key != describePDF(file, 2, 3, "alice", now.Add(time.Minute)).Key {
+	first := describePDF(file, 2, 3, now)
+	if first.Key != describePDF(file, 2, 3, now.Add(time.Minute)).Key {
 		t.Fatal("same window not reusable")
 	}
-	for _, d := range []pdfPreviewDescriptor{describePDF(file, 2, 3, "bob", now), describePDF(file, 3, 4, "alice", now), describePDF(file, 2, 3, "alice", now.Add(pdfPreviewTTL))} {
-		if d.Key == first.Key {
-			t.Fatal("wrong cache identity")
-		}
+	if describePDF(file, 3, 4, now).Key == first.Key {
+		t.Fatal("different page ranges must not share an asset")
+	}
+	later := describePDF(file, 2, 3, now.Add(pdfPreviewTTL))
+	if later.Key != first.Key || !later.ExpiresAt.After(first.ExpiresAt) {
+		t.Fatal("authorization expiry must advance without rebuilding the shared asset")
+	}
+	file.Set("file_hash", "v2")
+	if describePDF(file, 2, 3, now).Key == first.Key {
+		t.Fatal("source replacement must invalidate the shared asset")
 	}
 	if !first.ExpiresAt.Equal(now.Truncate(pdfPreviewTTL).Add(pdfPreviewTTL)) {
 		t.Fatal("wrong window expiry")
+	}
+}
+
+// Crossing an authorization window must not repeat extraction/watermark work.
+func TestSharedTaskPDFReusesArtifactAcrossWindows(t *testing.T) {
+	app := newSchemaTestApp(t)
+	s := newImportService(app)
+	record, collectionID := sourcePDFRecord(t, app)
+	writeSourcePDF(t, app, collectionID, record.Id, renderingTestPDF())
+	now := time.Now()
+	first := describePDF(record, 1, 2, now)
+	output, err := s.cachedTaskPDF(record, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(s.pdfCacheDir(), "shared-watermark-"+first.Key+".pdf")
+	aged := now.Add(-pdfPreviewTTL - time.Minute)
+	if err := os.Chtimes(path, aged, aged); err != nil {
+		t.Fatal(err)
+	}
+	// No source and no pre-split pages remain: a second generation would fail.
+	if err := os.Remove(filepath.Join(app.DataDir(), "storage", collectionID, record.Id, "source.pdf")); err != nil {
+		t.Fatal(err)
+	}
+	later := describePDF(record, 1, 2, now.Add(pdfPreviewTTL))
+	reused, err := s.cachedTaskPDF(record, later)
+	if err != nil || !bytes.Equal(output, reused) {
+		t.Fatalf("shared hit: %v", err)
+	}
+	entries, err := os.ReadDir(s.pdfCacheDir())
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("want one artifact, got %d: %v", len(entries), err)
+	}
+	cleanupPDFCache(s.pdfCacheDir(), now.Add(pdfPreviewTTL+time.Minute), 0)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("shared asset expired with the authorization window")
+	}
+	cleanupPDFCache(s.pdfCacheDir(), now.Add(pdfPagesTTL+time.Minute), 0)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("idle shared asset did not expire")
 	}
 }

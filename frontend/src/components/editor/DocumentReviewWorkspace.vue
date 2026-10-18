@@ -50,6 +50,8 @@
           :style="{ visibility: loading || pdfLoading ? 'hidden' : 'visible' }"
           :src="pdfUrl"
           :page-image="pageImage"
+          :watermark-user-id="watermarkUserId"
+          :watermark-project-id="page?.project || ''"
           @image-error="fallbackToPdf"
           :page-number="localPdfPage"
           :source-page-number="currentPdfPage"

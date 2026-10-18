@@ -29,9 +29,6 @@ let file
 for(let i=0;i<100;i++){file=await api(`/api/collections/project_files/records/${queued.id}`,{token});if(file.status==='ready')break;assert.notEqual(file.status,'failed');await new Promise(r=>setTimeout(r,100))}
 assert.equal(file.page_count,4)
 
-// Keep identity comparisons inside one real server window, including slower CI.
-const remaining=300000-Date.now()%300000
-if(remaining<45000)await new Promise(resolve=>setTimeout(resolve,remaining+50))
 const pages=[]
 for(const [order,start] of [[1,2],[2,1],[3,2],[4,2]])pages.push(await api('/api/collections/pages/records',{method:'POST',token:superAuth.token,body:{project:project.id,project_file:file.id,page_number:order,pdf_page:start,ocr_text:'test',ocr_row_json:'{"内容":"test"}',status:'pending'}}))
 const claim=async(user,previousTaskId='')=>api(`/api/fangji/projects/${project.id}/claim`,{method:'POST',token:user.token,body:{previousTaskId}})
@@ -51,8 +48,8 @@ if(process.env.PDF_REUSE_BROWSER_SCRIPT){
  assert.equal((await descriptor(users[0],second.id)).key,original.key)
  assert.deepEqual(await pdf(users[0],second.id),originalBytes,'same window across task IDs reuses identical watermarked PDF')
  const other=await claim(users[1]);assert.equal(other.id,pages[0].id)
- assert.notEqual((await descriptor(users[1],other.id)).key,original.key)
- assert.notDeepEqual(await pdf(users[1],other.id),originalBytes)
+ assert.equal((await descriptor(users[1],other.id)).key,original.key,'different authorized users share one asset key')
+ assert.deepEqual(await pdf(users[1],other.id),originalBytes,'different authorized users receive identical cached bytes')
  await api(`/api/fangji/pages/${second.id}/pdf/descriptor`,{token:users[1].token,status:403})
  await api(`/api/collections/project_files/records/${file.id}`,{method:'PATCH',token:superAuth.token,body:{file_hash:'replacement-version'}})
  assert.notEqual((await descriptor(users[0],second.id)).key,original.key,'file replacement invalidates preview')

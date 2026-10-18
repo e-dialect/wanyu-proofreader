@@ -42,7 +42,7 @@ const (
 	maxPDFBytes          = 100 * 1024 * 1024
 	batchSize            = 250
 	artifactCleanupBatch = 500
-	pdfValidator         = "pdfcpu v0.16.1"
+	pdfValidator         = "pdfcpu v0.16.2"
 )
 
 var importSourceLogicalID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$`)

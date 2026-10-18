@@ -59,7 +59,7 @@ func cleanupPDFCache(root string, now time.Time, reserve int64) {
 		}
 		p := filepath.Join(root, e.Name())
 		ttl := pdfPreviewTTL
-		if e.IsDir() || strings.HasPrefix(e.Name(), "oversized-") {
+		if e.IsDir() || strings.HasPrefix(e.Name(), "oversized-") || strings.HasPrefix(e.Name(), "shared-watermark-") {
 			ttl = pdfPagesTTL
 		}
 		if !info.ModTime().Add(ttl).After(now) {
@@ -241,7 +241,7 @@ func splitPDFPages(reader io.ReadSeeker, dir string, budget int64) error {
 // docs/task-pdf-cache.md already specifies ("退回按需两页生成"). The import
 // worker is the only thing that splits whole books, and it does so off the
 // request path.
-func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDescriptor, userID string) ([]byte, error) {
+func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDescriptor) ([]byte, error) {
 	pdfCacheMu.Lock()
 	defer pdfCacheMu.Unlock()
 	now := time.Now()
@@ -249,16 +249,20 @@ func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDe
 	sourceKey := pdfSourceKey(file)
 	pageRange := fmt.Sprintf("%d-%d", start, end)
 	root := s.pdfCacheDir()
-	outputPath := filepath.Join(root, "watermark-"+descriptor.Key+".pdf")
+	outputPath := filepath.Join(root, "shared-watermark-"+descriptor.Key+".pdf")
 	// The handler checks live permissions and leases BEFORE every cache lookup.
-	if info, err := os.Stat(outputPath); err == nil && info.ModTime().Add(pdfPreviewTTL).After(now) {
+	if info, err := os.Stat(outputPath); err == nil && info.ModTime().Add(pdfPagesTTL).After(now) {
 		if data, err := os.ReadFile(outputPath); err == nil {
+			_ = os.Chtimes(outputPath, now, now)
+			if dir, ok := lookupPDFPages(root, sourceKey, now); ok {
+				touchPDFPages(dir, now)
+			}
 			logPDFPreview("watermark-hit", sourceKey, pageRange, nil, time.Since(now))
 			return data, nil
 		}
 	}
 	cleanupPDFCache(root, now, pdfBookBudget)
-	stamp := fmt.Sprintf("Wanyu | %s | %s p%d-%d | %s UTC", userID, sourceKey[:12], start, end, descriptor.ExpiresAt.Add(-pdfPreviewTTL).UTC().Format("2006-01-02 15:04:05"))
+	stamp := fmt.Sprintf("Wanyu | Internal review | %s p%d-%d", sourceKey[:12], start, end)
 
 	stages := &previewStages{}
 	lookupStart := time.Now()
