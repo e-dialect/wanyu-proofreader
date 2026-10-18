@@ -13,9 +13,9 @@
     "test:coverage": "node --test --experimental-test-coverage tests/*.test.js"
   },
   "dependencies": {
-    "pinia": "^4.0.3",
+    "pinia": "^4.1.0",
     "pocketbase": "0.28.1",
-    "vue": "^3.5.43",
+    "vue": "^3.5.44",
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
