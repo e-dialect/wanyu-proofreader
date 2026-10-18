@@ -44,7 +44,10 @@ with tempfile.TemporaryDirectory(prefix='fangji-scheme-') as temp:
            'FANGJI_SCHEME_ADAPTER_DIR': str(adapters),
            'SCHEME_CONVERSION_HANDOFF': handoff,
            'SCHEME_RULE_CHANGE_HANDOFF': rule_change_handoff}
-    subprocess.run(['go', 'build', '-o', str(binary), '.'], cwd=backend, check=True)
+    # `-tags schemetest` 是这道闸门的另一半：生产构建（backend/Dockerfile）只跑
+    # `go build`，而 v1 规则在生产构建里一律不能创建真实作业。这里要的恰恰相反——
+    # 一次性临时实例、临时数据库、没有真实数据，所以显式打开测试构建。
+    subprocess.run(['go', 'build', '-tags', 'schemetest', '-o', str(binary), '.'], cwd=backend, check=True)
     for migration in sorted((backend / 'pb_migrations').glob('*.js'), key=lambda p: int(p.name.split('_')[0])):
         with tempfile.TemporaryDirectory(dir=root) as one:
             shutil.copy(migration, one)

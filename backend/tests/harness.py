@@ -91,9 +91,14 @@ def free_port():
 
 
 # 一次性测试实例里的合成适配器。这里要解决的问题不是「夹具能不能跑作业」，而是
-# 「由谁声明它能不能」：`rule_status` 是规则文件自己的声明，只有 production 允许创建真实作业
-# （见 backend/scheme_conversion.go 的 jobAdapter）。仓库里的 adapter_synthetic.json 写的是
+# 「由谁决定它能不能」：声明（rule_status）加契约（schema_version）两道判据缺一不可，
+# 见 backend/scheme_conversion.go 的 jobAdapter。仓库里的 adapter_synthetic.json 写的是
 # test，那是它的实情，不能为了跑测试把它改掉——改掉就等于把闸门本身拆了。
+#
+# 另一道判据是构建标签：v1 规则在**生产构建**里无论如何都不能创建真实作业。scheme
+# 的两个 runner 以 `-tags schemetest` 编译一次性二进制，只有那个二进制放行 v1。
+# 换句话说，下面这份「可运行副本」能被跑，是因为这是测试构建，不是因为它把
+# rule_status 改成了 production。
 #
 # 所以脚手架另写一份**可运行副本**，与夹具并排放在同一个临时规则目录里：
 #   * 另一个 source_scheme_id —— 两份文件撞同一个注册表键是启动期错误；

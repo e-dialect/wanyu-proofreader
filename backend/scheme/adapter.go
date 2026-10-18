@@ -56,9 +56,19 @@ const (
 	RuleStatusProduction = "production"
 )
 
-// MayDriveRealJobs is the one question the caller actually has. Unrecognised
-// values answer false, so a value this build does not know about cannot open the
-// gate; validate() rejects such a file outright, and this is the second lock.
+// RealJobSchemaVersion is the adapter contract a real conversion job requires:
+// #189's `source notation → documented IPA → target notation`. Schema version 1
+// is the older direct `from → to` jump with no IPA slot at all, so a v1 file
+// carries no evidence of the two-step judgement no matter what it declares about
+// itself. Until #189 ships version 2 every rule file here is version 1 and is
+// therefore test-only; the disposable integration binary opts in to running one
+// through a build tag, and a production build never carries that tag.
+const RealJobSchemaVersion = 2
+
+// MayDriveRealJobs is the declaration half of the gate. It answers only what the
+// rule file says about itself, which is not enough on its own: what the file says
+// can be edited. The caller combines this with the contract check in
+// jobAdapter, and production builds further require RealJobSchemaVersion.
 func (a *Adapter) MayDriveRealJobs() bool {
 	return a.RuleStatus == RuleStatusProduction
 }

@@ -39,7 +39,9 @@ with tempfile.TemporaryDirectory(prefix='fangji-scheme-browser-') as temp:
            'FANGJI_SCHEME_ADAPTER_DIR': str(adapters),
            'SCHEME_BROWSER_SCRIPT': str(backend / 'tests/scheme_conversion_browser.cjs'),
            'SCHEME_BROWSER_FIXTURE': str(root / 'scheme-browser-fixture.json')}
-    subprocess.run(['go', 'build', '-o', str(binary), '.'], cwd=backend, check=True)
+    # 与 run_scheme_conversion_integration.py 同一理由：只有 `schemetest` 构建才允许
+    # v1 规则创建作业；生产镜像不带这个标签。
+    subprocess.run(['go', 'build', '-tags', 'schemetest', '-o', str(binary), '.'], cwd=backend, check=True)
     for migration in sorted((backend / 'pb_migrations').glob('*.js'), key=lambda p: int(p.name.split('_')[0])):
         with tempfile.TemporaryDirectory(dir=root) as one:
             shutil.copy(migration, one)
