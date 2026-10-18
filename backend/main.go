@@ -64,6 +64,7 @@ func main() {
 	importer.registerPDFPreview()
 	importer.registerPagination()
 	importer.registerArtifacts()
+	importer.registerProjectExport()
 	importer.registerQualityState()
 	importer.registerBundleImports()
 	importer.registerPageContent()
