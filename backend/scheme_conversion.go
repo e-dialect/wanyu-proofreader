@@ -17,6 +17,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/search"
 	"github.com/pocketbase/pocketbase/tools/types"
+	"golang.org/x/text/unicode/norm"
 )
 
 // #190 拼音转换的运行面：谁来跑、怎么复核、怎么交付。
@@ -113,13 +114,22 @@ func (r *schemeRegistry) schemes() []schemeOption {
 // jobAdapter 是「这套规则能不能拿来跑一个真实作业」的唯一判据，发起与续跑两处都走它。
 //
 // owner 对第 1 条阻断给的是替代方案：真实规则的形状是 #189 的事，本 PR 不发明它，
-// 但本 PR 必须让「没被声明为真实方案的规则」进不了真实作业。所以闸门判的是规则文件自己
-// 的声明（scheme.Adapter.MayDriveRealJobs），而不是它的来源、命名或目录。
+// 但本 PR 必须让旧/synthetic adapter 进不了真实作业。这里有两道判据，缺一不可：
 //
-// 返回的第二个值是给管理员看的中文拒绝理由；空串表示放行。三种情形是三句不同的话：
+//  1. 声明：规则文件自己写 rule_status。它必须写，但**光凭它不够**——规则文件是数据，
+//     改一个字段就能放行。测试脚手架自己就这么做过（把合成夹具改标签成 production），
+//     正说明声明不能当唯一闸门。
+//  2. 契约：真实作业要求 schema_version >= scheme.RealJobSchemaVersion，即 #189 的
+//     `source notation → documented IPA → target notation`。v1 是直接的 from → to，
+//     没有 IPA 槽位，改标签改不出这一步。在 #189 交付 v2 之前，所有 v1 规则都过不了
+//     这一道；只有带 `schemetest` 构建标签的一次性测试二进制会放行（见
+//     scheme_realjobs_enabled.go）。生产镜像不带这个标签。
+//
+// 返回的第二个值是给管理员看的中文拒绝理由；空串表示放行。四种情形是四句不同的话：
 //   - 根本没登记（reason 为空，由调用方给「本实例没有登记…」那句）；
 //   - 登记了，但声明是 test（本函数给出）；
-//   - 登记了且声明是 production，但作业记录与规则对不上（processConversion 给出）。
+//   - 声明了 production，但仍是 v1 直接映射（本函数给出，生产构建）；
+//   - 登记了且两道判据都过，但作业记录与规则对不上（processConversion 给出）。
 func (r *schemeRegistry) jobAdapter(sourceScheme string) (*scheme.Adapter, string) {
 	adapter, ok := r.adapters[sourceScheme]
 	if !ok {
@@ -130,6 +140,13 @@ func (r *schemeRegistry) jobAdapter(sourceScheme string) (*scheme.Adapter, strin
 			"「%s」声明的是 rule_status=%q，只能用于测试，不能创建真实转换作业。"+
 				"真实方案要等 #189 把各书凡例转写成 source 侧清单后交付（届时那份规则写 rule_status=%q 并给出 rule_status_basis）。",
 			adapter.SourceScheme, adapter.RuleStatus, scheme.RuleStatusProduction)
+	}
+	if adapter.SchemaVersion < scheme.RealJobSchemaVersion && !allowTestOnlyAdaptersForJobs {
+		return adapter, fmt.Sprintf(
+			"「%s」虽然声明了 rule_status=production，但仍是 schema_version=%d 的直接映射（源记法 → 目标记法），"+
+				"没有 source → IPA → target 的证据，不能创建真实转换作业。真实转换要等 #189 把规则升到 schema_version=%d；"+
+				"在那之前，直接映射的规则只能用于测试。",
+			adapter.SourceScheme, adapter.SchemaVersion, scheme.RealJobSchemaVersion)
 	}
 	return adapter, ""
 }
@@ -294,9 +311,12 @@ func (s *importService) startConversion(c *core.RequestEvent) error {
 }
 
 func (s *importService) activeConversionJob(projectID string) (*core.Record, error) {
+	// PocketBase 的 filter 语法（fexpr）没有 `IN`，只有 `=` / `~` 这些与 `&&` / `||`
+	// 两种连接符；写 `IN (...)` 会在这里报「读取失败」，于是撞上唯一索引的那次并发
+	// 只会得到一句看不出原因的 400，而不是本该返回的 409。
 	records, err := s.app.FindRecordsByFilter(
 		"conversion_jobs",
-		`project = {:project} && status IN ("queued","processing")`,
+		`project = {:project} && (status = "queued" || status = "processing")`,
 		"-created", 1, 0, dbx.Params{"project": projectID},
 	)
 	if err != nil || len(records) == 0 {
@@ -324,17 +344,17 @@ func (s *importService) listNormalizations(c *core.RequestEvent) error {
 		return err
 	}
 	query := c.Request.URL.Query()
-	status := strings.TrimSpace(query.Get("status"))
-	if status == "" {
-		status = string(scheme.Ambiguous)
-	}
-	if !isNormalizationStatus(status) {
-		return apis.NewBadRequestError("状态只能是 EXACT、REVIEWED、AMBIGUOUS 或 UNSUPPORTED。", nil)
+	// 队列默认只收 AMBIGUOUS，但 UNSUPPORTED 同样是「机器判不出来、需要人」的条目，
+	// 管理端要能一起看到（可以传 "AMBIGUOUS,UNSUPPORTED"），否则汇总里的「暂未支持」
+	// 永远没有入口。多个状态用逗号分隔。
+	statuses, problem := parseNormalizationStatuses(query.Get("status"))
+	if problem != "" {
+		return apis.NewBadRequestError(problem, nil)
 	}
 	page, size := pageArgument(query.Get("page"), 1, 1000000), pageArgument(query.Get("perPage"), 25, 100)
 
-	params := dbx.Params{"project": projectID, "status": status}
-	filter := `project = {:project} && normalization_status = {:status}`
+	params := dbx.Params{"project": projectID}
+	filter := `project = {:project} && ` + normalizationStatusFilter(statuses)
 	var result map[string]any
 	err := s.app.RunInTransaction(func(app core.App) error {
 		total, err := countPagesWithFilter(app, filter, params)
@@ -387,6 +407,54 @@ func reviewBlockedReason(status string) string {
 	default:
 		return fmt.Sprintf("状态 %q 不在可复核的取值范围内，只有 AMBIGUOUS 与 UNSUPPORTED 可以给出人工结论。", status)
 	}
+}
+
+// parseNormalizationStatuses 解析复核队列的 status 参数：逗号分隔、去重、逐项校验。
+// 空值保持原来的默认（只列 AMBIGUOUS），不改变既有调用方的语义。
+func parseNormalizationStatuses(raw string) ([]scheme.Status, string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []scheme.Status{scheme.Ambiguous}, ""
+	}
+	seen := map[scheme.Status]bool{}
+	list := make([]scheme.Status, 0, 2)
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !isNormalizationStatus(part) {
+			return nil, "状态只能是 EXACT、REVIEWED、AMBIGUOUS 或 UNSUPPORTED；要看多个状态时用逗号分隔。"
+		}
+		status := scheme.Status(part)
+		if !seen[status] {
+			seen[status] = true
+			list = append(list, status)
+		}
+	}
+	if len(list) == 0 {
+		return []scheme.Status{scheme.Ambiguous}, ""
+	}
+	return list, ""
+}
+
+// normalizationStatusFilter 把已校验的状态值拼成 filter。这些值是枚举里的固定字面量，
+// 不是用户输入，所以直接内联；若以后状态变成可配置值，这里要改用参数绑定。
+//
+// 多状态不能用 `IN (...)`：PocketBase 的 filter 语法（fexpr）只认比较符与 `&&` / `||`，
+// `IN` 会让整个 filter 解析失败（表现为 400「读取复核队列失败」）。所以拆成等值的
+// `||`，并且**必须加括号**——调用方用 `&&` 把项目条件拼在前面，而连接符会原样落进
+// SQL，`AND` 的优先级高于 `OR`：不加括号就成了 `(project = … AND status = A) OR status = B`，
+// 第二个状态会跨项目命中。
+func normalizationStatusFilter(statuses []scheme.Status) string {
+	if len(statuses) == 1 {
+		return fmt.Sprintf("normalization_status = %q", statuses[0])
+	}
+	parts := make([]string, len(statuses))
+	for i, status := range statuses {
+		parts[i] = fmt.Sprintf("normalization_status = %q", status)
+	}
+	return "(" + strings.Join(parts, " || ") + ")"
 }
 
 func isNormalizationStatus(value string) bool {
@@ -529,8 +597,106 @@ func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	return c.JSON(http.StatusOK, normalizationView(page))
 }
 
+// reviewedConclusion 是一条已经有人给过结论的条目在导出时需要的全部字段。
+// 抽成普通结构体是为了让分组逻辑能脱离 PocketBase 单测——它决定的是「这份草案贴
+// 回去之后 adapter 还能不能加载」，值得有自己的用例。
+type reviewedConclusion struct {
+	PageID          string
+	Source          string // 已按 NFC 归一，与 adapter 例外表的键同一形状
+	Canonical       string
+	Reviewer        string
+	Basis           string
+	CanonicalScheme string
+	RuleVersion     string
+}
+
+type exceptionDraft struct {
+	ID         string   `json:"id"`
+	Source     string   `json:"source_pronunciation"`
+	Canonical  string   `json:"canonical_pronunciation"`
+	Status     string   `json:"status"`
+	Reviewer   string   `json:"reviewer"`
+	Basis      string   `json:"basis"`
+	MergedFrom []string `json:"merged_from,omitempty"`
+}
+
+type exceptionConflict struct {
+	Source      string              `json:"source_pronunciation"`
+	Conclusions []map[string]string `json:"conclusions"`
+}
+
+// groupExceptionDrafts 合并同一 source 的一致结论，把互相冲突的整组放进 conflicts。
+//
+// 为什么必须合并：adapter 的例外表以 NFC 之后的 source_pronunciation 为键，加载器
+// 明确拒绝重复键（adapter.go 的「the same source form once normalised」）。而同一读音
+// 在不同页上重复出现是常态——浏览器夹具里就有三条 kn533。逐条导出会得到一份贴不回去
+// 的草案：两个不同 id、同一个 source，adapter 下次启动直接失败。
+//
+// 为什么冲突不能挑一个：两个人都给了结论却指向不同的目标写法，这是需要人裁决的事实，
+// 不是程序能猜的。整组进 conflicts，每条的判定人与依据都还在，调用方看得见。
+func groupExceptionDrafts(rows []reviewedConclusion) ([]exceptionDraft, []exceptionConflict) {
+	order := make([]string, 0, len(rows))
+	grouped := map[string][]reviewedConclusion{}
+	for _, row := range rows {
+		// 键用 NFC：adapter 加载器按 NFC 之后的写法判重，而人工录入的两条结论
+		// 可能是同一段文字的不同组合形式（组合音标尤其容易）。在这里再做一次
+		// 归一，调用方就不会因为忘了归一而导出一份「看起来只有一条」的重复键。
+		source := norm.NFC.String(row.Source)
+		row.Source = source
+		if _, seen := grouped[source]; !seen {
+			order = append(order, source)
+		}
+		grouped[source] = append(grouped[source], row)
+	}
+
+	drafts := make([]exceptionDraft, 0, len(order))
+	conflicts := make([]exceptionConflict, 0)
+	for _, source := range order {
+		items := grouped[source]
+		agree := true
+		for _, item := range items[1:] {
+			if item.Canonical != items[0].Canonical {
+				agree = false
+				break
+			}
+		}
+		if agree {
+			merged := make([]string, 0, len(items)-1)
+			for _, item := range items[1:] {
+				merged = append(merged, item.PageID)
+			}
+			drafts = append(drafts, exceptionDraft{
+				ID:         "ex:" + items[0].PageID,
+				Source:     source,
+				Canonical:  items[0].Canonical,
+				Status:     string(scheme.Reviewed),
+				Reviewer:   items[0].Reviewer,
+				Basis:      items[0].Basis,
+				MergedFrom: merged,
+			})
+			continue
+		}
+		conclusions := make([]map[string]string, 0, len(items))
+		for _, item := range items {
+			conclusions = append(conclusions, map[string]string{
+				"id":                      "ex:" + item.PageID,
+				"canonical_pronunciation": item.Canonical,
+				"reviewer":                item.Reviewer,
+				"basis":                   item.Basis,
+			})
+		}
+		conflicts = append(conflicts, exceptionConflict{Source: source, Conclusions: conclusions})
+	}
+	return drafts, conflicts
+}
+
 // exportNormalizationExceptions 把人工结论导成可直接粘进规则文件 exceptions[] 的草案。
 // 只导出 REVIEWED，且不自动改任何规则文件——#190 期望结果 4 明确要求「生成待评审的草案，不自动改规则」。
+//
+// 一份草案只属于一个 (source, target, rule_version) 三元组。跨来源混合上一轮已经挡了；
+// 同一来源下换过目标方案或规则版本之后，旧结论会被重跑保护稳定地留下来，所以第二层
+// 混合同样会自己出现。默认按目录里这份 adapter 当前声明的 target + rule_version 过滤，
+// 调用方可以点名别的版本，但必须自己写出来，不能靠默认值取到一份混合表。
 func (s *importService) exportNormalizationExceptions(c *core.RequestEvent) error {
 	projectID := c.Request.PathValue("projectId")
 	if _, _, err := s.requireProjectManager(c, projectID); err != nil {
@@ -545,8 +711,24 @@ func (s *importService) exportNormalizationExceptions(c *core.RequestEvent) erro
 		return apis.NewBadRequestError(
 			"必须指定 source_scheme_id：草案要贴进某一套方案的规则文件，不能把多套来源方案的结论混成一张表。", nil)
 	}
-	if _, ok := s.schemes.adapters[sourceScheme]; !ok {
+	adapter, ok := s.schemes.adapters[sourceScheme]
+	if !ok {
 		return apis.NewBadRequestError(fmt.Sprintf("本实例没有登记「%s」这套方案，无法导出它的规则草案。", sourceScheme), nil)
+	}
+
+	canonicalScheme := strings.TrimSpace(query.Get("canonical_scheme_id"))
+	if canonicalScheme == "" {
+		canonicalScheme = adapter.CanonicalScheme
+	}
+	ruleVersion := strings.TrimSpace(query.Get("rule_version"))
+	if ruleVersion == "" {
+		ruleVersion = adapter.RuleVersion
+	}
+	warning := ""
+	if canonicalScheme != adapter.CanonicalScheme || ruleVersion != adapter.RuleVersion {
+		warning = fmt.Sprintf(
+			"导出的是目标方案「%s」/ 规则版本「%s」的结论，而目录里这套规则现在是「%s」/「%s」。贴进 exceptions[] 前请确认这就是你要的那一版。",
+			canonicalScheme, ruleVersion, adapter.CanonicalScheme, adapter.RuleVersion)
 	}
 
 	params := dbx.Params{"project": projectID, "scheme": sourceScheme}
@@ -556,25 +738,59 @@ func (s *importService) exportNormalizationExceptions(c *core.RequestEvent) erro
 		return apis.NewBadRequestError("读取人工结论失败。", err)
 	}
 
-	drafts := make([]map[string]any, 0, len(records))
+	rows := make([]reviewedConclusion, 0, len(records))
+	otherCounts := map[string]int{}
+	otherOrder := make([]string, 0)
 	for _, page := range records {
-		// 这里不再逐条查方案在不在目录里：上面那一句已经保证 sourceScheme 在册，
-		// 而 filter 保证每条记录的 source_scheme_id 都等于它。
-		source := normalizationSourceValue(page)
-		drafts = append(drafts, map[string]any{
-			"id":                      "ex:" + page.Id,
-			"source_pronunciation":    source,
-			"canonical_pronunciation": page.GetString("canonical_pronunciation"),
-			"status":                  string(scheme.Reviewed),
-			"reviewer":                page.GetString("normalization_reviewed_by"),
-			"basis":                   page.GetString("normalization_basis"),
+		pageCanonical := page.GetString("canonical_scheme_id")
+		pageVersion := page.GetString("normalization_rule_version")
+		if pageCanonical != canonicalScheme || pageVersion != ruleVersion {
+			// 不属于这份草案的结论不静默丢掉：把它们按三元组数出来，调用方才知道
+			// 「还有别的版本没导出」，也才知道该用哪两个参数去取。
+			key := pageCanonical + "\x00" + pageVersion
+			if _, seen := otherCounts[key]; !seen {
+				otherOrder = append(otherOrder, key)
+			}
+			otherCounts[key]++
+			continue
+		}
+		rows = append(rows, reviewedConclusion{
+			PageID:          page.Id,
+			Source:          norm.NFC.String(normalizationSourceValue(page)),
+			Canonical:       page.GetString("canonical_pronunciation"),
+			Reviewer:        page.GetString("normalization_reviewed_by"),
+			Basis:           page.GetString("normalization_basis"),
+			CanonicalScheme: pageCanonical,
+			RuleVersion:     pageVersion,
 		})
 	}
-	return c.JSON(http.StatusOK, map[string]any{
-		"source_scheme_id": sourceScheme,
-		"note":             "这是待评审的草案，不会自动写入任何规则文件；确认后由人贴进对应 adapter 的 exceptions[] 并升 rule_version。",
-		"exceptions":       drafts,
-	})
+
+	drafts, conflicts := groupExceptionDrafts(rows)
+
+	otherVersions := make([]map[string]any, 0, len(otherOrder))
+	for _, key := range otherOrder {
+		parts := strings.SplitN(key, "\x00", 2)
+		otherVersions = append(otherVersions, map[string]any{
+			"canonical_scheme_id": parts[0],
+			"rule_version":        parts[1],
+			"count":               otherCounts[key],
+		})
+	}
+
+	result := map[string]any{
+		"source_scheme_id":    sourceScheme,
+		"canonical_scheme_id": canonicalScheme,
+		"rule_version":        ruleVersion,
+		"note": "这是待评审的草案，不会自动写入任何规则文件；确认后由人贴进对应 adapter 的 exceptions[] 并升 rule_version。" +
+			"同一 source 的一致结论已合并（merged_from 列出被合并的条目）；相互冲突的结论不会写进 exceptions，列在 conflicts 里等人裁决。",
+		"exceptions":     drafts,
+		"conflicts":      conflicts,
+		"other_versions": otherVersions,
+	}
+	if warning != "" {
+		result["warning"] = warning
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 // countPagesWithFilter 走 PocketBase 的 filter 解析器，而不是把 filter 当成裸 SQL：
