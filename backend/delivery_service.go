@@ -40,6 +40,31 @@ type deliveryHandoff struct {
 }
 
 func (s *importService) registerDeliveries() {
+	// Non-cascading relations are not restrictive foreign keys. Guard parent
+	// deletion at the model layer, including the owner route and superuser API,
+	// before PocketBase can clear relations or delete other project children.
+	for _, parent := range []struct{ collection, field, message string }{
+		{"projects", "project", "项目已有交付凭据，不能删除；请保留项目并追加停用／通知记录。"},
+		{"users", "operator", "账号关联交付凭据，不能删除；请停用账号并保留操作者身份。"},
+	} {
+		s.app.OnRecordDelete(parent.collection).BindFunc(func(e *core.RecordEvent) error {
+			return e.App.RunInTransaction(func(app core.App) error {
+				count, err := app.CountRecords("release_deliveries", dbx.HashExp{parent.field: e.Record.Id})
+				if err != nil {
+					return err
+				}
+				if count > 0 {
+					return apis.NewBadRequestError(parent.message, nil)
+				}
+				// Serialize the check and deletion with package creation even for
+				// raw API calls that did not begin their own transaction.
+				originalApp := e.App
+				e.App = app
+				defer func() { e.App = originalApp }()
+				return e.Next()
+			})
+		})
+	}
 	// Evidence may be appended, never edited/deleted, including through the raw
 	// superuser API. No model hooks on pages, attempts or selection decisions.
 	for _, name := range []string{"release_deliveries", "release_events"} {
@@ -118,6 +143,12 @@ func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHa
 	}
 	if len(pages) > 20000 {
 		return snap, fmt.Errorf("批次超过 20,000 条，请在 D 侧拆分，未截断出包。")
+	}
+	// A completed import may have skipped source keys belonging to an older
+	// job. import_job then identifies only its newly inserted subset, not the
+	// uploaded batch. Fail closed rather than reconcile that subset as a whole.
+	if job.GetInt("total_count") <= 0 || len(pages) != job.GetInt("total_count") {
+		return snap, fmt.Errorf("批次关联条目数与入站总数不一致（可能含重放跳过或已删除条目），无法证明完整范围；请退回 A／D 线核查，禁止按子集出包。")
 	}
 	if len(pages) == 0 || len(pages) != len(h.Entries) {
 		return snap, fmt.Errorf("交接清单必须逐项覆盖整个导入批次（不允许静默遗漏）。")
@@ -551,8 +582,12 @@ func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
 			if err != nil || old.GetString("delivery") != r.Id || !containsStr([]string{"receipt", "return"}, old.GetString("kind")) {
 				return fmt.Errorf("待处置事件不属于这个包。")
 			}
-			if !containsStr(deliveryPendingActions([]*core.Record{old}), old.Id) {
-				return fmt.Errorf("该事件不是需要上游处置的冲突、失败或退回。")
+			events, err := deliveryEvents(app, r.Id)
+			if err != nil {
+				return err
+			}
+			if !containsStr(deliveryPendingActions(events), old.Id) {
+				return fmt.Errorf("该事件已处置，或不是需要上游处置的冲突、失败或退回。")
 			}
 		}
 		collection, err := app.FindCollectionByNameOrId("release_events")

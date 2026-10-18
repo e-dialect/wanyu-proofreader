@@ -35,16 +35,19 @@ function zipFiles(files) {
   assert.equal(result.status, 0, result.stderr?.toString())
   return result.stdout
 }
-const form = new FormData()
-form.set('bundle', new Blob([zipFiles({ 'manifest.json': JSON.stringify(manifest), 'entries.jsonl': payload })]), 'synthetic-inbound.zip')
-const job = await api(`/api/fangji/projects/${project.id}/imports/bundle`, { token: admin.token, method: 'POST', body: form, status: 202 })
-for (let i = 0; ; i++) {
-  const current = await api(`/api/collections/import_jobs/records/${job.id}`, { token: superAuth.token })
-  assert.notEqual(current.status, 'failed', JSON.stringify(current))
-  if (current.status === 'completed') break
-  assert.ok(i < 200, 'import timeout')
-  await new Promise((resolve) => setTimeout(resolve, 100))
+async function importBundle(bundleManifest, body) {
+  const form = new FormData()
+  form.set('bundle', new Blob([zipFiles({ 'manifest.json': JSON.stringify(bundleManifest), 'entries.jsonl': body })]), 'synthetic-inbound.zip')
+  const job = await api(`/api/fangji/projects/${project.id}/imports/bundle`, { token: admin.token, method: 'POST', body: form, status: 202 })
+  for (let i = 0; ; i++) {
+    const current = await api(`/api/collections/import_jobs/records/${job.id}`, { token: superAuth.token })
+    assert.notEqual(current.status, 'failed', JSON.stringify(current))
+    if (current.status === 'completed') return current
+    assert.ok(i < 200, 'import timeout')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
 }
+const job = await importBundle(manifest, payload)
 const pageURL = `/api/collections/pages/records?perPage=100&sort=page_number,id&filter=${encodeURIComponent(`project="${project.id}"`)}`
 let pages = (await api(pageURL, { token: superAuth.token })).items
 assert.equal(pages.length, incoming.length)
@@ -81,6 +84,29 @@ async function dataCounts() {
 // Unknown purpose permission and missing third-party transfer are both closed.
 await check(handoff, admin.token, 400)
 await setUsage('raw_third_party_transfer', 'allow')
+
+// A distinct completed batch overlaps one old source key and inserts one new
+// row. The old row keeps its original job, so a one-row handoff must never be
+// accepted as the full two-row inbound batch, even with a genuine final result.
+const overlapPayload = Buffer.from([incoming[0], { entry_id: 'synthetic-overlap-new', fields: { headword: '合成重叠新行', reading: 'synthetic-overlap' } }].map(JSON.stringify).join('\n') + '\n')
+const overlapJob = await importBundle({ ...manifest, bundle: { ...manifest.bundle, bundle_id: 'rb-delivery-overlap' }, files: [{ path: 'entries.jsonl', sha256: digest(overlapPayload), lines: 2, bytes: overlapPayload.length }] }, overlapPayload)
+assert.equal(overlapJob.total_count, 2)
+const overlapPages = (await api(pageURL, { token: superAuth.token })).items.filter((page) => page.import_job === overlapJob.id)
+assert.equal(overlapPages.length, 1)
+assert.equal((await api(`/api/collections/pages/records/${pages[0].id}`, { token: superAuth.token })).import_job, job.id)
+for (let round = 1; round <= 2; round++) {
+  const auth = await login(`delivery-round-${round}@example.com`, 'Synthetic12345!')
+  const claimed = await api(`/api/fangji/projects/${project.id}/claim`, { token: auth.token, method: 'POST' })
+  assert.equal(claimed.id, overlapPages[0].id)
+  await api(`/api/fangji/pages/${claimed.id}/submit`, { token: auth.token, method: 'POST', body: { rowJson: overlapPages[0].ocr_row_json, text: 'synthetic-overlap', leaseToken: claimed.leaseToken } })
+}
+const subset = { ...handoff, import_job: overlapJob.id, recipient: 'synthetic-overlap-consumer', expected: { adopted: 1, excluded: 0, pending: 0 }, entries: [{ page_id: overlapPages[0].id, scope: 'adopted', reason: '' }] }
+const beforeSubset = await dataCounts()
+await check(subset, admin.token, 400)
+await create({ ...subset, preview_sha256: 'not-a-valid-preview' }, admin.token, 400)
+assert.deepEqual(await dataCounts(), beforeSubset)
+console.log('PASS: completed overlapping import cannot export its newly inserted subset as the full inbound batch')
+
 await check({ ...handoff, purpose: 'internal_research' }, admin.token, 400)
 await check({ ...handoff, purpose: 'not-a-registry-purpose' }, admin.token, 400)
 await api(`/api/fangji/projects/${project.id}/pages/${adoptedPage.id}/quality-state`, { token: admin.token, method: 'POST', body: { state: 'withheld', basis: 'synthetic rights question' } })
@@ -194,6 +220,23 @@ await api(`/api/collections/release_deliveries/records/${first.id}`, { token: su
 await api(`/api/collections/release_deliveries/records/${first.id}`, { token: superAuth.token, method: 'DELETE', status: 400 })
 console.log('PASS: five roles including owner without membership; generation/download/receipt protected, outside text refused, no public file access, immutable evidence')
 
+// Parent deletion must fail before changing any relation or archive, through
+// both the normal owner route and raw superuser API. Empty projects still delete.
+const beforeParentDelete = await dataCounts()
+const originalProject = await api(`/api/collections/projects/records/${project.id}`, { token: superAuth.token })
+await api(`/api/fangji/projects/${project.id}`, { token: users.owner.token, method: 'DELETE', status: 400 })
+await api(`/api/collections/projects/records/${project.id}`, { token: superAuth.token, method: 'DELETE', status: 400 })
+await api(`/api/collections/users/records/${admin.record.id}`, { token: superAuth.token, method: 'DELETE', status: 400 })
+assert.deepEqual(await dataCounts(), beforeParentDelete)
+assert.deepEqual(await api(`/api/collections/projects/records/${project.id}`, { token: superAuth.token }), originalProject)
+assert.deepEqual(await api(`/api/collections/release_deliveries/records/${first.id}`, { token: superAuth.token }), raw)
+const retained = await fetch(base + `/api/fangji/deliveries/${first.id}/download`, { headers: { Authorization: users.owner.token } })
+assert.equal(retained.status, 200)
+assert.equal(digest(Buffer.from(await retained.arrayBuffer())), first.sha256)
+const disposable = await api('/api/fangji/projects', { token: admin.token, method: 'POST', body: { name: '合成可删除空项目' }, status: 201 })
+await api(`/api/fangji/projects/${disposable.id}`, { token: admin.token, method: 'DELETE', status: 204 })
+console.log('PASS: owner and raw parent deletions cannot orphan delivery evidence; archive remains accessible; empty projects can delete')
+
 const eventURL = `/api/fangji/deliveries/${first.id}/events`
 const receipt = { kind: 'receipt', status: 'partial_conflict', affected: resultEntries.length, reviewer: 'synthetic-reviewer', reason: 'synthetic entry conflict', responsible: 'synthetic-upstream-owner', target: 'D' }
 await api(eventURL, { token: admin.token, method: 'POST', body: { ...receipt, responsible: '' }, status: 400 })
@@ -202,7 +245,21 @@ assert.equal(conflict.receipt_state, 'partial_conflict')
 const conflictEvent = conflict.events.findLast((event) => event.kind === 'receipt')
 await check({ ...handoff, previous: first.id, change_reason: 'unresolved resend' }, admin.token, 400)
 assert.deepEqual(conflict.pending_actions, [conflictEvent.id])
-await api(eventURL, { token: admin.token, method: 'POST', body: { kind: 'resolution', resolves: conflictEvent.id, reviewer: 'synthetic-reviewer', reason: 'D line fixed synthetic fixture', evidence: 'synthetic-D-fix' }, status: 201 })
+const resolutionBody = { kind: 'resolution', resolves: conflictEvent.id, reviewer: 'synthetic-reviewer', reason: 'D line fixed synthetic fixture', evidence: 'synthetic-D-fix' }
+const completed = await api(eventURL, { token: admin.token, method: 'POST', body: resolutionBody, status: 201 })
+assert.deepEqual(completed.pending_actions, [])
+await api(eventURL, { token: admin.token, method: 'POST', body: resolutionBody, status: 400 })
+const stillCompleted = (await list()).items.find((item) => item.id === first.id)
+assert.deepEqual(stillCompleted.events, completed.events, 'duplicate resolution must not append immutable history')
+// Two simultaneous requests on another pending event must append exactly once.
+const concurrentReturn = await api(eventURL, { token: admin.token, method: 'POST', body: { kind: 'return', reviewer: 'synthetic-reviewer', reason: 'synthetic concurrent return', target: 'D', responsible: 'synthetic-D-owner' }, status: 201 })
+const concurrentResolution = { ...resolutionBody, resolves: concurrentReturn.events.at(-1).id }
+const competing = await Promise.all([1, 2].map(() => fetch(base + eventURL, { method: 'POST', headers: { Authorization: admin.token, 'Content-Type': 'application/json' }, body: JSON.stringify(concurrentResolution) })))
+assert.deepEqual(competing.map((response) => response.status).sort(), [201, 400])
+const afterCompeting = (await list()).items.find((item) => item.id === first.id)
+assert.equal(afterCompeting.events.filter((event) => event.kind === 'resolution' && event.payload.resolves === concurrentResolution.resolves).length, 1)
+assert.deepEqual(afterCompeting.pending_actions, [])
+console.log('PASS: sequential and concurrent duplicate resolutions rejected without duplicating history')
 const resendBody = { ...handoff, previous: first.id, change_reason: 'D line rechecked conflict; synthetic resend' }
 const resend = await create({ ...resendBody, preview_sha256: (await check(resendBody)).preview_sha256 })
 assert.equal(resend.version, first.version + 1)

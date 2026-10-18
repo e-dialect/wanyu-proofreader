@@ -299,7 +299,7 @@ func ReplayDelivery(data []byte, expectedSHA string) ([]byte, DeliverySnapshot, 
 	fail := func(msg string) ([]byte, DeliverySnapshot, error) {
 		return nil, DeliverySnapshot{}, fmt.Errorf("%s已拒绝整包，未写入任何数据。", msg)
 	}
-	if !validSHA256(expectedSHA) || Digest(data) != expectedSHA {
+	if !validSHA256(expectedSHA) || !strings.EqualFold(Digest(data), expectedSHA) {
 		return fail("交付包 SHA-256 校验失败。")
 	}
 	files, refusal, err := loadZipFiles(data)

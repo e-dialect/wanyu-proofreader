@@ -30,9 +30,15 @@ func TestDeliveryReplayAndDeterminism(t *testing.T) {
 	if err != nil || !bytes.Equal(a, b) {
 		t.Fatalf("unstable order: %v", err)
 	}
-	replayed, snapshot, err := ReplayDelivery(a, Digest(a))
-	if err != nil || !bytes.Equal(replayed, a) {
-		t.Fatalf("offline replay: %v", err)
+	for _, pin := range []string{Digest(a), strings.ToUpper(Digest(a)), strings.ToUpper(Digest(a)[:20]) + Digest(a)[20:]} {
+		replayed, _, err := ReplayDelivery(a, pin)
+		if err != nil || !bytes.Equal(replayed, a) {
+			t.Fatalf("offline replay with hexadecimal case %q: %v", pin, err)
+		}
+	}
+	_, snapshot, err := ReplayDelivery(a, Digest(a))
+	if err != nil {
+		t.Fatal(err)
 	}
 	if snapshot.Database != s.Database {
 		t.Fatal("counts lost")
