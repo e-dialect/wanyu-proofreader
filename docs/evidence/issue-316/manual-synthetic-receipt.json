@@ -1,0 +1,20 @@
+{
+  "package_id": "delivery-06f37adf81391000fe21b3b65439fe6f",
+  "package_sha256": "52809f8e0c2cdb3feaf2867f0425203f84f5017e94976bd95f7f6e0f5df41d26",
+  "delivery_id": "m3uayvpvpnx8scw",
+  "version": 1,
+  "import_job": "hm2i0jglp4bsgao",
+  "responsible": "synthetic-upstream-owner",
+  "evidence": "",
+  "kind": "receipt",
+  "reason": "synthetic entry conflict",
+  "target": "D",
+  "resolves": "",
+  "status": "partial_conflict",
+  "affected": 1,
+  "reviewer": "synthetic-reviewer",
+  "operator": "x9cwg4kcle8o6px",
+  "created": "2026-10-18 07:30:52.906Z",
+  "method": "manual_synthetic_test",
+  "x_side_dry_run": "NOT_PERFORMED"
+}

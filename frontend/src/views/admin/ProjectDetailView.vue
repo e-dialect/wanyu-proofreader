@@ -225,6 +225,7 @@
       <!-- Export section -->
       <section id="project-export" class="card project-section mb-6">
         <div class="card-title">导出结果</div>
+        <RouterLink :to="`/admin/projects/${projectId}/deliveries`" class="btn btn-secondary mb-3">交付包与回执</RouterLink>
         <p class="text-sm text-muted mb-3">
           项目全量文件含完成状态，未完成记录会明确标为导入值回退。业务已完成文件排除阻塞问题、暂缓判断和依据失效的记录，保留实际声调写法与合法空白。
         </p>

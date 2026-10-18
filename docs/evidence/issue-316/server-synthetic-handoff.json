@@ -1,0 +1,31 @@
+{
+  "import_job": "hm2i0jglp4bsgao",
+  "selection_ref": "D-synthetic-confirmed",
+  "selection_rule": "合成清单：第1条采用、第2条排除、第3条待处理",
+  "confirmed_by": "synthetic-D-confirmer",
+  "recipient": "synthetic-consumer",
+  "purpose": "public_display",
+  "reviewer": "synthetic-reviewer",
+  "expected": {
+    "adopted": 1,
+    "excluded": 1,
+    "pending": 1
+  },
+  "entries": [
+    {
+      "page_id": "zlpcsh7viyuw2c0",
+      "scope": "adopted",
+      "reason": ""
+    },
+    {
+      "page_id": "9lu5jgxgalsgvhn",
+      "scope": "excluded",
+      "reason": "unknown"
+    },
+    {
+      "page_id": "gr5saoyebis94zl",
+      "scope": "pending",
+      "reason": "rights_gate"
+    }
+  ]
+}
