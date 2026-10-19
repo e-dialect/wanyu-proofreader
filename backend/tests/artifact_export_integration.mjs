@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { toSafeCsvCell } from '../../frontend/src/lib/csvExport.js'
+import { toSafeCsvCell } from './legacy_csv_oracle.mjs'
 import { safeParseRowJson, orderedRowHeaders } from '../../frontend/src/lib/structuredRow.js'
 
 const baseUrl = process.env.PB_URL || 'http://127.0.0.1:18095'
@@ -116,6 +116,18 @@ try {
   assert.equal(list.length, 2)
   assert.ok(list[0].created >= list[1].created)
   console.log('PASS: repeated export produces versioned artifacts ordered by created desc')
+
+  // The retained storage route must not bypass withheld exclusion either.
+  await request(`/api/fangji/projects/${project.id}/pages/${pages[1].id}/quality-state`, {
+    method: 'POST', token, body: { state: 'withheld', basis: 'synthetic restriction' }
+  })
+  const restricted = await request(`/api/fangji/projects/${project.id}/exports/csv`, { method: 'POST', token, expected: 201 })
+  const restrictedText = await fetch(`${baseUrl}/api/fangji/artifacts/${restricted.id}/download`, { headers: { Authorization: token } }).then((r) => r.arrayBuffer())
+  assert.equal(Buffer.from(restrictedText).toString('utf8'), buildExpectedCsv(pages.filter((page) => page.id !== pages[1].id)))
+  const optedIn = await request(`/api/fangji/projects/${project.id}/exports/csv?include_withheld=1`, { method: 'POST', token, expected: 201 })
+  const optedInText = await fetch(`${baseUrl}/api/fangji/artifacts/${optedIn.id}/download`, { headers: { Authorization: token } }).then((r) => r.arrayBuffer())
+  assert.equal(Buffer.from(optedInText).toString('utf8'), expected)
+  console.log('PASS: retained artifacts exclude withheld by default and require explicit opt-in')
 
   // 非管理员下载应 403。
   const readerEmail = `artifact-${suffix}@example.com`

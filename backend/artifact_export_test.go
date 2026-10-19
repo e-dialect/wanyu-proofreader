@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// toSafeCsvCell 对齐 frontend/tests/csvExport.test.js 的全部用例。
+// CSV 引号与电子表格公式注入用例覆盖两种服务端导出。
 func TestToSafeCsvCell(t *testing.T) {
 	cases := []struct {
 		name string

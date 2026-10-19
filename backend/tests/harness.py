@@ -194,6 +194,7 @@ def server(binary, root, extra_env=None, data=None, migrations=MIGRATIONS, hooks
                 raise RuntimeError('Temporary server did not become ready\n' + _log_tail(root))
             yield env
         finally:
+            stopped_by_harness = process.poll() is None
             process.terminate()
             try:
                 process.wait(timeout=10)
@@ -202,7 +203,7 @@ def server(binary, root, extra_env=None, data=None, migrations=MIGRATIONS, hooks
         log_text = _log_tail(root, size=10 ** 6)
         if 'DATA RACE' in log_text:
             raise RuntimeError('race detector reported a data race:\n' + _race_excerpt(log_text))
-        if process.returncode not in (0, -15, 143):
+        if not _server_exit_ok(process.returncode, stopped_by_harness):
             raise RuntimeError(f'server exited {process.returncode}\n{_log_tail(root)}')
 
 
@@ -218,10 +219,18 @@ def _race_excerpt(text):
     return text[start if start >= 0 else 0:][:4000]
 
 
+def _server_exit_ok(returncode, stopped_by_harness, platform=os.name):
+    # Windows Popen.terminate uses TerminateProcess(..., 1). Only accept that
+    # status when this harness observed a live server and initiated its shutdown;
+    # a server that actually failed with exit 1 must still fail the suite.
+    return returncode in (0, -15, 143) or (
+        platform == 'nt' and stopped_by_harness and returncode == 1)
+
+
 def _log_tail(root, size=20000):
     # Only disposable, generated test identities are present in this log.
     try:
-        return (Path(root) / 'server.log').read_text()[-size:]
+        return (Path(root) / 'server.log').read_text(encoding='utf-8', errors='replace')[-size:]
     except OSError:
         return '<no server.log>'
 
