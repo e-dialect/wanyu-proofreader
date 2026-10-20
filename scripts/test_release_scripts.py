@@ -176,6 +176,8 @@ await import(SCRIPT);assert.equal(count,responses.length);
         self.assertNotEqual(self.check([{'status': 404}, existing]).returncode, 0)
 
     def test_retry_reuses_only_fully_verified_published_digest(self):
+        if os.name == 'nt':
+            self.skipTest('the docker fixture is a POSIX shell executable; native Windows Node cannot exec it')
         with tempfile.TemporaryDirectory() as temp:
             directory = pathlib.Path(temp)
             config = {'os': 'linux', 'architecture': 'amd64', 'config': {'Labels': labels()}}
