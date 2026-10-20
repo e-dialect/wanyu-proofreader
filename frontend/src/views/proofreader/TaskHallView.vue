@@ -44,7 +44,7 @@
         <span v-if="!loading" class="section-count">{{ projectQueues.length }} 个项目</span>
       </div>
 
-      <div v-if="loading" class="project-card-grid" aria-label="正在加载项目">
+      <div v-if="loading && !error" class="project-card-grid" aria-label="正在加载项目">
         <div v-for="index in 3" :key="index" class="project-work-card skeleton-card" aria-hidden="true">
           <span class="skeleton-line skeleton-line--short"></span>
           <span class="skeleton-line"></span>
@@ -52,13 +52,13 @@
         </div>
       </div>
 
-      <div v-else-if="projectQueues.length === 0" class="empty-state card">
+      <div v-else-if="!error && projectQueues.length === 0" class="empty-state card">
         <div class="empty-state-mark" aria-hidden="true">✓</div>
         <div class="empty-state-text">当前没有需要你处理的项目</div>
         <p>可能是所有条目已经完成，或暂时没有适合你的独立校对任务。</p>
       </div>
 
-      <div v-else class="project-card-grid">
+      <div v-else-if="!error" class="project-card-grid">
         <article
           v-for="queue in projectQueues"
           :key="queue.project.id"
@@ -79,7 +79,7 @@
             {{ queue.project.description || '该项目暂未填写简介。' }}
           </p>
 
-          <div class="progress project-progress" role="progressbar" :aria-valuenow="progressPct(queue)" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress project-progress" role="progressbar" :aria-label="`${queue.project.name} 校对进度`" :aria-valuenow="progressPct(queue)" aria-valuemin="0" aria-valuemax="100">
             <div class="progress-bar" :style="{ width: progressPct(queue) + '%' }"></div>
           </div>
 

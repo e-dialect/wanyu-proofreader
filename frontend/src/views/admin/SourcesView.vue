@@ -18,12 +18,12 @@
         </div>
         <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
       </div>
-      <div v-if="loading" class="text-muted">正在加载来源…</div>
-      <div v-else-if="!items.length" class="empty-state">
+      <div v-if="loading && !error" class="text-muted">正在加载来源…</div>
+      <div v-else-if="!error && !items.length" class="empty-state">
         <div class="empty-state-text">还没有登记来源</div>
         <p>导入时可以不填来源。那样作业仍会成功，并标成 source:unknown，不会挡住现有校对。</p>
       </div>
-      <div v-else class="table-wrapper">
+      <div v-else-if="!error" class="table-wrapper" role="region" tabindex="0" aria-label="来源清单表">
         <table>
           <thead>
             <tr><th>来源</th><th>权利主体</th><th>状态</th><th>未允许用途</th></tr>

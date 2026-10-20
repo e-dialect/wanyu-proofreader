@@ -16,7 +16,7 @@
         <button class="btn btn-secondary" :disabled="loading" @click="loadProjects">刷新</button>
       </header>
       <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
-      <div v-if="loading" class="card text-muted">正在加载项目…</div>
+      <div v-else-if="loading" class="card text-muted">正在加载项目…</div>
       <div v-else-if="projects.length === 0" class="empty-state card">
         <div class="empty-state-mark" aria-hidden="true">项</div>
         <div class="empty-state-text">目前没有可发现的项目</div>

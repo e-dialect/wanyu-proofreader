@@ -15,14 +15,14 @@
     <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
     <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
 
-    <div v-if="!auth.isPlatformAdmin" class="card">
+    <div v-if="!auth.isPlatformAdmin && !error" class="card">
       <div class="empty-state">
         <div class="empty-state-text">只有平台管理员能调整规则门控</div>
         <p>档位是跨项目共用的状态：项目管理员可以重算本项目的疑点，但不能决定某条规则全网放不放行。</p>
       </div>
     </div>
 
-    <template v-else>
+    <template v-else-if="!error">
       <section class="card mb-6">
         <div class="section-heading">
           <div>
@@ -31,12 +31,12 @@
           </div>
           <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
         </div>
-        <div v-if="loading" class="text-muted">正在加载门控登记表…</div>
-        <div v-else-if="!items.length" class="empty-state">
+        <div v-if="loading && !error" class="text-muted">正在加载门控登记表…</div>
+        <div v-else-if="!error && !items.length" class="empty-state">
           <div class="empty-state-text">登记表还是空的</div>
           <p>这意味着所有规则都在 <code>off</code>：校对端看不到任何机器疑点。用下面的变更集入口把已批准的一批写进来。</p>
         </div>
-        <div v-else class="table-wrapper">
+        <div v-else-if="!error" class="table-wrapper" role="region" tabindex="0" aria-label="规则门控登记表">
           <table>
             <thead>
               <tr><th>规则</th><th>档位</th><th>打分通道</th><th>证据</th><th>批准 / 变更集</th><th>操作</th></tr>

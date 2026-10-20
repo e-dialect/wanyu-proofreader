@@ -1,5 +1,5 @@
 <template>
-  <div class="auth-container">
+  <main class="auth-container">
     <div class="auth-card">
       <div class="auth-logo">
         <div class="page-eyebrow">账号安全</div>
@@ -27,7 +27,7 @@
         </button>
       </form>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>

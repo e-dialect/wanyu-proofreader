@@ -9,7 +9,9 @@
         <RouterLink to="/tasks/profile" class="nav-link" :class="{ active: route.path === '/tasks/profile' }">个人主页</RouterLink>
       </template>
     </AppNavbar>
-    <RouterView />
+    <div data-main-landmark>
+      <RouterView />
+    </div>
     <ProofreaderOnboarding ref="onboardingRef" :user-id="auth.user?.id || ''" />
   </div>
 </template>

@@ -19,7 +19,7 @@
       </header>
 
       <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
-      <div v-if="loading" class="card text-muted">正在读取项目权限…</div>
+      <div v-else-if="loading" class="card text-muted">正在读取项目权限…</div>
       <section v-else class="capability-grid" aria-label="可用工作入口">
         <RouterLink v-if="canManage" to="/admin" class="capability-card capability-card--manage">
           <span class="capability-card__mark" aria-hidden="true">管</span>

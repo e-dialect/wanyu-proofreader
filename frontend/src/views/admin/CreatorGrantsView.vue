@@ -17,8 +17,8 @@
         </label>
         <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
       </div>
-      <div v-if="loading" class="text-muted">正在加载用户…</div>
-      <div v-else class="table-wrapper">
+      <div v-if="loading && !error" class="text-muted">正在加载用户…</div>
+      <div v-else-if="!error" class="table-wrapper" role="region" tabindex="0" aria-label="创建权限用户表">
         <table>
           <thead><tr><th>用户</th><th>当前拥有</th><th>创建权限</th><th>项目额度</th><th>操作</th></tr></thead>
           <tbody>
