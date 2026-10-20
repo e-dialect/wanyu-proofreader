@@ -164,9 +164,10 @@ func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHa
 		return snap, err
 	}
 	if len(latest) > 0 {
-		if h.Previous != latest[0].Id {
+		if h.Previous != latest[0].Id && h.Previous != latest[0].GetString("package_id") {
 			return snap, fmt.Errorf("再次出包必须关联同一接收方／用途的最新包。")
 		}
+		snap.Previous = latest[0].Id
 		events, err := deliveryEvents(app, latest[0].Id)
 		if err != nil {
 			return snap, err
@@ -521,6 +522,8 @@ func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
 	if err = c.BindBody(&input); err != nil {
 		return apis.NewBadRequestError("事件内容无法解析。", err)
 	}
+	input.Responsible = strings.TrimSpace(input.Responsible)
+	input.Evidence = strings.TrimSpace(input.Evidence)
 	var snap reviewbundle.DeliverySnapshot
 	if err = json.Unmarshal([]byte(r.GetString("snapshot")), &snap); err != nil {
 		return err

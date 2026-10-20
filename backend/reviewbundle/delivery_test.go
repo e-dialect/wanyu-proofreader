@@ -154,3 +154,32 @@ func TestDeliveryChangesDescribeResend(t *testing.T) {
 		t.Fatalf("removed: %+v", got)
 	}
 }
+
+func TestDeliveryChangesDeclarationCoverage(t *testing.T) {
+	for _, scope := range []string{"adopted", "excluded", "pending"} {
+		t.Run(scope, func(t *testing.T) {
+			previous := DeliverySnapshot{Declarations: []Declaration{{EntryID: "old", Scope: scope, Reason: "original"}}}
+			current := DeliverySnapshot{Declarations: []Declaration{{EntryID: "new", Scope: scope, Reason: "original"}}}
+			if got := CompareDelivery(previous, current); got != (DeliveryChanges{ScopeChanged: 2}) {
+				t.Fatalf("replaced batch coverage: %+v", got)
+			}
+			if got := CompareDelivery(previous, DeliverySnapshot{}); got.ScopeChanged != 1 {
+				t.Fatalf("removed declaration: %+v", got)
+			}
+			if got := CompareDelivery(DeliverySnapshot{}, current); got.ScopeChanged != 1 {
+				t.Fatalf("added declaration: %+v", got)
+			}
+			current.Declarations[0].EntryID = "old"
+			current.Declarations[0].Reason = "rechecked"
+			if got := CompareDelivery(previous, current); got.ScopeChanged != 1 {
+				t.Fatalf("changed reason: %+v", got)
+			}
+		})
+	}
+	previous := syntheticDelivery()
+	current := syntheticDelivery()
+	current.Declarations[0], current.Declarations[2] = current.Declarations[2], current.Declarations[0]
+	if got := CompareDelivery(previous, current); got != (DeliveryChanges{}) {
+		t.Fatalf("reordering declarations changed summary: %+v", got)
+	}
+}

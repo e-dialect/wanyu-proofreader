@@ -65,3 +65,23 @@ CI 与独立评审结果以 PR 最新提交为准；上述是实际本机验证�
 - 离线重放单测覆盖小写、大写、混合大小写摘要；同时实际执行 CLI，直接使用 PowerShell Get-FileHash 产生的大写 SHA-256，重放 ZIP 与原归档摘要一致。逐字节篡改拒绝测试继续通过。
 
 本次执行 `go test ./...`、`go vet ./...`、gofmt、套件清单、空白与 LF 检查通过；`run_all.py --jobs 4 delivery project_access review_bundle volunteer_accounts` 为 4/4 通过。完整 Go 竞态检测和带竞态检测的真实服务 delivery 套件结果在对应 PR 更新中记录。界面、迁移与包格式没有变更，本轮未重跑前端截图、迁移往返或 Docker 构建，沿用前述证据及限制。
+
+## PR 评审修复回归（2026-10-20）
+
+本轮修复最新三项评审意见，并补齐当前代码中上一轮已解决线程对应的三项修复：
+
+- **E2.3／E5.1**：`scope_changed` 比较完整声明 ID 并集，新增、移除或分类／理由变化均计数；单测分别覆盖 adopted／excluded／pending 的增删、不同批次替换、理由变化及仅重排不变。采用正文的 added／removed／changed 口径保持不变。
+- **E4.2／E14.2**：部分冲突、失败回滚、退回与停用的责任人先去除首尾空白；处置凭据同样规范化。真实 API 对空串、空格、制表换行、全角空格逐一返回 400；包的事件历史不变，空凭据不能解除待办或允许重发。
+- **E2.3／E4.2**：可直接使用管理界面显示的 package_id 重发；服务端解析并保存同一最新包记录 ID。真实服务验证 package_id 与记录 ID 的预览摘要相同、重发关系正确、旧 package_id 被拒绝。
+- **E6.2**：CLI 对输入先 stat 并限制实际读取到 20 MiB 加一个检测字节，拒绝超限；输出以私有临时文件替换。Windows 与实际 Linux 测试均覆盖 20 MiB 边界、超限拒绝、新建／覆盖、失败保留原内容和临时文件清理。Linux 测试在 WSL 的 Linux 临时目录中确认已有 0644 输出被替换为 0600。实际 Windows CLI 使用 Get-FileHash 大写摘要重放合成包，输出逐字节相同；错误摘要拒绝且保留原输出。
+- Docker 构建目录检查发现未拷贝 cmd/delivery-replay，现已补齐 COPY，让镜像内测试包含 CLI 回归。
+
+本轮实际通过：
+
+- `gofmt -l backend`、`cd backend; go test ./...; go vet ./...; go test -race ./...`。
+- `python backend/tests/run_all.py --jobs 4 delivery project_access review_bundle`：3/3；`python backend/tests/run_integration.py delivery_integration.mjs --race`。
+- `npm --prefix frontend test`：246/246；前端 lint 和 build。
+- `python backend/tests/check_migrations.py`：20 个迁移 up/down/up 与初始 schema 拒绝回滚。
+- 套件清单（38 个）、运行时版本、Compose 结构、Docker 构建目录、构建目录检查的 6 个单测、空白及 LF 检查。
+
+本轮仍未直接通过 `make check`：本机没有 GNU Make。UI debt 为 0 退出并保留既有 inline_styles 28/27 警告。Docker Linux daemon 未运行，未构建镜像。没有变更界面／迁移／Bundle 字段，未新增截图；未重跑全部 Python 工具自测或全部集成套件。#184／#315／X 实际 dry-run、真实资料试点、双方签字、staging／备份恢复和 R2 人工验收缺口继续保留；合成测试不替代这些验收。

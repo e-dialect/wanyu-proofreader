@@ -106,10 +106,12 @@ func CompareDelivery(previous, current DeliverySnapshot) DeliveryChanges {
 		oldScope[item.EntryID] = item
 	}
 	for _, item := range current.Declarations {
-		if old, ok := oldScope[item.EntryID]; ok && old != item {
+		if old, ok := oldScope[item.EntryID]; !ok || old != item {
 			d.ScopeChanged++
 		}
+		delete(oldScope, item.EntryID)
 	}
+	d.ScopeChanged += len(oldScope)
 	return d
 }
 

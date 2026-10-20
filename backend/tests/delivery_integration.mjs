@@ -239,13 +239,28 @@ console.log('PASS: owner and raw parent deletions cannot orphan delivery evidenc
 
 const eventURL = `/api/fangji/deliveries/${first.id}/events`
 const receipt = { kind: 'receipt', status: 'partial_conflict', affected: resultEntries.length, reviewer: 'synthetic-reviewer', reason: 'synthetic entry conflict', responsible: 'synthetic-upstream-owner', target: 'D' }
-await api(eventURL, { token: admin.token, method: 'POST', body: { ...receipt, responsible: '' }, status: 400 })
+const beforeBlankEvents = await list()
+for (const responsible of ['', ' ', '\t\n', '\u3000']) {
+  for (const body of [
+    { ...receipt, responsible },
+    { ...receipt, status: 'failed_rolled_back', evidence: 'synthetic-rollback-proof', responsible },
+    { ...receipt, kind: 'return', responsible },
+    { ...receipt, kind: 'withdrawal', evidence: 'synthetic-Steering-escalation', responsible },
+  ]) await api(eventURL, { token: admin.token, method: 'POST', body, status: 400 })
+}
+assert.deepEqual((await list()).items.find((item) => item.id === first.id).events, beforeBlankEvents.items.find((item) => item.id === first.id).events, 'blank owners must not append immutable events or withdraw a package')
+console.log('PASS: all required responsible parties reject empty and whitespace-only names without appending history')
 const conflict = await api(eventURL, { token: admin.token, method: 'POST', body: receipt, status: 201 })
 assert.equal(conflict.receipt_state, 'partial_conflict')
 const conflictEvent = conflict.events.findLast((event) => event.kind === 'receipt')
 await check({ ...handoff, previous: first.id, change_reason: 'unresolved resend' }, admin.token, 400)
 assert.deepEqual(conflict.pending_actions, [conflictEvent.id])
 const resolutionBody = { kind: 'resolution', resolves: conflictEvent.id, reviewer: 'synthetic-reviewer', reason: 'D line fixed synthetic fixture', evidence: 'synthetic-D-fix' }
+for (const evidence of ['', ' ', '\t\n', '\u3000']) {
+  await api(eventURL, { token: admin.token, method: 'POST', body: { ...resolutionBody, evidence }, status: 400 })
+}
+assert.deepEqual((await list()).items.find((item) => item.id === first.id).events, conflict.events)
+await check({ ...handoff, previous: first.package_id, change_reason: 'blank evidence must not allow resend' }, admin.token, 400)
 const completed = await api(eventURL, { token: admin.token, method: 'POST', body: resolutionBody, status: 201 })
 assert.deepEqual(completed.pending_actions, [])
 await api(eventURL, { token: admin.token, method: 'POST', body: resolutionBody, status: 400 })
@@ -260,10 +275,13 @@ const afterCompeting = (await list()).items.find((item) => item.id === first.id)
 assert.equal(afterCompeting.events.filter((event) => event.kind === 'resolution' && event.payload.resolves === concurrentResolution.resolves).length, 1)
 assert.deepEqual(afterCompeting.pending_actions, [])
 console.log('PASS: sequential and concurrent duplicate resolutions rejected without duplicating history')
-const resendBody = { ...handoff, previous: first.id, change_reason: 'D line rechecked conflict; synthetic resend' }
+const resendBody = { ...handoff, previous: first.package_id, change_reason: 'D line rechecked conflict; synthetic resend' }
+const recordIDPreview = await check({ ...resendBody, previous: first.id })
+assert.equal((await check(resendBody)).preview_sha256, recordIDPreview.preview_sha256, 'public package ID must resolve to the same canonical previous record')
 const resend = await create({ ...resendBody, preview_sha256: (await check(resendBody)).preview_sha256 })
 assert.equal(resend.version, first.version + 1)
 assert.equal(resend.previous, first.id)
+await check({ ...handoff, previous: first.package_id, change_reason: 'stale package ID' }, admin.token, 400)
 const resendRaw = await api(`/api/collections/release_deliveries/records/${resend.id}`, { token: superAuth.token })
 const resendSnapshot = JSON.parse(resendRaw.snapshot)
 assert.equal(resendSnapshot.previous_sha256, first.sha256)
