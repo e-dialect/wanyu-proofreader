@@ -12,9 +12,9 @@ import unittest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-RELEASE = yaml.safe_load((ROOT / '.github/workflows/release.yml').read_text())
-CI = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
-SHA = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+RELEASE = yaml.safe_load((ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8'))
+CI = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8'))
+SHA = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True, encoding='utf-8').strip()
 COMMIT_DATE = datetime.datetime.fromtimestamp(int(subprocess.check_output(['git', 'show', '-s', '--format=%ct', SHA], cwd=ROOT)), datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 def labels():
@@ -23,7 +23,8 @@ def labels():
 
 def node(source, env=None):
     return subprocess.run(['node', '--input-type=module', '-e', source], cwd=ROOT,
-                          env={**os.environ, **(env or {})}, capture_output=True, text=True, timeout=20)
+                          env={**os.environ, **(env or {})}, capture_output=True, text=True,
+                          encoding='utf-8', timeout=20)
 
 
 class AuthorizationTests(unittest.TestCase):
@@ -94,7 +95,7 @@ class ManifestTests(unittest.TestCase):
         self.env[service.upper() + '_DIGEST'] = 'sha256:' + hashlib.sha256(raw).hexdigest()
 
     def write_config(self, service, value):
-        (self.directory / (service + '-config.json')).write_text(json.dumps(value))
+        (self.directory / (service + '-config.json')).write_text(json.dumps(value), encoding='utf-8')
 
     def bind_config(self, service):
         raw = (self.directory / (service + '-config.json')).read_bytes()
@@ -104,12 +105,13 @@ class ManifestTests(unittest.TestCase):
 
     def create(self):
         return subprocess.run(['node', 'scripts/create-release-manifest.mjs', str(self.directory)], cwd=ROOT,
-                              env={**os.environ, **self.env}, capture_output=True, text=True, timeout=20)
+                              env={**os.environ, **self.env}, capture_output=True, text=True,
+                              encoding='utf-8', timeout=20)
 
     def test_verified_manifest_binds_images_runtime_config_and_migrations(self):
         result = self.create()
         self.assertEqual(result.returncode, 0, result.stderr)
-        release = json.loads((self.directory / 'release-manifest.json').read_text())
+        release = json.loads((self.directory / 'release-manifest.json').read_text(encoding='utf-8'))
         self.assertEqual(release['build']['frontend'], {'VITE_BACKEND_URL': ''})
         self.assertEqual(release['recovery']['compatibility'], 'server-local-attestation-required')
         self.assertFalse(release['recovery']['rollbackSafe'])
@@ -123,7 +125,7 @@ class ManifestTests(unittest.TestCase):
             entries.append({'path': path, 'sha256': hashlib.sha256(content).hexdigest()})
         canonical = json.dumps(sorted(entries, key=lambda e: e['path']), separators=(',', ':'), ensure_ascii=False).encode()
         self.assertEqual(release['recovery']['migrationDigest'], 'sha256:' + hashlib.sha256(canonical).hexdigest())
-        go_mod = subprocess.check_output(['git', 'show', SHA + ':backend/go.mod'], cwd=ROOT, text=True)
+        go_mod = subprocess.check_output(['git', 'show', SHA + ':backend/go.mod'], cwd=ROOT, text=True, encoding='utf-8')
         version = re.search(r'github.com/pocketbase/pocketbase v([^\s]+)', go_mod).group(1)
         self.assertEqual(release['recovery']['pocketbaseVersion'], version)
         self.assertEqual(set(release['images']), {'backend', 'frontend'})
@@ -184,7 +186,7 @@ await import(SCRIPT);assert.equal(count,responses.length);
                 (directory / 'manifest').write_bytes(raw)
                 return digest, raw_config
             docker = directory / 'docker'
-            docker.write_text("#!/usr/bin/env python3\nimport pathlib,sys\np=pathlib.Path(__file__).parent\nassert sys.argv[1:4]==['buildx','imagetools','inspect']\nassert any('wanyu-proofreader-'+s+'@sha256:' in sys.argv[4] for s in ['backend','frontend'])\nsys.stdout.buffer.write((p/'manifest').read_bytes())\n")
+            docker.write_text("#!/usr/bin/env python3\nimport pathlib,sys\np=pathlib.Path(__file__).parent\nassert sys.argv[1:4]==['buildx','imagetools','inspect']\nassert any('wanyu-proofreader-'+s+'@sha256:' in sys.argv[4] for s in ['backend','frontend'])\nsys.stdout.buffer.write((p/'manifest').read_bytes())\n", encoding='utf-8')
             docker.chmod(0o755)
             script = (ROOT / 'scripts/resolve-release-images.mjs').resolve().as_uri()
             def execute(redirect_host=None, both_existing=False):
@@ -200,7 +202,7 @@ await import(SCRIPT);assert.equal(count,responses.length);
                 with self.subTest(both_existing=both_existing):
                     result, digest = execute(both_existing=both_existing)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual((directory / 'github-output').read_text(), 'backend_digest=' + digest + '\nfrontend_digest=' + (digest if both_existing else '') + '\n')
+                    self.assertEqual((directory / 'github-output').read_text(encoding='utf-8'), 'backend_digest=' + digest + '\nfrontend_digest=' + (digest if both_existing else '') + '\n')
             self.assertEqual(execute('pkg-containers.githubusercontent.com')[0].returncode, 0)
             untrusted = execute('untrusted.example')[0]
             self.assertNotEqual(untrusted.returncode, 0)

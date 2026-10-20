@@ -177,7 +177,7 @@ def server(binary, root, extra_env=None, data=None, migrations=MIGRATIONS, hooks
     apply_migrations_individually(binary, data, migrations)
     port = free_port()
     env = integration_env(f'http://127.0.0.1:{port}', extra_env)
-    with (root / 'server.log').open('a') as log:
+    with (root / 'server.log').open('a', encoding='utf-8') as log:
         process = subprocess.Popen([str(binary), 'serve', f'--http=127.0.0.1:{port}', f'--dir={data}',
                                     f'--hooksDir={hooks}', f'--migrationsDir={migrations}',
                                     '--hooksWatch=false'], env=env, stdout=log, stderr=log)
@@ -221,7 +221,7 @@ def _race_excerpt(text):
 def _log_tail(root, size=20000):
     # Only disposable, generated test identities are present in this log.
     try:
-        return (Path(root) / 'server.log').read_text()[-size:]
+        return (Path(root) / 'server.log').read_text(encoding='utf-8', errors='replace')[-size:]
     except OSError:
         return '<no server.log>'
 
@@ -241,7 +241,7 @@ def temporary_root(keep=False):
 
 def discover_registry():
     """Return the registered suite entries in run order; suites.json is the source of truth."""
-    entries = json.loads((BACKEND / 'tests' / 'suites.json').read_text())
+    entries = json.loads((BACKEND / 'tests' / 'suites.json').read_text(encoding='utf-8'))
     registered = [entry['suite'] for entry in entries]
     missing = [suite for suite in registered if not (BACKEND / 'tests' / suite).exists()]
     if missing:

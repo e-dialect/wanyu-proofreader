@@ -76,7 +76,7 @@ def moved_ahead_of(text, job, other):
 class MatrixLink(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.real = inventory.CI.read_text()
+        cls.real = inventory.CI.read_text(encoding='utf-8')
 
     def assertMutated(self, mutated):
         self.assertNotEqual(mutated, self.real, 'the mutation did not apply')
@@ -235,7 +235,7 @@ class GuardExitCodes(unittest.TestCase):
         self.assertFailsFor(self.real_ci(), 'is not registered in suites.json')
 
     def real_ci(self):
-        return inventory.CI.read_text()
+        return inventory.CI.read_text(encoding='utf-8')
 
     def test_broken_matrix_link_fails_the_guard(self):
         mutated = self.real_ci().replace('    needs: prepare-matrix\n', '')

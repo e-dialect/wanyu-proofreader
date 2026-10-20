@@ -101,7 +101,7 @@ class CheckoutPolicy(unittest.TestCase):
     def test_tracked_text_files_are_checked_out_with_lf(self):
         out = guard.subprocess.run(
             ['git', 'check-attr', 'text', 'eol', '--', '.gitattributes'],
-            capture_output=True, text=True, cwd=guard.ROOT).stdout
+            capture_output=True, text=True, encoding='utf-8', cwd=guard.ROOT).stdout
         self.assertIn('text: auto', out)
         self.assertIn('eol: lf', out)
 

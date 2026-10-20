@@ -45,7 +45,7 @@ def violations(lines):
 
 def main():
     listing = subprocess.run(['git', 'ls-files', '--eol'],
-                             capture_output=True, text=True, cwd=ROOT)
+                             capture_output=True, text=True, encoding='utf-8', cwd=ROOT)
     if listing.returncode:
         print(listing.stderr.strip() or 'git ls-files --eol failed', file=sys.stderr)
         return 1
