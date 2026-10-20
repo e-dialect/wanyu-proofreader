@@ -12,9 +12,10 @@
       </button>
     </header>
 
-    <div v-if="error" class="alert alert-error" role="alert">
+    <div v-if="loadError" class="alert alert-error" role="alert">
       <strong>项目暂时无法加载。</strong>
-      <span>{{ error }}</span>
+      <span>{{ loadError }}</span>
+      <button type="button" class="btn btn-secondary btn-sm ml-2" :disabled="loading" @click="loadProjects">重新加载</button>
     </div>
 
     <section class="workspace-summary" aria-label="我的校对概况">
@@ -35,6 +36,8 @@
       </article>
     </section>
 
+    <div v-if="actionError" class="alert alert-error" role="alert">{{ actionError }}</div>
+
     <section aria-labelledby="project-list-title">
       <div class="section-heading">
         <div>
@@ -44,7 +47,7 @@
         <span v-if="!loading" class="section-count">{{ projectQueues.length }} 个项目</span>
       </div>
 
-      <div v-if="loading && !error" class="project-card-grid" aria-label="正在加载项目">
+      <div v-if="loading && !loadError" class="project-card-grid" aria-label="正在加载项目">
         <div v-for="index in 3" :key="index" class="project-work-card skeleton-card" aria-hidden="true">
           <span class="skeleton-line skeleton-line--short"></span>
           <span class="skeleton-line"></span>
@@ -52,13 +55,13 @@
         </div>
       </div>
 
-      <div v-else-if="!error && projectQueues.length === 0" class="empty-state card">
+      <div v-else-if="!loadError && projectQueues.length === 0" class="empty-state card">
         <div class="empty-state-mark" aria-hidden="true">✓</div>
         <div class="empty-state-text">当前没有需要你处理的项目</div>
         <p>可能是所有条目已经完成，或暂时没有适合你的独立校对任务。</p>
       </div>
 
-      <div v-else-if="!error" class="project-card-grid">
+      <div v-else-if="!loadError" class="project-card-grid">
         <article
           v-for="queue in projectQueues"
           :key="queue.project.id"
@@ -155,7 +158,8 @@ const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(true)
 const claimingProject = ref('')
-const error = ref('')
+const loadError = ref('')
+const actionError = ref('')
 const projectQueues = ref([])
 const queueSummary = ref(summarizeProofreaderQueues([]))
 const currentPage = ref(1)
@@ -169,7 +173,7 @@ onMounted(async () => {
 async function loadProjects() {
   const generation = ++loadGeneration
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
     const userId = currentUserId(auth.user)
     if (!userId) throw new Error('登录状态已失效，请重新登录')
@@ -181,7 +185,7 @@ async function loadProjects() {
     totalPages.value = result.totalPages
   } catch (e) {
     if (generation !== loadGeneration) return
-    error.value = formatPbError('加载项目大厅失败', e)
+    loadError.value = formatPbError('加载项目大厅失败', e)
     projectQueues.value = []
   } finally {
     if (generation === loadGeneration) loading.value = false
@@ -192,13 +196,13 @@ async function enterProject(queue, tier = '') {
   const projectId = queue?.project?.id
   if (!projectId || claimingProject.value || !queueAction(queue).canEnter) return
   claimingProject.value = projectId
-  error.value = ''
+  actionError.value = ''
   try {
     const userId = currentUserId(auth.user)
     if (!userId) throw new Error('登录状态已失效，请重新登录')
     const page = await claimNextProjectPage(projectId, userId, '', tier)
     if (!page?.id) {
-      error.value = tier
+      actionError.value = tier
         ? `${tier} 类暂时没有可领取的条目，换个层级或按默认顺序领一条。`
         : '该项目暂无你可处理的条目。'
       await loadProjects()
@@ -212,7 +216,7 @@ async function enterProject(queue, tier = '') {
     })
     await router.push(`/tasks/${page.id}/edit`)
   } catch (e) {
-    error.value = `进入项目失败：${formatClaimConflict(e, '该项目的下一条任务可能已被其他校对员接取，请刷新后重试')}`
+    actionError.value = `进入项目失败：${formatClaimConflict(e, '该项目的下一条任务可能已被其他校对员接取，请刷新后重试')}`
     await loadProjects()
   } finally {
     claimingProject.value = ''

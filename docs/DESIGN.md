@@ -106,6 +106,8 @@
 
 成功与进行中的提示用 `alert alert-success` 或无修饰 `alert`，角色是 `role="status"`。一直显示、文案不随操作改写的说明用 `role="note"`（`NewProjectView.vue:8`）。错误是 `role="alert"`。长期收口仍归 #267 的 `AppStatusPanel`，避免以后靠 grep 维持。
 
+加载失败与操作失败分开：加载错误可以替换数据区，但必须保留重试入口；校验、保存、加入等项目操作错误写进独立的 operation error，显示在仍然可见的编辑区旁，不得把表格、输入框或操作按钮一起隐藏。GateRules、CreatorGrants、ProjectDiscovery、TaskHall、Sources 已按此拆分。
+
 状态不单独靠颜色。机器疑点芯片始终带文字，规则写在 `style.css:657-658`，芯片结构在 `:662`。
 
 ## 措辞

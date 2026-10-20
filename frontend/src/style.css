@@ -210,6 +210,7 @@ a:hover { text-decoration: underline; }
 .form-group { margin-bottom: 1.25rem; }
 .form-label { display: block; font-size: .9rem; font-weight: 500; margin-bottom: .4rem; color: var(--gray-700); }
 .required-mark { color: var(--danger); }
+.field-error { margin-top: var(--space-1); color: var(--danger); font-size: var(--text-xs); }
 .form-control {
   width: 100%; padding: .55rem .875rem;
   border: 1px solid var(--gray-300); border-radius: var(--radius);

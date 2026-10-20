@@ -4,6 +4,11 @@ export function prepareMainLandmark(doc = globalThis.document) {
   if (!doc?.querySelector) return null
   const target = doc.querySelector('main') || doc.querySelector('[data-main-landmark]')
   if (!target) return null
+  for (const previous of doc.querySelectorAll?.('#main-content') || []) {
+    if (previous === target) continue
+    previous.removeAttribute?.('id')
+    previous.removeAttribute?.('tabindex')
+  }
   target.id = 'main-content'
   target.tabIndex = -1
   return target

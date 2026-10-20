@@ -12,17 +12,20 @@
       </div>
     </header>
 
-    <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
+    <div v-if="loadError" class="alert alert-error" role="alert">
+      {{ loadError }}
+      <button type="button" class="btn btn-secondary btn-sm ml-2" :disabled="loading" @click="load">重新加载</button>
+    </div>
     <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
 
-    <div v-if="!auth.isPlatformAdmin && !error" class="card">
+    <div v-if="!auth.isPlatformAdmin && !loadError" class="card">
       <div class="empty-state">
         <div class="empty-state-text">只有平台管理员能调整规则门控</div>
         <p>档位是跨项目共用的状态：项目管理员可以重算本项目的疑点，但不能决定某条规则全网放不放行。</p>
       </div>
     </div>
 
-    <template v-else-if="!error">
+    <template v-else-if="auth.isPlatformAdmin">
       <section class="card mb-6">
         <div class="section-heading">
           <div>
@@ -31,12 +34,13 @@
           </div>
           <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
         </div>
-        <div v-if="loading && !error" class="text-muted">正在加载门控登记表…</div>
-        <div v-else-if="!error && !items.length" class="empty-state">
+        <div v-if="loading" class="text-muted">正在加载门控登记表…</div>
+        <div v-else-if="loadError" class="text-muted">登记表暂时无法读取，请用上方「重新加载」重试。</div>
+        <div v-else-if="!items.length" class="empty-state">
           <div class="empty-state-text">登记表还是空的</div>
           <p>这意味着所有规则都在 <code>off</code>：校对端看不到任何机器疑点。用下面的变更集入口把已批准的一批写进来。</p>
         </div>
-        <div v-else-if="!error" class="table-wrapper" role="region" tabindex="0" aria-label="规则门控登记表">
+        <div v-else class="table-wrapper" role="region" tabindex="0" aria-label="规则门控登记表">
           <table>
             <thead>
               <tr><th>规则</th><th>档位</th><th>打分通道</th><th>证据</th><th>批准 / 变更集</th><th>操作</th></tr>
@@ -65,7 +69,7 @@
             </tbody>
           </table>
         </div>
-        <p v-if="truncated" class="text-sm text-muted">
+        <p v-if="truncated && !loadError" class="text-sm text-muted">
           登记表超过单次读取上限，这里只显示前 {{ items.length }} 条；请缩小范围后再操作。
         </p>
       </section>
@@ -85,6 +89,7 @@
           <button class="btn btn-primary" :disabled="busy" @click="submitRevoke">{{ busy ? '正在撤销…' : '确认撤销' }}</button>
           <button class="btn btn-quiet" :disabled="busy" @click="revokeTarget = null">取消</button>
         </div>
+        <div v-if="operationError && operationErrorTarget === 'revoke'" class="alert alert-error mt-3" role="alert">{{ operationError }}</div>
       </section>
 
       <section class="card">
@@ -115,6 +120,7 @@
         <button class="btn btn-primary" :disabled="busy || !parsed" @click="submitChangeset">
           {{ busy ? '正在应用…' : '应用变更集' }}
         </button>
+        <div v-if="operationError && operationErrorTarget === 'changeset'" class="alert alert-error mt-3" role="alert">{{ operationError }}</div>
         <div v-if="summary" class="mt-4">
           <p class="text-sm">{{ summary.counts }}</p>
           <p v-if="summary.inert" class="alert alert-warning" role="status">
@@ -158,7 +164,9 @@ const truncated = ref(false)
 const loading = ref(true)
 const busy = ref(false)
 const busyRule = ref('')
-const error = ref('')
+const loadError = ref('')
+const operationError = ref('')
+const operationErrorTarget = ref('')
 const success = ref('')
 const changesetText = ref('')
 const problem = ref('')
@@ -175,13 +183,15 @@ function ruleKey(item) {
 
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
+  operationError.value = ''
+  operationErrorTarget.value = ''
   try {
     const result = await listGates({ limit: 500 })
     items.value = result.items || []
     truncated.value = Boolean(result.truncated)
   } catch (cause) {
-    error.value = getPbMessage(cause, '门控登记表加载失败')
+    loadError.value = getPbMessage(cause, '门控登记表加载失败')
   } finally {
     loading.value = false
   }
@@ -192,6 +202,8 @@ async function pickFile(event) {
   if (!file) return
   changesetText.value = await file.text()
   summary.value = null
+  operationError.value = ''
+  operationErrorTarget.value = ''
 }
 
 async function submitChangeset() {
@@ -199,7 +211,8 @@ async function submitChangeset() {
   problem.value = read.ok ? '' : read.problem
   if (!read.ok) return
   busy.value = true
-  error.value = ''
+  operationError.value = ''
+  operationErrorTarget.value = ''
   success.value = ''
   try {
     const result = await applyGateChangeset(read.payload)
@@ -207,7 +220,8 @@ async function submitChangeset() {
     success.value = `变更集 ${result.changeset} 已应用完毕，档位变化以下面逐项计数为准。`
     await load()
   } catch (cause) {
-    error.value = getPbMessage(cause, '应用变更集失败')
+    operationError.value = getPbMessage(cause, '应用变更集失败')
+    operationErrorTarget.value = 'changeset'
   } finally {
     busy.value = false
   }
@@ -216,14 +230,16 @@ async function submitChangeset() {
 function openRevoke(item) {
   revokeTarget.value = item
   revokeNote.value = ''
-  error.value = ''
+  operationError.value = ''
+  operationErrorTarget.value = ''
 }
 
 async function submitRevoke() {
   const target = revokeTarget.value
   if (!target) return
   busy.value = true
-  error.value = ''
+  operationError.value = ''
+  operationErrorTarget.value = ''
   try {
     await revokeGate({
       producer: target.producer,
@@ -236,7 +252,8 @@ async function submitRevoke() {
     revokeTarget.value = null
     await load()
   } catch (cause) {
-    error.value = getPbMessage(cause, '撤销失败')
+    operationError.value = getPbMessage(cause, '撤销失败')
+    operationErrorTarget.value = 'revoke'
   } finally {
     busy.value = false
   }
