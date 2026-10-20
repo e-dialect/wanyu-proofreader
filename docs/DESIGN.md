@@ -150,6 +150,12 @@
 | 状态不只靠颜色 | 疑点标记带「疑」或等价文字 | 通过。`style.css:657-658` |
 | 动效可关 | `prefers-reduced-motion` 规则仍在 | 通过。`style.css:761-762` |
 | 模态不丢焦点 | Tab 留在对话框内，Esc 关闭，关闭后焦点回到触发控件 | 算法在 `lib/modalFocus.js`，测试在 `frontend/tests/modalFocus.test.js`。调用点都走 `AppModal` |
+| 表单控件有名称 | 每个 input/select/textarea 有 `label[for]`、包裹 label 或 `aria-label` | 本轮抽查的认证、新建项目、个人中心与项目设置已补；全量归 #265 |
+| 切换状态可读出 | 视觉选中态同时有 `aria-pressed` | 登录方式与仲裁字段范围已补；ProjectDetail 待 #331/#333 |
+| 进度条有名称 | `role="progressbar"` 同时有 `aria-label` | TaskHall、Dashboard、Arbitration 已补；ProjectDetail 待 #331/#333 |
+| 路由切换可感知 | 每个路由设置 `document.title`，切换后聚焦主地标 | 通过。`frontend/src/main.js`、`lib/pageTitle.js`、`lib/mainLandmark.js` |
+| 跳过重复导航 | Tab 第一下出现「跳到主要内容」 | 通过。`frontend/src/App.vue`、`style.css` |
+| 横滚区域可键盘到达 | 宽表格与 PDF 滚动区可聚焦并有 region 名称 | 已补未迁移视图；ProjectDetail 待 #331/#333 |
 | 记音的 `lang` | 不在本清单里实施 | 归 #270。`grep -rn "lang=" frontend` 目前主要是 `frontend/index.html` 的页面语言 |
 
 ## 改动时要引用的小节
