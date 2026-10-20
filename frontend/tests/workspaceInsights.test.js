@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { PAGE_STATUS } from '../src/constants/pageStatus.js'
 import {
   getChangedFields,
-  getDifferingHeaders,
   getDifferingHeadersForRows,
   getProofreaderQueueAction,
   getUnresolvedHeaders,
@@ -95,17 +94,6 @@ test('workspace: orders projects with arbitration work first while preserving so
   assert.deepEqual(
     sortProjectInsights(projects).map((item) => item.project.id),
     ['urgent', 'busy', 'busy-later', 'quiet']
-  )
-})
-
-test('workspace: identifies only fields that differ between arbitration attempts', () => {
-  assert.deepEqual(
-    getDifferingHeaders(
-      ['词目', '音标', '释义'],
-      { 词目: '阿妗', 音标: 'a', 释义: '' },
-      { 词目: '阿妗', 音标: 'ɑ', 释义: null }
-    ),
-    ['音标']
   )
 })
 

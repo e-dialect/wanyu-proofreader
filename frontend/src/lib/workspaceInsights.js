@@ -112,12 +112,6 @@ export function sortProjectInsights(projects) {
     .map(({ item }) => item)
 }
 
-export function getDifferingHeaders(headers, firstRow, secondRow) {
-  return asList(headers).filter((header) => {
-    return textValue(firstRow?.[header]) !== textValue(secondRow?.[header])
-  })
-}
-
 export function getDifferingHeadersForRows(headers, rows) {
   const candidates = asList(rows)
   if (candidates.length < 2) return []
