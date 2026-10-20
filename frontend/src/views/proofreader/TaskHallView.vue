@@ -170,10 +170,11 @@ onMounted(async () => {
   await loadProjects()
 })
 
-async function loadProjects() {
+async function loadProjects({ keepActionError = false } = {}) {
   const generation = ++loadGeneration
   loading.value = true
   loadError.value = ''
+  if (!keepActionError) actionError.value = ''
   try {
     const userId = currentUserId(auth.user)
     if (!userId) throw new Error('登录状态已失效，请重新登录')
@@ -205,7 +206,7 @@ async function enterProject(queue, tier = '') {
       actionError.value = tier
         ? `${tier} 类暂时没有可领取的条目，换个层级或按默认顺序领一条。`
         : '该项目暂无你可处理的条目。'
-      await loadProjects()
+      await loadProjects({ keepActionError: true })
       return
     }
     saveTaskLease(window.sessionStorage, {
@@ -217,7 +218,7 @@ async function enterProject(queue, tier = '') {
     await router.push(`/tasks/${page.id}/edit`)
   } catch (e) {
     actionError.value = `进入项目失败：${formatClaimConflict(e, '该项目的下一条任务可能已被其他校对员接取，请刷新后重试')}`
-    await loadProjects()
+    await loadProjects({ keepActionError: true })
   } finally {
     claimingProject.value = ''
   }

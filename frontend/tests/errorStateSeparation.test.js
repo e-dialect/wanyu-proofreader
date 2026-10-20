@@ -25,6 +25,11 @@ test('操作错误不参与加载态门禁', () => {
   const hall = view('proofreader/TaskHallView.vue')
   assert.match(hall, /const loadError = ref\(''\)/)
   assert.match(hall, /const actionError = ref\(''\)/)
+  assert.match(hall, /async function loadProjects\(\{ keepActionError = false \} = \{\}\)/)
+  assert.equal((hall.match(/await loadProjects\(\{ keepActionError: true \}\)/g) || []).length, 2)
+
+  const guide = view('admin/ProjectFilesGuideView.vue')
+  assert.match(guide, /<main class="container page"/)
 
   const sources = view('admin/SourcesView.vue')
   assert.match(sources, /const loadError = ref\(''\)/)

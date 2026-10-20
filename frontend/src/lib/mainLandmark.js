@@ -8,9 +8,11 @@ export function prepareMainLandmark(doc = globalThis.document) {
     if (previous === target) continue
     previous.removeAttribute?.('id')
     previous.removeAttribute?.('tabindex')
+    previous.removeAttribute?.('role')
   }
   target.id = 'main-content'
   target.tabIndex = -1
+  if (target.tagName?.toLowerCase?.() !== 'main') target.setAttribute?.('role', 'main')
   return target
 }
 
