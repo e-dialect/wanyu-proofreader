@@ -53,6 +53,11 @@ python3 -m pip install -r requirements-dev.txt
 本机没有 Docker 时，`verify-compose` 会显式打印 `SKIP` 并改跑纯 Python 结构检查，
 真正的 `docker compose config` 断言仍由 CI 执行。
 
+Windows 贡献者请在 Git Bash 中运行 `make check`，并自行安装 GNU make（Git for Windows 不自带）。
+仓库的 `.gitattributes` 已把文本文件固定为 LF，因此 `gofmt` 不会因 `core.autocrlf` 产生假阳性。
+需要 POSIX shell 的检查在找不到 `sh`/`bash` 时会显式 `SKIP`；需要符号链接特权的测试仍需开启
+Windows 开发者模式，否则会表现为环境失败而不是代码失败。
+
 其余入口：
 
 | 命令 | 用途 |

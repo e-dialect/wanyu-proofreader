@@ -8,6 +8,7 @@ default, so `make docker-build` failed on its own happy path. This runs the real
 whitelist and its test cannot drift apart.
 """
 import re
+import shutil
 import subprocess
 import unittest
 from pathlib import Path
@@ -25,7 +26,7 @@ def guard():
     newline that is not backslash-escaped. Across the rest of the file that shape
     is what `test_dockerfile_continuations_are_escaped` keeps checking.
     """
-    text = DOCKERFILE.read_text()
+    text = DOCKERFILE.read_text(encoding='utf-8')
     match = re.search(r'(case "\$stamp" in .*?esac)', text, re.DOTALL)
     if not match:
         raise AssertionError('backend/Dockerfile no longer has a build-stamp guard to test')
@@ -37,7 +38,10 @@ def guard():
 
 
 def accepted(stamp, clause):
-    result = subprocess.run(['/bin/sh', '-c', f'stamp="$1"; {clause}; exit 0', '_', stamp])
+    shell = shutil.which('sh') or shutil.which('bash')
+    if shell is None:
+        raise unittest.SkipTest('sh or bash is required to execute the Dockerfile case clause')
+    result = subprocess.run([shell, '-c', f'stamp="$1"; {clause}; exit 0', '_', stamp])
     return result.returncode == 0
 
 
@@ -50,14 +54,14 @@ class BuildStamps(unittest.TestCase):
         # decides which values reach it: dropping "$BUILD_DATE" from that list
         # shrinks the guard to two of the three stamps without failing anything
         # here, which is the decoupling the module docstring warns about.
-        loop = re.search(r'for stamp in (.*?); do', DOCKERFILE.read_text())
+        loop = re.search(r'for stamp in (.*?); do', DOCKERFILE.read_text(encoding='utf-8'))
         self.assertIsNotNone(loop, 'backend/Dockerfile no longer loops over the build stamps')
         for name in ('"$VERSION"', '"$COMMIT"', '"$BUILD_DATE"'):
             self.assertIn(name, loop.group(1), f'{name} no longer reaches the stamp guard')
 
     def test_makefile_defaults_are_accepted(self):
         date = re.search(r'^BUILD_DATE \?= \$\(shell date -u \+([^)]*)\)$',
-                         MAKEFILE.read_text(), re.MULTILINE)
+                         MAKEFILE.read_text(encoding='utf-8'), re.MULTILINE)
         self.assertTrue(date, 'Makefile lost the BUILD_DATE default this test guards')
         self.assertEqual(date.group(1), '%Y-%m-%dT%H:%M:%SZ',
                          'BUILD_DATE changed format; re-check the Dockerfile whitelist')
@@ -77,7 +81,7 @@ class BuildStamps(unittest.TestCase):
         instructions = ('FROM', 'RUN', 'CMD', 'LABEL', 'COPY', 'ADD', 'ENV', 'ARG', 'WORKDIR',
                         'USER', 'EXPOSE', 'ENTRYPOINT', 'VOLUME', 'STOPSIGNAL', 'HEALTHCHECK',
                         'SHELL', 'ONBUILD', 'AS')
-        lines = DOCKERFILE.read_text().splitlines()
+        lines = DOCKERFILE.read_text(encoding='utf-8').splitlines()
         for number, line in enumerate(lines, start=1):
             stripped = line.strip()
             if not stripped or stripped.startswith('#'):
@@ -93,7 +97,7 @@ class BuildStamps(unittest.TestCase):
 
     def test_compose_fallbacks_match_the_defaults(self):
         for name in ('docker-compose.yml', 'docker-compose.dev.yml', 'docker-compose.traefik.yml'):
-            text = (BACKEND.parent / name).read_text()
+            text = (BACKEND.parent / name).read_text(encoding='utf-8')
             self.assertIn('FANGJI_VERSION:-dev', text, name)
             self.assertIn('FANGJI_COMMIT:-unknown', text, name)
             self.assertIn('FANGJI_BUILD_DATE:-unknown', text, name)
