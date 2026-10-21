@@ -8,7 +8,11 @@
         <p>先核对数量、来源和范围，再由人决定出包。每次交付与回执都保留凭据。</p>
       </div>
     </header>
-    <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
+    <div v-if="loadError" class="alert alert-error" role="alert">
+      {{ loadError }}
+      <button type="button" class="btn btn-secondary btn-sm ml-2" :disabled="loading" @click="load">重新加载</button>
+    </div>
+    <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
     <div class="alert alert-info mb-6" role="status">
       当前提供文件往返与人工回执。原生批次编选、独立导出整合、消费方实测与双方签字尚待接入；对账一致不代表可发布。
@@ -49,10 +53,11 @@
         <button class="btn btn-secondary" :disabled="busy || loading" @click="load">刷新</button>
       </div>
       <p v-if="loading" role="status">正在加载交付记录…</p>
+      <div v-else-if="loadError" class="text-muted">交付记录暂时无法读取，请用上方「重新加载」重试。</div>
       <div v-else-if="!items.length" class="empty-state"><div class="empty-state-text">还没有交付包</div><p>检查通过并经人工确认后，首个包会显示在这里。</p></div>
       <article v-for="item in items" :key="item.id" class="card mt-3">
         <h3>{{ item.recipient }} · 第 {{ item.version }} 版</h3>
-        <p>{{ purposeLabel(item.purpose) }} · {{ receiptLabel(item.receipt_state) }}<strong v-if="item.withdrawn"> · 已停用（{{ item.notice_state === 'manual_notice_recorded' ? '已登记人工通知' : '待通知消费方' }}）</strong></p>
+        <p>{{ purposeLabel(item.purpose) }} · {{ receiptLabel(item) }}<strong v-if="item.withdrawn"> · 已停用（{{ item.notice_state === 'manual_notice_recorded' ? '已登记人工通知' : '待通知消费方' }}）</strong></p>
         <p v-if="item.pending_actions.length">上游待办 {{ item.pending_actions.length }} 项，处置完成后才能重发。</p>
         <p v-if="item.receipt_state === 'awaiting_receipt'" class="text-muted">等待回执 {{ Math.floor(item.waiting_seconds / 3600) }} 小时</p>
         <p>正文 {{ item.reconciliation.payload_count }} 条 · 采用 {{ item.reconciliation.counts.adopted }} · 范围外 {{ item.reconciliation.counts.excluded }} · 待处理 {{ item.reconciliation.counts.pending }}</p>
@@ -116,7 +121,8 @@ import { getPbMessage } from '@/utils/pbErrors'
 const projectId = useRoute().params.id
 const loading = ref(true)
 const busy = ref(false)
-const error = ref('')
+const loadError = ref('')
+const operationError = ref('')
 const success = ref('')
 const items = ref([])
 const metrics = ref(null)
@@ -129,18 +135,25 @@ const sourceRef = ref('')
 const impacts = ref(null)
 const eventLabels = { receipt: '人工导入回执', return: '退回上游', withdrawal: '追加停用并升级 Steering', notice: '已通知消费方停用', resolution: '登记处置完成' }
 const eventForm = reactive({ kind: 'receipt', status: 'success', affected: 0, reason: '', reviewer: '', responsible: '', target: '', evidence: '', resolves: '' })
-const receiptLabel = (value) => ({ awaiting_receipt: '对方尚未回执', success: '全部成功', partial_conflict: '部分冲突，待上游处理', failed_rolled_back: '整体失败并回滚' }[value] || value)
+// receipt_state is append-only, so a conflict closed by a resolution keeps its
+// state while pending_actions empties. The card must not keep claiming
+// unfinished upstream work once a resend is allowed.
+const receiptLabel = (item) => {
+  const base = { awaiting_receipt: '对方尚未回执', success: '全部成功', partial_conflict: '部分冲突', failed_rolled_back: '整体失败并回滚' }[item.receipt_state] || item.receipt_state
+  if (item.receipt_state !== 'partial_conflict') return base
+  return item.pending_actions.length ? `${base}，待上游处理` : `${base}，已登记处置`
+}
 const eventLabel = (value) => eventLabels[value] || value
 const purposeLabel = (value) => USAGE_PURPOSE_LABELS[value] || value
 const percent = (value) => `${(value * 100).toFixed(1)}%`
 function invalidatePreview() { preview.value = null; confirmed.value = false }
 async function action(fn) {
-  busy.value = true; error.value = ''; success.value = ''
-  try { await fn() } catch (e) { error.value = getPbMessage(e, e?.message || '处理失败，请重试') } finally { busy.value = false }
+  busy.value = true; operationError.value = ''; success.value = ''
+  try { await fn() } catch (e) { operationError.value = getPbMessage(e, e?.message || '处理失败，请重试') } finally { busy.value = false }
 }
 async function load() {
-  loading.value = true
-  try { const data = await listDeliveries(projectId); items.value = data.items; metrics.value = data.metrics } catch (e) { error.value = getPbMessage(e, '交付记录加载失败') } finally { loading.value = false }
+  loading.value = true; loadError.value = ''; operationError.value = ''
+  try { const data = await listDeliveries(projectId); items.value = data.items; metrics.value = data.metrics } catch (e) { loadError.value = getPbMessage(e, '交付记录加载失败') } finally { loading.value = false }
 }
 async function readHandoff(event) {
   invalidatePreview(); handoff.value = null

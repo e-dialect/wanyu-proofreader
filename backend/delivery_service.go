@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,8 +155,20 @@ func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHa
 		return snap, fmt.Errorf("交接清单必须逐项覆盖整个导入批次（不允许静默遗漏）。")
 	}
 	byID := map[string]*core.Record{}
+	arbitrated := false
 	for _, p := range pages {
 		byID[p.Id] = p
+		arbitrated = arbitrated || p.GetString("arbitrated_by") != ""
+	}
+	// One batch-wide lookup: this transaction stays open across up to 20,000
+	// adopted pages, so a per-page arbitration query would run up to 20,000
+	// times on both preflight and create.
+	arbitrations := map[string]string{}
+	if arbitrated {
+		arbitrations, err = arbitrationEvidence(app, projectID, h.ImportJob)
+		if err != nil {
+			return snap, err
+		}
 	}
 	snap = reviewbundle.DeliverySnapshot{Project: projectID, ImportJob: h.ImportJob, ResultOf: job.GetString("bundle_id"), RightsRef: source.GetString("logical_id"), Recipient: strings.TrimSpace(h.Recipient), Purpose: h.Purpose, SelectionRef: h.SelectionRef, SelectionRule: h.SelectionRule, SelectionConfirmedBy: h.ConfirmedBy, Operator: operator, Reviewer: h.Reviewer, Expected: h.Expected, Version: 1, Previous: h.Previous, ChangeReason: h.ChangeReason}
 	snap.SelectionAuthority = "manual_handoff_pending_315"
@@ -228,11 +241,11 @@ func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHa
 			entry := reviewbundle.ResultEntry{EntryID: p.GetString("source_entry_id")}
 			provenance := fmt.Sprintf("proofread_round:%d", p.GetInt("proofread_round"))
 			if p.GetString("arbitrated_by") != "" {
-				attempt, err := app.FindFirstRecordByFilter("proofreading_attempts", `page = {:page} && kind = "arbitration" && round = {:round}`, dbx.Params{"page": p.Id, "round": p.GetInt("proofread_round")})
-				if err != nil {
+				attempt, ok := arbitrations[arbitrationKey(p.Id, p.GetInt("proofread_round"))]
+				if !ok {
 					return snap, fmt.Errorf("仲裁成果缺少决定凭据，退回上游核查。")
 				}
-				provenance = "arbitration:" + attempt.Id
+				provenance = "arbitration:" + attempt
 			}
 			original := parseRowJSON(p.GetString("ocr_row_json"))
 			for _, field := range orderedRowHeaders(headers, row) {
@@ -261,6 +274,25 @@ func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHa
 		snap.Changes.Added = len(snap.Entries)
 	}
 	return snap, nil
+}
+
+// arbitrationEvidence indexes one batch's arbitration attempts by page and
+// round. Arbitration is app-enforced to be unique per page and round, so a
+// page maps to at most one decision record.
+func arbitrationEvidence(app core.App, projectID, importJob string) (map[string]string, error) {
+	attempts, err := app.FindRecordsByFilter("proofreading_attempts", `kind = "arbitration" && project = {:project} && page.import_job = {:job}`, "id", 0, 0, dbx.Params{"project": projectID, "job": importJob})
+	if err != nil {
+		return nil, err
+	}
+	evidence := make(map[string]string, len(attempts))
+	for _, attempt := range attempts {
+		evidence[arbitrationKey(attempt.GetString("page"), attempt.GetInt("round"))] = attempt.Id
+	}
+	return evidence, nil
+}
+
+func arbitrationKey(pageID string, round int) string {
+	return pageID + "\x00" + strconv.Itoa(round)
 }
 
 func (s *importService) deliveryPreflight(c *core.RequestEvent) error {

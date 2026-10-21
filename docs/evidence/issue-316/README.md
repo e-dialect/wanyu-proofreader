@@ -85,3 +85,25 @@ CI 与独立评审结果以 PR 最新提交为准；上述是实际本机验证�
 - 套件清单（38 个）、运行时版本、Compose 结构、Docker 构建目录、构建目录检查的 6 个单测、空白及 LF 检查。
 
 本轮仍未直接通过 `make check`：本机没有 GNU Make。UI debt 为 0 退出并保留既有 inline_styles 28/27 警告。Docker Linux daemon 未运行，未构建镜像。没有变更界面／迁移／Bundle 字段，未新增截图；未重跑全部 Python 工具自测或全部集成套件。#184／#315／X 实际 dry-run、真实资料试点、双方签字、staging／备份恢复和 R2 人工验收缺口继续保留；合成测试不替代这些验收。
+
+## PR 评审修复回归（2026-10-21）
+
+本轮针对 head `44ade12` 上的三项评审意见，由 maintainer 在 macOS（Go 1.27.1、Node 24.16.0、Python 3.12.13）执行，全部使用临时库与合成数据：
+
+- **仲裁证据批量预取（P2）**：`readDeliverySnapshot` 原来对每个已仲裁的采用页各发一次 `proofreading_attempts` 查询，最大批次下 preflight 与 create 各最多 20,000 次，且都发生在快照事务内。现改为整批一次查询（`kind = "arbitration" && project && page.import_job`）并按 `(page, round)` 建索引；批次内没有仲裁页时不发这次查询。仲裁由应用层保证同一 `(page, round)` 唯一，因此一页至多一条决定凭据，`provenance` 仍是真实 attempt ID，缺凭据照旧拒绝出包。
+- **已处置冲突不再显示待上游处理（P2）**：`receipt_state` 是追加式的，处置完成后仍为 `partial_conflict` 而 `pending_actions` 变空。卡片文案改为按待办区分「部分冲突，待上游处理」与「部分冲突，已登记处置」，其余回执状态文案不变；服务端本来就允许处置后重发。
+- **区分加载失败与真实空记录（P3）**：交付记录列表改用独立 `loadError`，与操作错误 `operationError` 分开，沿用 `SourcesView`／`GateRulesView` 的既有约定。加载失败时顶部给出「重新加载」按钮、列表区提示暂时无法读取，不再同时宣称「还没有交付包」；刷新成功清除旧的加载与操作错误；刷新失败保留已加载的记录。
+
+新增 `frontend/tests/deliveriesView.test.js`：直接执行当前 SFC 的 `receiptLabel` 与 `load()`（mock 网络与 ref），覆盖上述后两条；`frontend/tests/errorStateSeparation.test.js` 增加本视图的 loadError／operationError 约定断言。
+
+本轮实际通过：
+
+- `make check`：**all gates passed**（本机有 GNU Make；`docker compose config` 因未安装 Docker 而 SKIP，由 CI 执行）。
+- `cd backend; gofmt -l .`（无输出）、`go vet ./...`、`go build ./...`、`go test ./...`、`go test -race ./...`。
+- `python3 backend/tests/run_integration.py delivery_integration.mjs` 与 `--race`：均通过，含真实服务生成归档后 `provenance == arbitration:<真实 attempt ID>` 的逐字段校验，即批量索引路径的实际回归。
+- `python3 backend/tests/run_all.py --jobs 4 delivery project_access review_bundle`：**3/3**。
+- `npm --prefix frontend test`：**259/259**；`npm --prefix frontend run lint`、`npm --prefix frontend run build`。
+- `python3 scripts/check_ui_debt.py`：within baseline；`python3 backend/tests/check_test_inventory.py`：38 套件与 CI／磁盘一致；`git diff --check`、`git diff --cached --check`、`python3 scripts/check_line_endings.py`。
+- 反向对照：把 `DeliveriesView.vue` 还原到修复前，新测试报红；再定向移除 `load()` 里的错误清除与列表的 `loadError` 分支，两个加载态测试报红。还原修复后 6/6 通过，确认断言不是恒真。
+
+本轮没有改动迁移、Bundle 字段、导出列或对外契约，未新增截图（文案与错误态变化已由上述直接执行 SFC 回调的测试覆盖）。未跑 Docker 镜像构建、生产／staging、人类验收与 X 集成。Human verification：**Not manually verified**。#184／#315／X 实际 dry-run、真实资料试点、双方签字、staging／备份恢复和 R2 人工验收缺口继续保留，不关闭 #316。
