@@ -156,7 +156,7 @@
 | 切换状态可读出 | 视觉选中态同时有 `aria-pressed` | 登录方式与仲裁字段范围已补；ProjectDetail 待 #331/#333 |
 | 进度条有名称 | `role="progressbar"` 同时有 `aria-label` | TaskHall、Dashboard、Arbitration 已补；ProjectDetail 待 #331/#333 |
 | 路由切换可感知 | 每个路由设置 `document.title`；只有页面路径变化时聚焦主地标，同页 query/hash 更新不抢焦点 | 通过。`frontend/src/main.js`、`lib/pageTitle.js`、`lib/routeFocus.js`、`lib/mainLandmark.js` |
-| 跳过重复导航 | Tab 第一下出现「跳到主要内容」 | 通过。`frontend/src/App.vue`、`style.css` |
+| 跳过重复导航 | Tab 第一下出现「跳到主要内容」；错误边界替换内容时错误页的 `<main>` 也是目标，恢复后重新准备 | 通过。`frontend/src/App.vue`、`style.css`、`components/AppErrorBoundary.vue` |
 | 横滚区域可键盘到达 | 宽表格与 PDF 滚动区可聚焦并有 region 名称 | 已补未迁移视图；ProjectDetail 待 #331/#333 |
 | 记音的 `lang` | 不在本清单里实施 | 归 #270。`grep -rn "lang=" frontend` 目前主要是 `frontend/index.html` 的页面语言 |
 
