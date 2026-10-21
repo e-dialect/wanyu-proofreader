@@ -8,7 +8,10 @@
         <p>一份来源是一份可以单独谈权利的材料。这里只记录人填的结论，不托管授权文件，也不自动放行下游用途。</p>
       </div>
     </header>
-    <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
+    <div v-if="loadError" class="alert alert-error" role="alert">
+      {{ loadError }}
+      <button type="button" class="btn btn-secondary btn-sm ml-2" :disabled="loading" @click="load">重新加载</button>
+    </div>
     <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
     <section class="card mb-6">
       <div class="section-heading">
@@ -19,11 +22,12 @@
         <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
       </div>
       <div v-if="loading" class="text-muted">正在加载来源…</div>
+      <div v-else-if="loadError" class="text-muted">来源清单暂时无法读取，请用上方「重新加载」重试。</div>
       <div v-else-if="!items.length" class="empty-state">
         <div class="empty-state-text">还没有登记来源</div>
         <p>导入时可以不填来源。那样作业仍会成功，并标成 source:unknown，不会挡住现有校对。</p>
       </div>
-      <div v-else class="table-wrapper">
+      <div v-else class="table-wrapper" role="region" tabindex="0" aria-label="来源清单表">
         <table>
           <thead>
             <tr><th>来源</th><th>权利主体</th><th>状态</th><th>未允许用途</th></tr>
@@ -51,6 +55,7 @@
         </div>
       </div>
       <form class="settings-form" @submit.prevent="submitSource">
+        <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
         <label class="form-group"><span class="form-label">标题</span><input v-model.trim="form.title" class="form-control" required maxlength="200" /></label>
         <label class="form-group"><span class="form-label">权利主体</span><input v-model.trim="form.holder" class="form-control" maxlength="200" /></label>
         <label class="form-group"><span class="form-label">方言或地区范围</span><input v-model.trim="form.scope" class="form-control" maxlength="200" /></label>
@@ -91,7 +96,8 @@ const auth = useAuthStore()
 const items = ref([])
 const loading = ref(true)
 const saving = ref(false)
-const error = ref('')
+const loadError = ref('')
+const operationError = ref('')
 const success = ref('')
 const form = reactive({
   title: '',
@@ -118,12 +124,13 @@ function undecidedLabel(item) {
 
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
+  operationError.value = ''
   try {
     const result = await listSources()
     items.value = result.items || []
   } catch (cause) {
-    error.value = getPbMessage(cause, '来源清单加载失败')
+    loadError.value = getPbMessage(cause, '来源清单加载失败')
   } finally {
     loading.value = false
   }
@@ -131,7 +138,7 @@ async function load() {
 
 async function submitSource() {
   saving.value = true
-  error.value = ''
+  operationError.value = ''
   success.value = ''
   try {
     await createSource({ ...form, record_count: 0 })
@@ -144,7 +151,7 @@ async function submitSource() {
     success.value = '来源已登记。用途结论仍是未知，下游会读到阻断，直到逐项写明允许或禁止。'
     await load()
   } catch (cause) {
-    error.value = getPbMessage(cause, '登记来源失败')
+    operationError.value = getPbMessage(cause, '登记来源失败')
   } finally {
     saving.value = false
   }

@@ -1,5 +1,5 @@
 <template>
-  <div class="auth-container">
+  <main class="auth-container">
     <div class="auth-card">
       <div class="auth-logo">
         <h1>万语校坊</h1>
@@ -11,6 +11,7 @@
           type="button"
           class="auth-method"
           :class="{ active: !selectedProviderId }"
+          :aria-pressed="!selectedProviderId"
           :disabled="loading"
           @click="selectProvider('')"
         >万语校坊账号</button>
@@ -20,6 +21,7 @@
           type="button"
           class="auth-method"
           :class="{ active: selectedProviderId === provider.id }"
+          :aria-pressed="selectedProviderId === provider.id"
           :disabled="loading"
           @click="selectProvider(provider.id)"
         >{{ provider.name }}</button>
@@ -27,8 +29,9 @@
 
       <form @submit.prevent="handleLogin">
         <div class="form-group">
-          <label class="form-label">{{ selectedProvider ? `${selectedProvider.name}账号` : '昵称或邮箱' }}</label>
+          <label for="login-account" class="form-label">{{ selectedProvider ? `${selectedProvider.name}账号` : '昵称或邮箱' }}</label>
           <input
+            id="login-account"
             v-model.trim="email"
             type="text"
             class="form-control"
@@ -40,8 +43,9 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">密码</label>
+          <label for="login-password" class="form-label">密码</label>
           <input
+            id="login-password"
             v-model="password"
             type="password"
             class="form-control"
@@ -69,7 +73,7 @@
         <RouterLink to="/register">立即注册</RouterLink>
       </p>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>

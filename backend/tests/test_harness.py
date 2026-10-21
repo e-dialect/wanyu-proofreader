@@ -116,7 +116,7 @@ class TableMatchesWhatNodeActuallyRejects(unittest.TestCase):
             "fetch('http://127.0.0.1:%d/').then(() => console.log('ok'))"
             ".catch(e => console.log((e.cause && e.cause.message) || e.message))"
         ) % port
-        result = subprocess.run(['node', '-e', script], capture_output=True, text=True, timeout=30)
+        result = subprocess.run(['node', '-e', script], capture_output=True, text=True, encoding='utf-8', timeout=30)
         return 'bad port' in (result.stdout or '')
 
     def test_node_rejects_every_port_in_the_table_and_a_control_group_is_not_rejected(self):

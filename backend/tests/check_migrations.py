@@ -253,7 +253,7 @@ def migrate(binary, data, *command, expect_success=True):
     env = {**os.environ, 'FANGJI_SKIP_ADMIN_BOOTSTRAP': '1'}
     result = subprocess.run([str(binary), 'migrate', *[str(part) for part in command],
                             f'--dir={data}', f'--migrationsDir={harness.MIGRATIONS}'],
-                            env=env, input='y\n', text=True, capture_output=True)
+                            env=env, input='y\n', text=True, encoding='utf-8', capture_output=True)
     joined = result.stdout + result.stderr
     if expect_success and result.returncode != 0:
         raise AssertionError(f'migrate {command} failed: {joined[-4000:]}')

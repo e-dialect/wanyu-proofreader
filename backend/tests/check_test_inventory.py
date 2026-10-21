@@ -118,10 +118,10 @@ def ci_builds_matrix_from_registry(workflow):
 
 
 def main():
-    entries = json.loads((TESTS / 'suites.json').read_text())
+    entries = json.loads((TESTS / 'suites.json').read_text(encoding='utf-8'))
     registered = {entry['suite']: entry for entry in entries}
     on_disk = sorted(path.name for path in TESTS.glob('*_integration.mjs'))
-    workflow = yaml.safe_load(CI.read_text())
+    workflow = yaml.safe_load(CI.read_text(encoding='utf-8'))
     commands = run_commands(workflow)
     executed = '\n'.join(commands.values())
     problems = []
@@ -159,7 +159,7 @@ def main():
         if check not in executed:
             problems.append(f'{check}: exists but no CI step executes it')
 
-    if 'make check' not in CONTRIBUTING.read_text():
+    if 'make check' not in CONTRIBUTING.read_text(encoding='utf-8'):
         problems.append('CONTRIBUTING.md does not document `make check`')
 
     if problems:

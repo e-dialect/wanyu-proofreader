@@ -1,4 +1,5 @@
 <template>
+  <h1 class="sr-only">条目仲裁</h1>
   <DocumentReviewWorkspace
     :page="casePage"
     :keyboard-available="keyboardAvailable"
@@ -40,7 +41,7 @@
           <span>个不一致字段已明确处理</span>
         </div>
         <div class="arbitration-progress">
-          <div class="progress" role="progressbar" :aria-valuenow="resolutionPct" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress" role="progressbar" aria-label="仲裁差异确认进度" :aria-valuenow="resolutionPct" aria-valuemin="0" aria-valuemax="100">
             <div class="progress-bar" :style="{ width: `${resolutionPct}%` }"></div>
           </div>
           <p v-if="unresolvedHeaders.length">还需确认：{{ unresolvedHeaders.join('、') }}</p>
@@ -57,10 +58,10 @@
             <p>对照 PDF，采用任一版本或直接编辑最终内容。</p>
           </div>
           <div class="arbitration-toolbar__view" role="group" aria-label="字段显示范围">
-            <button type="button" :class="{ active: !showAllFields }" @click="showAllFields = false">
+            <button type="button" :class="{ active: !showAllFields }" :aria-pressed="!showAllFields" @click="showAllFields = false">
               仅看差异 {{ differingHeaders.length }}
             </button>
-            <button type="button" :class="{ active: showAllFields }" @click="showAllFields = true">
+            <button type="button" :class="{ active: showAllFields }" :aria-pressed="showAllFields" @click="showAllFields = true">
               全部字段 {{ headers.length }}
             </button>
           </div>

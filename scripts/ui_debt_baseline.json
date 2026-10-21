@@ -1,23 +1,23 @@
 {
   "version": 1,
-  "captured_from": "chore/ui-265-a11y (2026-10-05)",
-  "reason": "Token layer moved literal colors, radii, z-index and font stacks into :root. Alert tags now carry role. Limits drop to the measured now. inline_styles stays at 27: main was already 28 against the #264 baseline, and this change does not authorize that extra attribute.",
+  "captured_from": "fix/ui-debt-gate (2026-10-20)",
+  "reason": "Stable-zero classes now fail so new debt cannot merge. inline_styles was fixed from 28 to 27 before promoting it to fail; the limit is not raised. bare_tables stays warn at 10 until the in-flight project-detail/import PRs merge, then it flips to fail at the measured count and only decreases with #268 migrations.",
   "kinds": {
     "hardcoded_colors": {
       "limit": 0,
-      "mode": "warn"
+      "mode": "fail"
     },
     "border_radius_literals": {
       "limit": 0,
-      "mode": "warn"
+      "mode": "fail"
     },
     "z_index_literals": {
       "limit": 0,
-      "mode": "warn"
+      "mode": "fail"
     },
     "inline_styles": {
       "limit": 27,
-      "mode": "warn"
+      "mode": "fail"
     },
     "bare_tables": {
       "limit": 10,
@@ -25,19 +25,19 @@
     },
     "alerts_without_role": {
       "limit": 0,
-      "mode": "warn"
+      "mode": "fail"
     },
     "custom_modals": {
       "limit": 0,
-      "mode": "warn"
+      "mode": "fail"
     },
     "undefined_variables": {
       "limit": 0,
-      "mode": "warn"
+      "mode": "fail"
     },
     "font_family_stacks": {
       "limit": 0,
-      "mode": "warn"
+      "mode": "fail"
     }
   }
 }

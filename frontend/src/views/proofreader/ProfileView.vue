@@ -1,5 +1,5 @@
 <template>
-  <div class="container page">
+  <main class="container page">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="font-bold" style="font-size:1.5rem">个人中心</h2>
@@ -93,6 +93,7 @@
                   class="form-control"
                   type="text"
                   :placeholder="`${provider.name}账号`"
+                  :aria-label="`${provider.name}账号`"
                   autocomplete="username"
                   :disabled="bindingProvider === provider.id"
                 />
@@ -101,6 +102,7 @@
                   class="form-control"
                   type="password"
                   placeholder="密码"
+                  :aria-label="`${provider.name}密码`"
                   autocomplete="current-password"
                   :disabled="bindingProvider === provider.id"
                 />
@@ -122,7 +124,7 @@
           一致率按已完成系统比对的校对尝试计算；仍在等待其他独立结果的提交暂不进入分母。不一致记录会永久保留并计入统计。
         </div>
       </div>
-  </div>
+  </main>
 </template>
 
 <script setup>
