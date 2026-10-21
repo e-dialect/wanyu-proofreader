@@ -15,14 +15,17 @@
         </div>
         <button class="btn btn-secondary" :disabled="loading" @click="loadProjects">刷新</button>
       </header>
-      <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
-      <div v-if="loading" class="card text-muted">正在加载项目…</div>
-      <div v-else-if="projects.length === 0" class="empty-state card">
+      <div v-if="loadError" class="alert alert-error" role="alert">
+        {{ loadError }}
+        <button type="button" class="btn btn-secondary btn-sm ml-2" :disabled="loading" @click="loadProjects">重新加载</button>
+      </div>
+      <div v-if="loading && !loadError" class="card text-muted">正在加载项目…</div>
+      <div v-else-if="!loadError && projects.length === 0" class="empty-state card">
         <div class="empty-state-mark" aria-hidden="true">项</div>
         <div class="empty-state-text">目前没有可发现的项目</div>
         <p>指定成员项目不会出现在这里，请联系项目管理员添加。</p>
       </div>
-      <section v-else class="project-card-grid">
+      <section v-else-if="!loadError" class="project-card-grid">
         <article v-for="project in projects" :key="project.id" class="project-work-card">
           <header class="project-work-card__header">
             <div><span class="work-state">{{ accessLabel(project) }}</span><h3>{{ project.name }}</h3></div>
@@ -35,6 +38,7 @@
             <span class="form-label">项目口令</span>
             <input v-model="passwords[project.id]" type="password" class="form-control" maxlength="72" autocomplete="off" placeholder="输入项目管理员提供的口令" />
           </label>
+          <p v-if="joinErrorProjectId === project.id" class="alert alert-error" role="alert">{{ joinError }}</p>
           <footer class="project-work-card__footer">
             <span>{{ project.access_mode === 'members_only' ? '由项目管理员指定成员' : '加入后成为项目校对员' }}</span>
             <RouterLink v-if="project.capabilities.canManage" :to="`/admin/projects/${project.id}`" class="btn btn-secondary">管理项目</RouterLink>
@@ -62,27 +66,33 @@ const projects = ref([])
 const passwords = ref({})
 const joining = ref('')
 const loading = ref(true)
-const error = ref('')
+const loadError = ref('')
+const joinError = ref('')
+const joinErrorProjectId = ref('')
 
 onMounted(loadProjects)
 
 async function loadProjects() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
+  joinError.value = ''
+  joinErrorProjectId.value = ''
   try { projects.value = await listProjects({ scope: 'discoverable' }) }
-  catch (e) { error.value = getPbMessage(e, '项目目录加载失败。') }
+  catch (e) { loadError.value = getPbMessage(e, '项目目录加载失败。') }
   finally { loading.value = false }
 }
 
 async function join(project) {
   joining.value = project.id
-  error.value = ''
+  joinError.value = ''
+  joinErrorProjectId.value = ''
   try {
     await joinProject(project.id, passwords.value[project.id] || '')
     passwords.value[project.id] = ''
     await Promise.all([loadProjects(), auth.loadAccessContext({ force: true })])
   } catch (e) {
-    error.value = getPbMessage(e, '加入项目失败。')
+    joinError.value = getPbMessage(e, '加入项目失败。')
+    joinErrorProjectId.value = project.id
   } finally {
     joining.value = ''
   }

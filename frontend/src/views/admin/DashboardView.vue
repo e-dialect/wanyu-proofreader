@@ -49,17 +49,17 @@
         <span v-if="!loading" class="section-count">{{ projectInsights.length }} 个项目</span>
       </div>
 
-      <div v-if="loading" class="admin-dashboard-loading" aria-live="polite">
+      <div v-if="loading && !error" class="admin-dashboard-loading" aria-live="polite">
         正在汇总项目状态…
       </div>
-      <div v-else-if="projects.length === 0" class="empty-state">
+      <div v-else-if="!error && projects.length === 0" class="empty-state">
         <div class="empty-state-mark" aria-hidden="true">项</div>
         <div class="empty-state-text">还没有项目</div>
         <p>创建项目后，先上传原文 PDF，再用 CSV 导入待校对条目。</p>
         <RouterLink v-if="auth.canCreateProjects" to="/admin/projects/new" class="btn btn-primary mt-3">创建第一个项目</RouterLink>
         <RouterLink v-else to="/projects" class="btn btn-secondary mt-3">发现可加入项目</RouterLink>
       </div>
-      <div v-else class="table-wrapper">
+      <div v-else-if="!error" class="table-wrapper" role="region" tabindex="0" aria-label="项目进展表">
         <table class="admin-project-table">
           <thead>
             <tr>
@@ -92,7 +92,7 @@
                 </dl>
               </td>
               <td class="project-progress-cell">
-                <div class="progress" role="progressbar" :aria-valuenow="item.summary.completionPct" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress" role="progressbar" :aria-label="`${item.project.name} 校对进度`" :aria-valuenow="item.summary.completionPct" aria-valuemin="0" aria-valuemax="100">
                   <div class="progress-bar" :style="{ width: item.summary.completionPct + '%' }"></div>
                 </div>
                 <span>{{ item.summary.completionPct }}% · {{ item.summary.approved }}/{{ item.summary.total }}</span>

@@ -157,7 +157,10 @@ blob 里存了 CR（`i/crlf`、`i/mixed`）就失败。`make verify-static` 与 
 `Frontend` 是阻断模式的落点：将某类基线的 `mode` 从 `warn` 改为 `fail` 后，增加该类债务
 会让这个 context 失败；实际 required contexts 仍以仓库保护规则为真源。
 
-第一阶段全部 `warn`：超出上限打印警告但退出 0；`fail` 类只有超出上限才退出 1，存量不阻断。
+稳定为 0 的类别已转 `fail`：`hardcoded_colors`、`border_radius_literals`、`z_index_literals`、
+`alerts_without_role`、`custom_modals`、`undefined_variables`、`font_family_stacks`，以及修到
+27 后的 `inline_styles`。`bare_tables` 暂留 `warn`，待 #331/#332 合入后按实测值转 `fail`。
+`fail` 类只有超出上限才退出 1，存量不阻断；超出上限即失败。
 无法读取基线、非法策略或没有源码始终退出 1，避免误报成功。可重复传 `--only` 聚焦类别：
 
 ```bash
@@ -170,8 +173,8 @@ python3 -m unittest discover -s scripts -p 'test_check_ui_debt.py'
 删除后恢复通过。`--mode` 仅覆盖当次执行，日常本地/CI 入口不传覆盖参数，遵守文件内逐类策略。
 减少债务时在同一个 PR 下调对应 `limit`，让清理成果成为新上限；脚本不会自动改写基线。
 确需提高上限时必须显式修改基线，并在 PR 正文和基线 `reason` 说明理由，供评审查看。
-逐类转 `fail` 需维护者先在 #264 记录并确认类别与生效时间，再通过 PR 修改 `mode`；
-本次仅上线观测，尚未设定或启用阻断日期，不修改分支保护规则。
+逐类转 `fail` 需维护者先记录类别与生效时间，再通过 PR 修改 `mode`。`#264` 已关闭，
+后续策略变更记录在 `#272`；本次只改运行时检查策略，不修改分支保护规则。
 
 ### CHANGELOG 暂停更新
 

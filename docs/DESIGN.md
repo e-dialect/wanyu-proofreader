@@ -106,6 +106,8 @@
 
 成功与进行中的提示用 `alert alert-success` 或无修饰 `alert`，角色是 `role="status"`。一直显示、文案不随操作改写的说明用 `role="note"`（`NewProjectView.vue:8`）。错误是 `role="alert"`。长期收口仍归 #267 的 `AppStatusPanel`，避免以后靠 grep 维持。
 
+加载失败与操作失败分开：加载错误可以替换数据区，但必须保留重试入口；校验、保存、加入等项目操作错误写进独立的 operation error，显示在仍然可见的编辑区旁，不得把表格、输入框或操作按钮一起隐藏。GateRules、CreatorGrants、ProjectDiscovery、TaskHall、Sources 已按此拆分。
+
 状态不单独靠颜色。机器疑点芯片始终带文字，规则写在 `style.css:657-658`，芯片结构在 `:662`。
 
 ## 措辞
@@ -150,6 +152,12 @@
 | 状态不只靠颜色 | 疑点标记带「疑」或等价文字 | 通过。`style.css:657-658` |
 | 动效可关 | `prefers-reduced-motion` 规则仍在 | 通过。`style.css:761-762` |
 | 模态不丢焦点 | Tab 留在对话框内，Esc 关闭，关闭后焦点回到触发控件 | 算法在 `lib/modalFocus.js`，测试在 `frontend/tests/modalFocus.test.js`。调用点都走 `AppModal` |
+| 表单控件有名称 | 每个 input/select/textarea 有 `label[for]`、包裹 label 或 `aria-label` | 本轮抽查的认证、新建项目、个人中心与项目设置已补；全量归 #265 |
+| 切换状态可读出 | 视觉选中态同时有 `aria-pressed` | 登录方式与仲裁字段范围已补；ProjectDetail 待 #331/#333 |
+| 进度条有名称 | `role="progressbar"` 同时有 `aria-label` | TaskHall、Dashboard、Arbitration 已补；ProjectDetail 待 #331/#333 |
+| 路由切换可感知 | 每个路由设置 `document.title`；只有页面路径变化时聚焦主地标，同页 query/hash 更新不抢焦点 | 通过。`frontend/src/main.js`、`lib/pageTitle.js`、`lib/routeFocus.js`、`lib/mainLandmark.js` |
+| 跳过重复导航 | Tab 第一下出现「跳到主要内容」；错误边界替换内容时错误页的 `<main>` 也是目标，恢复后重新准备 | 通过。`frontend/src/App.vue`、`style.css`、`components/AppErrorBoundary.vue` |
+| 横滚区域可键盘到达 | 宽表格与 PDF 滚动区可聚焦并有 region 名称 | 已补未迁移视图；ProjectDetail 待 #331/#333 |
 | 记音的 `lang` | 不在本清单里实施 | 归 #270。`grep -rn "lang=" frontend` 目前主要是 `frontend/index.html` 的页面语言 |
 
 ## 改动时要引用的小节
