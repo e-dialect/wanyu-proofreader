@@ -59,7 +59,7 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/claim`, (c) => {
 
     const active = txDao.findRecordsByFilter(
       "pages",
-      `project = "${projectId}" && proofreader = "${userId}" && (status = "claimed" || status = "proofreading")`,
+      `project = "${projectId}" && source_empty != true && proofreader = "${userId}" && (status = "claimed" || status = "proofreading")`,
       "page_number",
       1,
       0
@@ -76,7 +76,7 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/claim`, (c) => {
       return
     }
 
-    const queueFilter = `project = "${projectId}" && (status = "pending" || status = "proofread" || status = "claimed" || status = "proofreading")`
+    const queueFilter = `project = "${projectId}" && source_empty != true && (status = "pending" || status = "proofread" || status = "claimed" || status = "proofreading")`
     const filters = []
     if (previousTaskId) {
       if (!/^[a-z0-9]{15}$/.test(previousTaskId)) throw new BadRequestError("上一任务标识无效")
@@ -458,6 +458,7 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/submit`, (c) => {
     }
 
     const status = page.getString("status")
+    if (page.getBool("source_empty") || status === "rejected") throw new BadRequestError("本条已被管理员排除，当前不能提交校对")
     if ((status !== "claimed" && status !== "proofreading") || page.getString("proofreader") !== userId) {
       throw new BadRequestError("该条目当前不属于你，请返回项目大厅刷新后重试")
     }

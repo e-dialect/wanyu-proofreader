@@ -322,8 +322,8 @@ async function loadCase() {
       if (!differingHeaders.value.includes(header)) resolutionSource[header] = 'matching'
       if (result.mode === 'verification') { resolutionSource[header] = 'existing_final'; resolvedHeaders.add(header) }
     }
-    const progress = [...(verification.history || [])].reverse().find(event => event.kind === 'review_progress' && event.context.basis === verification.context.basis)
-    if (progress && result.mode === 'arbitration') {
+    const progress = verification.progress
+    if (progress && progress.context.basis === verification.context.basis && progress.payload.stage === result.mode) {
       Object.assign(finalRow, progress.payload.row)
       Object.assign(resolutionSource, progress.payload.selections || {})
       for (const header of differingHeaders.value) if (resolutionSource[header]) resolvedHeaders.add(header)

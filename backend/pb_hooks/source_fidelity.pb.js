@@ -43,6 +43,7 @@ routerAdd("GET", "/api/fangji/pages/{pageId}/verification", (c) => {
   if (manager) {
     response.judgments = fidelity.latestJudgments($app, page, context)
     response.history = fidelity.eventsFor($app, page.id)
+    response.progress = fidelity.activeReviewProgress(page, context, response.history)
     response.completion = fidelity.completion($app, page, context)
   } else {
     response.context = fidelity.proofreaderContext(context)
@@ -105,7 +106,8 @@ routerAdd("POST", "/api/fangji/pages/{pageId}/resume", (c) => {
     if (!fidelity.ownDraft(dao, id, c.auth.id) && !reports.length) throw new ForbiddenError("本条没有你的未完成工作或问题报告")
     if (workflow.ownProofreadAttempt(dao, page, c.auth.id)) throw new BadRequestError("本轮已提交，请从已提交任务查看")
     const status = page.getString("status")
-    if (["approved", "arbitration", "importing"].includes(status)) throw new BadRequestError("本条已进入后续流程，可查看问题反馈，当前不能再次领取")
+    if (page.getBool("source_empty") || status === "rejected") throw new BadRequestError("本条已被管理员排除，请等待管理员明确撤回排除确认后再恢复")
+    if (!["pending", "proofread", "claimed", "proofreading"].includes(status)) throw new BadRequestError("本条已进入后续流程，可查看问题反馈，当前不能再次领取")
     const active = dao.findRecordsByFilter("pages", `project = "${project}" && proofreader = "${c.auth.id}" && (status = "claimed" || status = "proofreading")`, "", 1, 0)
     if (active.length && active[0].id !== id) throw new BadRequestError("请先释放本项目当前在手任务，再恢复本条")
     const old = leases.leaseForPage(dao, id)

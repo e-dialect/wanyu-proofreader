@@ -321,6 +321,29 @@ function latestJudgments(dao, page, context) {
   }
   return [...latest.values()].map(event => ({ ...event, stale: event.context.basis !== context.basis }))
 }
+function latestAdoption(history, context) {
+  return history.filter(event => event.kind === "final_adoption" && event.context.basis === context.basis)
+    .sort((a, b) => (b.payload.revision || 0) - (a.payload.revision || 0))[0] || null
+}
+function activeReviewProgress(page, context, history) {
+  const status = page.getString("status")
+  const stage = status === "arbitration" ? "arbitration" : ["approved", "proofread"].includes(status) ? "verification" : ""
+  if (!stage || page.getBool("source_empty")) return null
+  const progress = history.filter(event => event.kind === "review_progress" && event.context.basis === context.basis && event.payload.stage === stage)
+    .sort((a, b) => (b.payload.revision || 0) - (a.payload.revision || 0) || b.at.localeCompare(a.at) || b.id.localeCompare(a.id))[0]
+  if (!progress) return null
+  if (progress.payload.progress_version === 1) {
+    if (progress.payload.completed || progress.payload.base_status !== status
+      || progress.payload.base_final_row_json !== page.getString("proofread_row_json")
+      || progress.payload.base_adoption_id !== (latestAdoption(history, context)?.id || "")) return null
+  } else {
+    // Older events lack a lifecycle snapshot. A later completion or adoption
+    // closes them; retain the history without restoring it over a newer result.
+    if (history.some(event => event.context.basis === context.basis && event.at >= progress.at
+      && ((event.kind === "review_completed" && event.payload.stage === stage) || ["final_adoption", "verified_final_updated"].includes(event.kind)))) return null
+  }
+  return progress
+}
 function saveJudgments(dao, page, actor, body, stage) {
   const context = contextFor(dao, page)
   assertContext(body, context)
@@ -349,7 +372,9 @@ function saveJudgments(dao, page, actor, body, stage) {
     const event = appendEvent(dao, { project: context.project, page: page.id, kind: "judgment", ref, field, actor, context, payload: { state: item.state, correct: item.state === "correct" ? true : item.state === "incorrect" ? false : null, value, reason: String(item.reason).slice(0, 2000), location: String(item.location).slice(0, 1000), stage, replaces: previous?.id || "", revision: (previous?.payload.revision || 0) + 1 } })
     saved.push(eventView(event))
   }
-  appendEvent(dao, { project: context.project, page: page.id, kind: "review_progress", actor, context, payload: { row: finalRow, selections: body.selections || {}, note: String(body.note || "").slice(0, 4000), stage, deferred: body.defer === true } })
+  const history = eventsFor(dao, page.id)
+  const revision = history.filter(event => event.kind === "review_progress").reduce((max, event) => Math.max(max, event.payload.revision || 0), 0) + 1
+  appendEvent(dao, { project: context.project, page: page.id, kind: "review_progress", actor, context, payload: { row: finalRow, selections: body.selections || {}, note: String(body.note || "").slice(0, 4000), stage, deferred: body.defer === true, progress_version: 1, revision, completed: body.complete === true, base_status: page.getString("status"), base_final_row_json: page.getString("proofread_row_json"), base_adoption_id: latestAdoption(history, context)?.id || "" } })
   if (body.defer === true || saved.some(event => ["pending", "withdrawn"].includes(event.payload.state) || (event.ref === "final" && event.payload.state === "incorrect"))) page.set("verification_hold", true)
   if (body.complete === true) {
     if ((page.getBool("verification_needs_recheck") || (page.getString("verification_basis") && page.getString("verification_basis") !== context.basis)) && body.sourceChecked !== true) throw new BadRequestError("依据已变更，请明确确认已逐字段复核当前来源后再完成")
@@ -427,4 +452,4 @@ function completion(dao, page, current) {
     field_denominator: covered.length, required_fields: required.length, independent_reference: "separate_research_record" }
 }
 
-module.exports = { comparison, DEFAULT_INSTRUCTIONS, ISSUE_STATES, REPORT_TYPES, parse, hash, list, policyFor, fileSnapshot, contextFor, proofreaderContext, assertContext, appendEvent, eventView, eventsFor, savePolicy, ownDraft, draftView, validateRow, saveDraft, reportIssue, issueView, reportView, reportsFor, blockingReports, updateIssue, moveReports, recordSubmission, latestJudgments, saveJudgments, assertArbitration, recordAdoption, completion }
+module.exports = { comparison, DEFAULT_INSTRUCTIONS, ISSUE_STATES, REPORT_TYPES, parse, hash, list, policyFor, fileSnapshot, contextFor, proofreaderContext, assertContext, appendEvent, eventView, eventsFor, savePolicy, ownDraft, draftView, validateRow, saveDraft, reportIssue, issueView, reportView, reportsFor, blockingReports, updateIssue, moveReports, recordSubmission, latestJudgments, activeReviewProgress, saveJudgments, assertArbitration, recordAdoption, completion }

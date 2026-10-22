@@ -18,8 +18,13 @@ async function session(browser, auth) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   const page = await context.newPage()
   page.__errors = []
+  page.__expectedHttpErrors = new Set()
   page.on('pageerror', error => page.__errors.push(error.message))
-  page.on('console', message => { if (message.type() === 'error') page.__errors.push(message.text().slice(0, 1500)) })
+  page.on('console', message => {
+    if (message.type() !== 'error') return
+    if (page.__expectedHttpErrors.has(message.location().url) && message.text().includes('status of 400')) return
+    page.__errors.push(message.text().slice(0, 1500))
+  })
   await page.route('**/*', async route => {
     const request = route.request()
     const url = new URL(request.url())
@@ -63,6 +68,23 @@ async function waitFor(check) {
     await manager.getByText('管理员来源核验', { exact: false }).waitFor()
     const reading = manager.locator('.arbitration-field').filter({ has: manager.getByRole('heading', { name: '记音', exact: true }) })
     await reading.waitFor()
+    const finalReading = reading.getByRole('textbox', { name: '记音的最终仲裁结果', exact: true })
+    const note = manager.locator('#arbitration-note')
+    const reviewUrl = `http://localhost${root}/arbitration/${fixture.pages[1].id}?mode=verification`
+    for (const [value, button] of [['ga⁵³³', '保存判断与进度'], ['ga533', '暂缓本条完成']]) {
+      await finalReading.fill(value)
+      await note.fill(`合成浏览器验收：${button}后离开并重开`)
+      await manager.getByRole('button', { name: button, exact: true }).click()
+      await manager.getByText(button === '保存判断与进度' ? '已保存实际判断及进度' : '进度已保存，本条暂缓完成', { exact: false }).waitFor()
+      const actual = await api(`/api/collections/pages/records/${fixture.pages[1].id}`, fixture.admin)
+      assert.equal(JSON.parse(actual.proofread_row_json).记音, 'ga533', 'saved review progress must not adopt a final value')
+      await manager.goto(`http://localhost${root}/verification`)
+      await manager.goto(reviewUrl)
+      await finalReading.waitFor()
+      assert.equal(await finalReading.inputValue(), value)
+      assert.equal(await note.inputValue(), `合成浏览器验收：${button}后离开并重开`)
+    }
+    await finalReading.fill('ga⁵³³')
     const judgments = reading.locator('.source-judgment')
     assert.equal(await judgments.count(), 3)
     for (let i = 0; i < 3; i++) {
@@ -78,6 +100,15 @@ async function waitFor(check) {
     await dialog.getByRole('checkbox').check()
     await dialog.getByRole('button', { name: '确认完成核验', exact: true }).click()
     await manager.getByRole('heading', { name: '集中问题处理' }).waitFor()
+    const completedReview = await api(`/api/fangji/pages/${fixture.pages[1].id}/verification`, fixture.admin)
+    assert.equal(completedReview.progress, null)
+    // A completed, non-adopting history row must not replace the actual final.
+    await api(`/api/fangji/pages/${fixture.pages[1].id}/source-judgments`, fixture.admin, 'POST', { basis: completedReview.context.basis, row: { ...completedReview.context.input, 记音: 'ga533' }, judgments: [], note: '合成验收：已结束的历史进度，未另行采用', complete: true })
+    await manager.goto(reviewUrl)
+    await finalReading.waitFor()
+    assert.equal(await finalReading.inputValue(), 'ga⁵³³')
+    assert.equal(await note.inputValue(), '', 'completed history must not reopen as current work')
+    await manager.goto(`http://localhost${root}/verification`)
     const emptyRow = manager.locator('.fidelity-queue li').filter({ hasText: '第 4 条' })
     await emptyRow.getByRole('button', { name: '撤回空记录确认', exact: true }).click()
     const emptyDialog = manager.getByRole('dialog')
@@ -104,6 +135,25 @@ async function waitFor(check) {
     await member.getByRole('heading', { name: '我的问题', exact: true }).waitFor()
     assert.ok((await member.locator('.problem-item').count()) >= 2)
     await shot(member, 'my-problems-mobile')
+    const savedMemberWork = (await api(`/api/fangji/pages/${fixture.pages[2].id}/verification`, fixture.users[0])).draft.row
+    const exclusionView = await api(`/api/fangji/pages/${fixture.pages[2].id}/verification`, fixture.admin)
+    await api(`/api/fangji/pages/${fixture.pages[2].id}/empty-source`, fixture.admin, 'POST', { basis: exclusionView.context.basis, empty: true, reason: '合成浏览器验收：保留旧草稿并排除条目' })
+    const rejectedResumeUrl = `http://localhost/api/fangji/pages/${fixture.pages[2].id}/resume`
+    member.__expectedHttpErrors.add(rejectedResumeUrl)
+    const rejectedResume = member.waitForResponse(response => response.url() === rejectedResumeUrl && response.request().method() === 'POST')
+    await member.getByRole('button', { name: '恢复任务', exact: true }).first().click()
+    assert.equal((await rejectedResume).status(), 400)
+    await member.getByText('本条已被管理员排除', { exact: false }).waitFor()
+    assert.equal(new URL(member.url()).pathname, '/tasks/problems')
+    const excluded = await api(`/api/collections/pages/records/${fixture.pages[2].id}`, fixture.admin)
+    assert.equal(excluded.status, 'rejected')
+    assert.equal(excluded.source_empty, true)
+    await shot(member, 'empty-source-resume-blocked-mobile')
+    await api(`/api/fangji/pages/${fixture.pages[2].id}/empty-source`, fixture.admin, 'POST', { basis: exclusionView.context.basis, empty: false, reason: '合成浏览器验收：管理员明确撤回排除确认' })
+    await member.getByRole('button', { name: '恢复任务', exact: true }).first().click()
+    await member.waitForURL(`**/tasks/${fixture.pages[2].id}/edit`)
+    await member.getByLabel('词条 校对结果', { exact: true }).waitFor()
+    assert.equal(await member.getByLabel('词条 校对结果', { exact: true }).inputValue(), savedMemberWork.词条)
 
     if (fixture.research) {
       const research = fixture.research
