@@ -236,15 +236,24 @@ async function researchDemo() {
     const ids = newHints.hints.map(hint => hint.id)
     await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: eventBody('render', 2, { visibility: 'visible', focus: true, data: { rendered_ids: ids.slice(0, 3), presented_ids: ids.slice(0, 3), collapsed_ids: ids.slice(3), synthetic_demonstration: true } }) })
     await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: eventBody('render', 3, { visibility: 'unknown', data: { presented_ids: ids, synthetic_demonstration: true } }) })
-    const interrupted = eventBody('interruption', 4)
+    const interrupted = eventBody('interruption', 4, { data: { synthetic_demonstration: true, details: { width: 1440, height: 900 }, samples: [{ visible: true, name: 'synthetic' }, 'second'] } })
     await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: interrupted })
-    assert.equal((await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: interrupted })).duplicate, true)
+    for (let retry = 0; retry < 12; retry++) {
+      assert.equal((await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: interrupted })).duplicate, true, 'exact retries must not depend on Go map iteration order')
+    }
+    const reordered = { data: { samples: [{ name: 'synthetic', visible: true }, 'second'], details: { height: 900, width: 1440 }, synthetic_demonstration: true }, client_at: interrupted.client_at, sequence: 4, type: 'interruption' }
+    assert.equal((await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: reordered })).duplicate, true, 'nested object key order does not change an event')
+    await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: { ...reordered, data: { ...reordered.data, details: { ...reordered.data.details, width: 390 } } }, status: 400 })
+    await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: { ...reordered, data: { ...reordered.data, samples: [...reordered.data.samples].reverse() } }, status: 400 })
+    const afterRetries = await api('/api/fangji/research-sessions', { token: users[0].token })
+    assert.equal(afterRetries.items.find(item => item.id === session.id).last_sequence, 4)
     await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: eventBody('resume', 6), status: 400 })
     await api(`/api/fangji/research-sessions/${session.id}/events`, { method: 'POST', token: users[0].token, body: eventBody('resume', 5) })
     const v = await api(`/api/fangji/pages/${claimNew.id}/verification`, { token: users[0].token })
     await api(`/api/fangji/pages/${claimNew.id}/submit`, { method: 'POST', token: users[0].token, body: { rowJson: JSON.stringify({ ...v.context.input, 记音: 'ka⁵³³' }), sourceChecked: true, basis: v.context.basis, leaseToken: claimNew.leaseToken } })
   }
   const researchProcess = await api(`${root}/verification-export`, { method: 'POST', token, body: { mode: 'all' } })
+  if (!process.env.FIDELITY_BROWSER_SCRIPT) assert.equal(researchProcess.events.filter(event => event.ref === session.id && event.kind === 'research_event' && event.payload.sequence === 4).length, 1, 'retries append no duplicate events')
   assert.ok(researchProcess.records.some(item => item.id === materialPages[1].id && item.value_source === 'imported_fallback'), 'no-hint/unstarted records remain exportable')
   assert.equal(researchProcess.studies.length, 1)
   const temp = await mkdtemp(path.join(tmpdir(), 'wanyu-source-study-'))

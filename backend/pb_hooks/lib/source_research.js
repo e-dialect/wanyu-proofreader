@@ -3,6 +3,13 @@
 const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
 const CONDITIONS = ["current", "new"]
 const ROLES = ["proofreader", "reference", "maintenance", "arbitration", "feedback"]
+function stableJSON(value) {
+  // Request objects are backed by Go maps, whose property order can change on
+  // every read. Sort object keys recursively; array order remains meaningful.
+  return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]]))
+    : item)
+}
 function enabled() { return String($os.getenv("FANGJI_RESEARCH_MODE") || "").trim() === "1" }
 function requireEnabled() { if (!enabled()) throw new ForbiddenError("研究采集仅在显式启用的隔离副本开放") }
 function view(session) {
@@ -121,7 +128,7 @@ function assertFrozen(dao, page, session) {
   const stored = fidelity.parse(session.getString("context_json"))
   const current = fidelity.contextFor(dao, page)
   if (stored.basis !== current.basis) throw new BadRequestError("研究冻结的来源或输入已变化，请停止该材料采集并由管理员重新冻结")
-  if (JSON.stringify(stored.machine?.keyboards) !== JSON.stringify(current.machine?.keyboards) || JSON.stringify(stored.machine?.engine_versions) !== JSON.stringify(current.machine?.engine_versions)) throw new BadRequestError("研究冻结的输入支持或规则版本已变化，请保留进度并重新冻结研究配置")
+  if (stableJSON(stored.machine?.keyboards) !== stableJSON(current.machine?.keyboards) || stableJSON(stored.machine?.engine_versions) !== stableJSON(current.machine?.engine_versions)) throw new BadRequestError("研究冻结的输入支持或规则版本已变化，请保留进度并重新冻结研究配置")
 }
 function recordEvent(dao, session, actor, body) {
   requireEnabled()
@@ -132,7 +139,7 @@ function recordEvent(dao, session, actor, body) {
   const sequence = Number(body.sequence)
   if (!Number.isInteger(sequence) || sequence < 1) throw new BadRequestError("事件必须有连续序号")
   const previous = fidelity.list(dao, "verification_events", `ref = "${session.id}" && kind = "research_event"`).map(fidelity.eventView).find(event => event.payload.sequence === sequence)
-  const signature = fidelity.hash(JSON.stringify(body))
+  const signature = fidelity.hash(stableJSON(body))
   if (previous) {
     if (previous.payload.signature !== signature) throw new BadRequestError("相同序号已记录不同事件")
     return { sequence, state: session.getString("state"), duplicate: true }
