@@ -5,6 +5,7 @@
         <div class="page-eyebrow">校对工作台</div>
         <h1>从最需要你的项目开始</h1>
         <p>进行中的任务排在最前；每次只需独立判断当前材料。</p>
+        <RouterLink to="/tasks/problems">我的问题与草稿</RouterLink>
       </div>
       <button class="btn btn-secondary" @click="loadProjects" :disabled="loading">
         <span aria-hidden="true">↻</span>

@@ -123,6 +123,7 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/claim`, (c) => {
           if (seen.has(page.id)) continue
           seen.add(page.id)
           const status = page.getString("status")
+          if (!require(`${__hooks}/lib/source_research.js`).canClaimMaterial(txDao, page, userId)) continue
           let queueStatus = status
           if (status === "claimed" || status === "proofreading") {
             const existingLease = proofLeaseForPage(txDao, page.id)
@@ -409,8 +410,7 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/submit`, (c) => {
   if (auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
   const userId = auth.id
   const pageId = c.request.pathValue("pageId")
-  const body = new DynamicModel({ rowJson: "", text: "", leaseToken: "" })
-  c.bindBody(body)
+  const body = c.requestInfo().body || {}
   const parseRowObject = (raw) => {
     const value = String(raw || "")
     if (!value || value.length > 2 * 1024 * 1024) throw new BadRequestError("校对内容为空或过大")
@@ -487,6 +487,9 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/submit`, (c) => {
     attempt.set("text", text)
     attempt.set("outcome", "waiting")
     attempt.set("submitted_at", now)
+    // Identity is needed by append-only field events before saving the attempt.
+    attempt.set("id", $security.randomStringWithAlphabet(15, "abcdefghijklmnopqrstuvwxyz0123456789"))
+    require(`${__hooks}/lib/source_fidelity.js`).recordSubmission(txDao, page, attempt, userId, body)
     txDao.save(attempt)
 
     if (attempts.length === 0) {
@@ -559,7 +562,8 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/arbitration`, (c) => {
   }
   const project = dao.findRecordById("projects", page.getString("project"))
   if (!proofCanManage(dao, project, auth)) throw new ForbiddenError("你没有管理该项目的权限")
-  if (page.getString("status") !== "arbitration") {
+  const verificationMode = c.request.url.query().get("mode") === "verification"
+  if (page.getString("status") !== "arbitration" && !(verificationMode && ["approved", "proofread"].includes(page.getString("status")))) {
     throw new BadRequestError("该条目当前不需要仲裁")
   }
 
@@ -587,9 +591,11 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/arbitration`, (c) => {
       mismatch_count: page.getInt("mismatch_count") || 0,
       ocr_row_json: page.getString("ocr_row_json"),
     row_headers_json: page.getString("row_headers_json"),
-      ocr_text: page.getString("ocr_text")
+      ocr_text: page.getString("ocr_text"),
+      proofread_row_json: page.getString("proofread_row_json")
     },
-    attempts: attempts.map((attempt) => summarizeAttempt(dao, attempt))
+    attempts: attempts.map((attempt) => summarizeAttempt(dao, attempt)),
+    mode: page.getString("status") === "arbitration" ? "arbitration" : "verification"
   })
 }, $apis.requireAuth("users"))
 
@@ -598,8 +604,7 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/arbitrate`, (c) => {
   const auth = c.auth
   if (!auth) throw new ForbiddenError("无权执行此操作")
   const pageId = c.request.pathValue("pageId")
-  const body = new DynamicModel({ rowJson: "", text: "", note: "" })
-  c.bindBody(body)
+  const body = c.requestInfo().body || {}
   const validateSubmittedRow = (raw, page) => {
     const value = String(raw || "")
     if (!value || value.length > 2 * 1024 * 1024) throw new BadRequestError("校对内容为空或过大")
@@ -646,6 +651,11 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/arbitrate`, (c) => {
 
     const validatedRow = validateSubmittedRow(body.rowJson, page)
     const parsedRow = validatedRow.parsed
+    const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+    if (fidelity.policyFor(txDao, project.id)) {
+      fidelity.saveJudgments(txDao, page, auth.id, { ...body, row: parsedRow, judgments: body.judgments || [], complete: true }, "arbitration")
+      fidelity.assertArbitration(txDao, page, parsedRow)
+    }
     const rowJson = JSON.stringify(parsedRow)
     assistArbitratedRow = parsedRow
     const text = composeRowText(validatedRow.keys, parsedRow)
@@ -680,6 +690,7 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/arbitrate`, (c) => {
     attempt.set("text", text)
     attempt.set("outcome", "arbitrated")
     attempt.set("submitted_at", now)
+    attempt.set("verification_context_json", JSON.stringify(fidelity.contextFor(txDao, page)))
     txDao.save(attempt)
 
     page.set("proofread_row_json", rowJson)
@@ -689,6 +700,10 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/arbitrate`, (c) => {
     page.set("arbitrated_at", now)
     page.set("arbitration_note", note)
     page.set("status", "approved")
+    page.set("verification_basis", fidelity.contextFor(txDao, page, false).basis)
+    page.set("verification_context_json", JSON.stringify(fidelity.contextFor(txDao, page)))
+    page.set("verification_hold", false)
+    fidelity.recordAdoption(txDao, page, auth.id, parsedRow, body.selections || {})
     page.set("proofreader", null)
     txDao.save(page)
 
@@ -743,16 +758,23 @@ routerAdd("GET", `${FANGJI_API}/proofreader-stats`, (c) => {
     }))
   }
 
+  const sourceStats = require(`${__hooks}/lib/source_fidelity_stats.js`).statsByUser(dao)
   const profiles = aggregated.map((item) => {
+    const source = sourceStats.get(item.user_id) || { fieldCorrectCount: 0, fieldIncorrectCount: 0, fieldUnverifiedCount: 0, rowCorrectCount: 0, rowIncorrectCount: 0, rowUnverifiedCount: 0, adoptedFieldCount: 0 }
+    const judged = source.fieldCorrectCount + source.fieldIncorrectCount
     return {
       userId: item.user_id,
       projectCount: item.project_count,
       proofreadCount: item.proofread_count,
       evaluatedCount: item.evaluated_count,
-      correctCount: item.matched_count,
-      accuracy: item.evaluated_count
-        ? Math.round(item.matched_count / item.evaluated_count * 1000) / 10
-        : 0
+      workflowEvaluatedCount: item.evaluated_count,
+      matchedCount: item.matched_count,
+      matchRate: item.evaluated_count ? Math.round(item.matched_count / item.evaluated_count * 1000) / 10 : null,
+      ...source,
+      correctCount: source.rowCorrectCount,
+      evaluatedCount: judged,
+      accuracy: judged ? Math.round(source.fieldCorrectCount / judged * 1000) / 10 : null,
+      accuracyBasis: "explicit_current_source_field_judgments"
     }
   })
 
@@ -777,10 +799,12 @@ routerAdd("GET", `${FANGJI_API}/proofreader-stats`, (c) => {
     a.userId.localeCompare(b.userId)
   )
   const current = profiles.find((item) => item.userId === auth.id)
+  const matchSorted = profiles.filter(item => item.workflowEvaluatedCount > 0).sort((a, b) => (b.matchRate - a.matchRate) || a.userId.localeCompare(b.userId))
 
   return c.json(200, {
     ...current,
     accuracyRank: rank(accuracySorted, auth.id, "accuracy"),
+    matchRank: rank(matchSorted, auth.id, "matchRate"),
     proofreadRank: rank(countSorted, auth.id, "proofreadCount"),
     rankedProofreaderCount: countSorted.length
   })

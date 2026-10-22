@@ -11,11 +11,12 @@ const arbitrationSource = readFileSync(
   'utf8'
 )
 
-test('proofreader labels source fields as pending proofreading text', () => {
-  assert.match(editorSource, /<span>待校对原文<\/span>/)
+test('proofreader distinguishes imported text from the source PDF', () => {
+  assert.match(editorSource, /<span>导入文本（提示定位对象）<\/span>/)
   assert.doesNotMatch(editorSource, /<span>导入原文<\/span>/)
 })
 
-test('arbitration keeps the imported-source wording', () => {
-  assert.match(arbitrationSource, /<span>导入原文<\/span>/)
+test('arbitration distinguishes adopting an import from judging source correctness', () => {
+  assert.match(arbitrationSource, /<span>导入文本<\/span>/)
+  assert.match(arbitrationSource, /采用导入值/)
 })

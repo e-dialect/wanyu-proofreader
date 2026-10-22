@@ -9,7 +9,7 @@
     return-to="/tasks"
     return-label="返回大厅"
     content-labelled-by="task-panel-title"
-    empty-pdf-description="你仍可根据已导入的结构化字段完成校对。"
+    empty-pdf-description="请保存草稿并提交来源问题，待来源 PDF 可用后继续核对。"
   >
     <template #panel-header>
       <header class="editor-panel-header editor-panel-header--task">
@@ -82,6 +82,7 @@
             <span v-if="leaseStatus" class="lease-indicator" :class="{ 'lease-indicator--lost': leaseLost }">{{ leaseStatus }}</span>
             <span class="shortcut-hint">⌘/Ctrl+S 草稿 · ⌘/Ctrl+Enter 提交 · Alt+←/→ 切换</span>
           </div>
+          <details v-if="staleLocalDrafts.length" class="alert" role="note"><summary>本人旧版／失配本机草稿（{{ staleLocalDrafts.length }}）</summary><p>旧值未自动套用到新来源；请逐字段重新核对。</p><dl v-for="(draft, index) in staleLocalDrafts" :key="index"><template v-for="(value, field) in draft.row" :key="field"><dt>{{ field }}</dt><dd>{{ value || '（空白）' }}</dd></template></dl></details>
 
           <div class="field-progress-summary">
             <div>
@@ -92,10 +93,12 @@
           </div>
 
       <RareCharacterNotice :texts="[...Object.values(originalRow), ...Object.values(editedRow)]" />
+      <TaskVerificationPanel ref="verificationPanel" :page="page" :row="editedRow" :lease-token="leaseToken" :hints="rawFindings" :routing-help="researchSession?.presentation?.display?.routing_help !== false" :active="!!leaseToken && !leaseLost && !submittedHere && !saving" @restore="replaceEditedRow" @context="receiveVerificationContext" />
+      <ResearchTelemetry ref="researchTelemetry" :session="researchSession" :submitted="submittedHere" :density-collapsed-ids="densityCollapsedIds" />
 
           <ul v-if="pageHintList.length || pageHintOverflow" class="field-hint-list field-hint-list--page" aria-label="本条整条级机器疑点">
             <li v-for="(hint, hintIndex) in pageHintList" :key="`page-hint-${hintIndex}`">
-              <span class="field-hint-chip" :class="{ 'field-hint-chip--strong': hint.highlight }">
+              <span class="field-hint-chip" :data-finding-id="hint.id" :class="{ 'field-hint-chip--strong': hint.highlight }">
                 <b aria-hidden="true">疑</b>{{ hintLabel(hint.kind) }}
               </span>
               <span class="field-hint-reason">{{ hint.text }}</span>
@@ -131,14 +134,14 @@
                   <button
                     type="button"
                     class="btn btn-quiet btn-sm"
-                    :disabled="!isFieldChanged(header)"
+                    :disabled="!isFieldChanged(header) || saving || submittedHere || leaseLost || !leaseToken"
                     @click="restoreField(header)"
-                  >恢复原文</button>
+                  >恢复导入值</button>
                 </div>
               </header>
 
               <div class="source-value">
-                <span>待校对原文</span>
+                <span>导入文本（提示定位对象）</span>
                 <p v-if="!sourceSegments(header)">{{ originalRow[header] || '（空白）' }}</p>
                 <p v-else><span
                   v-for="(segment, segmentIndex) in sourceSegments(header)"
@@ -152,10 +155,13 @@
                   <button
                     type="button"
                     class="field-hint-chip"
+                    :data-finding-id="hint.id"
                     :class="{ 'field-hint-chip--strong': hint.highlight }"
                     @click="locateHint(header, hint)"
                   ><b aria-hidden="true">疑</b>{{ hintLabel(hint.kind) }}</button>
                   <span class="field-hint-reason">{{ hint.text }}</span>
+                  <small v-if="hint.inputStatus === 'different_input'">提示分析输入与当前导入值不同，已撤去字符定位，请按字段重新核对。</small>
+                  <small v-else-if="hint.inputStatus === 'legacy_unrecorded'">旧版提示，完整输入版本未记录。</small>
                 </li>
                 <li v-if="fieldHintOverflow(header)" class="field-hint-overflow">本字段疑点较多，已按密度折叠 {{ fieldHintOverflow(header) }} 条</li>
               </ul>
@@ -163,7 +169,7 @@
               <label class="sr-only" :for="`proofread-field-${index}`">{{ header }} 校对结果</label>
               <textarea
                 :inputmode="inputMode"
-                :readonly="mobile && overview"
+                :readonly="saving || submittedHere || leaseLost || !leaseToken || (mobile && overview)"
                 :id="`proofread-field-${index}`"
                 :ref="(el) => setTextareaRef(header, el)"
                 v-model="editedRow[header]"
@@ -199,8 +205,10 @@
           你修改了 {{ changedFields.length }} 个字段：{{ changedFields.join('、') }}。
         </p>
         <p v-else>
-          本条没有修改字段，提交表示你确认导入内容全部正确。
+          本条没有修改字段。请确认每个字段均已对照来源 PDF，空白字段也已核对。
         </p>
+        <label class="form-label"><input v-model="sourceChecked" type="checkbox"> 我已逐字段对照本条来源 PDF</label>
+        <p class="text-sm text-muted">这是本次校对的完整核对声明；机器提示及操作记录不作为独立来源参照。</p>
           <p class="alert alert-error confirmation-dialog__irreversible" role="alert">
             {{ irreversibleSubmitNotice }}
           </p>
@@ -214,7 +222,7 @@
             type="button"
             class="btn btn-success"
             autofocus
-            :disabled="saving || leaseLost || !leaseToken"
+            :disabled="saving || leaseLost || !leaseToken || !sourceChecked"
             @click="submitProofread"
           >{{ saving ? '正在提交…' : '确认提交' }}</button>
         </template>
@@ -223,6 +231,8 @@
 
 <script setup>
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
+import TaskVerificationPanel from '@/components/editor/TaskVerificationPanel.vue'
+import ResearchTelemetry from '@/components/editor/ResearchTelemetry.vue'
 import AppModal from '@/components/AppModal.vue'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
@@ -248,6 +258,7 @@ import {
 import {
   clearTaskDraft,
   loadTaskDraft,
+  loadTaskDraftHistory,
   saveTaskDraft,
   setTaskFlash,
   takeTaskFlash
@@ -271,6 +282,14 @@ const router = useRouter()
 const onboardingRef = inject('proofreaderOnboarding', ref(null))
 
 const page = ref(null)
+const verificationPanel = ref(null)
+const verificationContext = ref(null)
+const sourceChecked = ref(false)
+const rawFindings = ref([])
+const staleLocalDrafts = ref([])
+const restoredLocalDraft = ref(null)
+const researchSession = ref(null)
+const researchTelemetry = ref(null)
 const loadingPage = ref(true)
 const saving = ref(false)
 const releasing = ref(false)
@@ -425,6 +444,12 @@ async function loadPage() {
   clearDraftTimer()
   stopLeaseRenewal()
   reviewingSubmission.value = false
+  sourceChecked.value = false
+  verificationContext.value = null
+  restoredLocalDraft.value = null
+  staleLocalDrafts.value = []
+  rawFindings.value = []
+  researchSession.value = null
   draftReady.value = false
   loadingPage.value = true
   page.value = null
@@ -480,6 +505,7 @@ function gotoNextTask() {
 }
 
 function onTextChange() {
+  sourceChecked.value = false
   saved.value = ''
   saveError.value = ''
   markChanged()
@@ -487,6 +513,7 @@ function onTextChange() {
 }
 
 async function insertText(char) {
+  if (saving.value || submittedHere.value || leaseLost.value || !leaseToken.value) return
   if (mobile.value && overview.value) return
   const field = mobile.value ? currentField.value : activeField.value || rowHeaders.value[0]
   if (!field) return
@@ -543,6 +570,10 @@ function isFieldChanged(header) {
 
 const pageHintList = computed(() => pageLevelHints(fieldHints.value))
 const pageHintOverflow = computed(() => pageLevelOverflow(fieldHints.value))
+const densityCollapsedIds = computed(() => {
+  const visible = new Set([...pageHintList.value, ...rowHeaders.value.flatMap(header => fieldHintList(header))].map(hint => hint.id))
+  return rawFindings.value.filter(hint => hint.id && !visible.has(hint.id)).map(hint => hint.id)
+})
 
 function fieldHintList(header) {
   return hintsForField(fieldHints.value, header)
@@ -564,7 +595,7 @@ function locateHint(header, hint) {
   if (index >= 0) selectField(index)
   activeField.value = header
   const source = String(originalRow.value?.[header] ?? '')
-  const span = locateSpan(source, hint?.evidence?.char_offsets)
+  const span = hint?.inputStatus === 'different_input' ? null : locateSpan(source, hint?.evidence?.char_offsets)
   locatedSpan.value = span ? { field: header, span } : null
   const textarea = textareaRefs.get(header)
   if (textarea && mobile.value) textarea.scrollIntoView({ block: 'nearest' })
@@ -588,6 +619,8 @@ async function loadFindings(pageId) {
   const result = await getPageFindings(pageId)
   if (generation !== findingsGeneration || page.value?.id !== pageId) return
   fieldHints.value = prepareFieldHints(result.hints, rowHeaders.value)
+  rawFindings.value = result.hints
+  researchSession.value = result.research
   findingsTruncated.value = result.truncated
   findingsSuppressed.value = result.suppressedByGate
 }
@@ -650,6 +683,7 @@ function flushDraft() {
       userId: currentUserId.value,
       pageId: page.value.id,
       sourceSignature: initialRowJson.value,
+      contextBasis: verificationContext.value?.basis,
       row: JSON.parse(stringifyEditedRow())
     })
     draftStatus.value = draft ? `草稿已保存于 ${formatDraftTime(draft.savedAt)}` : ''
@@ -663,8 +697,10 @@ function restoreDraft() {
     userId: currentUserId.value,
     pageId: page.value?.id,
     sourceSignature: initialRowJson.value
+    , onStale: draft => { staleLocalDrafts.value.push(draft); draftStatus.value = '本机草稿来源已变化，旧值保留，未自动恢复' }
   })
   if (!draft) return
+  restoredLocalDraft.value = draft
   replaceEditedRow(draft.row)
   if (stringifyEditedRow() === initialRowJson.value) {
     clearTaskDraft(window.localStorage, {
@@ -674,6 +710,18 @@ function restoreDraft() {
     return
   }
   draftStatus.value = `已恢复 ${formatDraftTime(draft.savedAt)} 的本地草稿`
+}
+
+function receiveVerificationContext(context) {
+  verificationContext.value = context
+  const draft = restoredLocalDraft.value
+  if (draft?.contextBasis && draft.contextBasis !== context.basis) {
+    staleLocalDrafts.value.push(draft)
+    replaceEditedRow(originalRow.value)
+    draftStatus.value = '本机草稿的来源或约定已变化，旧值保留，未套用到当前来源'
+  }
+  const history = loadTaskDraftHistory(window.localStorage, { userId: currentUserId.value, pageId: page.value?.id })
+  staleLocalDrafts.value.push(...history.filter(item => !staleLocalDrafts.value.some(old => old.savedAt === item.savedAt)))
 }
 
 function clearDraftTimer() {
@@ -719,7 +767,7 @@ function handleEditorShortcut(event) {
 }
 
 async function submitProofread() {
-  if (saving.value || !page.value || leaseLost.value || !leaseToken.value) return
+  if (saving.value || !page.value || leaseLost.value || !leaseToken.value || !sourceChecked.value) return
   saving.value = true
   saved.value = ''
   saveError.value = ''
@@ -729,10 +777,15 @@ async function submitProofread() {
   const rowJson = stringifyEditedRow()
   const text = editedText.value
   try {
+    const verification = await verificationPanel.value.prepareSubmit()
+    const telemetry = await researchTelemetry.value?.flush()
     const result = await submitTwoPassProofread(page.value.id, userId, {
       rowJson,
       text,
-      leaseToken: leaseToken.value
+      leaseToken: leaseToken.value,
+      sourceChecked: sourceChecked.value,
+      ...verification
+      , ...telemetry
     })
     reviewingSubmission.value = false
     initialRowJson.value = rowJson
@@ -916,6 +969,7 @@ async function releaseCurrentTask() {
   releasing.value = true
   flushDraft()
   try {
+    await verificationPanel.value?.persistDraft()
     await releaseTaskLease(page.value.id, leaseToken.value)
     clearStoredLease()
     leaseNavigationAllowed.value = true

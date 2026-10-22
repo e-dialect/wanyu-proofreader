@@ -62,7 +62,7 @@ function main() {
   const { values } = parseArgs({ options: {
     db: { type: 'string' }, records: { type: 'string' }, keyboard: { type: 'string' },
     roles: { type: 'string' }, json: { type: 'string' }, report: { type: 'string' },
-    'real-report': { type: 'string' }, date: { type: 'string' }, help: { type: 'boolean', default: false }
+    'real-report': { type: 'string' }, 'sample-origin': { type: 'string' }, date: { type: 'string' }, help: { type: 'boolean', default: false }
   } })
   if (values.help || (!values.db && !values.records)) {
     console.error('用法: score_rules.mjs (--db <sqlite> | --records <json>) [--keyboard <json>] [--roles <json>] [--json out] [--report out] [--date YYYY-MM-DD]')
@@ -73,6 +73,8 @@ function main() {
     return 2
   }
   const dataset = values.db ? loadFromSqlite(values.db) : loadFromRecords(values.records)
+  const sampleOrigin = values['sample-origin'] || dataset.sample_origin || 'unrecorded'
+  if (!['original', 'constructed', 'mixed', 'unrecorded'].includes(sampleOrigin)) throw new Error('--sample-origin 只能为 original、constructed、mixed 或 unrecorded')
   const keyboardPath = values.keyboard || path.join(here, '..', '..', 'backend', 'keyboards', 'hinghwa-dialect.json')
   const keyboards = [{ definition: JSON.parse(readFileSync(keyboardPath, 'utf8')) }]
   // 列角色决定 R5 的判定作用域。三种来源必须分开说，因为它们的处置动作不同：
@@ -91,6 +93,8 @@ function main() {
   // 没有它，R5 缺席到底是漏了还是没给列角色，读产物的人分不出来（#254 验收第 1 条）。
   const synthetic = {
     ...result,
+    sample_origin: sampleOrigin,
+    synthetic: sampleOrigin === 'constructed',
     labels: stripSecrets(labels),
     scope_roles: Boolean(roles && Object.keys(roles).length)
   }
@@ -98,6 +102,7 @@ function main() {
   const real = values['real-report'] ? JSON.parse(readFileSync(values['real-report'], 'utf8')) : null
   const report = renderReport(synthetic, {
     synthetic,
+    sampleOrigin,
     real: real && real.scored ? real : null,
     // --date 让「刷新报告措辞」不顺手改掉标题日期：数字没变时标题也不该变，否则只能手改
     // 生成物那一行，而手改的部分下一次重跑就被覆盖。

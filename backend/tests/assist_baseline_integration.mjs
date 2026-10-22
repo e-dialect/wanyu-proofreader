@@ -263,7 +263,7 @@ disk.exec(`CREATE TABLE proofreading_attempts (id TEXT PRIMARY KEY, page TEXT, p
   round INTEGER, pass_no INTEGER, kind TEXT, proofreader TEXT, row_json TEXT, submitted_at TEXT)`)
 disk.exec(`CREATE TABLE projects (id TEXT PRIMARY KEY, column_roles_json TEXT)`)
 disk.close()
-assert.deepEqual(loadFromSqlite(dbPath), { pages: [], attempts: [], roles: null, rolesConflict: false },
+assert.deepEqual(loadFromSqlite(dbPath), { pages: [], attempts: [], roles: null, rolesConflict: false, events: [] },
   '空库应读到空集合而不是报错')
 unlinkSync(dbPath)
 unlinkSync(exportPath)

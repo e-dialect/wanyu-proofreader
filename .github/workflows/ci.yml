@@ -116,6 +116,8 @@ jobs:
   pocketbase-compatibility:
     name: PocketBase compatibility (${{ matrix.suite }})
     needs: prepare-matrix
+    env:
+      FANGJI_RESEARCH_MODE: ${{ matrix.suite == 'source_fidelity' && '1' || '0' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:

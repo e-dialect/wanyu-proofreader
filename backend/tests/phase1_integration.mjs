@@ -253,9 +253,12 @@ try {
     token: firstUser.token
   })
   assert.equal(stats.proofreadCount, 2)
-  assert.equal(stats.evaluatedCount, 2)
-  assert.equal(stats.accuracy, 50)
-  assert.equal(stats.accuracyRank, 1)
+  assert.equal(stats.workflowEvaluatedCount, 2)
+  assert.equal(stats.matchRate, 50)
+  assert.equal(stats.matchRank, 1)
+  assert.equal(stats.evaluatedCount, 0)
+  assert.equal(stats.accuracy, null, 'workflow matching must not manufacture source accuracy')
+  assert.equal(stats.accuracyRank, null)
   assert.equal(stats.proofreadRank, 1)
   assert.equal(stats.rankedProofreaderCount, 2)
 

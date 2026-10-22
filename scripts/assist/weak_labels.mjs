@@ -51,18 +51,39 @@ function fromEntriesSorted(entriesJson) {
 }
 
 export function readDataset(db) {
+  const pageColumns = new Set(db.prepare('PRAGMA table_info(pages)').all().map(row => row.name))
+  const attemptColumns = new Set(db.prepare('PRAGMA table_info(proofreading_attempts)').all().map(row => row.name))
   const pages = db.prepare(`
-      SELECT id, project, proofread_row_json AS final_row_json, status
+      SELECT id, project, proofread_row_json AS final_row_json, status${pageColumns.has('verification_context_json') ? ', verification_context_json' : ''}
       FROM pages
       WHERE proofread_row_json IS NOT NULL AND proofread_row_json != ''
     `).all()
     const attempts = db.prepare(`
-      SELECT id, page, project, round, kind, proofreader, row_json, submitted_at
+      SELECT id, page, project, round, kind, proofreader, row_json, submitted_at${attemptColumns.has('verification_context_json') ? ', verification_context_json' : ''}
       FROM proofreading_attempts
       ORDER BY page, round, pass_no
     `).all()
     const { roles, rolesConflict } = readRoles(db)
-    return { pages, attempts, roles, rolesConflict }
+    let events = []
+    try {
+      events = db.prepare("SELECT id, ref, field_name, context_json, payload_json FROM verification_events WHERE kind='judgment' ORDER BY created,id").all().map(row => ({ id: row.id, kind: 'judgment', ref: row.ref, field: row.field_name, context: JSON.parse(row.context_json), payload: JSON.parse(row.payload_json) }))
+      for (const page of pages) {
+        const context = JSON.parse(page.verification_context_json || '{}')
+        const current = db.prepare('SELECT p.*, pr.verification_policy, pr.column_roles_json FROM pages p JOIN projects pr ON pr.id=p.project WHERE p.id=?').get(page.id)
+        let stale = current.verification_policy !== context.policy_id || (current.pdf_page || current.page_number) !== context.pdf_page || (current.proofread_round || 1) !== context.round
+        stale ||= current.verification_needs_recheck === 1 || (current.verification_source_revision || 0) !== (context.source_revision || 0)
+        if (context.policy?.column_roles) stale ||= JSON.stringify(Object.entries(JSON.parse(current.column_roles_json || '{}')).sort()) !== JSON.stringify(Object.entries(context.policy.column_roles).sort())
+        if (context.input_raw) stale ||= current.ocr_row_json !== context.input_raw.row_json || current.ocr_text !== context.input_raw.text || current.row_headers_json !== context.input_raw.headers_json
+        const file = current.project_file ? db.prepare('SELECT * FROM project_files WHERE id=?').get(current.project_file) : db.prepare('SELECT * FROM project_files WHERE project=? AND is_primary=1').get(page.project)
+        if (context.source) stale ||= !file || file.id !== context.source.id || file.file_hash !== context.source.hash || file.file !== context.source.file
+        page.verification_context = { ...context, basis: stale ? `stale:${context.basis}` : context.basis }
+      }
+    } catch {
+      // A trimmed/legacy copy may not carry enough current context to validate a
+      // source decision. Keep comparison labels, never promote unverifiable truth.
+      events = events.map(event => ({ ...event, stale: true }))
+    }
+    return { pages, attempts, roles, rolesConflict, events }
 }
 
 export function loadFromSqlite(path) {

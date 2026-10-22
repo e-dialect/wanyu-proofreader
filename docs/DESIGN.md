@@ -116,7 +116,7 @@
 
 | 说法 | 用在 | 不要写成 | 证据 |
 | --- | --- | --- | --- |
-| 待校对原文 | 校对栏里对照用的原书字段 | 原文、源文、OCR 文本 | `ProofreadEditorView.vue:141` |
+| 导入文本 / 采用导入值 | 校对栏里的待核对字段及仲裁选值 | 导入原文、采用原文 | `ProofreadEditorView.vue`、`ArbitrationView.vue`；实际来源区写「来源 PDF」 |
 | 领取任务 / 重新领取任务 | 校对员拿到一条材料 | 抢单、接单 | `ProofreadEditorView.vue:72` |
 | 仲裁 | 管理员处理不一致结果 | 审核、审批（那是条目状态名，不是这个动作） | `ArbitrationView.vue:16`、`DashboardView.vue:37` |
 | 万语校坊 | 产品名 | 方辑 | 见上文「基调」的 grep |

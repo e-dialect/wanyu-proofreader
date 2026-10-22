@@ -1,5 +1,6 @@
 [
   { "suite": "core_logic_integration.mjs", "ci_matrix": true },
+  { "suite": "source_fidelity_integration.mjs", "ci_matrix": true },
   { "suite": "upload_jobs_integration.mjs", "ci_matrix": true },
   { "suite": "proofreading_quorum_integration.mjs", "ci_matrix": true },
   { "suite": "reviewed_tasks_integration.mjs", "ci_matrix": true },

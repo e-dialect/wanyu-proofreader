@@ -41,8 +41,9 @@ const MESSAGES = {
   long_digit_run: (params) => {
     const runs = list(params?.runs)
     const where = runs.length ? `（${runs.slice(0, 3).join('、')}${runs.length > 3 ? ' 等' : ''}）` : ''
-    return `记音里出现 ${count(params?.run_count, runs.length)} 段三位以上连续数字${where}，疑似声调上标被压平`
+    return `记音里出现 ${count(params?.run_count, runs.length)} 段三位以上连续数字${where}。请对照来源 PDF 和项目声调约定确认，不要仅因普通数字改写`
   },
+  tone_layout_allowed: () => '本项目允许声调普通数字与右上标两种形式，纯排版差别无需改写；请继续对照来源 PDF 核对声调内容及所属音节',
   tone_token_count_differs: (params) =>
     `拼音与 IPA 的声调个数不等（${count(params?.pinyin_count)} 对 ${count(params?.ipa_count)}），疑似漏字或多字`,
   missing_glyph_placeholder: (params) => {
@@ -79,7 +80,7 @@ const MESSAGES = {
     const where = Array.isArray(params?.positions) && params.positions.length
       ? `（第 ${params.positions.slice(0, 3).join('、')}${params.positions.length > 3 ? ' 等' : ''} 个字符）`
       : ''
-    return `记音里出现易混 ASCII${where}${detail ? `，建议 ${detail}` : ''}`
+    return `记音里出现易混 ASCII${where}${detail ? `，可对照辨别 ${detail}` : ''}；须按来源 PDF 确认，不自动替换`
   },
   punctuation_width_mixed_in_column: (params) => {
     const pairs = Array.isArray(params?.pairs) ? params.pairs : []
@@ -89,7 +90,7 @@ const MESSAGES = {
   required_role_field_empty: (params) => {
     const roles = { headword: '词头', reading: '记音', meaning: '释义' }
     const role = roles[String(params?.role || '')] || '必填'
-    return `${role}列为空`
+    return `${role}列为空。请对照来源 PDF；原文没有内容时保留空白，有内容时补抄`
   },
   pdf_page_backtrack: (params) =>
     `条目顺序与 PDF 页码不一致：从第 ${count(params?.from_page)} 页回退到第 ${count(params?.to_page)} 页（回退 ${count(params?.backtrack)} 页），疑似页码或条目顺序错乱`,

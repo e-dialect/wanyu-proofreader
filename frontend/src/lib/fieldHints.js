@@ -43,6 +43,9 @@ export function hintKindLabel(kind) {
 // evidence 原样保留（char_offsets/bbox 只在点击定位时消费），不解析、不猜形状。
 function toHintView(hint) {
   return {
+    id: String(hint?.id || ''),
+    inputStatus: String(hint?.input_status || 'legacy_unrecorded'),
+    producerVersion: String(hint?.producer_version || ''),
     field: String(hint?.field ?? ''),
     kind: String(hint?.kind ?? ''),
     severity: String(hint?.severity ?? ''),
