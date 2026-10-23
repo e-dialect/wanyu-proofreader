@@ -159,6 +159,25 @@ func buildCSVText(finalHeaders []string, headers []string, rows []exportedRow) s
 	return "\uFEFF" + strings.Join(lines, "\r\n")
 }
 
+// exportRowObject is shared by CSV artifacts and result deliveries.
+func exportRowObject(page *core.Record) *orderedObject {
+	var rowObj *orderedObject
+	if page.GetString("status") == "approved" {
+		rowObj = parseRowJSON(page.GetString("proofread_row_json"))
+	}
+	if rowObj == nil {
+		rowObj = parseRowJSON(page.GetString("ocr_row_json"))
+	}
+	if rowObj == nil {
+		text := page.GetString("proofread_text")
+		if text == "" {
+			text = page.GetString("ocr_text")
+		}
+		rowObj = &orderedObject{keys: []string{"内容"}, values: map[string]any{"内容": text}}
+	}
+	return rowObj
+}
+
 func (s *importService) exportCSV(c *core.RequestEvent) error {
 	projectID := c.Request.PathValue("projectId")
 	auth, _, err := s.requireProjectManager(c, projectID)

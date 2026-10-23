@@ -22,6 +22,17 @@ REPRO_FROM_ISSUE = (2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566,
                     6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080)
 
 
+class ServerExitStatus(unittest.TestCase):
+    def test_windows_termination_does_not_mask_a_crash(self):
+        for platform, stopped, code, accepted in [
+            ('nt', True, 1, True), ('nt', False, 1, False),
+            ('nt', True, 2, False), ('posix', True, 1, False),
+            ('posix', True, -15, True), ('posix', False, 0, True),
+        ]:
+            with self.subTest(platform=platform, stopped=stopped, code=code):
+                self.assertEqual(harness._server_exit_ok(code, stopped, platform), accepted)
+
+
 class _FakeSocket:
     """只回答 getsockname()，让 free_port 以为 OS 给了这个端口。"""
 
