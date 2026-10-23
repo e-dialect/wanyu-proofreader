@@ -2,7 +2,7 @@
 
 本文件说明 `backend/scheme/` 的流水线、数据形状、加载器的拒绝面，以及**哪些决定被有意留在引擎之外**。
 
-一句话定位：这是一个**没有装真实规则**的转换内核。**目标端**的清单已经有了——`data/hinghwa_canonical.json` 是目标方案 `puxian-xiangyin`（页面定名「莆仙话拼音」，社群内亦称「莆仙乡音社拼音」；口径：莆田城里口音）的声母 15 / 韵母 44 / 声调 7，含逐条 IPA、例字与出处，由 `LoadScheme` 加载校验；**源端**仍然没有：每本书凡例写的符号与它自己的 IPA 要逐本登记，在此之前往 `segment_map` 里填任何一条对应表都等于凭空推断，正是 #114 §7 与 #189 非目标禁止的事。本包交付的是 #189 点名的结构、状态机与门槛，规则是数据，材料已有的那半已经落地。
+一句话定位：这是一个**规则全部来自数据文件**的转换内核。**目标端**的清单已经有了——`data/hinghwa_canonical.json` 是目标方案 `puxian-xiangyin`（页面定名「莆仙话拼音」，社群内亦称「莆仙乡音社拼音」；口径：莆田城里口音）的声母 15 / 韵母 44 / 声调 7，含逐条 IPA、例字与出处，由 `LoadScheme` 加载校验；**源端**按书逐本登记，目前只登记了《莆仙方言大词典》凡例正文能直接确证的 4 个音节（`data/source/puxian-dict-preface.json`，`rule_status=test`），完整对应表在未取得的附录里。本包交付的是 #189 点名的结构、状态机与门槛，规则是数据；`schema_version: 2` 的两段箭头见 `2026-10-18-scheme-adapter-v2.md`。
 
 ## 流水线
 
@@ -45,7 +45,7 @@ normalization_status / normalization_rule_version / normalization_trace
 
 | 文件 | 是什么 | 谁加载 | 真材料 |
 | --- | --- | --- | --- |
-| adapter（`testdata/adapter_*.json`，将来的 `data/*.json`） | **源方案**的规则：源清单、目标清单、`segment_map`、`context_rules`、`exceptions` | `LoadAdapter` | ❌ 只有合成件，源端要逐本登记凡例 |
+| adapter（`testdata/adapter_*.json`、`data/source/*.json`） | **源方案**的规则：源清单、目标清单（v1）或源侧 documented IPA（v2）、`segment_map` / `ipa_correspondences`、`context_rules`、`exceptions` | `LoadAdapter`（v1） / `LoadAdapterWithScheme`（v2） | 🟡 合成夹具 + 凡例可确证的部分登记（`rule_status=test`）；完整源端要逐本登记凡例 |
 | scheme（`data/hinghwa_canonical.json`） | **目标方案**的清单：每个 notation 的 IPA、例字、出处、取回日期 | `LoadScheme` | ✅ 莆田城里口音一份 |
 | 离线侧的 `scripts/scheme/data/tone_notation.json` | 同一目标方案的**登记行**（`schemes.puxian-xiangyin`）：调号集、页面出处、以及指向上一行的 `inventory_file` | `tone.py`（**拒绝**，见下） | ✅ 同一份，不另抄 |
 
@@ -57,13 +57,13 @@ normalization_status / normalization_rule_version / normalization_trace
 - **登记行不含第二份调值。** 目标侧合法性检查要的是「调号集 1–7 + 声母 + 韵母」，这三项都在 `data/hinghwa_canonical.json` 里；把 7 个调值在 `tone_notation.json` 再抄一份，只会得到一份 `tone.py` 永远读不到（它 `annotation_system` 就把门关上了）的副本——那正是本仓库在别处明确拒绝的「静默失效」形状。
 - **两处是不是同源同版，由测试钉住而不是靠人眼**：`scripts/scheme/test_tone.py` 的 `TargetSchemeTests` 顺着 `inventory_file` 打开引擎那一份，断言两边 `scheme_id` 相同、调号集相同、页面定名与口径都出现在 `basis` 里，并断言登记行确实没有夹带第二份调值。这一根桩照的是 `test_long_tones_agree_with_the_shared_detector_constant` 的先例。
 
-`Scheme` 给出三个接口：`Inventory()` 返回 `Adapter.Canonical` 要的那三个列表；`Pronunciations()` 返回 `part:notation → IPA`（只覆盖声母与韵母；零声母在 `onset:` 下，值是 `∅`）；`Pivot()` 是同一份关系反过来读的 `part:IPA → 若干 notation`，也就是转换真正查表的方向——`source notation → documented IPA → target notation` 的第二个箭头。
+`Scheme` 给出四个接口：`Inventory()` 返回 `Adapter.Canonical` 要的那三个列表；`Pronunciations()` 返回 `part:notation → IPA`（只覆盖声母与韵母；零声母在 `onset:` 下，值是 `∅`）；`Pivot()` 是同一份关系反过来读的 `part:IPA → 若干 notation`，也就是转换真正查表的方向——`source notation → documented IPA → target notation` 的第二个箭头；`ToneNotationsByCategory()` 是声调那一段的 `调类 → 若干调号`。
 
 **声调不走这两个映射。** 一个调类的调值随来源而变——同一阴平在一本资料里记 533、在另一本里记 544、第三本记 33——拿调值当等值比较的键，后两本都会被判成不支持，而那正是转换该承载的情形。所以 `Tone.Value` 不出现在 `Pronunciations()`/`Pivot()` 里，也没有 `tone:` 键；声调对应是「调号 → 调类 → 调号」，读 `Tones` 的 `Category` 与 `Notation` 两个字段，来源自己的编号由来源自己的说明解释。
 
 **`Pivot()` 的值是列表，不是单个 notation。** 一个 part 里两个 notation 记同一个读音是真实材料里会有的事，此时选哪个是复核员的问题——返回第一个等于把 `AMBIGUOUS` 悄悄变成一个没人核过的 `EXACT`。今天这份清单里每个读音只有一个 notation，那是这份文件的事实，不是加载器的规矩（见下）。
 
-**本包还没把目标端接到 adapter 上**：`Adapter.Canonical` 今天仍从 adapter 文件里读，接过去不改任何规则语义，属于下一步。
+**v1 与 v2 的接线不同。** v1 的 `Adapter.Canonical` 仍从 adapter 文件里读；`schema_version: 2` 不再接受 `canonical` 块，目标清单只来自 `Scheme`，由 `LoadAdapterWithScheme(path, target)` 在加载时校验 `canonical_scheme_id` 与目标一致，转换直接查 `Pivot()` 与 `ToneNotationsByCategory()`。v1 行为不变，`Convert` 按 `adapter.v2 != nil` 分派。v2 的契约、流水线与词汇表见 `2026-10-18-scheme-adapter-v2.md`。
 
 `Option.IPA` 记的是机器值，与页面那一格只有一处不同：零声母。页面 IPA 栏原文是展示串「ʔ/不标」——写给读者的二选一，没有哪本书会这样写；拿它当等值比较的落点，源侧标 `ʔ` 的和什么都不标的（页面叫「不标」）两种写法都命不中，整条转换会掉进 `UNSUPPORTED`。所以这一格按本项目的声母类别口径记作统一约定符号 `∅`，页面原文照录在该条 `note` 里，出处与备注仍可逐字对着页面核。这是全文件唯一一处「照抄会出错、所以有说明地归一化」的字段，也就是 `data/hinghwa_canonical.json` 顶部的「派生四」。
 
@@ -73,9 +73,9 @@ normalization_status / normalization_rule_version / normalization_trace
 
 ## 加载器的拒绝面
 
-`LoadAdapter(path)` 只接受显式路径，**没有默认值**（#193/#195 的教训：默认值会把某个人的家目录发布出去）。以下情形一律返回 `ErrInvalidRule` 而不是半生效：
+`LoadAdapter(path)` 只接受显式路径，**没有默认值**（#193/#195 的教训：默认值会把某个人的家目录发布出去）。它读 v1；读到 v2 会拒绝并提示改用 `LoadAdapterWithScheme`。以下情形一律返回 `ErrInvalidRule` 而不是半生效：
 
-- `schema_version` 不是 1；
+- `schema_version` 既不是 1 也不是 2；v2 文件没给目标 `Scheme`、或 `canonical_scheme_id` 与目标不符；v2 里出现 `canonical` / `segment_map`（前者是第二份目标清单，后者是 v1 的直接跳转）；
 - 源方案与目标方案同名；
 - 缺 `rule_version`（没有它 trace 无意义）；
 - `annotation_system != tone_value`——《文读字汇》的 1–7 是**调类**，与大词典的**调值**同形不同义，字符串层面无法区分，所以必须由登记方声明，程序不猜；
@@ -86,6 +86,8 @@ normalization_status / normalization_rule_version / normalization_trace
 - 例外条目声明了 `AMBIGUOUS`/`UNSUPPORTED`（例外是人工结论，只能断言确定值），或 `REVIEWED` 却没写 `basis`；
 - **例外的 `canonical_pronunciation` 拆不成目标方案能拼的音节**（见流水线第 5 级：这条出口在运行时绕开了拆解与合法性两级，只能在这里补回来）；例外条目规范化后撞在同一个源形上（两行只能有一行被查到）；
 - 例外条目的键与值都以 NFC 存储。源侧真实材料本就 NFC/NFD 混排，值不规范化就会以手抄的字节形式出门，第 6 级又正好被绕开。
+
+v2 另有自己的拒绝面（源行必须带 `basis`、`ipa` 与 `candidates` 互斥、零声母必须显式登记且 IPA 为 `∅`、缺调类必须写 `missing_category_reason`、`ipa_correspondences` 必须有依据、上下文规则不能永不命中、production 不得引用 synthetic 夹具），完整清单与理由见 `2026-10-18-scheme-adapter-v2.md`。
 
 `LoadScheme(path)` 同样只接受显式路径，返回 `ErrInvalidScheme`。除上面同形的几条（`schema_version`、ID 与名称、清单非空）外，目标方案文件另有四条拒绝面（前两条是为「经 IPA 转换」这件事准备的），末尾再记一条它**做不到**、只能写在明处的事：
 
@@ -101,7 +103,7 @@ normalization_status / normalization_rule_version / normalization_trace
 
 **选 ①：把调值/声母/韵母词表与合法性判据导出成数据文件，两边各自加载。**
 
-选 ① 的第一半已经落地：**目标方案的词表现在有且只有一份**，即 `data/hinghwa_canonical.json`，由 `LoadScheme` 在载入期校验。离线侧不再复写它，只在 `scripts/scheme/data/tone_notation.json` 里登记一行 `puxian-xiangyin` 并指向它（见上表第三行）——两边各自加载，一份定义。第二半（把 `LoadScheme` 接成 `Adapter.Canonical` 的来源、并让目标侧合法性检查真的读它）仍然没做，因为它要等下面那条 `schema_version` 的决定。
+选 ① 的两半现在都已在 v2 落地：**目标方案的词表现在有且只有一份**，即 `data/hinghwa_canonical.json`，由 `LoadScheme` 在载入期校验；离线侧不再复写它，只在 `scripts/scheme/data/tone_notation.json` 里登记一行 `puxian-xiangyin` 并指向它（见上表第三行）——两边各自加载，一份定义。`schema_version: 2` 的 adapter 不再携带 `canonical` 块，`LoadAdapterWithScheme` 直接拿这份 `Scheme` 做二号箭头与合法性检查。v1 文件仍读自己的 `canonical` 块，这是兼容而非第二份定义：v1 只在测试构建里存在。
 
 调值合法性今天仍存在于三处：`scripts/corpus_probe/detectors.py`（`LEGAL_LONG_TONES`）、`scripts/scheme/data/tone_notation.json`（每列一套，且已有测试与前者对齐）、`backend/pb_hooks/lib/assist_rules.js`（R6）。**Go 侧是第四处的空壳**——它不硬编码任何调值，只读 adapter 自带的 `canonical.tone_values`。#189 提醒过 R6 不能直接当目标方案的判据（它的判据是「≥3 位且不是 533/453」，看不见目标方案那 5 个两位调值），所以「消除已有的三份」不是把 R6 抄过来，而是让它们都改读同一份数据——那是拿到目标清单之后紧接着的一步，本 PR 只把目标清单摆到位。
 
@@ -115,7 +117,7 @@ normalization_status / normalization_rule_version / normalization_trace
 | 文读字汇方案清单 | ✅ 有。其凡例 p10–11 给了 18 声母 / 36 韵母 / 调类 1–7 全表 |
 | 大词典罗马字清单 | 🟡 隐式。正本 `拼音` 列 + 键盘 `dictionary-romanization` 段可反推，但缺显式清单 |
 
-拿到前两项之前，本包能且只能保持合成规则状态。`testdata/adapter_synthetic.json` 里每一条 basis 都写着 `synthetic`，就是为了让人一眼看出它不是语言学结论。
+大词典附录未取得之前，源端只能保留凡例正文可确证的部分登记（`data/source/puxian-dict-preface.json`）：它通过 v2 加载、走到一号箭头，然后在缺调类处如实 decline，且 `MayDriveRealJobs()==false`。合成夹具（`testdata/adapter_synthetic.json`、`adapter_v2_*.json`）的每条 basis 都写着 `synthetic`，就是为了让人一眼看出它不是语言学结论。
 
 ## #190 需要在这个包之上补什么
 

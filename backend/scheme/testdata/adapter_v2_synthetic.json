@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "source_scheme_id": "synthetic-v2",
+  "canonical_scheme_id": "puxian-xiangyin",
+  "rule_version": "synthetic-v2",
+  "annotation_system": "tone_value",
+  "rule_status": "test",
+  "rule_status_basis": "synthetic: 源侧每一行都是为测试引擎写的，不是任何一本书的凡例；目标侧是真的 puxian-xiangyin",
+  "coverage": "synthetic: 只覆盖测试需要的音节",
+  "provenance": [
+    {
+      "what": "合成源侧清单，用于验证两段箭头；不含任何真实材料",
+      "locator": "synthetic-fixture:adapter_v2_synthetic.json"
+    }
+  ],
+  "source": {
+    "onsets": [
+      {"id": "o-b", "notation": "b", "ipa": "p", "basis": "synthetic: b 记作 [p]", "example": "腹肚"},
+      {"id": "o-p", "notation": "p", "ipa": "pʰ", "basis": "synthetic: p 记作 [pʰ]"},
+      {"id": "o-d", "notation": "d", "ipa": "t", "basis": "synthetic: d 记作 [t]"},
+      {"id": "o-k", "notation": "k", "ipa": "k", "basis": "synthetic: k 记作 [k]"},
+      {"id": "o-kh", "notation": "kh", "ipa": "kh", "basis": "synthetic: 说明文字把送气写作 ASCII kh"},
+      {"id": "o-l", "notation": "l", "ipa": "l", "basis": "synthetic: l 记作 [l]"},
+      {"id": "o-zero", "notation": "", "ipa": "∅", "basis": "synthetic: 零声母显式登记，不推断"},
+      {"id": "o-many", "notation": "ph", "candidates": ["p", "pʰ"], "basis": "synthetic: 源方案一处写法对应两读"}
+    ],
+    "rimes": [
+      {"id": "r-a", "notation": "a", "ipa": "a", "basis": "synthetic: a 记作 [a]"},
+      {"id": "r-ak", "notation": "ɑk", "ipa": "aʔ", "basis": "synthetic: ɑk 记作 [aʔ]", "example": "腹肚 bɑk4"},
+      {"id": "r-ou", "notation": "ou", "ipa": "ɔu", "basis": "synthetic: ou 记作 [ɔu]", "example": "骹肚 dou453"},
+      {"id": "r-o-circ", "notation": "ô", "ipa": "ɒ", "basis": "synthetic: ô 记作 [ɒ]", "example": "骹 kô21"},
+      {"id": "r-o", "notation": "o", "ipa": "ɔ", "basis": "synthetic: o 记作 [ɔ]，目标清单没有单独的 ɔ，靠显式对应过去"},
+      {"id": "r-many", "notation": "e", "candidates": ["e", "ɛ"], "basis": "synthetic: 源方案一处写法对应两读"}
+    ],
+    "tones": [
+      {"id": "t-533", "notation": "533", "category": "阴平", "basis": "synthetic: 533 是阴平"},
+      {"id": "t-13", "notation": "13", "category": "阳平", "basis": "synthetic: 13 是阳平"},
+      {"id": "t-453", "notation": "453", "category": "上声", "basis": "synthetic: 453 是上声"},
+      {"id": "t-42", "notation": "42", "category": "阴去", "basis": "synthetic: 42 是阴去"},
+      {"id": "t-11", "notation": "11", "category": "阳去", "basis": "synthetic: 11 是阳去"},
+      {"id": "t-21", "notation": "21", "category": "阴入", "basis": "synthetic: 21 是阴入"},
+      {"id": "t-4", "notation": "4", "category": "阳入", "basis": "synthetic: 4 是阳入"},
+      {"id": "t-0", "notation": "0", "category": "", "missing_category_reason": "synthetic: 轻声没有对应的调类", "basis": "synthetic: 用来验证缺调类时如实 decline"}
+    ]
+  },
+  "ipa_correspondences": [
+    {"id": "c-kh", "part": "onset", "from": "kh", "to": "kʰ", "basis": "synthetic: 说明文字写作 ASCII kh，目标清单写作 kʰ；这是登记，不是推断"},
+    {"id": "c-o", "part": "rime", "from": "ɔ", "to": "o", "basis": "synthetic: 源侧把 o 的读音记作 ɔ，目标清单记作 o"}
+  ],
+  "context_rules": [
+    {"id": "x-k-ak", "when_onset": "k", "when_rime": "ɑk", "rewrite_onset_ipa": "kʰ", "basis": "synthetic: k 在 ɑk 前送气；改写的是源侧 IPA"}
+  ],
+  "exceptions": [
+    {"id": "e-1", "source_pronunciation": "lɑk4", "canonical_pronunciation": "lah7", "status": "REVIEWED", "reviewer": "synthetic-reviewer", "basis": "synthetic: 人工结论优先于两段箭头"}
+  ]
+}

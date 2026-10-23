@@ -289,3 +289,21 @@ func (s *Scheme) Pivot() map[string][]string {
 	}
 	return out
 }
+
+// ToneNotationsByCategory is the third arrow's lookup: a source adapter says
+// which 调类 its number means, and this answers which target 调号 spells that
+// class. It returns a list with the same reasoning as Pivot — a source class the
+// target happens to write two ways is AMBIGUOUS, not a reason to pick one.
+//
+// Tone.Value appears nowhere in the key. 阴平 is documented as 533, 544 and 33 by
+// different sources; matching the source's contour against this file's contour
+// would refuse exactly the sources the conversion exists to carry. The source's
+// own 凡例 is where a number becomes a class, and SourceTone.Category is where
+// this engine reads that answer.
+func (s *Scheme) ToneNotationsByCategory() map[string][]string {
+	out := make(map[string][]string, len(s.Tones))
+	for _, tone := range s.Tones {
+		out[tone.Category] = append(out[tone.Category], tone.Notation)
+	}
+	return out
+}
