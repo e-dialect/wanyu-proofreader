@@ -12,6 +12,7 @@
         <RouterLink :to="`/admin/projects/${projectId}/settings`">项目设置（资料与成员）</RouterLink>
         <RouterLink :to="`/admin/projects/${projectId}/verification`">来源核验与问题处理</RouterLink>
         <a href="#project-files">文件准备</a>
+        <a href="#project-ledger">批次台账</a>
         <a href="#project-export">导出结果</a>
         <a href="#project-entries">条目管理</a>
         <a v-if="project?.capabilities?.canManage" href="#project-assist">机器疑点</a>
@@ -220,6 +221,61 @@
             <div v-if="ocrError" class="alert alert-error mt-2" role="alert" style="white-space:pre-line">{{ ocrError }}</div>
           </div>
         </div>
+      </section>
+
+      <!-- Import ledger -->
+      <section id="project-ledger" class="card project-section mb-6">
+        <div class="card-title">批次台账</div>
+        <p class="text-sm text-muted mb-3">本项目的导入批次汇总：入册行数、来源覆盖与未知来源计数均由系统对账给出。「跳过」列为 Review Bundle 复用自然键的条数；CSV 预检被跳过的无效行计入「失败」列。</p>
+        <div v-if="loadingLedger" class="text-muted">加载中...</div>
+        <div v-else-if="ledgerError" class="alert alert-error" role="alert">{{ ledgerError }}</div>
+        <template v-else-if="ledger">
+          <div class="flex flex-wrap gap-4 text-sm mb-3">
+            <span><strong>{{ ledger.summary.total_batches }}</strong> 批</span>
+            <span><strong>{{ ledger.summary.total_rows }}</strong> 行输入</span>
+            <span><strong>{{ ledger.summary.imported_rows }}</strong> 行入册</span>
+            <span><strong>{{ ledger.summary.unknown_source_rows }}</strong> 行未知来源</span>
+            <span v-if="ledger.summary.sources.length">
+              来源覆盖：
+              <template v-for="(source, index) in ledger.summary.sources" :key="source.logical_id || index">
+                {{ source.logical_id || '未登记来源' }}（{{ source.rows }} 行）<span v-if="index < ledger.summary.sources.length - 1">、</span>
+              </template>
+            </span>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>作业</th>
+                  <th>完成时间</th>
+                  <th>文件名</th>
+                  <th>状态</th>
+                  <th>输入</th>
+                  <th>入库</th>
+                  <th>跳过</th>
+                  <th>失败</th>
+                  <th>来源</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="batch in ledger.batches" :key="batch.id">
+                  <td><code>{{ batch.id }}</code></td>
+                  <td>{{ batch.finished_at || batch.created || '—' }}</td>
+                  <td>{{ batch.original_filename || '—' }}</td>
+                  <td>{{ batch.status }}</td>
+                  <td>{{ batch.total_count }}</td>
+                  <td>{{ batch.inserted_count }}</td>
+                  <td>{{ batch.skipped_count }}</td>
+                  <td>{{ batch.failed_count }}</td>
+                  <td>{{ batch.source_logical_id || (batch.source_link === 'unknown' ? '未登记来源' : '—') }}</td>
+                </tr>
+                <tr v-if="!ledger.batches.length">
+                  <td colspan="9" class="text-muted">还没有导入批次。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
       </section>
 
       <!-- Export section -->
@@ -828,7 +884,7 @@ import { BUCKET_LABELS, canSubmit as canSubmitBlocked, conclusionState, conclusi
 import { clearBlockedReason, getBlockedReason, setBlockedReason } from '@/services/blockedReasonService'
 import { useAuthStore } from '@/stores/auth'
 import { currentUserId } from '@/services/authService'
-import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors, startOcr } from '@/services/importJobsService'
+import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors, listImportLedger, startOcr } from '@/services/importJobsService'
 import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
 import { exportVerification } from '@/services/verificationService'
 import { downloadText } from '@/lib/downloadText'
@@ -911,6 +967,9 @@ const ocrRunning = ref(false)
 const exportingCsv = ref(false)
 const exportError = ref('')
 const exportSuccess = ref('')
+const ledger = ref(null)
+const ledgerError = ref('')
+const loadingLedger = ref(false)
 const entriesSection = ref(null)
 const selectedPendingIds = ref([])
 const rangeSelectInput = ref('')
@@ -1156,7 +1215,7 @@ onMounted(async () => {
     return
   }
   loadingProject.value = false
-  await Promise.all([loadPages(), loadQualitySummary(), loadPdfResume(), loadSchemeState()])
+  await Promise.all([loadPages(), loadQualitySummary(), loadLedger(), loadPdfResume(), loadSchemeState()])
   if (selectedStatus.value) {
     await nextTick()
     scrollToEntries()
@@ -1210,6 +1269,19 @@ async function loadQualitySummary() {
   } catch (e) {
     qualitySummary.value = null
     qualitySummaryError.value = getPbMessage(e, '质量状态汇总加载失败。')
+  }
+}
+
+async function loadLedger() {
+  loadingLedger.value = true
+  ledgerError.value = ''
+  try {
+    ledger.value = await listImportLedger(projectId)
+  } catch (e) {
+    ledger.value = null
+    ledgerError.value = getPbMessage(e, '批次台账加载失败。')
+  } finally {
+    loadingLedger.value = false
   }
 }
 
@@ -1478,6 +1550,7 @@ async function uploadCsv() {
       csvSuccess.value = '相同文件已经导入，无需重复处理。'
       await loadPages()
     }
+    await loadLedger()
   } catch (e) {
     csvError.value = getUploadErrorMessage(e, 'csv')
   } finally {
@@ -1503,6 +1576,7 @@ async function confirmCsvImport() {
     if (generation !== csvPollGeneration) return
     if (job.status === 'failed') {
       csvError.value = csvFatalMessage(job)
+      await loadLedger()
       return
     }
     csvSuccess.value = job.failed_count > 0
@@ -1515,7 +1589,7 @@ async function confirmCsvImport() {
     selectedPendingIds.value = []
     // 导入会改变条目总数，汇总必须跟着走：只刷表格的话，三枚分桶芯片与「共 N 条」
     // 会停在旧数字上，与正下方刚刷新出来的表格对不上账（#172 验收第 4 条问的就是这个数）。
-    await Promise.all([loadPages(), loadQualitySummary()])
+    await Promise.all([loadPages(), loadQualitySummary(), loadLedger()])
   } catch (e) {
     csvError.value = getPbMessage(e, '确认导入失败，请稍后重试。')
   } finally {
@@ -1543,6 +1617,7 @@ async function startOcrRecognition() {
     if (job.status === 'failed') {
       ocrError.value = job.error_message || '识别失败，请稍后重试。'
     }
+    await loadLedger()
   } catch (e) {
     ocrError.value = getPbMessage(e, '发起识别失败，请稍后重试。')
   } finally {
@@ -1705,7 +1780,7 @@ async function deleteSelectedRows() {
     await deletePendingPages(projectId, selectedPendingIds.value)
     selectedPendingIds.value = []
     // 同上：删除同样改变条目总数，汇总不跟着走就会与表格对不上账。
-    await Promise.all([loadPages(), loadQualitySummary()])
+    await Promise.all([loadPages(), loadQualitySummary(), loadLedger()])
     mutationSuccess.value = `已删除 ${deleteCount} 条待校对条目，并重新整理条号。`
   } catch (e) {
     mutationError.value = getPbMessage(e, '批量删除失败，请重试')
