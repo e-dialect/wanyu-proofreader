@@ -16,6 +16,7 @@
         <a v-if="project?.capabilities?.canManage" href="#project-assist">机器疑点</a>
         <a v-if="project?.capabilities?.canManage" href="#project-scheme">拼音归一</a>
         <RouterLink :to="`/admin/projects/${projectId}/verification`">来源核验与问题处理</RouterLink>
+        <RouterLink :to="`/admin/projects/${projectId}/adoption`">用途编选（D 工序）</RouterLink>
         <RouterLink :to="`/admin/projects/${projectId}/settings`">项目设置（资料与成员）</RouterLink>
       </nav>
     </header>
