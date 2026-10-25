@@ -76,7 +76,7 @@ def moved_ahead_of(text, job, other):
 class MatrixLink(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.real = inventory.CI.read_text()
+        cls.real = inventory.CI.read_text(encoding='utf-8')
 
     def assertMutated(self, mutated):
         self.assertNotEqual(mutated, self.real, 'the mutation did not apply')
@@ -158,12 +158,17 @@ class MatrixLink(unittest.TestCase):
     def test_job_level_env_is_accepted(self):
         # A job-level env: reaches every step of the job, so the value really is
         # consumed even though no step declares it.
-        mutated = mutate_job(self.real, MATRIX_JOB, f'        env:\n{SUITE_ENV}\n', '')
-        mutated = mutated.replace(
-            '    needs: prepare-matrix\n',
-            '    needs: prepare-matrix\n    env:\n      SUITE: ${{ matrix.suite }}\n', 1)
-        self.assertMutated(mutated)
-        self.assertTrue(inventory.ci_builds_matrix_from_registry(workflow(mutated)))
+        mutated = workflow(self.real)
+        job = mutated['jobs'][MATRIX_JOB]
+        moved = 0
+        for step in job['steps']:
+            env = step.get('env') or {}
+            if env.get('SUITE') == '${{ matrix.suite }}':
+                del env['SUITE']
+                moved += 1
+        self.assertEqual(moved, 1, 'the matrix handoff mutation did not apply')
+        job.setdefault('env', {})['SUITE'] = '${{ matrix.suite }}'
+        self.assertTrue(inventory.ci_builds_matrix_from_registry(mutated))
 
     def test_expanding_the_value_without_testing_anything_is_rejected(self):
         # Pinning the matrix value is not the only way to stop testing suites:
@@ -235,7 +240,7 @@ class GuardExitCodes(unittest.TestCase):
         self.assertFailsFor(self.real_ci(), 'is not registered in suites.json')
 
     def real_ci(self):
-        return inventory.CI.read_text()
+        return inventory.CI.read_text(encoding='utf-8')
 
     def test_broken_matrix_link_fails_the_guard(self):
         mutated = self.real_ci().replace('    needs: prepare-matrix\n', '')

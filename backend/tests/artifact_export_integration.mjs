@@ -98,16 +98,23 @@ try {
   // 导出 → 下载 → 与前端函数重建的期望串逐字节比对。
   const artifact = await request(`/api/fangji/projects/${project.id}/exports/csv`, { method: 'POST', token, expected: 201 })
   assert.equal(artifact.kind, 'csv')
-  assert.ok(artifact.file_name.endsWith('_校对结果.csv'))
+  assert.ok(artifact.file_name.endsWith('_全量校对记录.csv'))
 
   const downloaded = await fetch(`${baseUrl}/api/fangji/artifacts/${artifact.id}/download`, { headers: { Authorization: token } })
   assert.equal(downloaded.status, 200)
   const bytes = Buffer.from(await downloaded.arrayBuffer())
   const expected = buildExpectedCsv(pages)
-  assert.equal(bytes.toString('utf8'), expected)
+  const actualLines = bytes.toString('utf8').split('\r\n')
+  const originalLines = expected.split('\r\n')
+  assert.equal(actualLines.length, originalLines.length)
+  for (let i = 0; i < originalLines.length; i++) assert.ok(actualLines[i].startsWith(originalLines[i] + ','), 'content bytes/column order are preserved before status columns')
+  assert.match(actualLines[0], /__wanyu_workflow_status/)
+  assert.match(actualLines[0], /__wanyu_value_source/)
+  assert.match(actualLines[1], /imported_fallback/)
+  assert.match(actualLines[1], /legacy_unrecorded/)
   assert.ok(expected.includes(sample))
   assert.ok(!bytes.toString('utf8').includes('暂存半行'), 'importing page must be excluded from export')
-  console.log('PASS: server export byte-identical to frontend export logic, rare/IPA/PUA chars intact, importing excluded')
+  console.log('PASS: content bytes and order preserved; explicit full-export status/fallback/legacy columns; rare/IPA/PUA chars intact, importing excluded')
 
   // 版本历史：再导一次 → 两条 artifact 记录，created 递增。
   const artifact2 = await request(`/api/fangji/projects/${project.id}/exports/csv`, { method: 'POST', token, expected: 201 })

@@ -11,6 +11,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const rules = require('../../../backend/pb_hooks/lib/assist_rules.js')
+const sourceComparison = require('../../../backend/pb_hooks/lib/source_comparison.js')
 // 判据常量的唯一定义在写入侧（backend/pb_hooks/lib/gate_release.js）：打分器建议档位与
 // 变更集应用时的拒绝判据必须是同一把尺子，各留一份常数迟早会漂。
 const gateRelease = require('../../../backend/pb_hooks/lib/gate_release.js')
@@ -64,6 +65,12 @@ export function normalizationEquivalent(submitted, final) {
  *   attempts:{id, page, project, round, kind, proofreader, row_json, submitted_at}
  */
 export function buildLabels(dataset) {
+  const sourceDecisions = new Map()
+  for (const event of dataset.events || []) {
+    if (event.kind !== 'judgment') continue
+    const key = `${event.ref}\u0000${event.field}`
+    if ((event.payload?.revision || 0) >= (sourceDecisions.get(key)?.payload?.revision || 0)) sourceDecisions.set(key, event)
+  }
   const finalByPage = new Map()
   for (const page of dataset.pages ?? []) {
     const row = parseJson(page.final_row_json, null)
@@ -79,6 +86,15 @@ export function buildLabels(dataset) {
     for (const field of [...fields].sort()) {
       const submitted = submittedRow[field] ?? ""
       const final = settled.row[field] ?? ""
+      const source = sourceDecisions.get(`${attempt.id}\u0000${field}`)
+      const finalContext = settled.page.verification_context || parseJson(settled.page.verification_context_json, null)
+      const attemptContext = parseJson(attempt.verification_context_json, null)
+      const policy = attemptContext?.basis && attemptContext.basis === finalContext?.basis ? attemptContext.policy : settled.page.comparison_policy || null
+      const explicit = source && !source.stale && source.context?.basis === finalContext?.basis && source.payload?.value === submitted && ['correct', 'incorrect'].includes(source.payload?.state)
+      if (explicit) {
+        labels.push(record({ attempt, settled, field, submitted, final, accepted: source.payload.state === 'correct', reason_code: 'explicit_source_judgment', source }))
+        continue
+      }
       if (submitted === final) {
         labels.push(record({ attempt, settled, field, submitted, final, accepted: true }))
         continue
@@ -88,13 +104,17 @@ export function buildLabels(dataset) {
           reason_code: "unicode_equivalent" }))
         continue
       }
+      if (sourceComparison.equivalent(submitted, final, field, policy)) {
+        labels.push(record({ attempt, settled, field, submitted, final, accepted: true, reason_code: 'project_comparison_equivalent' }))
+        continue
+      }
       labels.push(record({ attempt, settled, field, submitted, final, accepted: false }))
     }
   }
   return labels
 }
 
-function record({ attempt, settled, field, submitted, final, accepted, reason_code = "none" }) {
+function record({ attempt, settled, field, submitted, final, accepted, reason_code = "none", source = null }) {
   const item = {
     page: attempt.page,
     project: attempt.project,
@@ -103,6 +123,10 @@ function record({ attempt, settled, field, submitted, final, accepted, reason_co
     kind: String(attempt.kind ?? ""),
     field,
     accepted,
+    label_source: source ? 'explicit_source_judgment' : 'submission_final_comparison',
+    source_correct: source ? source.payload.correct : null,
+    source_judgment_id: source?.id || null,
+    comparison_version: sourceComparison.VERSION,
     reason_code,
     submitted_digest: digest(submitted),
     final_digest: digest(final),
@@ -162,7 +186,12 @@ const SCOPES = {
 
 const REQUIRED_ROLES = ["headword", "reading", "meaning"]
 
-export function scoreRules(labels, ruleList) {
+export function scoreRules(labels, ruleList, partitioned = false) {
+  if (!partitioned && labels.some(item => item.label_source === 'explicit_source_judgment')) {
+    const explicit = labels.filter(item => item.label_source === 'explicit_source_judgment')
+    const weak = labels.filter(item => item.label_source !== 'explicit_source_judgment')
+    return { ...scoreRules(explicit, ruleList, true), scoring_basis: 'explicit_source_judgments', weak_comparison: scoreRules(weak, ruleList, true), source_unjudged_fields: weak.length }
+  }
   // 伪分歧在样本层就已经被 `accepted` 挡掉了（`buildLabels` 给 unicode_equivalent 的一律
   // accepted: true，assist_baseline_integration.mjs 里钉着这条不变量），所以这里不再写
   // `&& reason_code !== "unicode_equivalent"`：那个合取项在当前实现下永不生效，还会让读者
@@ -227,7 +256,7 @@ export function scoreRules(labels, ruleList) {
       by_project: Object.fromEntries(byProject)
     })
   }
-  return { scored, unicode_equivalent_excluded: equivalentCount, samples: labels.length }
+  return { scored, unicode_equivalent_excluded: equivalentCount, project_equivalent_excluded: labels.filter(item => item.reason_code === 'project_comparison_equivalent').length, samples: labels.length, scoring_basis: labels.some(item => item.label_source === 'explicit_source_judgment') ? 'explicit_source_judgments' : 'weak_submission_final_comparison' }
 }
 
 // `scopedNegative` 只管 fn：漏检要按规则作用域算，与 scoreRules 里规则级那一条同口径。
@@ -244,13 +273,17 @@ function bump(map, key, hit, negative, scopedNegative = negative) {
 
 // 报告纪律（门槛文件 §6）：合成与真实分两栏，不合并、不平均；
 // 真实栏在数据到位前字面写 n/a；每个比率随附 n 与 Wilson 区间；标明能否外推。
-export function renderReport(result, { synthetic, real, generatedAt, sourceNote }) {
+export function renderReport(result, { synthetic, real, generatedAt, sourceNote, sampleOrigin = 'constructed' }) {
   const lines = []
   lines.push(`# 辅助规则基线报告（${generatedAt}）`)
   lines.push("")
   lines.push(sourceNote)
+  lines.push('')
+  lines.push('评分依据：明确人工来源判断优先；缺少判断时仅报告提交－最终值比较的弱标签，不将其称为来源正确率。两类样本分别计算，不合并精度分母。')
   lines.push("")
-  lines.push("## 合成样本指标（验证打分工具自身正确，不代表线上表现）")
+  const originLabel = { original: '原始材料', constructed: '合成', mixed: '混合来源', unrecorded: '材料来源未记录' }[sampleOrigin] || '材料来源未记录'
+  lines.push(`## ${originLabel}样本指标（标签来源另列，不代表独立研究验证或线上表现）`)
+  lines.push(`标签来源：${synthetic.scoring_basis || 'weak_submission_final_comparison'}。`)
   lines.push(ruleTable(synthetic))
   lines.push("")
   // 证据范围必须写在渲染器里，不能只手改生成出来的 .md——那份文件下一次重跑（#93 试点数据
@@ -264,7 +297,12 @@ export function renderReport(result, { synthetic, real, generatedAt, sourceNote 
   if (!real || !real.scored?.length) {
     lines.push("n/a —— 部署库内尚无真实分歧/仲裁样本。")
   } else {
+    lines.push(`标签来源：${real.scoring_basis || 'weak_submission_final_comparison'}。`)
     lines.push(ruleTable(real))
+    if (real.weak_comparison) {
+      lines.push('未有明确来源判断的弱标签（单列，不作来源正误）：')
+      lines.push(ruleTable(real.weak_comparison))
+    }
   }
   lines.push("")
   lines.push("## 假分歧隔离")

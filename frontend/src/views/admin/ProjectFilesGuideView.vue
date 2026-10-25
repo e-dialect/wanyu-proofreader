@@ -1,5 +1,5 @@
 <template>
-  <div class="container page" style="max-width:840px">
+  <main class="container page" style="max-width:840px">
     <div class="flex items-center gap-3 mb-6">
       <RouterLink to="/admin/projects/new" class="btn btn-secondary btn-sm">← 返回创建项目</RouterLink>
       <h2 class="font-bold" style="font-size:1.5rem">项目文件与校对条目说明</h2>
@@ -47,7 +47,7 @@
         </ol>
       </section>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>

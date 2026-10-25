@@ -1,5 +1,5 @@
 <template>
-  <div class="container page" style="max-width:640px">
+  <main class="container page" style="max-width:640px">
     <div class="flex items-center gap-3 mb-6">
       <RouterLink to="/admin" class="btn btn-secondary btn-sm">← 返回</RouterLink>
       <h2 class="font-bold" style="font-size:1.5rem">创建新项目</h2>
@@ -26,8 +26,8 @@
           当前拥有 {{ auth.accessContext.ownedProjectCount }} 个项目，还可创建 {{ auth.accessContext.remainingProjects }} 个。
         </div>
         <div class="form-group">
-          <label class="form-label">项目名称 <span style="color:var(--danger)">*</span></label>
-          <input v-model="form.name" type="text" class="form-control" placeholder="如：《莆田方言词典》校对项目" required />
+          <label for="new-project-name" class="form-label">项目名称 <span class="required-mark" aria-hidden="true">*</span></label>
+          <input id="new-project-name" v-model="form.name" type="text" class="form-control" placeholder="如：《莆田方言词典》校对项目" required />
         </div>
         <fieldset class="access-mode-grid mb-4">
           <legend class="form-label">访问方式</legend>
@@ -37,12 +37,12 @@
           </label>
         </fieldset>
         <div v-if="form.accessMode === 'password'" class="form-group">
-          <label class="form-label">项目口令</label>
-          <input v-model="form.password" type="password" class="form-control" minlength="8" maxlength="72" required autocomplete="new-password" placeholder="至少 8 个字符，UTF-8 编码最多 72 字节" />
+          <label for="new-project-password" class="form-label">项目口令</label>
+          <input id="new-project-password" v-model="form.password" type="password" class="form-control" minlength="8" maxlength="72" required autocomplete="new-password" placeholder="至少 8 个字符，UTF-8 编码最多 72 字节" />
         </div>
         <div class="form-group">
-          <label class="form-label">项目简介</label>
-          <textarea v-model="form.description" class="form-control" placeholder="简要介绍本项目的背景、目标等（可选）"></textarea>
+          <label for="new-project-description" class="form-label">项目简介</label>
+          <textarea id="new-project-description" v-model="form.description" class="form-control" placeholder="简要介绍本项目的背景、目标等（可选）"></textarea>
         </div>
 
         <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
@@ -56,7 +56,7 @@
         </div>
       </form>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>

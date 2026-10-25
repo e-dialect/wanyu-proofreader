@@ -10,6 +10,7 @@
       </div>
       <nav v-if="project" class="project-section-nav" aria-label="项目页面分区">
         <RouterLink :to="`/admin/projects/${projectId}/settings`">项目设置（资料与成员）</RouterLink>
+        <RouterLink :to="`/admin/projects/${projectId}/verification`">来源核验与问题处理</RouterLink>
         <a href="#project-files">文件准备</a>
         <a href="#project-export">导出结果</a>
         <a href="#project-entries">条目管理</a>
@@ -225,12 +226,14 @@
       <section id="project-export" class="card project-section mb-6">
         <div class="card-title">导出结果</div>
         <p class="text-sm text-muted mb-3">
-          导出当前项目的最终校对结果 CSV。只有达到项目人数要求且结果一致，或已完成仲裁的条目会使用最终校对内容；其余条目回退到原始内容。
+          项目全量文件含完成状态，未完成记录会明确标为导入值回退。业务已完成文件排除阻塞问题、暂缓判断和依据失效的记录，保留实际声调写法与合法空白。
         </p>
         <div class="flex gap-2 items-center">
-          <button class="btn btn-primary" @click="exportCsv" :disabled="exportingCsv">
-            {{ exportingCsv ? '导出中...' : '导出校对结果 CSV' }}
+          <button class="btn btn-primary" @click="exportCsv('all')" :disabled="exportingCsv">
+            {{ exportingCsv ? '导出中...' : '全量 CSV（含状态）' }}
           </button>
+          <button class="btn btn-secondary" @click="exportCsv('completed')" :disabled="exportingCsv">业务已完成 CSV</button>
+          <RouterLink :to="`/admin/projects/${projectId}/verification`">来源覆盖与过程导出</RouterLink>
           <span v-if="exportError" class="alert alert-error" role="alert" style="margin:0">{{ exportError }}</span>
           <span v-if="exportSuccess" class="alert alert-success" role="status" style="margin:0">{{ exportSuccess }}</span>
         </div>
@@ -781,12 +784,10 @@
 </template>
 
 <script setup>
-import { orderedRowHeaders } from '@/composables/useStructuredRow'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { parseRangeInput } from '@/lib/adminPageList'
 import { summarizePages } from '@/lib/workspaceInsights'
-import { safeParseRowJson } from '@/composables/useStructuredRow'
 import {
   PAGE_STATUS,
   PAGE_STATUS_LABELS,
@@ -829,7 +830,8 @@ import { useAuthStore } from '@/stores/auth'
 import { currentUserId } from '@/services/authService'
 import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors, startOcr } from '@/services/importJobsService'
 import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
-import { toSafeCsvCell } from '@/lib/csvExport'
+import { exportVerification } from '@/services/verificationService'
+import { downloadText } from '@/lib/downloadText'
 import { getProject } from '@/services/projectsService'
 import { getProjectQualitySummary, setPageQualityState } from '@/services/qualityStateService'
 import { QUALITY_STATES, QUALITY_STATE_LABELS, QUALITY_STATE_HINTS, QUALITY_STATE } from '@/constants/qualityState'
@@ -1548,54 +1550,14 @@ async function startOcrRecognition() {
   }
 }
 
-async function exportCsv() {
+async function exportCsv(mode = 'all') {
   exportingCsv.value = true
   exportError.value = ''
   exportSuccess.value = ''
   try {
-    const all = await listAllProjectPages(projectId, {
-      fields: 'id,page_number,pdf_page,status,ocr_text,proofread_text,ocr_row_json,proofread_row_json,row_headers_json'
-    })
-    if (!all.length) {
-      throw new Error('当前项目暂无可导出的条目')
-    }
-
-    const headers = []
-    const rows = all.map((item) => {
-      const proofObj = item.status === PAGE_STATUS.APPROVED
-        ? safeParseRowJson(item.proofread_row_json)
-        : null
-      const ocrObj = safeParseRowJson(item.ocr_row_json)
-      const rowObj = proofObj || ocrObj || { 内容: item.proofread_text || item.ocr_text || '' }
-      for (const key of orderedRowHeaders(item, rowObj)) {
-        if (!headers.includes(key)) headers.push(key)
-      }
-      return {
-        pageNumber: Number(item.pdf_page) || Number(item.page_number) || '',
-        rowObj
-      }
-    })
-
-    const finalHeaders = ['PDF页码', ...headers]
-    const lines = [finalHeaders.map(toSafeCsvCell).join(',')]
-    for (const row of rows) {
-      const values = [row.pageNumber, ...headers.map((h) => row.rowObj[h] ?? '')]
-      lines.push(values.map(toSafeCsvCell).join(','))
-    }
-
-    const csvText = '\uFEFF' + lines.join('\r\n')
-    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    const safeName = (project.value?.name || 'project').replace(/[\\/:*?"<>|]/g, '_')
-    link.href = url
-    link.download = `${safeName}_校对结果.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
-    exportSuccess.value = `已导出 ${rows.length} 条记录`
+    const result = await exportVerification(projectId, mode)
+    downloadText(result.csv, `${project.value?.name || 'project'}_${mode === 'all' ? '全量含状态' : '业务已完成'}.csv`, 'text/csv;charset=utf-8')
+    exportSuccess.value = `已导出 ${result.selected_count} 条记录`
   } catch (e) {
     exportError.value = e?.message || '导出失败，请重试'
   } finally {

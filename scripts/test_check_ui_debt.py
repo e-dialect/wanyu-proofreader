@@ -141,6 +141,14 @@ class UiDebtTests(unittest.TestCase):
         self.assertEqual([r['value'] for r in guard.measure(self.source)['hardcoded_colors']],
                          ['white', 'rebeccapurple', 'white'])
 
+    def test_shipped_baseline_promotes_stable_kinds_to_fail(self):
+        baseline = json.loads((guard.ROOT / 'scripts' / 'ui_debt_baseline.json').read_text(encoding='utf-8'))
+        for kind in ('hardcoded_colors', 'border_radius_literals', 'z_index_literals',
+                     'alerts_without_role', 'custom_modals', 'undefined_variables',
+                     'font_family_stacks', 'inline_styles'):
+            self.assertEqual(baseline['kinds'][kind]['mode'], 'fail', kind)
+        self.assertEqual(baseline['kinds']['inline_styles']['limit'], 27)
+
     def test_bound_alert_class_and_empty_role_are_detected(self):
         self.write('View.vue', '''<template>
 <div :class="{ alert: error }" role=""></div>

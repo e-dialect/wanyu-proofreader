@@ -71,6 +71,11 @@ const routes = [
         component: () => import('@/views/admin/ProjectSettingsView.vue')
       },
       {
+        path: 'projects/:id/verification',
+        name: 'SourceFidelity',
+        component: () => import('@/views/admin/SourceFidelityView.vue')
+      },
+      {
         path: 'creator-grants',
         name: 'CreatorGrants',
         component: () => import('@/views/admin/CreatorGrantsView.vue')
@@ -101,6 +106,11 @@ const routes = [
         path: '',
         name: 'TaskHall',
         component: () => import('@/views/proofreader/TaskHallView.vue')
+      },
+      {
+        path: 'problems',
+        name: 'MyProblems',
+        component: () => import('@/views/proofreader/MyProblemsView.vue')
       },
       {
         path: 'profile',

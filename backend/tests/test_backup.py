@@ -20,7 +20,7 @@ class BackupTest(unittest.TestCase):
                 db.execute('INSERT INTO pages VALUES (?)', ('𢶀ɑ',))
             (source / 'storage/project').mkdir(parents=True)
             (source / 'storage/project/source.pdf').write_bytes(b'%PDF-test-fixture')
-            (source / 'storage/project/input.csv').write_text('page,word\n1,𢶀\n')
+            (source / 'storage/project/input.csv').write_text('page,word\n1,𢶀\n', encoding='utf-8')
             original = ops.inventory(source)
             self.assertEqual(ops.backup(source, root / 'backup', 'fixture-v1'), 3)
             self.assertEqual(ops.restore(root / 'backup', root / 'restored'), 'fixture-v1')

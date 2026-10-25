@@ -106,18 +106,8 @@ function normalizeNFC(value) {
   return String(value ?? "").normalize("NFC")
 }
 
-function canonicalRow(raw) {
-  let parsed = null
-  try { parsed = JSON.parse(String(raw || "")) } catch { return normalizeNFC(raw) }
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return normalizeNFC(raw)
-  // Keys are normalised too, but looked up under their original spelling: two
-  // spellings of one column name are one column.
-  const entries = Object.keys(parsed)
-    .map((key) => [normalizeNFC(key), String(parsed[key] ?? "").trim()])
-  entries.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
-  const result = {}
-  for (const [key, value] of entries) result[key] = normalizeNFC(value)
-  return JSON.stringify(result)
+function canonicalRow(raw, policy) {
+  return require(typeof __hooks === "undefined" ? "./source_comparison.js" : `${__hooks}/lib/source_comparison.js`).canonicalRow(raw, policy)
 }
 
 function setAttemptOutcomes(dao, attempts, outcome) {
@@ -148,7 +138,9 @@ function evaluatePage(dao, page) {
   page.set("proofread_count", attempts.length)
   if (attempts.length < required) return resetPageForMoreProofreads(dao, page, attempts)
 
-  const values = attempts.map((attempt) => canonicalRow(attempt.getString("row_json")))
+  const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+  const policy = fidelity.policyFor(dao, page.getString("project"))
+  const values = attempts.map((attempt) => canonicalRow(attempt.getString("row_json"), policy))
   const matched = values.every((value) => value === values[0])
   page.set("proofreader", null)
   clearLease(dao, page)
@@ -158,6 +150,10 @@ function evaluatePage(dao, page) {
     page.set("proofread_text", source.getString("text"))
     page.set("proofread_at", String(source.get("submitted_at") || new Date().toISOString()))
     page.set("status", "approved")
+    const context = fidelity.parse(source.getString("verification_context_json"))
+    page.set("verification_basis", context.basis || "")
+    page.set("verification_context_json", JSON.stringify(context))
+    fidelity.recordAdoption(dao, page, "system", fidelity.parse(source.getString("row_json")), {}, source.id)
     setAttemptOutcomes(dao, attempts, "matched")
     dao.save(page)
     return { status: "approved", count: attempts.length, outcome: "matched" }

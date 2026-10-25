@@ -116,6 +116,8 @@ jobs:
   pocketbase-compatibility:
     name: PocketBase compatibility (${{ matrix.suite }})
     needs: prepare-matrix
+    env:
+      FANGJI_RESEARCH_MODE: ${{ matrix.suite == 'source_fidelity' && '1' || '0' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -315,6 +317,49 @@ jobs:
         with:
           name: assist-admin-states
           path: output/playwright/assist-admin/*.png
+          if-no-files-found: ignore
+
+  source-fidelity-browser:
+    name: Source verification progress and excluded-task browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Install page image renderers
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils webp
+      - name: Build the SPA for same-origin API calls
+        run: |
+          npm --prefix frontend ci
+          VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - name: Install browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/source-fidelity-browser" playwright@1.62.1
+          "$RUNNER_TEMP/source-fidelity-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify saved progress, exclusion boundaries and actual presentation
+        env:
+          NODE_PATH: ${{ runner.temp }}/source-fidelity-browser/node_modules
+          FIDELITY_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/source_fidelity_browser.cjs
+          FIDELITY_BROWSER_FIXTURE: ${{ runner.temp }}/source-fidelity-browser-fixture.json
+        run: python3 backend/tests/run_integration.py source_fidelity_integration.mjs --env FANGJI_RESEARCH_MODE=1
+      - name: Verify browser evidence was produced
+        run: |
+          for state in source-judgments-desktop empty-source-resume-blocked-mobile \
+                       research-rendered-hints research-current-no-hints; do
+            test -s "output/playwright/source-fidelity/${state}.png"
+          done
+      - name: Attach synthetic browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-fidelity-browser-evidence
+          path: output/playwright/source-fidelity/*.png
           if-no-files-found: ignore
 
   quality-state-browser:
@@ -743,6 +788,7 @@ jobs:
       - core-workflows
       - chunk-upload-browser
       - assist-browser
+      - source-fidelity-browser
       - quality-state-browser
       - scheme-conversion-browser
       - frontend

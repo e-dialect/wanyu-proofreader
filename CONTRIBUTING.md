@@ -53,6 +53,11 @@ python3 -m pip install -r requirements-dev.txt
 本机没有 Docker 时，`verify-compose` 会显式打印 `SKIP` 并改跑纯 Python 结构检查，
 真正的 `docker compose config` 断言仍由 CI 执行。
 
+Windows 贡献者请在 Git Bash 中运行 `make check`，并自行安装 GNU make（Git for Windows 不自带）。
+仓库的 `.gitattributes` 已把文本文件固定为 LF，因此 `gofmt` 不会因 `core.autocrlf` 产生假阳性。
+需要 POSIX shell 的检查在找不到 `sh`/`bash` 时会显式 `SKIP`；需要符号链接特权的测试仍需开启
+Windows 开发者模式，否则会表现为环境失败而不是代码失败。
+
 其余入口：
 
 | 命令 | 用途 |
@@ -152,7 +157,10 @@ blob 里存了 CR（`i/crlf`、`i/mixed`）就失败。`make verify-static` 与 
 `Frontend` 是阻断模式的落点：将某类基线的 `mode` 从 `warn` 改为 `fail` 后，增加该类债务
 会让这个 context 失败；实际 required contexts 仍以仓库保护规则为真源。
 
-第一阶段全部 `warn`：超出上限打印警告但退出 0；`fail` 类只有超出上限才退出 1，存量不阻断。
+稳定为 0 的类别已转 `fail`：`hardcoded_colors`、`border_radius_literals`、`z_index_literals`、
+`alerts_without_role`、`custom_modals`、`undefined_variables`、`font_family_stacks`，以及修到
+27 后的 `inline_styles`。`bare_tables` 暂留 `warn`，待 #331/#332 合入后按实测值转 `fail`。
+`fail` 类只有超出上限才退出 1，存量不阻断；超出上限即失败。
 无法读取基线、非法策略或没有源码始终退出 1，避免误报成功。可重复传 `--only` 聚焦类别：
 
 ```bash
@@ -165,8 +173,8 @@ python3 -m unittest discover -s scripts -p 'test_check_ui_debt.py'
 删除后恢复通过。`--mode` 仅覆盖当次执行，日常本地/CI 入口不传覆盖参数，遵守文件内逐类策略。
 减少债务时在同一个 PR 下调对应 `limit`，让清理成果成为新上限；脚本不会自动改写基线。
 确需提高上限时必须显式修改基线，并在 PR 正文和基线 `reason` 说明理由，供评审查看。
-逐类转 `fail` 需维护者先在 #264 记录并确认类别与生效时间，再通过 PR 修改 `mode`；
-本次仅上线观测，尚未设定或启用阻断日期，不修改分支保护规则。
+逐类转 `fail` 需维护者先记录类别与生效时间，再通过 PR 修改 `mode`。`#264` 已关闭，
+后续策略变更记录在 `#272`；本次只改运行时检查策略，不修改分支保护规则。
 
 ### CHANGELOG 暂停更新
 

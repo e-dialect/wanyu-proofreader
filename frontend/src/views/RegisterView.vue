@@ -1,5 +1,5 @@
 <template>
-  <div class="auth-container">
+  <main class="auth-container">
     <div class="auth-card">
       <div class="auth-logo">
         <h1>万语校坊</h1>
@@ -12,16 +12,16 @@
           <input id="register-name" v-model.trim="name" type="text" class="form-control" placeholder="请输入唯一昵称" autocomplete="nickname" maxlength="255" :disabled="loading" required />
         </div>
         <div class="form-group">
-          <label class="form-label">邮箱</label>
-          <input v-model="email" type="email" class="form-control" placeholder="请输入邮箱" required />
+          <label for="register-email" class="form-label">邮箱</label>
+          <input id="register-email" v-model="email" type="email" class="form-control" placeholder="请输入邮箱" required />
         </div>
         <div class="form-group">
-          <label class="form-label">密码</label>
-          <input v-model="password" type="password" class="form-control" placeholder="至少8位" required minlength="8" />
+          <label for="register-password" class="form-label">密码</label>
+          <input id="register-password" v-model="password" type="password" class="form-control" placeholder="至少8位" required minlength="8" />
         </div>
         <div class="form-group">
-          <label class="form-label">确认密码</label>
-          <input v-model="passwordConfirm" type="password" class="form-control" placeholder="再次输入密码" required />
+          <label for="register-password-confirm" class="form-label">确认密码</label>
+          <input id="register-password-confirm" v-model="passwordConfirm" type="password" class="form-control" placeholder="再次输入密码" required />
         </div>
 
         <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
@@ -37,7 +37,7 @@
         <RouterLink to="/login">直接登录</RouterLink>
       </p>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>

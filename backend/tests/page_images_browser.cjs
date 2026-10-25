@@ -86,13 +86,13 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
     assert.equal(network.filter(p=>p.endsWith('/asset')).length,before,'adjacent page should reuse prefetched asset')
     stamp=await watermark.locator('span').first().textContent()
     await page.getByRole('button',{name:'旋转 90°',exact:true}).click()
-    await page.getByRole('button',{name:'＋',exact:true}).click()
+    await page.getByRole('button',{name:'放大',exact:true}).click()
     assert.equal(await page.locator('.pdf-zoom-label').textContent(),'125%')
     assert.equal(network.filter(p=>/\/pdf$/.test(p)).length,0)
    }
    if(fallback) {
     await page.getByRole('button',{name:'旋转 90°',exact:true}).click()
-    await page.getByRole('button',{name:'＋',exact:true}).click()
+    await page.getByRole('button',{name:'放大',exact:true}).click()
     await page.waitForFunction(()=>!document.querySelector('.pdf-loading-mask'))
    }
    assert.equal(await watermark.locator('span').first().textContent(),stamp,'view controls keep the access stamp stable')

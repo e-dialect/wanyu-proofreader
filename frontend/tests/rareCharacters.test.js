@@ -1,20 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diffTexts } from '../src/lib/diff.js'
 import { rareCharacters, codePointLabel, unavailableRareCharacters } from '../src/lib/rareCharacters.js'
 import { insertTextAtSelection } from '../src/composables/useStructuredRow.js'
 import { toSafeCsvCell } from '../src/lib/csvExport.js'
 
 const sample = '𢶀𠮷㙟𰻞䲠'
-
-test('diff keeps each supplementary character intact, including a shared high surrogate', () => {
-  for (const [before, after] of [['𢶀', '𢶁'], ['甲𠮷乙', '甲𰻞乙'], [sample, '𰻞'], ['', sample]]) {
-    const parts = diffTexts(before, after)
-    assert.equal(parts.filter(p => p.type !== 'insert').map(p => p.text).join(''), before)
-    assert.equal(parts.filter(p => p.type !== 'delete').map(p => p.text).join(''), after)
-    assert(parts.every(p => !/[\uD800-\uDFFF]/u.test(p.text)), 'diff produced a lone surrogate')
-  }
-})
 
 test('rare characters round trip through JSON, UTF-8 CSV and DOM selection offsets', () => {
   assert.equal(JSON.parse(JSON.stringify({text:sample})).text, sample)

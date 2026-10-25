@@ -78,11 +78,15 @@ function rowForRules(page) {
 // 读侧（`findings.js` 的 `dropStaleOffsets`）拿这份基准再核一次。基准只能在这里盖章——
 // 它是「闸门判定通过」这一事实的副产品，写在规则文件里会让每条规则各自抄一遍。
 function dropUnfaithfulOffsets(findings, lookup) {
-  const { offsetsBasis } = require(`${__hooks}/lib/findings.js`)
+  const { offsetsBasis, excerptDigest } = require(`${__hooks}/lib/findings.js`)
   let dropped = 0
   for (const item of findings) {
-    if (!item.evidence || !Array.isArray(item.evidence.char_offsets)) continue
     const source = lookup(item)
+    if (source) {
+      item.evidence = item.evidence || {}
+      item.evidence.analysis_input_version = excerptDigest(JSON.stringify(source.row))
+    }
+    if (!item.evidence || !Array.isArray(item.evidence.char_offsets)) continue
     // 挂靠本身都解析不出来时不在这里改东西：那种条目由 unanchored 计数负责说。
     if (!source) continue
     const judged = String(source.row?.[item.field] ?? "")
@@ -133,6 +137,8 @@ function insertFinding(dao, collection, page, row, at, producerVersion) {
   record.set("evidence_json", JSON.stringify(row.evidence ?? {}))
   record.set("producer", PRODUCER)
   record.set("producer_version", producerVersion)
+  const { contextFor: verificationContext } = require(`${__hooks}/lib/source_fidelity.js`)
+  record.set("verification_context_json", JSON.stringify(verificationContext(dao, page, false)))
   record.set("produced_at", at)
   dao.save(record)
   return record
@@ -248,7 +254,9 @@ function recomputePage(dao, pageId, rowOverride = null) {
   }))
   const scope = pageScope(pageId, PROJECT_ONLY_MESSAGE_KEYS)
   const superseded = supersede(dao, collection, scope, at, RULE_KINDS)
-  for (const item of findings) insertFinding(dao, collection, page, item, at, RULES_VERSION)
+  const insertedIds = findings.map(item => insertFinding(dao, collection, page, item, at, RULES_VERSION).id)
+  const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+  fidelity.appendEvent(dao, { project: page.getString("project"), page: page.id, kind: "machine_analysis", actor: "machine", context: fidelity.contextFor(dao, page, false), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: row, finding_ids: insertedIds, raw_count: findings.length } })
   const settled = settleBatch(dao, collection, scope, at, RULE_KINDS)
   // 难度在收尾之后刷新：tier 由**当前批次**推导，收尾前读到的还是旧批次。
   const difficulty = refreshDifficulty(dao, page)
@@ -330,6 +338,12 @@ function recomputeProject(dao, projectId) {
     inserted += 1
   }
   const settled = settleBatch(dao, collection, projectScope, at, RULE_KINDS)
+  if (require(`${__hooks}/lib/source_research.js`).enabled()) {
+    const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+    const counts = new Map()
+    for (const item of findings) counts.set(item.page, (counts.get(item.page) || 0) + 1)
+    for (const page of pages) fidelity.appendEvent(dao, { project: projectId, page: page.id, kind: "machine_analysis", actor: "machine", context: fidelity.contextFor(dao, page, false), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: rowByPage.get(page.id), raw_count: counts.get(page.id) || 0, scope: "project_batch" } })
+  }
   if (unanchored) console.warn("assist_recompute unanchored findings", projectId, unanchored)
   // 同样放在收尾之后：全项目的 tier 要按最终留在库里的当前批次推导。
   const stats = projectShapeStats(pages)

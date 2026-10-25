@@ -1,8 +1,8 @@
-# `scripts/assist` — 弱标注集与规则打分（#179 spike）
+# `scripts/assist` — 来源判断、弱标注集与规则打分
 
-这条目录交付的是**尺子**，不是产品代码：从平台已经在免费生产的「两份独立结果 + 一个人工确认
-的最终值」里按字段对齐产出弱标注，然后给每条规则算命中数/精度/召回/分组误报，
-最后产出一份分合成与真实两栏的基线报告。门槛数字本身不在这里定，
+这些只读工具按字段对齐提交和最终值，并优先使用当前来源、输入、约定下有效的明确人工来源判断。
+缺少来源判断时，文本比较只产生弱标签；采用了谁的值不代表其他合法形式错误。
+规则报告分别计算明确来源判断与弱比较的分母，并保留未判断数量。门槛数字本身不在这里定，
 见 [`docs/plans/2026-09-25-assist-rule-thresholds.md`](../../docs/plans/2026-09-25-assist-rule-thresholds.md)。
 
 ```
@@ -26,6 +26,17 @@ node scripts/assist/score_rules.mjs --records backend/tests/fixtures/assist_trap
 全程只读；不需要服务器；不加 `--report` 时报告打到 stdout。
 `--keyboard` 可覆盖键盘口径（默认用仓库内的 `backend/keyboards/hinghwa-dialect.json`）。
 
+材料来源由 `--sample-origin original|constructed|mixed|unrecorded` 或导出中的 `sample_origin`
+明确指定，缺失时为 `unrecorded`；不能因为输入是本地 JSON 就宣称是合成材料。
+业务来源判断不等于独立研究参照；参照材料工具见 [`scripts/research`](../research/README.md)。
+
+2026-10-22 起，`label_source` 区分 `explicit_source_judgment` 与
+`submission_final_comparison`。来源判断撤回、待处理、值不符或依据失效时不进入正误分母。
+有有效来源判断的样本进入主报告，其余弱标签单列在 `weak_comparison`；没有来源判断时
+`scoring_basis=weak_submission_final_comparison`，不把该精度称为来源正确率。
+声调比较与产品共用 `tone-suffix-v1`，只按关联的项目约定处理明确记音字段，保留实际值。
+`gate_changeset.mjs` 在建议中携带标签及材料来源；现有门槛和平台管理员放行权限继续生效。
+
 `--db` 会自己读 `projects.column_roles_json`，报告头因此必须说清列角色的来源
 （`--roles` / 库内 / 导出文件自带 / 没有 / 多项目不一致）。这件事值得写进文档是因为
 它曾经的失败模式是**静默少评一条规则**：R5（必填角色列为空）的判定作用域由列角色决定，
@@ -40,7 +51,7 @@ node scripts/assist/score_rules.mjs --records backend/tests/fixtures/assist_trap
 `backend/tests/assist_baseline_integration.mjs` 对默认输出做了字符串级排除断言，
 所以"忘了脱敏"会变成测试失败而不是悄悄泄漏。
 
-## 3. 一条必须写下来的方法论结论：precision 有定义，recall 没有
+## 3. 弱比较的 precision 与 recall 限制
 
 仲裁差量给出的是「这个字段被人工改掉了」，**不是**「本该由哪条规则发现它」。
 空释义是 R5 的靶子，R1 抓不到它不算漏检。所以：

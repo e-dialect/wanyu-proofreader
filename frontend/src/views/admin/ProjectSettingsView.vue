@@ -35,14 +35,14 @@
         <p v-if="rolesError" class="alert alert-error" role="alert">{{ rolesError }}</p>
         <p v-if="rolesSuccess" class="alert alert-success" role="status">{{ rolesSuccess }}</p>
         <p v-if="!columnRoles.length" class="text-muted">还没有导入列。导入 CSV 之后可以在这里标注。</p>
-        <div v-else class="table-wrapper">
+        <div v-else class="table-wrapper" role="region" tabindex="0" aria-label="列角色表">
           <table>
             <thead><tr><th>列名</th><th>角色</th><th>状态</th></tr></thead>
             <tbody>
               <tr v-for="column in columnRoles" :key="column.name">
                 <td><code>{{ column.name }}</code></td>
                 <td>
-                  <select v-model="column.role" class="form-control">
+                  <select v-model="column.role" class="form-control" :aria-label="`设置列 ${column.name} 的角色`">
                     <option v-for="role in FIELD_ROLES" :key="role" :value="role">{{ FIELD_ROLE_LABELS[role] }}</option>
                   </select>
                 </td>
@@ -103,7 +103,7 @@
             <p>初始密码不会写入数据库或日志。请现在下载并妥善分发；刷新或离开本页后无法再次取得本批密码。</p>
           </div>
           <button class="btn btn-success" @click="downloadGeneratedCredentials">再次下载凭据 CSV</button>
-          <div class="table-wrapper credential-account-preview">
+          <div class="table-wrapper credential-account-preview" role="region" tabindex="0" aria-label="生成账号预览">
             <table>
               <thead><tr><th>昵称</th><th>用户名</th></tr></thead>
               <tbody><tr v-for="account in generatedBatch.accounts.slice(0, 10)" :key="account.id"><td>{{ account.nickname }}</td><td><code>{{ account.username }}</code></td></tr></tbody>
@@ -128,19 +128,19 @@
           <p v-if="candidateSearched && !availableCandidates.length" class="field-hint">
             没有精确匹配到的用户。查找需要完整用户名或完整昵称；对方也可以用项目口令自助加入，或由平台管理员分配账号。
           </p>
-          <select v-model="newMember.userId" class="form-control" required>
+          <select v-model="newMember.userId" class="form-control" aria-label="选择用户" required>
             <option value="">选择用户</option>
             <option v-for="candidate in availableCandidates" :key="candidate.id" :value="candidate.id">
               {{ [candidate.name, candidate.username].filter(Boolean).join(' · ') }}
             </option>
           </select>
-          <select v-model="newMember.role" class="form-control">
+          <select v-model="newMember.role" class="form-control" aria-label="新成员的项目角色">
             <option value="proofreader">校对员</option>
             <option value="manager">项目管理员</option>
           </select>
           <button class="btn btn-primary" :disabled="savingMember">添加成员</button>
         </form>
-        <div class="table-wrapper mt-3">
+        <div class="table-wrapper mt-3" role="region" tabindex="0" aria-label="项目成员表">
           <table>
             <thead><tr><th>成员</th><th>项目角色</th><th>加入方式</th><th>操作</th></tr></thead>
             <tbody>
@@ -148,7 +148,7 @@
                 <td><strong>{{ member.name || member.username || '未填写昵称' }}</strong><div class="text-sm text-muted">{{ [member.username, member.email].filter(Boolean).join(' · ') }}</div></td>
                 <td>
                   <span v-if="member.role === 'owner'" class="badge badge-approved">所有者</span>
-                  <select v-else :value="member.role" class="form-control member-role-select" @change="changeRole(member, $event.target.value)">
+                  <select v-else :value="member.role" class="form-control member-role-select" :aria-label="`修改 ${member.name || member.username || '该成员'} 的项目角色`" @change="changeRole(member, $event.target.value)">
                     <option value="proofreader">校对员</option>
                     <option value="manager">项目管理员</option>
                   </select>
@@ -196,7 +196,7 @@
         <div class="section-heading"><div><h2>所有权与删除</h2><p>转移所有权后，你会保留为项目管理员；删除项目会释放创建额度。</p></div></div>
         <div class="danger-zone-actions">
           <div class="member-add-form">
-            <select v-model="nextOwnerId" class="form-control">
+            <select v-model="nextOwnerId" class="form-control" aria-label="选择新所有者">
               <option value="">选择新所有者</option>
               <option v-for="candidate in transferCandidates" :key="candidate.id" :value="candidate.id">{{ [candidate.name, candidate.username].filter(Boolean).join(' · ') }}</option>
             </select>

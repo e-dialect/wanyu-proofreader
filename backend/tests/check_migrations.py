@@ -19,6 +19,29 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1792627200_source_fidelity.js': {
+        'indexes': ['idx_verification_events_page', 'idx_verification_events_project',
+                    'idx_problem_reports_mine', 'idx_problem_reports_issue',
+                    'idx_problem_reports_page', 'idx_proofreading_drafts_user_page',
+                    'idx_research_sessions_task', 'idx_research_sessions_project_user'],
+        'collection_indexes': ('verification_events', 'idx_verification_events_page'),
+        'plans': [
+            ('verification_events', 'SELECT id FROM verification_events WHERE page=? ORDER BY created,id',
+             ('p',), 'idx_verification_events_page'),
+            ('proofreading_drafts', 'SELECT id FROM proofreading_drafts WHERE user=? AND page=?',
+             ('u', 'p'), 'idx_proofreading_drafts_user_page'),
+            ('problem_reports', 'SELECT id FROM problem_reports WHERE page=? AND blocking=1',
+             ('p',), 'idx_problem_reports_page'),
+        ],
+        'fields': ('pages', {
+            'verification_basis': {'required': False},
+            'verification_context_json': {'required': False, 'max': 16 * 1024 * 1024},
+            'verification_hold': {'required': False},
+            'verification_needs_recheck': {'required': False},
+            'verification_source_revision': {'required': False},
+            'source_empty': {'required': False},
+        }),
+    },
     '1791580800_unique_nickname_login.js': {
         'indexes': ['idx_users_nickname'],
         'collection_indexes': ('users', 'idx_users_nickname'),
@@ -253,7 +276,7 @@ def migrate(binary, data, *command, expect_success=True):
     env = {**os.environ, 'FANGJI_SKIP_ADMIN_BOOTSTRAP': '1'}
     result = subprocess.run([str(binary), 'migrate', *[str(part) for part in command],
                             f'--dir={data}', f'--migrationsDir={harness.MIGRATIONS}'],
-                            env=env, input='y\n', text=True, capture_output=True)
+                            env=env, input='y\n', text=True, encoding='utf-8', capture_output=True)
     joined = result.stdout + result.stderr
     if expect_success and result.returncode != 0:
         raise AssertionError(f'migrate {command} failed: {joined[-4000:]}')

@@ -54,7 +54,7 @@ def resolve(value, missing):
 
 
 def load(name, missing):
-    with open(ROOT / name) as handle:
+    with open(ROOT / name, encoding='utf-8') as handle:
         return resolve(yaml.safe_load(handle), missing)
 
 

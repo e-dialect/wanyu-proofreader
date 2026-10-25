@@ -1,4 +1,5 @@
 {
+  "sample_origin": "constructed",
   "note": "合成样例：只用于验证弱标注与打分工具自身正确，不代表线上表现（#179 前置事实）。",
   "roles": {
     "词条": "headword",

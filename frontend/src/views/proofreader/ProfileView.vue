@@ -1,5 +1,5 @@
 <template>
-  <div class="container page">
+  <main class="container page">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="font-bold" style="font-size:1.5rem">个人中心</h2>
@@ -49,8 +49,8 @@
           <div class="profile-name">{{ displayName }}</div>
         </div>
         <div v-if="stats" class="profile-rank">
-          <span>一致率排行</span>
-          <strong>{{ rankLabel(stats.accuracyRank) }}</strong>
+          <span>流程匹配率排行</span>
+          <strong>{{ rankLabel(stats.matchRank) }}</strong>
         </div>
         <div v-if="stats" class="profile-rank">
           <span>条目排行</span>
@@ -68,14 +68,17 @@
           <div class="stat-label">已校对条目</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">{{ accuracyLabel }}</div>
-          <div class="stat-label">结果一致率</div>
+          <div class="stat-value">{{ matchLabel }}</div>
+          <div class="stat-label">流程匹配率（{{ stats.matchedCount }}/{{ stats.workflowEvaluatedCount }} 次）</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">{{ stats.correctCount }}</div>
-          <div class="stat-label">结果一致的校对次数</div>
+          <div class="stat-value">{{ stats.adoptedFieldCount }}</div>
+          <div class="stat-label">最终采用的字段数（不代表来源正确）</div>
         </div>
+        <div class="stat-card"><div class="stat-value">{{ accuracyLabel }}</div><div class="stat-label">来源字段正确率（已明确判断 {{ stats.evaluatedCount }} 字段）</div></div>
+        <div class="stat-card"><div class="stat-value">{{ stats.fieldCorrectCount }} / {{ stats.fieldIncorrectCount }}</div><div class="stat-label">已判正确／错误字段 · 未核实 {{ stats.fieldUnverifiedCount }}</div></div>
       </section>
+      <p v-if="stats" class="text-sm text-muted">全部字段均已判定的整条记录：正确 {{ stats.rowCorrectCount }}、错误 {{ stats.rowIncorrectCount }}；其余 {{ stats.rowUnverifiedCount }} 条未形成整条来源判断。流程匹配与采用情况不作为独立来源验证。</p>
 
       <section v-if="providers.length" class="card mt-6">
         <div class="card-title">统一身份绑定</div>
@@ -93,6 +96,7 @@
                   class="form-control"
                   type="text"
                   :placeholder="`${provider.name}账号`"
+                  :aria-label="`${provider.name}账号`"
                   autocomplete="username"
                   :disabled="bindingProvider === provider.id"
                 />
@@ -101,6 +105,7 @@
                   class="form-control"
                   type="password"
                   placeholder="密码"
+                  :aria-label="`${provider.name}密码`"
                   autocomplete="current-password"
                   :disabled="bindingProvider === provider.id"
                 />
@@ -122,7 +127,7 @@
           一致率按已完成系统比对的校对尝试计算；仍在等待其他独立结果的提交暂不进入分母。不一致记录会永久保留并计入统计。
         </div>
       </div>
-  </div>
+  </main>
 </template>
 
 <script setup>
@@ -170,7 +175,8 @@ const stats = ref(null)
 const onboardingRef = inject('proofreaderOnboarding', ref(null))
 
 const displayName = computed(() => auth.user?.name || auth.user?.email || auth.user?.username || '校对员')
-const accuracyLabel = computed(() => stats.value?.evaluatedCount ? `${stats.value.accuracy}%` : '暂无已评估结果')
+const accuracyLabel = computed(() => stats.value?.evaluatedCount ? `${stats.value.accuracy}%` : '未核验／不可计算')
+const matchLabel = computed(() => stats.value?.workflowEvaluatedCount ? `${stats.value.matchRate}%` : '暂无流程匹配结果')
 
 onMounted(async () => {
   await Promise.all([loadStats(), loadProviders()])

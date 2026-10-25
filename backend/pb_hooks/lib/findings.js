@@ -22,6 +22,7 @@ const IMMUTABLE_FINDING_FIELDS = [
   "producer",
   "producer_version",
   "produced_at"
+  , "verification_context_json"
 ]
 
 const GATE_RELEASES = {
@@ -211,6 +212,7 @@ function currentRecords(dao, filter, sort, limit, offset) {
 
 function hintView(record, gate) {
   return {
+    id: record.id,
     field: record.getString("field_name"),
     kind: record.getString("kind"),
     severity: record.getString("severity"),
@@ -310,7 +312,11 @@ function hintsForPage(dao, pageId) {
   const hints = []
   let suppressed = 0
   const offsets = { stale: 0, unbaselined: 0 }
-  for (const record of records) {
+  const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+  const page = dao.findRecordById("pages", pageId)
+  const policy = fidelity.policyFor(dao, page.getString("project"))
+  const inputVersion = excerptDigest(JSON.stringify(shownRow))
+  for (const record of records.slice(0, MAX_PAGE_SIZE)) {
     const { gate } = gateOf(gates, record)
     const severity = record.getString("severity")
     if (!GATE_RELEASES[gate].includes(severity)) {
@@ -319,7 +325,15 @@ function hintsForPage(dao, pageId) {
       continue
     }
     const view = hintView(record, gate)
+    const analyzedVersion = view.evidence?.analysis_input_version || ""
+    view.input_status = !analyzedVersion ? "legacy_unrecorded" : analyzedVersion === inputVersion ? "imported_value" : "different_input"
+    if (record.getString("message_key") === "long_digit_run" && policy?.tone_equivalence && policy.reading_fields?.includes(view.field)
+      && fidelity.comparison.validToneForm(shownRow?.[view.field]) && view.input_status !== "different_input") {
+      view.message = { key: "tone_layout_allowed", params: {} }
+    }
+    view.action = "compare_source_pdf"
     tallyOffsets(dropStaleOffsets(view, shownRow), offsets)
+    if (view.input_status === "different_input" && Array.isArray(view.evidence?.char_offsets)) { stripOffsets(view.evidence); offsets.stale += 1 }
     // 基准是内容派生的摘要（片段摘要，§1.1），校对端没有它的消费者，所以下发前摘掉——
     // 与上面 `scoring_channel` 只给管理端同一个立场。它留在库里供管理端和重算复核用。
     if (view.evidence) delete view.evidence.offsets_basis
@@ -332,6 +346,7 @@ function hintsForPage(dao, pageId) {
     offsets_stale: offsets.stale,
     offsets_unbaselined: offsets.unbaselined,
     gate_rows_truncated: gateTruncated
+    , input_version: inputVersion, candidate_count: records.length, counts_are_lower_bounds: records.length > MAX_PAGE_SIZE
   }
 }
 
@@ -383,9 +398,11 @@ module.exports = {
   gateMap,
   locatorOf,
   offsetsBasis,
+  excerptDigest,
   dropStaleOffsets,
   tallyOffsets,
   shownRowOf,
   hintsForPage,
+  hintView,
   listForProject
 }

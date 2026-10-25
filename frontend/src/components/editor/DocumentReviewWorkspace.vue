@@ -6,8 +6,8 @@
     <section class="editor-panel source-panel" aria-labelledby="source-panel-title">
       <header class="editor-panel-header editor-panel-header--source">
         <div class="editor-context">
-          <span>原文定位</span>
-          <strong id="source-panel-title">PDF 第 {{ currentPdfPage }} 页</strong>
+          <span>来源 PDF</span>
+          <strong id="source-panel-title">PDF 物理第 {{ currentPdfPage }} 页</strong>
         </div>
         <details class="source-actions-menu" :open="!compact">
           <summary>页码</summary>

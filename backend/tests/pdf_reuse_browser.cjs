@@ -47,13 +47,15 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
   // Select the second local page and enlarge it: both selection and reader state
   // must survive route changes within this preview range.
   await page.getByRole('button',{name:'下一页',exact:true}).click()
-  await page.getByRole('button',{name:'＋',exact:true}).click()
+  await page.getByRole('button',{name:'放大',exact:true}).click()
   await rendered()
   await page.evaluate(()=>{window.__canvas=document.querySelector('.pdf-canvas');document.querySelector('.pdf-scroll').scrollTop=90;window.__scroll=document.querySelector('.pdf-scroll').scrollTop})
   assert(await page.evaluate(()=>window.__scroll>0),'fixture must actually scroll')
   async function submitTo(id) {
    await page.getByRole('button',{name:'检查并提交',exact:true}).first().click()
-   await page.getByRole('button',{name:'确认提交',exact:true}).click()
+   const dialog=page.getByRole('dialog')
+   await dialog.getByRole('checkbox',{name:'我已逐字段对照本条来源 PDF',exact:true}).check()
+   await dialog.getByRole('button',{name:'确认提交',exact:true}).click()
    await page.waitForURL(`**/tasks/${id}/edit`)
    await rendered()
   }

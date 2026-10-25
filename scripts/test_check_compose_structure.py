@@ -84,10 +84,10 @@ class GuardFailsOnRealViolations(unittest.TestCase):
 
     def scaffold(self):
         root = Path(tempfile.mkdtemp())
-        base = (guard.ROOT / 'docker-compose.yml').read_text()
+        base = (guard.ROOT / 'docker-compose.yml').read_text(encoding='utf-8')
         self.write(root, 'docker-compose.yml', base)
         for name in ('docker-compose.dev.yml', 'docker-compose.traefik.yml', 'docker-compose.named-volume.yml'):
-            self.write(root, name, (guard.ROOT / name).read_text())
+            self.write(root, name, (guard.ROOT / name).read_text(encoding='utf-8'))
         return root
 
     def test_clean_checkout_passes(self):
@@ -95,21 +95,21 @@ class GuardFailsOnRealViolations(unittest.TestCase):
 
     def test_exposed_backend_port_fails(self):
         root = self.scaffold()
-        broken = (guard.ROOT / 'docker-compose.yml').read_text().replace(
+        broken = (guard.ROOT / 'docker-compose.yml').read_text(encoding='utf-8').replace(
             '    read_only: true\n', '    read_only: true\n    ports:\n      - "9090:8090"\n', 1)
         self.write(root, 'docker-compose.yml', broken)
         self.assertEqual(self.run_guard(root), 1)
 
     def test_lost_capability_drop_fails(self):
         root = self.scaffold()
-        broken = (guard.ROOT / 'docker-compose.yml').read_text().replace(
+        broken = (guard.ROOT / 'docker-compose.yml').read_text(encoding='utf-8').replace(
             '    cap_drop: [ALL]\n', '', 1)
         self.write(root, 'docker-compose.yml', broken)
         self.assertEqual(self.run_guard(root), 1)
 
     def test_admin_ui_on_by_default_fails(self):
         root = self.scaffold()
-        broken = (guard.ROOT / 'docker-compose.yml').read_text().replace(
+        broken = (guard.ROOT / 'docker-compose.yml').read_text(encoding='utf-8').replace(
             'ENABLE_POCKETBASE_ADMIN_UI:-false', 'ENABLE_POCKETBASE_ADMIN_UI:-true')
         self.write(root, 'docker-compose.yml', broken)
         self.assertEqual(self.run_guard(root), 1)
@@ -118,15 +118,15 @@ class GuardFailsOnRealViolations(unittest.TestCase):
         # `privileged` was once checked for the backend only, so a frontend
         # override passed every assertion in this file.
         root = self.scaffold()
-        broken = (guard.ROOT / 'docker-compose.yml').read_text().replace(
+        broken = (guard.ROOT / 'docker-compose.yml').read_text(encoding='utf-8').replace(
             '  frontend:\n', '  frontend:\n    privileged: true\n', 1)
-        assert broken != (guard.ROOT / 'docker-compose.yml').read_text()
+        assert broken != (guard.ROOT / 'docker-compose.yml').read_text(encoding='utf-8')
         self.write(root, 'docker-compose.yml', broken)
         self.assertEqual(self.run_guard(root), 1)
 
     def test_missing_commit_stamp_fails(self):
         root = self.scaffold()
-        broken = (guard.ROOT / 'docker-compose.yml').read_text().replace(
+        broken = (guard.ROOT / 'docker-compose.yml').read_text(encoding='utf-8').replace(
             '        COMMIT: ${FANGJI_COMMIT:-unknown}\n', '', 1)
         self.write(root, 'docker-compose.yml', broken)
         self.assertEqual(self.run_guard(root), 1)

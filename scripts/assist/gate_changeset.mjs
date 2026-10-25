@@ -25,6 +25,8 @@ const coverage = require('../../backend/pb_hooks/lib/rule_coverage.js')
 // 口径与 scripts/assist/README.md §4、labeling.mjs 的 defaultRuleSet 注释一致。
 
 export function buildChangeset(scoreResult, { approvedBy, approvedAt, producerVersion, changesetId }) {
+  const scoringBasis = scoreResult?.scoring_basis || 'legacy_unrecorded'
+  const basisLabel = { explicit_source_judgments: '明确人工来源判断（业务记录，并非独立研究参照）', weak_submission_final_comparison: '提交与最终值比较的弱标签（不能冒充来源正误）', legacy_unrecorded: '旧版未记录标签来源' }[scoringBasis] || '标签来源未记录'
   const scored = Array.isArray(scoreResult?.scored) ? scoreResult.scored : []
   const entries = []
   const excluded = []
@@ -52,7 +54,7 @@ export function buildChangeset(scoreResult, { approvedBy, approvedAt, producerVe
       sample_n: item.hits,
       precision_hat: item.precision,
       // 判据依据要写进产物本身：评审变更集的人不必再去翻门槛文档才知道这条为什么能放行。
-      basis: `门槛文档 §2/§5：${item.gate.basis}`,
+      basis: `门槛文档 §2/§5：${item.gate.basis}；评分依据：${basisLabel}`,
       wilson_lower: item.wilson?.lower ?? null,
       wilson_upper: item.wilson?.upper ?? null,
       approved_by: approvedBy,
@@ -91,6 +93,9 @@ export function buildChangeset(scoreResult, { approvedBy, approvedAt, producerVe
   }
   return {
     changeset: changesetId,
+    scoring_basis: scoringBasis,
+    scoring_basis_label: basisLabel,
+    sample_origin: scoreResult?.sample_origin || 'unrecorded',
     producer: 'rule',
     producer_version: producerVersion,
     approved_by: approvedBy,
@@ -98,7 +103,7 @@ export function buildChangeset(scoreResult, { approvedBy, approvedAt, producerVe
     criteria: gateRelease.GATE_CRITERIA,
     criteria_source: 'docs/plans/2026-09-25-assist-rule-thresholds.md §2/§5（代码侧唯一出处 backend/pb_hooks/lib/gate_release.js）',
     // 报告的「能否外推」纪律同样适用于变更集：合成样本产出的档位不能当作线上精度承诺。
-    extrapolation: scoreResult?.synthetic ? '本变更集的数字来自合成弱标注样本，只用于打通放行通道与验证判据行为，不构成线上准确率结论。' : '本变更集的数字来自库内真实样本。',
+    extrapolation: scoreResult?.synthetic ? '本变更集的数字来自合成样本，只用于验证判据行为，不构成线上准确率结论。' : '样本材料来源与标签依据分别记录；未记录的来源不能自动称为真实来源正误。',
     coverage_source: 'backend/pb_hooks/lib/rule_coverage.js（可打分 / 无打分通道两类的唯一定义）',
     entries,
     excluded,
@@ -114,6 +119,7 @@ function renderMarkdown(changeset) {
   lines.push(`- 批准人：${changeset.approved_by}　批准时间：${changeset.approved_at}`)
   lines.push(`- 判据：${changeset.criteria.map((c) => `${c.gate} 需 p̂≥${c.theta} 且 n≥${c.nMin}`).join('；')}`)
   lines.push(`- 出处：${changeset.criteria_source}`)
+  lines.push(`- 评分依据：${changeset.scoring_basis_label}`)
   lines.push(`- 外推性：${changeset.extrapolation}`)
   lines.push('')
   lines.push('## 建议放行')

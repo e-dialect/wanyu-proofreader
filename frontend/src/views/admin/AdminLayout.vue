@@ -12,7 +12,9 @@
         <RouterLink v-if="auth.isPlatformAdmin" to="/admin/gate-rules" class="nav-link" :class="{ active: route.path === '/admin/gate-rules' }">规则门控</RouterLink>
       </template>
     </AppNavbar>
-    <RouterView />
+    <div data-main-landmark>
+      <RouterView />
+    </div>
   </div>
 </template>
 

@@ -1,5 +1,3 @@
-export const CSV_PAGE_FIELD_ALIASES = ['PDF页码', 'page', 'pdf_page', '页码']
-
 export function parseCsvInspection(value) {
   if (!value) return null
   try {

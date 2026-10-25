@@ -13,8 +13,12 @@ class NicknameMigrationTest(unittest.TestCase):
         with harness.temporary_root() as root:
             binary = harness.build_binary(root / 'pocketbase')
             data = root / 'data'
+            migrations = sorted(path.name for path in harness.MIGRATIONS.glob('*.js'))
+            # Later append-only migrations must not change which schema this
+            # historical repair fixture starts from.
+            rollback_count = len(migrations) - migrations.index('1791580800_unique_nickname_login.js')
             migrate(binary, data, 'up')
-            migrate(binary, data, 'down', 1)
+            migrate(binary, data, 'down', rollback_count)
             fixtures = [
                 ('000000000000001', 'Alice'), ('000000000000002', 'alice'),
                 ('000000000000003', 'Alice-2'), ('000000000000004', ''),
@@ -40,7 +44,7 @@ class NicknameMigrationTest(unittest.TestCase):
                 self.assertEqual(options['passwordAuth']['identityFields'], ['email', 'username', 'name'])
                 with self.assertRaises(sqlite3.IntegrityError):
                     db.execute('UPDATE users SET name=? WHERE id=?', ('ALICE', fixtures[1][0]))
-            migrate(binary, data, 'down', 1)
+            migrate(binary, data, 'down', rollback_count)
             with closing(sqlite3.connect(data / 'data.db')) as db:
                 options = json.loads(db.execute("SELECT options FROM _collections WHERE name='users'").fetchone()[0])
                 self.assertEqual(options['passwordAuth']['identityFields'], ['email', 'username'])

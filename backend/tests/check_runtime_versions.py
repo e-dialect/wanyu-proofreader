@@ -27,7 +27,7 @@ def read(relative):
     path = ROOT / relative
     if not path.exists():
         raise SystemExit(f'{relative} is missing; this guard cannot verify what it no longer finds')
-    return path.read_text()
+    return path.read_text(encoding='utf-8')
 
 
 def node_majors():
@@ -37,9 +37,9 @@ def node_majors():
         found['frontend/Dockerfile'] = match.group(1)
     nvmrc = ROOT / 'frontend' / '.nvmrc'
     if nvmrc.exists():
-        found['frontend/.nvmrc'] = nvmrc.read_text().strip().split('.')[0]
+        found['frontend/.nvmrc'] = nvmrc.read_text(encoding='utf-8').strip().split('.')[0]
     for workflow in sorted((ROOT / '.github' / 'workflows').glob('*.yml')):
-        for match in re.finditer(r'node-version:\s*["\']?(\d+)', workflow.read_text()):
+        for match in re.finditer(r'node-version:\s*["\']?(\d+)', workflow.read_text(encoding='utf-8')):
             found[f'{workflow.relative_to(ROOT)}:{match.start()}'] = match.group(1)
     return found
 
@@ -52,7 +52,7 @@ def npm_tested_node_majors():
     """
     majors = set()
     for workflow in sorted((ROOT / '.github' / 'workflows').glob('*.yml')):
-        document = yaml.safe_load(workflow.read_text()) or {}
+        document = yaml.safe_load(workflow.read_text(encoding='utf-8')) or {}
         for job in (document.get('jobs') or {}).values():
             steps = [step for step in (job.get('steps') or []) if isinstance(step, dict)]
             scripts = '\n'.join(str(step.get('run') or '') for step in steps)

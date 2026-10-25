@@ -153,6 +153,7 @@ func (s *importService) setPageContent(c *core.RequestEvent) error {
 	page.Set("ocr_row_json", strings.TrimSpace(payload.RowJSON))
 	page.Set("ocr_text", text)
 	page.Set("row_headers_json", strings.TrimSpace(payload.HeadersJSON))
+	page.Set("fidelity_change_actor", c.Auth.Id)
 	if err := s.app.Save(page); err != nil {
 		return apis.NewBadRequestError("保存修正内容失败。", err)
 	}
