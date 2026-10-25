@@ -55,6 +55,8 @@ v1 的 `Segment{from,to}` 只有一条边，把「源书怎么写」与「目标
 - **零声母必须显式登记。** 空 `notation` 行的 `ipa` 必须是本项目的 `∅`。解析器把「没有声母」写成空串，引擎不据此推断 `∅`；缺这一行时转换在 `source_to_ipa:zero_onset_row_absent` 处 decline。
 - **声调必须有 `category`，或写明 `missing_category_reason`。** 空 category 不会被补成任何东西，转换在 `source_to_ipa:missing_tone_category` 处停下。目标清单里同形的调值不参与判等。
 - **`ipa_correspondences` 必须带 `basis`。** 它是材料明说「这两个写法是同一个音」时的登记，不是程序推断的等价。没有依据时宁可让二号箭头 decline。
+- **候选的可表达性不构成消歧。** 对应行的 `candidates` 若只有一部分能在目标清单里拼出，留下来的那一支仍是「多读之一」，结果给 `AMBIGUOUS`；删掉目标拼不出的分支再判 `EXACT` 等于替材料做选择。
+- **例外键与输入用同一套归一化。** `source_pronunciation` 加载时做 NFC + TrimSpace，否则写成「` lɑk4 `」的例外永远命不中，人工结论会被机器规则绕开。
 - **`rule_status=production` 时，任何 `basis` / `provenance.locator` / `rule_status_basis` 以 `synthetic` 开头都被拒绝**，且必须至少有一条 provenance。
 - 源侧 notation / IPA / candidates 在加载时做 NFC（手抄音标风险最高）；目标 `Scheme` 仍维持「非 NFC 直接拒绝」。
 
@@ -64,7 +66,7 @@ v1 的 `Segment{from,to}` 只有一条边，把「源书怎么写」与「目标
 2. 用源声/韵/调最长优先切分；失败 → `decline:source_to_ipa:source_parse_failed`。
 3. **一号箭头**：声母/韵母 notation → 各自登记的 IPA；`candidates` → `AMBIGUOUS`（候选翻成目标写法）；调 notation → `category`，缺 → `UNSUPPORTED`。
 4. **上下文规则**：按文件顺序匹配源 notation 的邻接，改写**源 IPA**。同一 part 被改写成不同值 → `AMBIGUOUS / source_rewrite_conflict`。
-5. **二号箭头**：先查 `ipa_correspondences`，再查目标 `Pivot()`。0 个 → `UNSUPPORTED`；多个 → `AMBIGUOUS` 并填 `Result.Candidates`。调类经 `ToneNotationsByCategory()` 得到目标调号，同样处理 0/多。
+5. **二号箭头**：先查 `ipa_correspondences`，再查目标 `Pivot()`。0 个 → `UNSUPPORTED`；多个 → `AMBIGUOUS` 并填 `Result.Candidates`；对应行给出的候选只有部分可表达 → 同样 `AMBIGUOUS`，并保留已表达的写法。调类经 `ToneNotationsByCategory()` 得到目标调号，同样处理 0/多。
 6. 按目标清单做合法性检查（`target_legality:<part>:<value>`）。
 
 `Result` 形状不变；`Candidates` 始终是目标写法候选。
@@ -73,7 +75,7 @@ v1 的 `Segment{from,to}` 只有一条边，把「源书怎么写」与「目标
 
 一号箭头：`source_parse_failed`、`zero_onset_row_absent`、`no_source_onset_ipa`、`no_source_rime_ipa`、`no_source_tone`、`source_segment_one_to_many`、`source_rewrite_conflict`、`missing_tone_category`。
 
-二号箭头：`no_target_onset_for_ipa`、`no_target_rime_for_ipa`、`no_target_tone_for_category`、`target_segment_one_to_many`、`target_tone_one_to_many`、`target_legality`。
+二号箭头：`no_target_onset_for_ipa`、`no_target_rime_for_ipa`、`no_target_tone_for_category`、`target_segment_one_to_many`、`target_tone_one_to_many`、`correspondence_candidate_not_expressible`、`target_legality`。
 
 ## 已登记的部分真实材料
 

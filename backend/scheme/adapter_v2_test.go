@@ -191,6 +191,34 @@ func TestV2Rejections(t *testing.T) {
 			want: "names no neighbour",
 		},
 		{
+			name: "context rule whose neighbour is only whitespace",
+			mutate: func(doc map[string]interface{}) {
+				doc["context_rules"] = []interface{}{map[string]interface{}{
+					"id": "x-blank-neighbour", "when_onset": " \t", "rewrite_onset_ipa": "k", "basis": "synthetic",
+				}}
+			},
+			want: "names no neighbour",
+		},
+		{
+			name: "context rule that only rewrites whitespace",
+			mutate: func(doc map[string]interface{}) {
+				doc["context_rules"] = []interface{}{map[string]interface{}{
+					"id": "x-blank-rewrite", "when_onset": "k", "rewrite_onset_ipa": " ", "basis": "synthetic",
+				}}
+			},
+			want: "rewrites nothing",
+		},
+		{
+			name: "exception whose pronunciation is only whitespace",
+			mutate: func(doc map[string]interface{}) {
+				doc["exceptions"] = []interface{}{map[string]interface{}{
+					"id": "e-blank", "source_pronunciation": "  ", "canonical_pronunciation": "lah7",
+					"status": "REVIEWED", "basis": "synthetic",
+				}}
+			},
+			want: "every exception needs an id and a source_pronunciation",
+		},
+		{
 			name: "exception the target cannot spell",
 			mutate: func(doc map[string]interface{}) {
 				doc["exceptions"] = []interface{}{map[string]interface{}{
@@ -245,6 +273,26 @@ func TestV2NormalizesSourceIPA(t *testing.T) {
 	}
 	if _, ok := adapter.v2.rimeIPA["ô"]; !ok {
 		t.Fatalf("decomposed source notation did not normalise to NFC: %v", adapter.Source.Rimes)
+	}
+}
+
+func TestV2NormalizesExceptionSourceLikeItsInput(t *testing.T) {
+	// The rule is written by hand with the blanks a copy-paste leaves behind. Its
+	// key has to be the string convertV2 looks up, or the row loads and never
+	// matches, and the machine rules quietly overrule the human conclusion.
+	path := writeAdapterV2(t, func(doc map[string]interface{}) {
+		rows := doc["exceptions"].([]interface{})
+		rows[0].(map[string]interface{})["source_pronunciation"] = "  lɑk4  "
+	})
+	adapter, err := LoadAdapterWithScheme(path, loadTargetScheme(t))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	for _, input := range []string{"lɑk4", " lɑk4 "} {
+		result := Convert(input, adapter)
+		if result.Status != Reviewed || result.CanonicalPronunciation != "lah7" {
+			t.Fatalf("%q: status = %s, canonical = %q; the exception was unreachable", input, result.Status, result.CanonicalPronunciation)
+		}
 	}
 }
 

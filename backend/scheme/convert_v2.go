@@ -85,20 +85,28 @@ func convertV2(input string, adapter *Adapter) Result {
 			result.Trace = append(result.Trace, "source_to_ipa:"+rule.ID)
 		}
 
-		targetOnsets, onsetTrace := compiled.targetNotations("onset", onsetIPA)
+		targetOnsets, onsetTrace, unexpressibleOnsets := compiled.targetNotations("onset", onsetIPA)
 		result.Trace = append(result.Trace, prefixAll("ipa_to_target:", onsetTrace)...)
 		if len(targetOnsets) == 0 {
 			return decline(result, Unsupported, "ipa_to_target:no_target_onset_for_ipa")
+		}
+		if len(unexpressibleOnsets) > 0 {
+			result.Candidates = append(result.Candidates, targetOnsets...)
+			return decline(result, Ambiguous, "ipa_to_target:correspondence_candidate_not_expressible")
 		}
 		if len(targetOnsets) > 1 {
 			result.Candidates = append(result.Candidates, targetOnsets...)
 			return decline(result, Ambiguous, "ipa_to_target:target_segment_one_to_many")
 		}
 
-		targetRimes, rimeTrace := compiled.targetNotations("rime", rimeIPA)
+		targetRimes, rimeTrace, unexpressibleRimes := compiled.targetNotations("rime", rimeIPA)
 		result.Trace = append(result.Trace, prefixAll("ipa_to_target:", rimeTrace)...)
 		if len(targetRimes) == 0 {
 			return decline(result, Unsupported, "ipa_to_target:no_target_rime_for_ipa")
+		}
+		if len(unexpressibleRimes) > 0 {
+			result.Candidates = append(result.Candidates, targetRimes...)
+			return decline(result, Ambiguous, "ipa_to_target:correspondence_candidate_not_expressible")
 		}
 		if len(targetRimes) > 1 {
 			result.Candidates = append(result.Candidates, targetRimes...)
@@ -150,7 +158,9 @@ func sourceIPA(compiled *compiledV2, unit syllable) (string, string, string, []s
 	}
 	trace = append(trace, "source_to_ipa:"+onsetRow.ID)
 	if len(onsetRow.Candidates) > 0 {
-		return "", "", "", trace, targetCandidates(compiled, "onset", onsetRow.Candidates), "source_segment_one_to_many"
+		candidates, correspondences := targetCandidates(compiled, "onset", onsetRow.Candidates)
+		trace = append(trace, prefixAll("ipa_to_target:", correspondences)...)
+		return "", "", "", trace, candidates, "source_segment_one_to_many"
 	}
 
 	rimeRow, ok := compiled.rimeIPA[unit.rime]
@@ -159,7 +169,9 @@ func sourceIPA(compiled *compiledV2, unit syllable) (string, string, string, []s
 	}
 	trace = append(trace, "source_to_ipa:"+rimeRow.ID)
 	if len(rimeRow.Candidates) > 0 {
-		return "", "", "", trace, targetCandidates(compiled, "rime", rimeRow.Candidates), "source_segment_one_to_many"
+		candidates, correspondences := targetCandidates(compiled, "rime", rimeRow.Candidates)
+		trace = append(trace, prefixAll("ipa_to_target:", correspondences)...)
+		return "", "", "", trace, candidates, "source_segment_one_to_many"
 	}
 
 	category, hasRow := compiled.toneClass[unit.tone]
@@ -172,18 +184,26 @@ func sourceIPA(compiled *compiledV2, unit syllable) (string, string, string, []s
 
 // targetCandidates turns a source reading's alternative IPAs into the target
 // notations a reviewer may choose between, so an AMBIGUOUS decline is actionable
-// rather than a dead end. A candidate the target cannot spell contributes
-// nothing here; the reviewer still sees every rule that was involved in the
-// trace.
-func targetCandidates(compiled *compiledV2, part string, ipas []string) []string {
+// rather than a dead end. A candidate the target cannot spell contributes no
+// notation, but the correspondence rows that carried the other candidates are
+// returned too: #189 locates affected records by rule id, and a correspondence
+// that shaped the answer has to appear in the trace even when the result is a
+// decline.
+func targetCandidates(compiled *compiledV2, part string, ipas []string) ([]string, []string) {
 	var out []string
+	var correspondences []string
 	for _, ipa := range ipas {
-		notations, _ := compiled.targetNotations(part, ipa)
+		notations, used, _ := compiled.targetNotations(part, ipa)
 		out = append(out, notations...)
+		correspondences = append(correspondences, used...)
 	}
-	return dedupe(out)
+	return dedupe(out), dedupe(correspondences)
 }
 
+// matchesSource treats an empty selector as "any neighbour". That reading is why
+// the loader normalises selectors before checking them: a selector holding only
+// blanks would otherwise pass for a present neighbour and then widen the rule to
+// every syllable it can never have meant.
 func (r SourceContextRule) matchesSource(unit syllable) bool {
 	return (r.WhenOnset == "" || r.WhenOnset == unit.onset) &&
 		(r.WhenRime == "" || r.WhenRime == unit.rime)
@@ -191,7 +211,13 @@ func (r SourceContextRule) matchesSource(unit syllable) bool {
 
 // targetNotations is the second arrow: documented IPA → the target notations
 // that spell it, after any explicit equivalence the material itself records.
-func (compiled *compiledV2) targetNotations(part, ipa string) ([]string, []string) {
+//
+// unexpressible names the documented readings this target scheme cannot spell.
+// They are reported instead of dropped on purpose: when a correspondence offers
+// several documented IPA strings and only some of them reach the target, the
+// surviving spelling is one branch of an unresolved reading, not a unique
+// answer, so conversion must not upgrade it to EXACT.
+func (compiled *compiledV2) targetNotations(part, ipa string) ([]string, []string, []string) {
 	ipas := []string{ipa}
 	var trace []string
 	if row, ok := compiled.correspondences[part+":"+ipa]; ok {
@@ -203,10 +229,16 @@ func (compiled *compiledV2) targetNotations(part, ipa string) ([]string, []strin
 		}
 	}
 	var out []string
+	var unexpressible []string
 	for _, candidate := range ipas {
-		out = append(out, compiled.pivot[part+":"+candidate]...)
+		spelled := compiled.pivot[part+":"+candidate]
+		if len(spelled) == 0 {
+			unexpressible = append(unexpressible, candidate)
+			continue
+		}
+		out = append(out, spelled...)
 	}
-	return dedupe(out), trace
+	return dedupe(out), trace, unexpressible
 }
 
 func prefixAll(prefix string, values []string) []string {

@@ -340,6 +340,7 @@ func (f *adapterV2File) compile(path string, target *Scheme) (*Adapter, error) {
 	compiled.sourceTones = adapter.sourceTones
 
 	for _, rule := range f.Contexts {
+		rule.ID = strings.TrimSpace(rule.ID)
 		if rule.ID == "" {
 			return nil, ErrInvalidRule{Reason: "every context rule needs an id"}
 		}
@@ -350,16 +351,20 @@ func (f *adapterV2File) compile(path string, target *Scheme) (*Adapter, error) {
 		if rule.Basis == "" {
 			return nil, ErrInvalidRule{Reason: rule.ID + ": a context rule needs a basis"}
 		}
+		// Normalise first, then judge emptiness. matchesSource reads an empty
+		// selector as "any", so a selector written as blanks has to be refused as
+		// empty rather than accepted as a wildcard: a rule whose neighbour was
+		// only whitespace would otherwise rewrite every syllable in the file.
+		rule.WhenOnset = norm.NFC.String(strings.TrimSpace(rule.WhenOnset))
+		rule.WhenRime = norm.NFC.String(strings.TrimSpace(rule.WhenRime))
+		rule.RewriteOnsetIPA = norm.NFC.String(strings.TrimSpace(rule.RewriteOnsetIPA))
+		rule.RewriteRimeIPA = norm.NFC.String(strings.TrimSpace(rule.RewriteRimeIPA))
 		if rule.RewriteOnsetIPA == "" && rule.RewriteRimeIPA == "" {
 			return nil, ErrInvalidRule{Reason: rule.ID + ": rewrites nothing"}
 		}
 		if rule.WhenOnset == "" && rule.WhenRime == "" {
 			return nil, ErrInvalidRule{Reason: rule.ID + ": names no neighbour, so it can never match"}
 		}
-		rule.WhenOnset = norm.NFC.String(strings.TrimSpace(rule.WhenOnset))
-		rule.WhenRime = norm.NFC.String(strings.TrimSpace(rule.WhenRime))
-		rule.RewriteOnsetIPA = norm.NFC.String(strings.TrimSpace(rule.RewriteOnsetIPA))
-		rule.RewriteRimeIPA = norm.NFC.String(strings.TrimSpace(rule.RewriteRimeIPA))
 		if rule.WhenOnset != "" && !adapter.Source.onsetSet()[rule.WhenOnset] {
 			return nil, ErrInvalidRule{Reason: rule.ID + ": when_onset " + rule.WhenOnset + " is not a source onset, so it can never match"}
 		}
@@ -405,6 +410,11 @@ func (f *adapterV2File) compile(path string, target *Scheme) (*Adapter, error) {
 
 	exceptionKey := map[string]string{}
 	for _, item := range f.Exceptions {
+		item.ID = strings.TrimSpace(item.ID)
+		// The key has to be the string conversion looks up, or the row is dead
+		// weight that silently loses to the machine rules: convertV2 normalises
+		// and trims the input before indexing this map.
+		item.Source = norm.NFC.String(strings.TrimSpace(item.Source))
 		if item.ID == "" || item.Source == "" {
 			return nil, ErrInvalidRule{Reason: "every exception needs an id and a source_pronunciation"}
 		}
@@ -422,7 +432,7 @@ func (f *adapterV2File) compile(path string, target *Scheme) (*Adapter, error) {
 			return nil, ErrInvalidRule{Reason: item.ID + ": a human conclusion needs a basis"}
 		}
 		item.Canonical = norm.NFC.String(item.Canonical)
-		key := norm.NFC.String(item.Source)
+		key := item.Source
 		if previous, ok := exceptionKey[key]; ok {
 			return nil, ErrInvalidRule{Reason: fmt.Sprintf(
 				"%s and %s are the same source form once normalised, so only one of them can ever be found", previous, item.ID)}

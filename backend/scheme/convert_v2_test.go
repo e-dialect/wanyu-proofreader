@@ -155,3 +155,70 @@ func TestV2ConflictingRewritesAreAmbiguous(t *testing.T) {
 		t.Fatalf("last trace = %s", got)
 	}
 }
+
+// An ambiguous answer that only exists because of an equivalence has to name
+// that equivalence. #189 locates the records a rule change affects by rule id,
+// so an AMBIGUOUS result whose candidate reached the target through c-kh and
+// whose trace omits c-kh would hide every record the change breaks.
+func TestV2AmbiguousCandidatesKeepTheirCorrespondenceInTheTrace(t *testing.T) {
+	path := writeAdapterV2(t, func(doc map[string]interface{}) {
+		for _, row := range sourceRows(doc, "onsets") {
+			entry := row.(map[string]interface{})
+			if entry["id"] == "o-many" {
+				// "ph" is documented as either ASCII kh or plain p.
+				entry["candidates"] = []interface{}{"kh", "p"}
+			}
+		}
+	})
+	adapter, err := LoadAdapterWithScheme(path, loadTargetScheme(t))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	result := Convert("phɑk4", adapter)
+	if result.Status != Ambiguous {
+		t.Fatalf("status = %s, want AMBIGUOUS", result.Status)
+	}
+	if !slices.Equal(result.Candidates, []string{"k", "b"}) {
+		t.Fatalf("candidates = %v, want [k b]", result.Candidates)
+	}
+	if !slices.Contains(result.Trace, "ipa_to_target:c-kh") {
+		t.Fatalf("trace = %v, want it to carry ipa_to_target:c-kh", result.Trace)
+	}
+}
+
+// A correspondence that offers several documented readings must not be narrowed
+// to the one branch this target can spell: the surviving spelling is a guess
+// between readings, so it cannot be EXACT.
+func TestV2PartiallyExpressibleCorrespondenceIsNotExact(t *testing.T) {
+	path := writeAdapterV2(t, func(doc map[string]interface{}) {
+		rows := doc["ipa_correspondences"].([]interface{})
+		for _, row := range rows {
+			entry := row.(map[string]interface{})
+			if entry["id"] == "c-kh" {
+				delete(entry, "to")
+				// ɡ has no target onset; only kʰ does.
+				entry["candidates"] = []interface{}{"kʰ", "ɡ"}
+			}
+		}
+	})
+	adapter, err := LoadAdapterWithScheme(path, loadTargetScheme(t))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	result := Convert("kha533", adapter)
+	if result.Status != Ambiguous {
+		t.Fatalf("status = %s, want AMBIGUOUS; a branch the target cannot spell is not a unique answer", result.Status)
+	}
+	if result.CanonicalPronunciation != "" {
+		t.Fatalf("carried a value: %q", result.CanonicalPronunciation)
+	}
+	if !slices.Equal(result.Candidates, []string{"k"}) {
+		t.Fatalf("candidates = %v, want [k]", result.Candidates)
+	}
+	if !slices.Contains(result.Trace, "ipa_to_target:c-kh") {
+		t.Fatalf("trace = %v, want it to carry ipa_to_target:c-kh", result.Trace)
+	}
+	if got := result.Trace[len(result.Trace)-1]; got != "decline:ipa_to_target:correspondence_candidate_not_expressible" {
+		t.Fatalf("last trace = %s", got)
+	}
+}
