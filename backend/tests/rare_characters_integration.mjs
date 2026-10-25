@@ -86,6 +86,8 @@ if(process.argv.includes('--verify-persistence')) {
 }
 const admin=await request('/api/collections/users/auth-with-password',{method:'POST',body:{identity:process.env.APP_ADMIN_EMAIL,password:process.env.APP_ADMIN_PASSWORD}})
 const superAuth=await request('/api/collections/_superusers/auth-with-password',{method:'POST',body:{identity:process.env.PB_SUPER_EMAIL,password:process.env.PB_SUPER_PASSWORD}})
+// The download route rejects first-login users until their password is changed.
+// Mark only this disposable bootstrap identity ready for the export workflow.
 await request(`/api/collections/users/records/${admin.record.id}`,{method:'PATCH',token:superAuth.token,body:{must_change_password:false}})
 const token=admin.token
 try {

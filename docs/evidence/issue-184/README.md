@@ -4,6 +4,49 @@
 
 Human verification: **Not manually verified**。以下为自动化证据，不能代替维护者对真实资料及部署环境的人工签认。
 
+## 2026-10-26 main 整合验证
+
+分支基于 `main@4a838b2` 重放。六处冲突按以下契约整合，没有用整文件选边覆盖：
+
+- 同时登记交付路由和流式导出路由，套件清单保留交付、台账、转换等 main 已有套件并新增本 PR 套件；贡献词表保留 release 与 export 两个归属。
+- 留存 CSV 保留 main 的每批 1,000 行稳定分页、完整核验元数据、碰撞安全表头及“全量校对记录”文件名；不恢复历史 200,000 行上限。与流式导出共用内容投影及默认 withheld 排除。未完成纯文本只用原始内容，最终/回退依据与实际输出一致。
+- 管理端同时保留核验全量、业务已完成与流式 CSV/JSONL 三种下载，并说明工作流 approved 与业务完成的区别。保留台账、拼音转换、交付包和来源核验入口。两类请求互斥，失败与重试会先清除旧反馈；main 的来源核验页面及其重试修复没有改动。
+- main 已删除的 diff.js 不恢复；Unicode 集成继续直接核对真实 CSV/JSONL，前端保留 JSON/UTF-8/DOM/字体回归。
+
+本轮实际结果：
+
+| 检查 | 结果 |
+| --- | --- |
+| Go 全包单测、vet、gofmt | 通过 |
+| 锁文件 npm ci、前端单测、ESLint、production build | 通过；284/284，含核验两模式/流式互斥及失败重试回归 |
+| 全默认后端集成 | 34/35；导出、留存 CSV、来源、台账、权限及交付均通过 |
+| 来源核验专用集成（research mode） | 通过；包括业务完成条件、判断失效、阻塞问题、盲参照与关联过程导出 |
+| Unicode 导入→两人校对→仲裁→两种导出→重启 | 通过 |
+| 真实浏览器 | 跨域 CSV/JSONL、核验 all/completed 下载、withheld 错误/显式包含、空结果、Unicode 文件名、390px 布局均通过；没有 mock 成功响应 |
+| Migration up/down/up | 22/22，含初始 schema 拒绝回退 |
+| 套件清单、版本、行尾、空白、Docker context、UI debt、Compose | 通过；41 项套件、六组合 Compose config，UI debt 九类均通过，inline_styles=27/27 |
+
+默认集成唯一失败仍为未改动的 `assist_baseline_integration.mjs`：Windows 上使用 URL.pathname 构造 CLI 路径，得到 `C:\\C:\\...` 并保留中文百分号编码。工具自测仍有 Windows 环境限制：scripts 137 项中 2 个路径显示断言失败（另 1 项平台 skip），ops 6 项中 1 个符号链接权限错误；backend tooling 的符号链接/打开数据库文件重命名仍受权限限制。把 Git Bash 加入 PATH 后 build stamp 5/5 通过，避免误选不可用的 WSL 启动器。本机仍无 GNU Make，逐项执行其等价门禁，不将完整 `make check` 报告为全绿。
+
+本轮未重测 12,000 行性能、竞态检测或 Docker 镜像构建，也未部署、合并或启用自动合并。下方旧日期的数字是历史结果。目标代理及真实资料签认仍需维护者完成。
+
+当前四张下载截图已更新为整合后的实际界面，所有语料与身份仍为合成夹具。复现本轮关键路径：
+
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend test
+npm --prefix frontend run lint
+npm --prefix frontend run build
+$env:PYTHONUTF8='1'
+python backend/tests/run_all.py --jobs 4
+python backend/tests/run_integration.py source_fidelity_integration.mjs --env FANGJI_RESEARCH_MODE=1
+python backend/tests/run_rare_characters_integration.py
+python backend/tests/check_migrations.py
+$env:PROJECT_EXPORT_BROWSER='1'
+$env:PROJECT_EXPORT_EVIDENCE='output/pr333-sync-browser'
+python backend/tests/run_integration.py project_export_integration.mjs
+```
+
 ## 2026-10-25 评审修复验证
 
 - P1：下载响应显式暴露 `X-Export-Count`、`X-Export-Content-Bytes` 和 `Content-Disposition`。新增浏览器回归从独立端口页面调用生产 `fetchProjectExport`，直连临时后端，触发真实 Authorization 预检及浏览器响应头过滤，不代理或 mock API。修复前稳定复现“导出响应缺少完整性信息”，修复后 CSV / JSONL 都通过完整性检查，并得到完整 Unicode 文件名。默认服务端集成也检查三项响应头均被暴露。

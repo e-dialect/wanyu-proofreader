@@ -55,9 +55,11 @@ approved 优先最终结构化行，缺失时回退原始结构化行；两者�
 
 ## 兼容、部署与后续接口
 
-旧 `POST /api/fangji/projects/{id}/exports/csv` 保留 #123 的留存产物行为和旧业务表头，供既有留存/下载流程使用；它不是新 GET 的别名。共享内容投影、CSV 转义和默认 withheld 排除，显式包含也需 `include_withheld=1`；超过旧的 200,000 行上限会拒绝，避免旧接口静默截断。需要筛选、provenance 或大项目时使用 GET。
+旧 `POST /api/fangji/projects/{id}/exports/csv` 保留 #123 的留存产物行为，供既有留存/下载流程使用；它不是新 GET 的别名。共享内容投影、CSV 转义和默认 withheld 排除，显式包含也需 `include_withheld=1`。保留 main 已有的每批 1,000 条稳定分页读取，不恢复历史 200,000 行截断或增加新的总行数上限；该路径仍在内存中汇总后保存文件，大项目应使用 GET。文件保留原业务列及碰撞安全的 `__wanyu_*` 核验状态、内容依据和业务完成提示，文件名仍为“全量校对记录”。
 
-管理端已删除生产浏览器 CSV 拼装路径。`listAllProjectPages` 仍用于批量操作选择待处理 ID（仅 id/status/page_number），不是导出；测试目录的 legacy_csv_oracle 仅用于历史回归与内存对比。
+管理端同时保留 `POST /api/fangji/projects/{id}/verification-export` 的“全量 CSV（含状态）”与“业务已完成 CSV”，以及来源覆盖、关联过程和交付包入口。这些核验结果按已有来源核验规则计算业务完成条件；新 GET 的 `status=approved` 仅表示工作流已校对通过，不代表没有阻塞问题、依据未失效或已经通过来源核验。两类下载在界面中分别说明用途，共用忙碌状态以防同时发起，并在每次请求开始时清除上次反馈。
+
+管理端已删除生产浏览器逐页拉取并拼装 CSV 的路径。核验 CSV 仍由现有核验端点生成，浏览器只下载返回文本。`listAllProjectPages` 仍用于批量操作选择待处理 ID（仅 id/status/page_number），不是导出；测试目录的 legacy_csv_oracle 仅用于历史回归与内存对比。
 
 此变更新增 `export` 领域 scope，不新增 migration、配置或环境变量。前后端应一起部署；新 GET 的 CSV 表头及 JSONL 元数据首行是明确的新机器契约，消费者必须按 WanyuExport/v1 读取。回滚前后端代码即可，无需回滚数据库。#114 标准化、#185 审计链、#315 编选采用和 #316 交付发布的跨系统验收各自保留，不由本接口宣称完成。
 

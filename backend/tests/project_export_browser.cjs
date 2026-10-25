@@ -43,9 +43,9 @@ async function main() {
     const open = async (id) => { await page.goto(`${host.origin}/admin/projects/${id}`); await page.locator('#project-export').waitFor(); await page.locator('#project-export').scrollIntoViewIfNeeded() }
     const section = page.locator('#project-export')
     const button = section.getByRole('button', { name: '下载服务端导出文件' })
-    const download = async () => {
+    const download = async (trigger = button) => {
       const waiting = page.waitForEvent('download')
-      await button.click()
+      await trigger.click()
       const item = await waiting
       assert.equal(await item.failure(), null)
       const stream = await item.createReadStream(), chunks = []
@@ -53,6 +53,18 @@ async function main() {
       return { bytes: Buffer.concat(chunks), name: item.suggestedFilename() }
     }
     await open(fixture.project.id)
+    for (const [mode, label, suffix] of [['all', '全量 CSV（含状态）', '全量含状态'], ['completed', '业务已完成 CSV', '业务已完成']]) {
+      const pending = page.waitForResponse((response) => response.url().endsWith(`/api/fangji/projects/${fixture.project.id}/verification-export`) && response.request().method() === 'POST')
+      const file = await download(section.getByRole('button', { name: label, exact: true }))
+      const response = await pending
+      assert.equal(response.status(), 200)
+      assert.equal(response.request().postDataJSON().mode, mode)
+      const result = await response.json()
+      assert.deepEqual(file.bytes, Buffer.from(result.csv, 'utf8'))
+      assert.equal(file.name, `${fixture.project.name}_${suffix}.csv`)
+      assert.ok(result.csv.includes('__wanyu_business_complete'))
+    }
+    console.log('PASS browser: retained verification all/completed actions download exact real-server CSV in their original modes')
     const csv = await download()
     assert.ok(csv.name.endsWith('.csv') && csv.name.includes('𠮷'))
     assert.deepEqual([...csv.bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf])
