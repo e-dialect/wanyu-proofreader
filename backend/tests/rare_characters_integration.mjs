@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
-import { toSafeCsvCell } from '../../frontend/src/lib/csvExport.js'
 
 const baseUrl = process.env.PB_URL || 'http://127.0.0.1:18095'
 const sample = '𢶀𠮷㙟𰻞䲠a̤̍e̤̍o̤̍ṳ́ṳ̂ṳ̍ṳ̄n̂n̍n̄〔Ǿɑɡɔ∣‖①⑭■▲◆●﹑－―—～５〕ãăǎạa̩'
@@ -27,11 +27,50 @@ async function waitJob(id, token, statuses) {
  }
  throw new Error('import timeout')
 }
+async function verifyExports(projectId, token, pages) {
+ const expected=pages.map(page=>({page,fields:JSON.parse(page.status==='approved'?page.proofread_row_json:page.ocr_row_json)}))
+ for(const format of ['csv','jsonl']) {
+  const response=await fetch(`${baseUrl}/api/fangji/projects/${projectId}/export?format=${format}`,{headers:{Authorization:token}})
+  assert.equal(response.status,200,await (response.ok?Promise.resolve(''):response.text()))
+  const bytes=Buffer.from(await response.arrayBuffer())
+  assert.equal(bytes.length,Number(response.headers.get('x-export-content-bytes')))
+  assert.equal(Number(response.headers.get('x-export-count')),expected.length)
+  assert(decodeURIComponent(response.headers.get('content-disposition')).includes(sample))
+  const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes)
+  if(format==='jsonl') {
+   const [metadata,...entries]=text.trim().split('\n').map(JSON.parse)
+   assert.equal(metadata.type,'metadata')
+   assert.equal(metadata.export_metadata.exported_count,expected.length)
+   assert.equal(entries.length,expected.length)
+   for(let i=0;i<entries.length;i++) {
+    assert.equal(entries[i].entry_id,expected[i].page.id)
+    assert.equal(entries[i].status,expected[i].page.status)
+    assert.equal(entries[i].content_basis,expected[i].page.status==='approved'?'final_proofread':'original_not_final')
+    assert.deepEqual(entries[i].fields,expected[i].fields)
+   }
+  } else {
+   assert.deepEqual([...bytes.subarray(0,3)],[0xef,0xbb,0xbf])
+   // Parse the downloaded CSV independently, including its quoted JSON metadata.
+   const parsed=spawnSync(process.env.PYTHON||'python',['-c','import sys,csv,json; rows=list(csv.DictReader(sys.stdin.read().lstrip("\\ufeff").splitlines(keepends=True))); print(json.dumps(rows,ensure_ascii=False))'],{input:bytes,encoding:'utf8',env:{...process.env,PYTHONUTF8:'1'}})
+   assert.equal(parsed.status,0,parsed.stderr)
+   const rows=JSON.parse(parsed.stdout)
+   assert.equal(rows.length,expected.length)
+   for(let i=0;i<rows.length;i++) {
+    assert.equal(rows[i].entry_id,expected[i].page.id)
+    assert.equal(rows[i].content_basis,expected[i].page.status==='approved'?'final_proofread':'original_not_final')
+    for(const [name,value] of Object.entries(expected[i].fields))assert.equal(rows[i]['field:'+name],value)
+    assert.equal(JSON.parse(rows[i].export_metadata).exported_count,expected.length)
+   }
+  }
+ }
+}
 if(process.argv.includes('--verify-persistence')) {
  const fixture=JSON.parse(await readFile(process.env.RARE_BROWSER_FIXTURE,'utf8'))
  const freshAuth=await request('/api/collections/_superusers/auth-with-password',{method:'POST',body:{identity:process.env.PB_SUPER_EMAIL,password:process.env.PB_SUPER_PASSWORD}})
+ const persisted=[]
  for(let i=0;i<fixture.pages.length;i++) {
   const page=await request(`/api/collections/pages/records/${fixture.pages[i].id}`,{token:freshAuth.token})
+  persisted.push(page)
   assert.deepEqual(JSON.parse(page.ocr_row_json),sourceRow)
   assert.equal(page.ocr_text,`${sample} ${sample}`)
   if(i<2) {
@@ -40,11 +79,14 @@ if(process.argv.includes('--verify-persistence')) {
   }
   if(i===0)assert.equal(page.arbitration_note,'甲'.repeat(3999)+'𢶀')
  }
- console.log('PASS: source, approved results and boundary-length arbitration note survive process restart')
+ const freshAdmin=await request('/api/collections/users/auth-with-password',{method:'POST',body:{identity:process.env.APP_ADMIN_EMAIL,password:process.env.APP_ADMIN_PASSWORD}})
+ await verifyExports(fixture.project.id,freshAdmin.token,persisted)
+ console.log('PASS: source, approved results, boundary-length arbitration note and server CSV/JSONL exports survive process restart')
  process.exit(0)
 }
 const admin=await request('/api/collections/users/auth-with-password',{method:'POST',body:{identity:process.env.APP_ADMIN_EMAIL,password:process.env.APP_ADMIN_PASSWORD}})
 const superAuth=await request('/api/collections/_superusers/auth-with-password',{method:'POST',body:{identity:process.env.PB_SUPER_EMAIL,password:process.env.PB_SUPER_PASSWORD}})
+await request(`/api/collections/users/records/${admin.record.id}`,{method:'PATCH',token:superAuth.token,body:{must_change_password:false}})
 const token=admin.token
 try {
  project=await request('/api/fangji/projects',{method:'POST',token,expected:201,body:{name:`生僻字 ${sample} ${suffix}`,description:sample}})
@@ -98,10 +140,8 @@ try {
  }
  const matching=await request(`/api/collections/pages/records/${pages[1].id}`,{token})
  assert.equal(matching.status,'approved');assert.deepEqual(JSON.parse(matching.proofread_row_json),sourceRow)
- const exported='\uFEFF'+[Object.keys(finalRow),Object.values(JSON.parse(final.proofread_row_json))].map(row=>row.map(toSafeCsvCell).join(',')).join('\r\n')
- assert.equal(Buffer.from(exported,'utf8').toString('utf8'),exported)
- assert(exported.includes(sample))
- console.log('PASS: matching submissions auto-approve, frontend CSV escaping and UTF-8 bytes')
+ await verifyExports(project.id,token,[final,matching,pages[2]])
+ console.log('PASS: matching submissions auto-approve, server CSV/JSONL exports preserve Unicode headers and original/final fields')
  await request(`/api/fangji/projects/${project.id}`,{method:'PATCH',token,body:{name:'甲'.repeat(79)+sample}})
  const batch=await request(`/api/fangji/projects/${project.id}/volunteers/generate`,{method:'POST',token,expected:201,body:{count:1,usernamePattern:`unicode${suffix}{n}`,startNumber:1,digits:1,nicknamePattern:sample+'{n}',loginUrl:'https://example.com/login'}})
  generatedUserIds.push(...batch.accounts.map(account=>account.id))

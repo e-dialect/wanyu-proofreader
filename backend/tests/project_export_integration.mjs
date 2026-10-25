@@ -73,6 +73,8 @@ async function download(query = '', token = admin.token, status = 200) {
   assert.equal(r.status, status, await (status === 200 ? Promise.resolve('') : r.text()))
   if (status !== 200) return null
   const data = Buffer.from(await r.arrayBuffer())
+  const exposed = (r.headers.get('access-control-expose-headers') || '').toLowerCase().split(',').map((name) => name.trim())
+  for (const name of ['x-export-count', 'x-export-content-bytes', 'content-disposition']) assert.ok(exposed.includes(name), `missing exposed header: ${name}`)
   assert.equal(data.length, Number(r.headers.get('x-export-content-bytes')))
   assert.equal(data.length, Number(r.headers.get('content-length')))
   assert.match(r.headers.get('cache-control'), /no-store/)

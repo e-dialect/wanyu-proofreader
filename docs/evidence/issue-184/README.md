@@ -4,6 +4,23 @@
 
 Human verification: **Not manually verified**。以下为自动化证据，不能代替维护者对真实资料及部署环境的人工签认。
 
+## 2026-10-25 评审修复验证
+
+- P1：下载响应显式暴露 `X-Export-Count`、`X-Export-Content-Bytes` 和 `Content-Disposition`。新增浏览器回归从独立端口页面调用生产 `fetchProjectExport`，直连临时后端，触发真实 Authorization 预检及浏览器响应头过滤，不代理或 mock API。修复前稳定复现“导出响应缺少完整性信息”，修复后 CSV / JSONL 都通过完整性检查，并得到完整 Unicode 文件名。默认服务端集成也检查三项响应头均被暴露。
+- P2：Unicode 集成不再引用删除的前端 CSV 模块，改从真实导出端点下载两种文件。CSV 由 Python 标准库独立解析，逐行核对生僻字表头、组合符号、最终/原始字段及条目 ID；校验 BOM、UTF-8 解码、字节数、行数与文件名。进程重启后再验一次两种导出，原导入、两人校对、仲裁与边界长度 note 的持久化断言保留。
+- 本轮通过：Go 单测、vet、gofmt；前端 238/238、ESLint、production build；真实服务导出集成及上述跨域浏览器/既有下载 UI 验证；`run_rare_characters_integration.py` 的完整工作流和重启验收；18 项 migration up/down/up；套件清单、版本、行尾、空白、Compose 结构及六种 Compose config。
+- 本轮没有重跑性能测量、全默认集成、竞态检测或 Docker 镜像构建；下文 2026-10-18 的记录仍是历史结果。本机没有 GNU Make，逐项执行等价检查。工具自测复现下文记录的 Windows 限制（scripts 5 个失败项、backend tooling 4 个错误、ops 1 个错误），UI debt 仍只有既有 inline_styles=28/27 warn。未将 `make check` 报告为全绿。
+
+复现本轮关键回归（Go、Node、Python 在 PATH；浏览器测试另需已构建的 frontend/dist、Playwright 与 Edge）：
+
+```powershell
+$env:PYTHONUTF8='1'
+python backend/tests/run_rare_characters_integration.py
+$env:PROJECT_EXPORT_BROWSER='1'
+$env:PROJECT_EXPORT_EVIDENCE='output/pr333-review/after'
+python backend/tests/run_integration.py project_export_integration.mjs
+```
+
 ## 12,000 行对比
 
 相同数据库行，每行两列（生僻字/组合符号和重复合成释义），不含 withheld/importing，确保旧新路径行数相同。单次观测，不是性能 SLA；运行环境同时可能有其他本地测试。新文件更大，因为包含 provenance 及自说明元数据。原始数值保存在 [server-memory.json](server-memory.json) 和 [browser-memory.json](browser-memory.json)。

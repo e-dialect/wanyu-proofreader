@@ -49,6 +49,8 @@ approved 优先最终结构化行，缺失时回退原始结构化行；两者�
 
 响应提供 `Content-Length`、`X-Export-Content-Bytes`、`X-Export-Count`；管理端检查实际 Blob 长度后才触发下载，并在离开页面时取消请求。流开始后若数据库或网络失败，服务端记录失败，不向文件尾追加 JSON 错误；客户端必须将截断视为失败。浏览器仍需持有下载 Blob，降低的是 JavaScript 行对象和 CSV 字符串内存，不承诺浏览器总内存恒定。
 
+`Access-Control-Expose-Headers` 显式列出 `X-Export-Count`、`X-Export-Content-Bytes` 和 `Content-Disposition`，使通过 `VITE_PB_URL` / `PB_ALLOWED_ORIGINS` 分开部署的前端也能读取完整性信息与 UTF-8 文件名。
+
 `Cache-Control: private, no-store, no-transform`，`nosniff`，带 ASCII 回退和 UTF-8 filename* 的下载文件名。服务日志记录 operator/project/filters/count/exported_at 及完成字节数，失败有错误日志；不记录语料正文或 token。代理需保留完整性响应头，并避免压缩或改写该下载响应。
 
 ## 兼容、部署与后续接口

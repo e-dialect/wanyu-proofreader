@@ -11,6 +11,31 @@ async function main() {
   fs.mkdirSync(out, { recursive: true })
   const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 'msedge', headless: true })
   try {
+    // Use a separate origin and the production helper so browser CORS header
+    // filtering and the Authorization preflight are exercised without a proxy.
+    const crossOrigin = await browser.newPage()
+    await crossOrigin.goto(`${host.origin}/benchmark.html`)
+    assert.notEqual(new URL(host.origin).origin, new URL(fixture.base).origin)
+    for (const format of ['csv', 'jsonl']) {
+      const result = await crossOrigin.evaluate(async ({ base, admin, project, format }) => {
+        const { fetchProjectExport } = await import('/projectExport.js')
+        const exported = await fetchProjectExport({ baseUrl: base, token: admin.token, projectId: project.id, format })
+        return { count: exported.count, name: exported.fileName, bytes: exported.blob.size, text: await exported.blob.text() }
+      }, { ...fixture, format })
+      assert.equal(result.count, fixture.expectedCount)
+      assert.equal(result.name, `${fixture.project.name}_校对结果.${format}`)
+      assert.ok(result.bytes > 0)
+      if (format === 'jsonl') {
+        const records = result.text.trim().split('\n').map(JSON.parse)
+        assert.equal(records[0].export_metadata.exported_count, fixture.expectedCount)
+        assert.equal(records.length - 1, fixture.expectedCount)
+      } else {
+        assert.ok(result.text.startsWith('pdf_page,'))
+        assert.ok(result.text.includes('field:headword'))
+      }
+    }
+    await crossOrigin.close()
+    console.log('PASS browser: cross-origin CSV/JSONL via production helper, integrity headers and exact Unicode filenames')
     const page = await browser.newPage({ viewport: { width: 1440, height: 1080 }, acceptDownloads: true })
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))

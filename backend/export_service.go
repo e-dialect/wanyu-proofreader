@@ -388,6 +388,7 @@ func (s *importService) exportProject(c *core.RequestEvent) error {
 	c.Response.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"; filename*=UTF-8''`+url.PathEscape(project.GetString("name")+"_校对结果."+o.Format))
 	c.Response.Header().Set("Content-Type", map[string]string{"csv": "text/csv; charset=utf-8", "jsonl": "application/x-ndjson; charset=utf-8"}[o.Format])
 	c.Response.Header().Set("Content-Length", strconv.FormatInt(counter.Bytes, 10))
+	c.Response.Header().Set("Access-Control-Expose-Headers", "X-Export-Count, X-Export-Content-Bytes, Content-Disposition")
 	c.Response.Header().Set("X-Export-Content-Bytes", strconv.FormatInt(counter.Bytes, 10))
 	c.Response.Header().Set("X-Export-Count", strconv.Itoa(m.ExportedCount))
 	c.Response.Header().Set("Cache-Control", "private, no-store, no-transform")
