@@ -100,16 +100,52 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
     const overlay=el.getBoundingClientRect(),stage=el.parentElement.getBoundingClientRect()
     return Math.abs(overlay.width-stage.width)<1 && Math.abs(overlay.height-stage.height)<1
    }),true,'overlay follows image and canvas dimensions')
+   const previewSelector=fallback?'.pdf-canvas':'.pdf-page-image'
+   await page.evaluate(selector=>{
+    window.__fullscreenPreview=document.querySelector(selector)
+    window.__nativeRequestFullscreen=Element.prototype.requestFullscreen
+    Element.prototype.requestFullscreen=()=>Promise.reject(new DOMException('Synthetic fullscreen denial','NotAllowedError'))
+   },previewSelector)
+   const assertPreviewRetained=async()=>{
+    assert.equal(await page.evaluate(selector=>{
+     const preview=document.querySelector(selector)
+     return preview===window.__fullscreenPreview && preview.isConnected && preview.getBoundingClientRect().width>10
+    },previewSelector),true,`${mode}: fullscreen failure must retain the rendered preview node`)
+    assert.equal(await page.locator('.pdf-viewer > .alert-error').count(),0,'fullscreen failure is not a fatal PDF error')
+    assert.equal(await watermark.isVisible(),true,'identity remains visible after fullscreen failure')
+   }
+   await page.getByRole('button',{name:'全屏',exact:true}).click()
+   await page.getByRole('status').filter({hasText:'浏览器未允许进入全屏模式，请重试。'}).waitFor({state:'visible'})
+   await assertPreviewRetained()
+   await page.getByRole('button',{name:'放大',exact:true}).click()
+   assert.equal(await page.locator('.pdf-zoom-label').textContent(),'150%','zoom remains usable after denial')
+   await page.getByRole('button',{name:'缩小',exact:true}).click()
+   await page.screenshot({path:path.join(out,`${mode}-fullscreen-denied.png`),fullPage:true})
+   await page.evaluate(()=>{Element.prototype.requestFullscreen=window.__nativeRequestFullscreen})
    await page.getByRole('button',{name:'全屏',exact:true}).click()
    await page.waitForFunction(()=>document.fullscreenElement?.classList.contains('pdf-viewer'))
+   assert.equal(await page.locator('.pdf-fullscreen-notice').count(),0,'successful entry retry clears the notice')
+   await assertPreviewRetained()
    assert.equal(await watermark.isVisible(),true,'identity remains in fullscreen')
+   await page.evaluate(()=>{
+    window.__nativeExitFullscreen=Document.prototype.exitFullscreen
+    Document.prototype.exitFullscreen=()=>Promise.reject(new DOMException('Synthetic exit denial','NotAllowedError'))
+   })
+   await page.getByRole('button',{name:'退出全屏',exact:true}).click()
+   await page.getByRole('status').filter({hasText:'浏览器未允许退出全屏模式，请重试。'}).waitFor({state:'visible'})
+   await assertPreviewRetained()
+   assert.equal(await page.evaluate(()=>document.fullscreenElement?.classList.contains('pdf-viewer')),true)
+   await page.screenshot({path:path.join(out,`${mode}-exit-fullscreen-denied.png`),fullPage:true})
+   await page.evaluate(()=>{Document.prototype.exitFullscreen=window.__nativeExitFullscreen})
    await page.getByRole('button',{name:'退出全屏',exact:true}).click()
    await page.waitForFunction(()=>!document.fullscreenElement)
+   assert.equal(await page.locator('.pdf-fullscreen-notice').count(),0,'successful exit retry clears the notice')
+   await assertPreviewRetained()
    assert.deepEqual(errors,[])
    evidence[mode]={initialMs,network,identityStamp:stamp}
    await context.close()
   }
   fs.writeFileSync(path.join(out,'network-and-timing.json'),JSON.stringify(evidence,null,2))
-  console.log('PASS browser: page images without PDF.js; adjacent-only preload; cached navigation; rotation/zoom; mobile; PDF fallback',JSON.stringify(evidence))
+  console.log('PASS browser: page images without PDF.js; adjacent-only preload; cached navigation; rotation/zoom; mobile; PDF fallback; fullscreen entry/exit denial and retry retain previews',JSON.stringify(evidence))
  } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)})

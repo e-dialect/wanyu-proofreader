@@ -16,6 +16,7 @@
       </div>
     </div>
 
+    <div v-if="fullscreenError" class="alert alert-warning pdf-fullscreen-notice" role="status">{{ fullscreenError }}</div>
     <div v-if="error" class="alert alert-error" role="alert" style="margin:1rem">{{ error }}</div>
     <div v-else ref="wrapRef" class="pdf-scroll" role="region" tabindex="0" aria-label="PDF 原文">
       <div
@@ -55,6 +56,7 @@ const canvasRef = ref(null)
 const loading = ref(false)
 const rendering = ref(false)
 const error = ref('')
+const fullscreenError = ref('')
 const zoom = ref(1)
 const rotation = ref(0)
 const totalPages = ref(0)
@@ -113,6 +115,7 @@ async function loadPdf(src) {
   const generation = ++loadGeneration
   cleanupRenderOnly()
   error.value = ''
+  fullscreenError.value = ''
   totalPages.value = 0
 
   if (!src) {
@@ -264,18 +267,24 @@ function rotateClockwise() {
 
 async function toggleFullscreen() {
   if (!viewerRef.value) return
+  fullscreenError.value = ''
+  const generation = loadGeneration
+  const exiting = Boolean(document.fullscreenElement)
   try {
-    if (document.fullscreenElement) {
+    if (exiting) {
       await document.exitFullscreen()
     } else {
       await viewerRef.value.requestFullscreen()
     }
   } catch {
-    error.value = '浏览器未允许进入全屏模式'
+    if (generation === loadGeneration) {
+      fullscreenError.value = exiting ? '浏览器未允许退出全屏模式，请重试。' : '浏览器未允许进入全屏模式，请重试。'
+    }
   }
 }
 
 function syncFullscreenState() {
+  fullscreenError.value = ''
   isFullscreen.value = document.fullscreenElement === viewerRef.value
   nextTick(() => renderCurrentPage())
 }
@@ -327,6 +336,11 @@ onBeforeUnmount(async () => {
 .pdf-viewer:fullscreen {
   min-height: 100vh;
   background: var(--pdf-track-strong);
+}
+
+.pdf-fullscreen-notice {
+  flex: 0 0 auto;
+  margin: var(--space-2) var(--space-3);
 }
 
 .pdf-toolbar {

@@ -34,4 +34,11 @@ test('操作错误不参与加载态门禁', () => {
   const sources = view('admin/SourcesView.vue')
   assert.match(sources, /const loadError = ref\(''\)/)
   assert.match(sources, /const operationError = ref\(''\)/)
+
+  const deliveries = view('admin/DeliveriesView.vue')
+  assert.match(deliveries, /const loadError = ref\(''\)/)
+  assert.match(deliveries, /const operationError = ref\(''\)/)
+  assert.match(deliveries, /v-if="loadError"/)
+  assert.doesNotMatch(deliveries, /const error = ref\(''\)/)
+  assert.doesNotMatch(deliveries, /v-if="error"/)
 })
