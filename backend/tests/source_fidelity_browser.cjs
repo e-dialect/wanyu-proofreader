@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { chromium } = require('playwright')
+const exportFeedback = require('./source_fidelity_export_browser.cjs')
 const fixture = JSON.parse(fs.readFileSync(process.env.FIDELITY_BROWSER_FIXTURE, 'utf8'))
 const dist = path.resolve(__dirname, '../../frontend/dist')
 const output = process.env.FIDELITY_BROWSER_OUTPUT || path.resolve(__dirname, '../../output/playwright/source-fidelity')
@@ -19,10 +20,12 @@ async function session(browser, auth) {
   const page = await context.newPage()
   page.__errors = []
   page.__expectedHttpErrors = new Set()
+  page.__expectedNetworkErrors = new Set()
   page.on('pageerror', error => page.__errors.push(error.message))
   page.on('console', message => {
     if (message.type() !== 'error') return
     if (page.__expectedHttpErrors.has(message.location().url) && message.text().includes('status of 400')) return
+    if (page.__expectedNetworkErrors.has(message.location().url) && message.text().includes('net::ERR_FAILED')) return
     page.__errors.push(message.text().slice(0, 1500))
   })
   await page.route('**/*', async route => {
@@ -64,6 +67,7 @@ async function waitFor(check) {
     await manager.getByRole('heading', { name: '集中问题处理' }).waitFor({ timeout: 10000 })
     assert.equal(await manager.locator('.fidelity-issue').count(), 2)
     await shot(manager, 'manager-problems-desktop')
+    await exportFeedback(manager, fixture.project.id, output)
     await manager.goto(`http://localhost${root}/arbitration/${fixture.pages[1].id}?mode=verification`)
     await manager.getByText('管理员来源核验', { exact: false }).waitFor()
     const reading = manager.locator('.arbitration-field').filter({ has: manager.getByRole('heading', { name: '记音', exact: true }) })

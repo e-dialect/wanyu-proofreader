@@ -153,7 +153,7 @@ async function markEmpty() {
   if (!operationError.value) emptyTarget.value = null
 }
 async function download(mode, process = false) {
-  busy.value = true; operationError.value = ''
+  busy.value = true; operationError.value = ''; message.value = ''
   try {
     const result = await exportVerification(projectId, mode)
     if (process) { const { csv, ...bundle } = result; void csv; downloadText(JSON.stringify(bundle, null, 2), `${projectId}_过程记录.json`, 'application/json') }
