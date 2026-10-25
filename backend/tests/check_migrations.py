@@ -267,6 +267,24 @@ SPECS = {
             'recipient': {'required': True, 'max': 120},
         }),
     },
+    # #315 D5.3/D9 的追加事件表。查询就是 listAdoptionEvents 的形状：batch 过滤 +
+    # created 倒序。kind 的取值必须包含 rights_changed——少了它，权利变更就记不下来，
+    # 而这件事在界面上只是「没有事件」，看起来和「没变过」一样。
+    '1792972800_adoption_events.js': {
+        'indexes': ['idx_adoption_events_batch', 'idx_adoption_events_kind'],
+        'plans': [
+            ('adoption_events',
+             'SELECT id FROM adoption_events WHERE batch=? ORDER BY created DESC',
+             ('b',), 'idx_adoption_events_batch'),
+        ],
+        'collection_indexes': ('adoption_events', 'idx_adoption_events_batch'),
+        'fields': ('adoption_events', {
+            'kind': {'required': True, 'values_contains': 'rights_changed'},
+            'affected_count': {'required': False},
+            'stored_selected': {'required': False},
+            'current_selected': {'required': False},
+        }),
+    },
 }
 FIRST = '1788940000_initial_schema.js'
 

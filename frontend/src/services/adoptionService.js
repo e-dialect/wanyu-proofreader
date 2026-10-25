@@ -62,3 +62,22 @@ export async function exportAdoptionManifest(batchId, include = 'select') {
     { requestKey: null }
   )
 }
+
+export async function listAdoptionEvents(batchId) {
+  return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/events`, {
+    requestKey: null
+  })
+}
+
+export async function reevaluateAdoptionBatch(batchId) {
+  return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/reevaluate`, {
+    method: 'POST',
+    requestKey: null
+  })
+}
+
+export async function getAdoptionSummary(projectId) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/adoption-summary`, {
+    requestKey: null
+  })
+}

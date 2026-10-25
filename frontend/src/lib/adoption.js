@@ -61,6 +61,18 @@ export const QUALITY_STATE_LABELS = {
   withheld: '暂缓外发'
 }
 
+// 事件类型：与后端 adoption_events.go 的 adoptionEventRightsChanged /
+// adoptionEventReevaluated 同源。界面必须把「权利变过」与「有人重评过」分开，
+// 否则「需重评」会被读成「已经修好了」。
+export const EVENT_KIND_LABELS = {
+  rights_changed: '用途权利变更',
+  reevaluated: '按当前数据重评'
+}
+
+export function eventKindLabel(code) {
+  return EVENT_KIND_LABELS[code] || String(code || '')
+}
+
 export const DEFAULT_STATUSES = ['proofread', 'approved']
 
 export function defaultRule() {
