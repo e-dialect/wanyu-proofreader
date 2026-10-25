@@ -16,6 +16,11 @@ COPY reviewbundle/ ./reviewbundle/
 COPY scheme/ ./scheme/
 COPY pb_migrations/ ./pb_migrations/
 COPY keyboards/ ./keyboards/
+# 测试的数据依赖，不是运行时代码：backend/adoption_test.go 读这两份 JS，比对 D 的
+# 理由码/用途词表与源定义是否漂移。缺了它们 `go test ./...` 会在这里的 go test 步骤
+# 失败，而本机测试看不到这个缺口——与上面目录清单同一个道理。
+COPY pb_hooks/lib/assist_difficulty.js ./pb_hooks/lib/assist_difficulty.js
+COPY pb_hooks/lib/source_registry.js ./pb_hooks/lib/source_registry.js
 RUN go test ./...
 
 ARG VERSION=dev
