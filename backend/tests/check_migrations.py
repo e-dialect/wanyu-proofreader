@@ -244,6 +244,29 @@ SPECS = {
             'mode': {'values_contains': 'bundle'},
         }),
     },
+    # #315 D 用途编选 v0。两条列表查询就是路由真正发出的形状：
+    # listAdoptionBatches 是 project 过滤 + created 倒序，listAdoptionExceptions 是
+    # batch 过滤 + created 升序；例外那条还必须能命中最左列，否则「这一批的例外」
+    # 会退化成按 batch 扫全表。fields 断言钉住两处会静默改语义的契约：
+    # status 必须允许 confirmed（否则确认动作存不进库），recipient 的 120 与
+    # backend/adoption.go 的 adoptionRecipientMax 必须相等。
+    '1792886400_adoption_batches.js': {
+        'indexes': ['idx_adoption_batches_project', 'idx_adoption_batches_open',
+                    'idx_adoption_exceptions_page', 'idx_adoption_exceptions_batch'],
+        'plans': [
+            ('adoption_batches',
+             'SELECT id FROM adoption_batches WHERE project=? ORDER BY created DESC',
+             ('p',), 'idx_adoption_batches_project'),
+            ('adoption_exceptions',
+             'SELECT id FROM adoption_exceptions WHERE batch=? ORDER BY created',
+             ('b',), 'idx_adoption_exceptions_batch'),
+        ],
+        'collection_indexes': ('adoption_batches', 'idx_adoption_batches_open'),
+        'fields': ('adoption_batches', {
+            'status': {'required': True, 'values_contains': 'confirmed'},
+            'recipient': {'required': True, 'max': 120},
+        }),
+    },
 }
 FIRST = '1788940000_initial_schema.js'
 
