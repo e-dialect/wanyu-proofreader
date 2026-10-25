@@ -76,6 +76,11 @@ const routes = [
         component: () => import('@/views/admin/SourceFidelityView.vue')
       },
       {
+        path: 'projects/:id/adoption',
+        name: 'ProjectAdoption',
+        component: () => import('@/views/admin/AdoptionView.vue')
+      },
+      {
         path: 'creator-grants',
         name: 'CreatorGrants',
         component: () => import('@/views/admin/CreatorGrantsView.vue')

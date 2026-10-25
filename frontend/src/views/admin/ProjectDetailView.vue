@@ -11,6 +11,7 @@
       <nav v-if="project" class="project-section-nav" aria-label="项目页面分区">
         <RouterLink :to="`/admin/projects/${projectId}/settings`">项目设置（资料与成员）</RouterLink>
         <RouterLink :to="`/admin/projects/${projectId}/verification`">来源核验与问题处理</RouterLink>
+        <RouterLink :to="`/admin/projects/${projectId}/adoption`">用途编选（D 工序）</RouterLink>
         <a href="#project-files">文件准备</a>
         <a href="#project-export">导出结果</a>
         <a href="#project-entries">条目管理</a>

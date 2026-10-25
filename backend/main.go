@@ -65,6 +65,8 @@ func main() {
 	importer.registerPagination()
 	importer.registerArtifacts()
 	importer.registerQualityState()
+	importer.registerAdoption()
+	importer.registerAdoptionEvents()
 	importer.registerBundleImports()
 	importer.registerPageContent()
 
