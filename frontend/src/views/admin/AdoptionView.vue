@@ -78,6 +78,10 @@
         <p v-else-if="counts.pending > 0" class="alert alert-warning" role="alert">
           还有 {{ counts.pending }} 条待处理。确认后导出的清单会写明 <code>complete: false</code>，不会把部分结果冒充全量。
         </p>
+        <p v-if="batchEvents.stale" class="alert alert-warning" role="alert">
+          这一批确认之后，来源的用途权利变过。采用范围可能需要重评——重评只会追加一条记录，
+          不会改写确认时的数字。
+        </p>
 
         <div v-if="current.reasons.length" class="mt-3">
           <h3 class="adoption-subhead">未进入本批的理由分布</h3>
@@ -95,6 +99,7 @@
             :disabled="busy || current.status !== 'previewed'"
             @click="confirm"
           >确认本批采用范围</button>
+          <button class="btn btn-secondary" :disabled="busy" @click="reevaluate">按当前数据重新评估</button>
           <button class="btn btn-secondary" :disabled="busy" @click="exportManifest('select')">导出本批清单</button>
           <button class="btn btn-quiet" :disabled="busy" @click="exportManifest('all')">导出全部条目（需平台管理员）</button>
           <button
@@ -105,6 +110,19 @@
           >删除这一批</button>
         </div>
         <p class="adoption-hint">导出默认只含进入本批的条目；未采用与待处理的数量写在清单的 <code>omitted</code> 里。</p>
+        <details v-if="batchEvents.events.length" class="mt-3">
+          <summary>这一批的事件（{{ batchEvents.events.length }}）</summary>
+          <ul class="adoption-reasons">
+            <li v-for="item in batchEvents.events" :key="item.id">
+              {{ eventKindLabel(item.kind) }} · {{ item.created }}
+              <span v-if="item.affected"> · 涉及 {{ item.affected }} 条</span>
+              <div>{{ item.note }}</div>
+              <div v-if="item.stored" class="adoption-hint">
+                确认时 {{ item.stored.selected }}/{{ item.stored.total }} → 重评时 {{ item.current.selected }}/{{ item.current.total }}
+              </div>
+            </li>
+          </ul>
+        </details>
       </section>
 
       <section v-if="current" class="card mb-4">
@@ -152,6 +170,45 @@
         </details>
       </section>
 
+      <section v-if="summary" class="card mb-4">
+        <h2>度量</h2>
+        <p>
+          数字取各批确认时的值（那是交付依据）；「需重评」只表示确认之后用途权利变过，
+          不等于已经改过范围。
+        </p>
+        <dl class="adoption-metrics">
+          <div class="adoption-metric">
+            <dt>批次</dt>
+            <dd>{{ summary.batches.total }}</dd>
+            <small>草稿 {{ summary.batches.byStatus.draft || 0 }} · 已预览 {{ summary.batches.byStatus.previewed || 0 }} · 已确认 {{ summary.batches.byStatus.confirmed || 0 }}</small>
+          </div>
+          <div class="adoption-metric">
+            <dt>已确认范围</dt>
+            <dd>{{ summary.confirmed.selected }}/{{ summary.confirmed.total }}</dd>
+            <small>条进入本批；待处理 {{ summary.confirmed.pending }} 条</small>
+          </div>
+          <div class="adoption-metric">
+            <dt>例外</dt>
+            <dd>{{ summary.exceptions.decided }}</dd>
+            <small>条已处理</small>
+          </div>
+          <div class="adoption-metric">
+            <dt>需重评</dt>
+            <dd>{{ summary.events.staleBatches }}</dd>
+            <small>批在确认后遇到权利变更（另有 {{ summary.events.reevaluated }} 次重评记录）</small>
+          </div>
+        </dl>
+        <p v-if="!summary.confirmed.complete" class="adoption-hint">
+          有已确认批次仍带待处理条目：它们导出的清单里 <code>complete</code> 是 <code>false</code>。
+        </p>
+        <div v-if="summary.reasons.length" class="mt-3">
+          <h3 class="adoption-subhead">已确认批次的排除理由分布</h3>
+          <ul class="adoption-reasons">
+            <li v-for="item in summary.reasons" :key="item.code">{{ reasonLabel(item.code) }} · {{ item.count }} 条</li>
+          </ul>
+        </div>
+      </section>
+
       <section class="card">
         <h2>历史批次</h2>
         <p v-if="!batches.length" class="empty-state-text">这个项目还没有编选批次。</p>
@@ -178,6 +235,7 @@ import {
   QUALITY_STATE_LABELS,
   batchStatusLabel,
   countsConsistent,
+  eventKindLabel,
   includeLabel,
   manifestFilename,
   normalizeCounts,
@@ -194,9 +252,12 @@ import {
   deleteAdoptionBatch,
   exportAdoptionManifest,
   decideAdoptionException,
+  getAdoptionSummary,
   listAdoptionBatches,
+  listAdoptionEvents,
   listAdoptionExceptions,
-  previewAdoptionBatch
+  previewAdoptionBatch,
+  reevaluateAdoptionBatch
 } from '@/services/adoptionService'
 import { downloadText } from '@/lib/downloadText'
 import { getPbMessage } from '@/utils/pbErrors'
@@ -217,6 +278,8 @@ const purposes = ref([])
 const reasonCodes = ref([])
 const currentId = ref('')
 const exceptions = ref({ exceptions: [], pending: [], pendingTotal: 0 })
+const batchEvents = ref({ events: [], stale: false })
+const summary = ref(null)
 const decisionDrafts = reactive({})
 
 const createForm = reactive({
@@ -246,7 +309,7 @@ async function load() {
     if (!currentId.value || !batches.value.some((item) => item.id === currentId.value)) {
       currentId.value = batches.value[0]?.id || ''
     }
-    await loadExceptions()
+    await Promise.all([loadExceptions(), loadEvents(), loadSummary()])
     loaded.value = true
   } catch (e) {
     loadError.value = getPbMessage(e, '加载编选批次失败')
@@ -271,13 +334,25 @@ function draftFor(pageId) {
   return decisionDrafts[pageId]
 }
 
+async function loadEvents() {
+  if (!currentId.value) {
+    batchEvents.value = { events: [], stale: false }
+    return
+  }
+  batchEvents.value = await listAdoptionEvents(currentId.value)
+}
+
+async function loadSummary() {
+  summary.value = await getAdoptionSummary(projectId)
+}
+
 async function act(fn, success) {
   busy.value = true
   operationError.value = ''
   message.value = ''
   try {
     await fn()
-    message.value = success
+    if (success) message.value = success
     await load()
   } catch (e) {
     operationError.value = getPbMessage(e, '操作失败，请重试')
@@ -312,6 +387,17 @@ async function preview() {
 
 async function confirm() {
   await act(() => confirmAdoptionBatch(current.value.id), '已确认本批采用范围；导出与下游都以这份清单为准。')
+}
+
+// 重评只追加一条事件，不改写确认时的数字：D5.3 的红线是「追加，不改历史」。
+// 界面上必须把这件事说出来，否则「重新评估」会被读成「把这一批改了」。
+async function reevaluate() {
+  await act(async () => {
+    const result = await reevaluateAdoptionBatch(current.value.id)
+    message.value = result.drift
+      ? `已追加重评记录：${result.stored.selected}/${result.stored.total} → ${result.current.selected}/${result.current.total}，差异在「${result.drift}」。已确认的数字没有改。`
+      : `已追加重评记录：与确认时一致（${result.current.selected}/${result.current.total}）。`
+  }, '')
 }
 
 async function remove() {
@@ -388,6 +474,11 @@ async function selectBatch(id) {
 .adoption-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .adoption-hint { color: var(--gray-600); font-size: .85rem; }
 .adoption-pending { border-top: 1px solid var(--line); margin-top: var(--space-3); padding-top: var(--space-2); }
+.adoption-metrics { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: var(--space-3) 0; }
+.adoption-metric { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-2) var(--space-3); }
+.adoption-metric dt { font-size: .85rem; color: var(--gray-600); }
+.adoption-metric dd { font-size: 1.4rem; font-weight: 600; margin: 0; }
+.adoption-metric small { color: var(--gray-600); }
 .adoption-history { list-style: none; padding: 0; }
 .adoption-history-current { font-weight: 600; }
 </style>

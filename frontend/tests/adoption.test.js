@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   DECISION_LABELS,
+  EVENT_KIND_LABELS,
   PAGE_STATUS_LABELS,
   PURPOSE_LABELS,
   REASON_LABELS,
   QUALITY_STATE_LABELS,
   countsConsistent,
   defaultRule,
+  eventKindLabel,
   includeLabel,
   manifestFilename,
   normalizeCounts,
@@ -90,6 +92,28 @@ test('漏翻的取值原样返回，不假装认识', () => {
   assert.equal(manifestFilename({ purpose: 'public_display', id: 'abc' }), '编选-public_display-abc.json')
 })
 
+test('事件类型与 Go 侧同源，且「权利变过」与「重评过」不混用', () => {
+  const go = read('../../backend/adoption_events.go')
+  for (const kind of Object.keys(EVENT_KIND_LABELS)) {
+    assert.match(go, new RegExp(`"${kind}"`), `${kind} 不在 backend/adoption_events.go 里`)
+  }
+  assert.notEqual(EVENT_KIND_LABELS.rights_changed, EVENT_KIND_LABELS.reevaluated)
+  assert.equal(eventKindLabel('rights_changed'), '用途权利变更')
+  assert.equal(eventKindLabel('future_kind'), 'future_kind')
+})
+
+test('重评只追加记录：界面必须说清不改写确认时的数字', () => {
+  const view = read('../src/views/admin/AdoptionView.vue')
+  assert.match(view, /按当前数据重新评估/)
+  assert.match(view, /重评只会追加一条记录，\s*不会改写确认时的数字/)
+  assert.match(view, /已确认的数字没有改/)
+  // 度量取确认时的值，需重评不等于已修正。
+  assert.match(view, /数字取各批确认时的值/)
+  assert.match(view, /不等于已经改过范围/)
+  assert.match(view, /已确认批次的排除理由分布/)
+  assert.match(view, /需重评/)
+})
+
 test('编选页把「不得静默遗漏」写进界面，而不是只留在接口里', () => {
   const view = read('../src/views/admin/AdoptionView.vue')
   // 三个数各自可见，且总数对不上时不允许照抄。
@@ -123,5 +147,8 @@ test('服务层只走 /api/fangji 路由，不直接读集合', () => {
   const service = read('../src/services/adoptionService.js')
   assert.match(service, /\/api\/fangji\/projects\/\$\{encodeURIComponent\(projectId\)\}\/adoption-batches/)
   assert.match(service, /\/manifest\?/)
+  assert.match(service, /\/events`/)
+  assert.match(service, /\/reevaluate`/)
+  assert.match(service, /adoption-summary/)
   assert.doesNotMatch(service, /pb\.collection\('adoption/)
 })
