@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 )
 
 // #315 D 用途编选 v0：这一批交付要不要这些资料，以及为什么不要。
@@ -366,11 +368,32 @@ func (s *importService) loadAdoptionBatch(c *core.RequestEvent) (*core.Record, *
 	if err != nil || record == nil {
 		return nil, nil, nil, apis.NewNotFoundError("编选批次不存在。", err)
 	}
-	auth, project, err := s.requireProjectManager(c, record.GetString("project"))
+	auth, project, err := s.requireAdoptionManager(c, record.GetString("project"))
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	return record, auth, project, nil
+}
+
+// requireAdoptionManager 复用项目管理者判据，只把 403 的文案换成编选自己的说法。
+// 共用助手的文案是「只有项目所有者或管理员可以上传项目文件」——那是上传路由的说法，
+// 用在编选上会让人以为上传坏了，而真正的问题是这个人没有编选权限。
+func (s *importService) requireAdoptionManager(c *core.RequestEvent, projectID string) (*core.Record, *core.Record, error) {
+	auth, project, err := s.requireProjectManager(c, projectID)
+	if err != nil {
+		return nil, nil, adoptionManagerError(err)
+	}
+	return auth, project, nil
+}
+
+// adoptionManagerError 只改 403 的文案：401（没登录）与 404（项目不存在）原样返回，
+// 那两条说的已经不是「你有没有编选权限」这件事。
+func adoptionManagerError(err error) error {
+	var apiErr *router.ApiError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden {
+		return apis.NewForbiddenError("只有项目所有者或管理员可以编选交付范围。", nil)
+	}
+	return err
 }
 
 func adoptionBatchView(record *core.Record) map[string]any {
@@ -434,7 +457,7 @@ func (s *importService) openAdoptionBatch(projectID, purpose string) *core.Recor
 
 func (s *importService) createAdoptionBatch(c *core.RequestEvent) error {
 	projectID := c.Request.PathValue("projectId")
-	auth, project, err := s.requireProjectManager(c, projectID)
+	auth, project, err := s.requireAdoptionManager(c, projectID)
 	if err != nil {
 		return err
 	}
@@ -512,7 +535,7 @@ func (s *importService) createAdoptionBatch(c *core.RequestEvent) error {
 
 func (s *importService) listAdoptionBatches(c *core.RequestEvent) error {
 	projectID := c.Request.PathValue("projectId")
-	if _, _, err := s.requireProjectManager(c, projectID); err != nil {
+	if _, _, err := s.requireAdoptionManager(c, projectID); err != nil {
 		return err
 	}
 	records, err := s.app.FindRecordsByFilter(

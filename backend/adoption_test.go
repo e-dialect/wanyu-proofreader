@@ -1,12 +1,49 @@
 package main
 
 import (
+	"errors"
+	"net/http"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/tools/router"
 )
+
+// 编选路由复用项目管理者判据，但 403 的文案必须是编选自己的：共用那句是
+// 「只有项目所有者或管理员可以上传项目文件」，在编选页面上会让人以为上传坏了。
+// 401/404 不改，因为那两条说的不是「有没有编选权限」。
+func TestAdoptionManagerErrorRewritesOnlyForbidden(t *testing.T) {
+	rewritten := adoptionManagerError(apis.NewForbiddenError("只有项目所有者或管理员可以上传项目文件。", nil))
+	var apiErr *router.ApiError
+	if !errors.As(rewritten, &apiErr) {
+		t.Fatalf("expected an ApiError, got %T", rewritten)
+	}
+	if apiErr.Status != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", apiErr.Status)
+	}
+	if !strings.Contains(apiErr.Message, "编选") || strings.Contains(apiErr.Message, "上传") {
+		t.Fatalf("message = %q, want the selection wording", apiErr.Message)
+	}
+
+	unauthorized := apis.NewUnauthorizedError("登录状态已失效，请重新登录。", nil)
+	if got := adoptionManagerError(unauthorized); got != unauthorized {
+		t.Fatalf("401 must pass through unchanged, got %v", got)
+	}
+
+	notFound := apis.NewNotFoundError("项目不存在。", nil)
+	if got := adoptionManagerError(notFound); got != notFound {
+		t.Fatalf("404 must pass through unchanged, got %v", got)
+	}
+
+	plain := errors.New("boom")
+	if got := adoptionManagerError(plain); got != plain {
+		t.Fatalf("plain errors must pass through unchanged, got %v", got)
+	}
+}
 
 func TestParseAdoptionRule(t *testing.T) {
 	cases := []struct {
