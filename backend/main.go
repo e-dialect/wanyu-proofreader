@@ -68,6 +68,7 @@ func main() {
 	importer.registerProjectExport()
 	importer.registerQualityState()
 	importer.registerImportLedger()
+	importer.registerAdoption()
 	importer.registerBundleImports()
 	importer.registerPageContent()
 
