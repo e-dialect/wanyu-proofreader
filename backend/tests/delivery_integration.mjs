@@ -51,6 +51,8 @@ const job = await importBundle(manifest, payload)
 const pageURL = `/api/collections/pages/records?perPage=100&sort=page_number,id&filter=${encodeURIComponent(`project="${project.id}"`)}`
 let pages = (await api(pageURL, { token: superAuth.token })).items
 assert.equal(pages.length, incoming.length)
+let sourceProblemIssue
+const resolveSourceProblem = () => api(`/api/fangji/projects/${project.id}/problems/${sourceProblemIssue}`, { token: admin.token, method: 'PUT', body: { status: 'resolved', cause: '合成测试的来源定位问题', feedback: '合成回归：重新定位并确认当前来源；非真人验收', impact: '本合成条目', owner: 'synthetic-source-reviewer' } })
 // Reach final results through the real two-person proofreading workflow.
 for (let round = 1; round <= 2; round++) {
   const identity = `delivery-round-${round}@example.com`
@@ -61,12 +63,20 @@ for (let round = 1; round <= 2; round++) {
     const claimed = await api(`/api/fangji/projects/${project.id}/claim`, { token: auth.token, method: 'POST' })
     const page = pages.find((page) => page.id === claimed.id)
     assert.ok(page, 'claim must belong to the fixture batch')
+    if (round === 1 && page.id === pages[0].id) {
+      const view = await api(`/api/fangji/pages/${page.id}/verification`, { token: auth.token })
+      const report = await api(`/api/fangji/pages/${page.id}/problems`, { token: auth.token, method: 'POST', body: { basis: view.context.basis, leaseToken: claimed.leaseToken, category: 'source_location', description: '合成回归：待确认来源位置，非真人报告', blocking: true }, status: 201 })
+      sourceProblemIssue = report.issue.id
+      await resolveSourceProblem()
+    }
     const row = JSON.parse(page.ocr_row_json)
     if (round === 2 && page.id === pages[0].id) row.headword = '合成分歧'
     await api(`/api/fangji/pages/${page.id}/submit`, { token: auth.token, method: 'POST', body: { rowJson: JSON.stringify(row), text: Object.values(row).join(' '), leaseToken: claimed.leaseToken } })
     if (round === 2 && page.id === pages[0].id) await api(`/api/fangji/pages/${page.id}/arbitrate`, { token: admin.token, method: 'POST', body: { rowJson: page.ocr_row_json, note: 'synthetic arbitration chose original' } })
   }
 }
+assert.ok(sourceProblemIssue, 'the adopted fixture must have a report created through the leased proofreading route')
+await resolveSourceProblem()
 pages = (await api(pageURL, { token: superAuth.token })).items
 const adoptedPage = pages[0]
 const entries = pages.map((page, i) => ({ page_id: page.id, scope: ['adopted', 'excluded', 'pending'][i], reason: i ? ['unknown', 'rights_gate'][i - 1] : '' }))
@@ -328,4 +338,128 @@ if (process.env.DELIVERY_BROWSER === '1') {
   })
   assert.equal(browser.status, 0, 'browser verification failed')
 }
+await verifyDeliveryBusinessCompletion()
 console.log('PASS integration: E delivery uses only generated synthetic data; #315/#184/X gaps remain explicit')
+
+async function verifyDeliveryBusinessCompletion() {
+  // Run after the original evidence/browser checks: these source changes are
+  // intentional test input, not changes made by E to the proofreading results.
+  const projectRoot = `/api/fangji/projects/${project.id}`
+  const body = { ...handoff, recipient: 'synthetic-source-recheck-consumer' }
+  const pageRecord = page => api(`/api/collections/pages/records/${page.id}`, { token: superAuth.token })
+  const verification = page => api(`/api/fangji/pages/${page.id}/verification`, { token: admin.token })
+  const judgmentURL = `/api/fangji/pages/${adoptedPage.id}/source-judgments`
+  async function completeRecheck() {
+    await resolveSourceProblem()
+    const view = await verification(adoptedPage)
+    await api(judgmentURL, { token: admin.token, method: 'POST', body: { basis: view.context.basis, judgments: [], complete: true, sourceChecked: true, note: '合成回归：管理员重新核查当前来源；非真人验收' } })
+    assert.equal((await verification(adoptedPage)).completion.business_complete, true)
+  }
+  async function businessRecords() {
+    return Object.fromEntries(await Promise.all(['pages', 'proofreading_attempts', 'verification_events', 'problem_reports', 'problem_issues'].map(async name => {
+      const records = await api(`/api/collections/${name}/records?perPage=500&sort=id&filter=${encodeURIComponent(`project="${project.id}"`)}`, { token: superAuth.token })
+      assert.ok(records.totalItems <= 500, 'completion regression must compare every fixture record')
+      return [name, records.items]
+    })))
+  }
+  async function refusesWithoutWriting(preview, reason) {
+    const counts = await dataCounts()
+    const records = await businessRecords()
+    await check(body, admin.token, 400)
+    await create({ ...body, preview_sha256: preview.preview_sha256 }, admin.token, 400)
+    assert.deepEqual(await dataCounts(), counts, `${reason}: refused delivery must not append a package or event`)
+    assert.deepEqual(await businessRecords(), records, `${reason}: E must not change workflow, results or source-verification evidence`)
+  }
+
+  const upload = new FormData()
+  upload.set('file', new Blob([deliverySourcePDF()], { type: 'application/pdf' }), 'delivery-source-synthetic.pdf')
+  const queued = await api(`${projectRoot}/files/pdf`, { token: admin.token, method: 'POST', body: upload, status: 202 })
+  let sourceFile
+  for (let i = 0; i < 200; i++) {
+    sourceFile = await api(`/api/collections/project_files/records/${queued.id}`, { token: superAuth.token })
+    if (sourceFile.status === 'ready') break
+    assert.notEqual(sourceFile.status, 'failed', JSON.stringify(sourceFile))
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  assert.equal(sourceFile.status, 'ready')
+  for (const page of pages) await api(`/api/collections/pages/records/${page.id}`, { token: superAuth.token, method: 'PATCH', body: { project_file: sourceFile.id, pdf_page: 1 } })
+  await api(`${projectRoot}/column-roles`, { token: admin.token, method: 'PUT', body: { roles: { headword: 'headword', reading: 'reading' } } })
+  await api(`${projectRoot}/verification-policy`, { token: admin.token, method: 'POST', body: { reading_fields: ['reading'], tone_equivalence: false, reason: '合成交付回归：启用当前来源核查约定，非真人签认' }, status: 201 })
+  await completeRecheck()
+  for (const page of pages.slice(1)) assert.equal((await verification(page)).completion.business_complete, false, 'excluded/pending rows intentionally remain awaiting source recheck')
+  const initialPreview = await check(body)
+  assert.equal(initialPreview.can_generate, true, 'only the adopted subset must be business complete')
+
+  const beforeSourceChange = await pageRecord(adoptedPage)
+  await api(`/api/collections/pages/records/${adoptedPage.id}`, { token: superAuth.token, method: 'PATCH', body: { ocr_row_json: JSON.stringify({ ...JSON.parse(beforeSourceChange.ocr_row_json), headword: '合成来源更新后待复核' }) } })
+  const changed = await pageRecord(adoptedPage)
+  assert.equal(changed.status, 'approved', 'source-change hook must retain the workflow result')
+  assert.equal(changed.verification_needs_recheck, true)
+  assert.equal(changed.verification_source_revision, beforeSourceChange.verification_source_revision + 1)
+  assert.equal(changed.proofread_row_json, beforeSourceChange.proofread_row_json)
+  await resolveSourceProblem()
+  const needsRecheck = (await verification(adoptedPage)).completion
+  assert.equal(needsRecheck.business_complete, false)
+  assert.equal(needsRecheck.blocking_reports, 0)
+  assert.equal(needsRecheck.pending_review, false)
+  await refusesWithoutWriting(initialPreview, 'changed source awaiting recheck')
+  await completeRecheck()
+  const recheckedPreview = await check(body)
+  assert.equal(recheckedPreview.can_generate, true)
+
+  const current = await verification(adoptedPage)
+  await api(judgmentURL, { token: admin.token, method: 'POST', body: { basis: current.context.basis, judgments: [], defer: true, note: '合成回归：暂缓核验' } })
+  const deferred = await verification(adoptedPage)
+  assert.equal(deferred.completion.pending_review, true)
+  assert.equal(deferred.completion.needs_review, false)
+  assert.equal(deferred.completion.blocking_reports, 0)
+  assert.equal(deferred.completion.business_complete, false)
+  await refusesWithoutWriting(recheckedPreview, 'deferred source review')
+  await completeRecheck()
+
+  const beforeRoleChange = await check(body)
+  await api(`${projectRoot}/column-roles`, { token: admin.token, method: 'PUT', body: { roles: { headword: 'note', reading: 'reading' } } })
+  assert.equal((await pageRecord(adoptedPage)).verification_needs_recheck, false, 'a changed basis must be checked even without the explicit recheck flag')
+  await resolveSourceProblem()
+  const changedBasis = await verification(adoptedPage)
+  assert.equal(changedBasis.completion.needs_review, true)
+  assert.equal(changedBasis.completion.blocking_reports, 0)
+  assert.equal(changedBasis.completion.pending_review, false)
+  assert.equal(changedBasis.completion.business_complete, false)
+  await refusesWithoutWriting(beforeRoleChange, 'changed verification basis')
+  await completeRecheck()
+
+  const beforeBlocking = await check(body)
+  // Reopen the report created through the real leased proofreading workflow.
+  await api(`${projectRoot}/problems/${sourceProblemIssue}`, { token: admin.token, method: 'PUT', body: { status: 'reopened', feedback: '合成回归：来源定位问题重新待处理，非真人报告' } })
+  const blocked = await verification(adoptedPage)
+  assert.equal(blocked.completion.blocking_reports, 1)
+  assert.equal(blocked.completion.needs_review, false)
+  assert.equal(blocked.completion.pending_review, false)
+  assert.equal(blocked.completion.business_complete, false)
+  await refusesWithoutWriting(beforeBlocking, 'unresolved blocking source problem')
+  await resolveSourceProblem()
+  assert.equal((await verification(adoptedPage)).completion.business_complete, true)
+
+  const finalPreview = await check(body)
+  assert.equal(finalPreview.can_generate, true)
+  const beforeDelivery = await businessRecords()
+  const recovered = await create({ ...body, preview_sha256: finalPreview.preview_sha256 })
+  assert.ok(recovered.id, 'a dedicated upstream recheck must restore delivery without changing B workflow status')
+  assert.deepEqual(await businessRecords(), beforeDelivery)
+  assert.equal((await pageRecord(adoptedPage)).proofread_row_json, beforeSourceChange.proofread_row_json)
+  for (const page of pages.slice(1)) assert.equal((await verification(page)).completion.business_complete, false)
+  console.log('PASS: delivery obeys source recheck, deferred review, changed basis and blocking reports; stale previews write nothing; dedicated recheck restores adopted-only delivery')
+}
+
+function deliverySourcePDF() {
+  const stream = 'BT /F1 20 Tf 50 720 Td (SYNTHETIC DELIVERY SOURCE) Tj ET\n'
+  const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>', `<< /Length ${stream.length} >>\nstream\n${stream}endstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
+  let out = '%PDF-1.4\n'
+  const offsets = [0]
+  for (const [index, object] of objects.entries()) { offsets.push(out.length); out += `${index + 1} 0 obj\n${object}\nendobj\n` }
+  const start = out.length
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets.slice(1)) out += `${String(offset).padStart(10, '0')} 00000 n \n`
+  return out + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`
+}

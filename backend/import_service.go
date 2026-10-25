@@ -118,6 +118,9 @@ type importService struct {
 	mu           sync.Mutex
 	pending      map[string]struct{}
 	pdfUploads   *pdfUploadPool
+
+	// Same hook modules as the JS routes, including an explicit --hooksDir.
+	deliveryHooksDir string
 	// schemes 是启动时载入的拼音规则表（#190）。载入后不变，因此读它不需要加锁。
 	schemes *schemeRegistry
 }

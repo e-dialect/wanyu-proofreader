@@ -40,7 +40,8 @@ type deliveryHandoff struct {
 	IncludeOutside bool   `json:"include_outside"`
 }
 
-func (s *importService) registerDeliveries() {
+func (s *importService) registerDeliveries(hooksDir string) {
+	s.deliveryHooksDir = hooksDir
 	// Non-cascading relations are not restrictive foreign keys. Guard parent
 	// deletion at the model layer, including the owner route and superuser API,
 	// before PocketBase can clear relations or delete other project children.
@@ -116,7 +117,7 @@ func deliveryRights(app core.App, ref, purpose string) error {
 	return nil
 }
 
-func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHandoff) (reviewbundle.DeliverySnapshot, error) {
+func (s *importService) readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHandoff) (reviewbundle.DeliverySnapshot, error) {
 	snap := reviewbundle.DeliverySnapshot{}
 	if h.IncludeOutside {
 		return snap, apis.NewForbiddenError("范围外正文交付尚未开放；显式请求也不能绕过权利和 D 侧编选。", nil)
@@ -203,6 +204,7 @@ func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHa
 		return snap, fmt.Errorf("阻塞原因词表未初始化。")
 	}
 	seen := map[string]bool{}
+	var businessComplete func(*core.Record) (bool, error)
 	for _, item := range h.Entries {
 		p, exists := byID[item.PageID]
 		if !exists || seen[item.PageID] {
@@ -231,6 +233,19 @@ func readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHa
 			snap.Database.Adopted++
 			if p.GetString("status") != "approved" || normalizeQualityState(p.GetString("quality_state")) == qualityStateWithheld {
 				return snap, fmt.Errorf("采用范围包含未完成校对或暂缓外发条目，须退回 D 线重评。")
+			}
+			if businessComplete == nil {
+				businessComplete, err = newDeliveryCompletion(app, s.deliveryHooksDir)
+				if err != nil {
+					return snap, fmt.Errorf("无法核查来源复核完成状态，禁止出包：%w", err)
+				}
+			}
+			complete, err := businessComplete(p)
+			if err != nil {
+				return snap, fmt.Errorf("无法核查来源复核完成状态，禁止出包：%w", err)
+			}
+			if !complete {
+				return snap, fmt.Errorf("采用范围包含业务未完成条目，请先完成来源复核、暂缓核验或阻塞问题的处理。")
 			}
 			if parseRowJSON(p.GetString("proofread_row_json")) == nil {
 				return snap, fmt.Errorf("已采用条目缺少结构化最终校对成果，不能回退原文冒充结果。")
@@ -310,7 +325,7 @@ func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
 	var snap reviewbundle.DeliverySnapshot
 	err = s.app.RunInTransaction(func(app core.App) error {
 		var e error
-		snap, e = readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
+		snap, e = s.readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
 		return e
 	})
 	if err != nil {
@@ -339,7 +354,7 @@ func (s *importService) createDelivery(c *core.RequestEvent) error {
 	}
 	var record *core.Record
 	err = s.app.RunInTransaction(func(app core.App) error {
-		snap, err := readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
+		snap, err := s.readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
 		if err != nil {
 			return err
 		}

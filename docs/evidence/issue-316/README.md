@@ -107,3 +107,25 @@ CI 与独立评审结果以 PR 最新提交为准；上述是实际本机验证�
 - 反向对照：把 `DeliveriesView.vue` 还原到修复前，新测试报红；再定向移除 `load()` 里的错误清除与列表的 `loadError` 分支，两个加载态测试报红。还原修复后 6/6 通过，确认断言不是恒真。
 
 本轮没有改动迁移、Bundle 字段、导出列或对外契约，未新增截图（文案与错误态变化已由上述直接执行 SFC 回调的测试覆盖）。未跑 Docker 镜像构建、生产／staging、人类验收与 X 集成。Human verification：**Not manually verified**。#184／#315／X 实际 dry-run、真实资料试点、双方签字、staging／备份恢复和 R2 人工验收缺口继续保留，不关闭 #316。
+
+## 来源复核与交付门槛整合回归（2026-10-25）
+
+针对 PR #332 的来源复核 P1：采用范围现在复用 `source_fidelity.js` 的 `completion().business_complete`，与官方成果投影同源。在预检查和正式生成各自的快照事务内，用当前事务的 app 只读计算；一个快照复用一个独立 JS runtime，使用服务端同一 `--hooksDir`，加载／计算失败即拒绝。原有 withheld、来源许可和结构化成果门槛继续生效；不额外要求历史条目具有完整来源判断，也不通过改写 B 的状态放行。依赖版本没有变化，仅将已有 goja 两项依赖标为直接引用。
+
+真实临时 PocketBase 和合成数据覆盖：
+
+- 先取得合法预检摘要，再通过真实来源修改 API 触发 hook：保留 `approved` 与原校对成果，自动标记待复核；官方投影判业务未完成，重新预检和持旧摘要生成均返回 400。
+- 分别隔离来源待复核、暂缓核验、只有列角色／依据变化但 recheck 标志为 false、未解决阻塞报告四种门槛。问题由持租约的校对员正常报告，再由管理员专用接口解决／重新打开；不绕过模型守卫直接写问题记录。
+- 拒绝请求前后逐条核对 pages、proofreading_attempts、verification_events、problem_reports、problem_issues，且包／交付事件数量不变；专用来源复核后恢复出包，原校对成果仍相同。排除／待处理的两条仍未完成复核，也不会误阻断采用范围。
+- 反向对照使用 Go build overlay，仅移除新增完成门槛，不改仓库源码；同一集成回归在来源修改后的预检得到 200、期望 400 而报红。
+
+本机 Windows（Go 1.27.2、Node 24.19.0、Python 3.13.7，`PYTHONUTF8=1`）实际通过：
+
+- `go test ./...`、`go vet ./...`、`go test -race ./...`、gofmt。
+- `python backend/tests/run_all.py --jobs 4 delivery source_fidelity artifact_export project_access`：4/4；delivery 单独普通与 `--race` 均通过。
+- 前端 266/266、lint、build；21 个迁移 up/down/up 与初始 schema 拒绝回滚。
+- 39 套件清单、运行时版本、Compose 结构与六组合配置、Docker 构建目录、UI debt、空白和 LF 检查。
+
+本机仍未通过完整 `make check`：没有 GNU Make。额外工具自测暴露未改动的 Windows 兼容问题：scripts 137 项中 2 个 POSIX 路径断言失败、1 项跳过；ops 6 项中 1 个符号链接权限错误；backend/tests 50 项中 1 个 build-stamp shell 断言失败、2 个备份符号链接／rename 权限错误。昵称迁移测试通过。未将这些结果报告为全绿，也未扩展本 PR 修复无关工具。
+
+独立 agent 只读复查未发现实现阻断项。未跑全量集成矩阵、Docker 镜像构建、浏览器或 20,000 条批次时延／锁等待实测；未做生产／staging、真实资料、X dry-run 或真人签认。Human verification：**Not manually verified**；#184／#315 与 R2 人工验收缺口继续保留，不关闭 #316。
