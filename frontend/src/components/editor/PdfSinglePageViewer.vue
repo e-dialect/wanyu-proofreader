@@ -340,7 +340,7 @@ onBeforeUnmount(async () => {
 
 .pdf-fullscreen-notice {
   flex: 0 0 auto;
-  margin: .5rem .75rem;
+  margin: var(--space-2) var(--space-3);
 }
 
 .pdf-toolbar {
