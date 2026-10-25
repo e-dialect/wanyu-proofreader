@@ -19,6 +19,13 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1792281600_release_deliveries.js': {
+        'indexes': ['idx_delivery_package', 'idx_delivery_version', 'idx_delivery_source', 'idx_delivery_project', 'idx_release_events_delivery', 'idx_release_event_sequence'],
+        'collection_indexes': ('release_deliveries', 'idx_delivery_version'),
+        'fields': ('release_deliveries', {'archive': {'required': True}}),
+        'plans': [('release_deliveries', 'SELECT id FROM release_deliveries WHERE project=? AND recipient=? AND purpose=? ORDER BY version DESC LIMIT 1',
+                   ('p', 'r', 'public_display'), 'idx_delivery_version')],
+    },
     '1792627200_source_fidelity.js': {
         'indexes': ['idx_verification_events_page', 'idx_verification_events_project',
                     'idx_problem_reports_mine', 'idx_problem_reports_issue',
@@ -40,6 +47,11 @@ SPECS = {
             'verification_needs_recheck': {'required': False},
             'verification_source_revision': {'required': False},
             'source_empty': {'required': False},
+        }),
+    },
+    '1792713600_import_job_skipped_count.js': {
+        'fields': ('import_jobs', {
+            'skipped_count': {'required': False},
         }),
     },
     '1791580800_unique_nickname_login.js': {

@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "source_scheme_id": "synthetic-v2-unreachable",
+  "canonical_scheme_id": "puxian-xiangyin",
+  "rule_version": "synthetic-v2-unreachable",
+  "annotation_system": "tone_value",
+  "rule_status": "test",
+  "rule_status_basis": "synthetic: 用来验证永远无法命中的上下文规则在加载时就被拒绝",
+  "coverage": "synthetic",
+  "provenance": [
+    {"what": "合成源侧清单", "locator": "synthetic-fixture:adapter_v2_unreachable_rewrite.json"}
+  ],
+  "source": {
+    "onsets": [
+      {"id": "u-o-b", "notation": "b", "ipa": "p", "basis": "synthetic"}
+    ],
+    "rimes": [
+      {"id": "u-r-a", "notation": "a", "ipa": "a", "basis": "synthetic"}
+    ],
+    "tones": [
+      {"id": "u-t-1", "notation": "1", "category": "阴平", "basis": "synthetic"}
+    ]
+  },
+  "context_rules": [
+    {"id": "x-unreachable", "when_onset": "x", "rewrite_onset_ipa": "k", "basis": "synthetic: x 不在源侧声母表，这条规则永远不可能命中"}
+  ]
+}

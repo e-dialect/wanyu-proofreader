@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "source_scheme_id": "synthetic-v2-tone-class",
+  "canonical_scheme_id": "puxian-xiangyin",
+  "rule_version": "synthetic-v2-tone-class",
+  "annotation_system": "tone_category",
+  "rule_status": "test",
+  "rule_status_basis": "synthetic: 专门验证调类标注的源侧；数字是调类号，不是调值",
+  "coverage": "synthetic",
+  "provenance": [
+    {"what": "合成源侧清单，声调按调类标记", "locator": "synthetic-fixture:adapter_v2_tone_category.json"}
+  ],
+  "source": {
+    "onsets": [
+      {"id": "tc-o-b", "notation": "b", "ipa": "p", "basis": "synthetic"}
+    ],
+    "rimes": [
+      {"id": "tc-r-a", "notation": "a", "ipa": "a", "basis": "synthetic"}
+    ],
+    "tones": [
+      {"id": "tc-t-4", "notation": "4", "category": "阳平", "basis": "synthetic: 4 是调类号，意为阳平"}
+    ]
+  }
+}
