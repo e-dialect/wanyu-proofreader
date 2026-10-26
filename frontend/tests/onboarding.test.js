@@ -66,6 +66,7 @@ test('desktop onboarding names the four-screen path and editor docks', () => {
     'claim',
     'pdf',
     'fields',
+    'correction-paths',
     'keyboard',
     'draft-lease',
     'submit'
@@ -76,6 +77,9 @@ test('desktop onboarding names the four-screen path and editor docks', () => {
   assert.match(text, /PDF/)
   assert.match(text, /待校对原文/)
   assert.match(text, /恢复原文/)
+  assert.match(text, /笔误/)
+  assert.match(text, /口误/)
+  assert.match(text, /读音字段/)
   assert.match(text, /字符键盘/)
   assert.match(text, /草稿/)
   assert.match(text, /释放任务/)
@@ -93,6 +97,8 @@ test('mobile onboarding uses field-by-field copy and omits desktop shortcuts', (
   assert.match(text, /一次只改一个字段/)
   assert.match(text, /总览/)
   assert.match(text, /待校对原文/)
+  assert.match(text, /笔误/)
+  assert.match(text, /口误/)
   assert.doesNotMatch(text, /Ctrl\+Enter/)
   assert.doesNotMatch(text, /左侧 PDF/)
   for (const term of leakTerms) {
@@ -107,6 +113,8 @@ test('profile offers a way to replay the tour and the editor starts it after loa
   const onboarding = readFileSync(new URL('../src/components/ProofreaderOnboarding.vue', import.meta.url), 'utf8')
   assert.match(profile, /重看新手引导/)
   assert.match(editor, /startIfUnseen/)
+  assert.match(editor, /correction-paths/)
+  assert.match(editor, /读音字段/)
   assert.match(editor, /shouldIgnoreEditorShortcut/)
   assert.match(editor, /<AppModal/)
   assert.match(layout, /ProofreaderOnboarding/)

@@ -1,0 +1,20 @@
+{
+  "dataset": "synthetic only; identical database rows",
+  "metric": "Go HeapAlloc high-water sampled every 1 ms after GC; delta over per-run baseline",
+  "results": [
+    {
+      "mode": "legacy_buffered_server",
+      "rows": 12000,
+      "bytes": 28044920,
+      "elapsed_ms": 728,
+      "peak_heap_delta_bytes": 215264320
+    },
+    {
+      "mode": "snapshot_streamed_csv_three_passes",
+      "rows": 12000,
+      "bytes": 37069203,
+      "elapsed_ms": 2406,
+      "peak_heap_delta_bytes": 3362848
+    }
+  ]
+}

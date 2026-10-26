@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/forms"
@@ -31,7 +32,7 @@ func (s *importService) registerArtifacts() {
 	})
 }
 
-// toSafeCsvCell 移植自前端 frontend/src/lib/csvExport.js:1-10，逐字节对齐：
+// toSafeCsvCell 是产物与流式导出共用的 CSV 转义实现：
 //  1. 若以（可含前导 tab/CR/空格）`=`/`+`/`-`/`@` 开头，前置单引号；
 //  2. 若含 `"`/`,`/`\r`/`\n` 任一，双引号包裹并把内部 `"` 转义为 `""`。
 var (
@@ -159,7 +160,7 @@ func buildCSVText(finalHeaders []string, headers []string, rows []exportedRow) s
 	return "\uFEFF" + strings.Join(lines, "\r\n")
 }
 
-// exportRowObject is shared by CSV artifacts and result deliveries.
+// exportRowObject is shared by retained CSV artifacts, streamed downloads and result deliveries.
 func exportRowObject(page *core.Record) *orderedObject {
 	var rowObj *orderedObject
 	if page.GetString("status") == "approved" {
@@ -169,9 +170,9 @@ func exportRowObject(page *core.Record) *orderedObject {
 		rowObj = parseRowJSON(page.GetString("ocr_row_json"))
 	}
 	if rowObj == nil {
-		text := page.GetString("proofread_text")
-		if text == "" {
-			text = page.GetString("ocr_text")
+		text := page.GetString("ocr_text")
+		if page.GetString("status") == "approved" && page.GetString("proofread_text") != "" {
+			text = page.GetString("proofread_text")
 		}
 		rowObj = &orderedObject{keys: []string{"内容"}, values: map[string]any{"内容": text}}
 	}
@@ -190,9 +191,23 @@ func (s *importService) exportCSV(c *core.RequestEvent) error {
 		return apis.NewNotFoundError("项目不存在。", err)
 	}
 
+	// Retained #123 artifacts share the same default withheld predicate, so the
+	// storage endpoint cannot become a silent opt-in around the new download.
+	query := c.Request.URL.Query()
+	for key := range query {
+		if key != "include_withheld" {
+			return apis.NewBadRequestError("留存产物仅支持 include_withheld；筛选导出请使用只读下载接口。", nil)
+		}
+	}
+	options, err := parseProjectExportOptions(query, nil)
+	if err != nil {
+		return apis.NewBadRequestError(err.Error(), nil)
+	}
+	where, params := projectExportWhere(projectID, options)
 	var pages []*core.Record
 	for offset := 0; ; offset += 1000 {
-		batch, readErr := s.app.FindRecordsByFilter("pages", fmt.Sprintf(`project = %q && status != "importing"`, projectID), "page_number,id", 1000, offset)
+		var batch []*core.Record
+		readErr := s.app.RecordQuery("pages").AndWhere(dbx.NewExp(where, params)).OrderBy("page_number", "id").Limit(1000).Offset(int64(offset)).All(&batch)
 		if readErr != nil {
 			return apis.NewBadRequestError("读取项目条目失败。", readErr)
 		}
@@ -208,23 +223,11 @@ func (s *importService) exportCSV(c *core.RequestEvent) error {
 	headers := []string{}
 	rows := make([]exportedRow, 0, len(pages))
 	for _, page := range pages {
-		var rowObj *orderedObject
+		rowObj := exportRowObject(page)
 		valueSource := "imported_fallback"
-		if page.GetString("status") == "approved" {
-			rowObj = parseRowJSON(page.GetString("proofread_row_json"))
-			if rowObj != nil {
-				valueSource = "final_adopted_value"
-			}
-		}
-		if rowObj == nil {
-			rowObj = parseRowJSON(page.GetString("ocr_row_json"))
-		}
-		if rowObj == nil {
-			text := page.GetString("proofread_text")
-			if text == "" {
-				text = page.GetString("ocr_text")
-			}
-			rowObj = &orderedObject{keys: []string{"内容"}, values: map[string]any{"内容": text}}
+		if page.GetString("status") == "approved" && (parseRowJSON(page.GetString("proofread_row_json")) != nil ||
+			(parseRowJSON(page.GetString("ocr_row_json")) == nil && page.GetString("proofread_text") != "")) {
+			valueSource = "final_adopted_value"
 		}
 
 		saved := []string{}

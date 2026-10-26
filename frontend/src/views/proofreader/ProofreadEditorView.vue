@@ -112,6 +112,9 @@
             {{ gatedNoticeText }}
           </p>
 
+          <p class="correction-paths text-sm text-muted" role="note">
+            字写错了，改对应的文字字段。记音或说法不对，改读音字段，特殊字符用下方字符键盘。还没提交时，用这一栏的「恢复原文」。提交之后不能撤回，系统会尝试打开下一条，不会停在这一条上再改。
+          </p>
           <div class="proofread-fields">
             <article
               v-for="(header, index) in rowHeaders"
@@ -211,6 +214,9 @@
         <p class="text-sm text-muted">这是本次校对的完整核对声明；机器提示及操作记录不作为独立来源参照。</p>
           <p class="alert alert-error confirmation-dialog__irreversible" role="alert">
             {{ irreversibleSubmitNotice }}
+          </p>
+          <p class="text-sm text-muted">
+            字写错了改文字字段，记音不对改读音字段。这两类都要在确认前改完。
           </p>
           <p class="text-sm text-muted">
             确认后，系统会自动流转并尝试领取本项目下一条。

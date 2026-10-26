@@ -17,6 +17,12 @@ const SHARED_BEFORE_EDITOR = [
 
 const SHARED_AFTER_FIELDS = [
   {
+    id: 'correction-paths',
+    title: '笔误和口误改不同的字段',
+    target: '文字字段、读音字段、「恢复原文」',
+    body: '字写错了，改对应的文字字段。记音或说法不对，改读音字段，特殊字符用字符键盘。还没提交时，用「恢复原文」回到导入内容。提交之后不能在当前界面撤回，系统会尝试打开下一条，不会停在这一条上再改。'
+  },
+  {
     id: 'keyboard',
     title: '在光标处插入字符',
     target: '字符键盘',
