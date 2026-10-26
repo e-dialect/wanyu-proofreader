@@ -270,7 +270,7 @@ try {
   )
   assert.equal(validPdf.status, 'ready')
   assert.equal(validPdf.page_count, 1)
-  assert.equal(validPdf.validation_tool, 'pdfcpu v0.16.2')
+  assert.equal(validPdf.validation_tool, 'pdfcpu v0.16.3')
   assert.equal(validPdf.is_primary, true)
 
   const snapshotCsvBody = new FormData()
