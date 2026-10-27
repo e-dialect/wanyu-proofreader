@@ -270,7 +270,13 @@ try {
   )
   assert.equal(validPdf.status, 'ready')
   assert.equal(validPdf.page_count, 1)
-  assert.equal(validPdf.validation_tool, 'pdfcpu v0.16.2')
+  // validation_tool 是溯源，随 pdfcpu 升级而变：期望值与 Go 侧 pdfValidator 测试同源，
+  // 直接读 backend/go.mod，升级时只需改 import_service.go 的常量。
+  const requiredPdfcpu = /^[ \t]*github\.com\/pdfcpu\/pdfcpu[ \t]+(v\S+)$/m.exec(
+    await readFile(new URL('../go.mod', import.meta.url), 'utf8')
+  )
+  assert.ok(requiredPdfcpu, 'backend/go.mod does not require github.com/pdfcpu/pdfcpu')
+  assert.equal(validPdf.validation_tool, `pdfcpu ${requiredPdfcpu[1]}`)
   assert.equal(validPdf.is_primary, true)
 
   const snapshotCsvBody = new FormData()
