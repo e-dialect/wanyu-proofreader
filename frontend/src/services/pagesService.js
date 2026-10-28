@@ -65,6 +65,10 @@ export async function listAdminProjectPages(projectId, query) {
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pages`, { query, requestKey: null })
 }
 
+export async function getAdminProjectPageStats(projectId) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pages/stats`, { requestKey: null })
+}
+
 export async function listProofreaderTasks(userId, page, perPage) {
   return listPagesWithFallback({
     page,
@@ -124,13 +128,6 @@ export async function listAllProjectPages(projectId, options = {}) {
   return pb.collection('pages').getFullList({
     filter: `project="${projectId}"`,
     sort: 'page_number',
-    requestKey: null,
-    ...options
-  })
-}
-
-export async function listAllPages(options = {}) {
-  return pb.collection('pages').getFullList({
     requestKey: null,
     ...options
   })

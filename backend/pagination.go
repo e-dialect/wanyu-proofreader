@@ -27,10 +27,167 @@ func pageArgument(raw string, fallback, maximum int) int {
 
 func (s *importService) registerPagination() {
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		e.Router.GET("/api/fangji/project-insights", s.projectInsights).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/pages", s.projectPages).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/fangji/projects/{projectId}/pages/stats", s.projectPagesStats).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/proofreading-queues", s.proofreadingQueues).Bind(apis.RequireAuth("users"))
 		return e.Next()
 	})
+}
+
+func makeProjectStats(total, unstarted, active, collecting, arbitration, approved int) map[string]int {
+	stats := map[string]int{
+		"total":         total,
+		"unstarted":     unstarted,
+		"active":        active,
+		"collecting":    collecting,
+		"arbitration":   arbitration,
+		"approved":      approved,
+		"incomplete":    total - approved,
+		"completionPct": 0,
+	}
+	if total > 0 {
+		stats["completionPct"] = int(math.Round(100 * float64(approved) / float64(total)))
+	}
+	return stats
+}
+
+func projectPageStats(app core.App, projectID string) (map[string]int, error) {
+	counts := []struct {
+		Status string `db:"status"`
+		Count  int    `db:"count"`
+	}{}
+	if err := app.DB().NewQuery("SELECT status, COUNT(*) AS count FROM pages WHERE project={:project} GROUP BY status").Bind(dbx.Params{"project": projectID}).All(&counts); err != nil {
+		return nil, err
+	}
+	stats := make(map[string]int)
+	for _, row := range counts {
+		stats["total"] += row.Count
+		key := map[string]string{"pending": "unstarted", "claimed": "active", "proofreading": "active", "proofread": "collecting", "arbitration": "arbitration", "approved": "approved"}[row.Status]
+		if key != "" {
+			stats[key] += row.Count
+		}
+	}
+	return makeProjectStats(stats["total"], stats["unstarted"], stats["active"], stats["collecting"], stats["arbitration"], stats["approved"]), nil
+}
+
+func (s *importService) projectPagesStats(e *core.RequestEvent) error {
+	id := e.Request.PathValue("projectId")
+	if _, _, err := s.requireProjectManager(e, id); err != nil {
+		return err
+	}
+	stats, err := projectPageStats(s.app, id)
+	if err != nil {
+		return err
+	}
+	return e.JSON(http.StatusOK, stats)
+}
+
+// projectInsightsCTE aggregates every manageable project in one pass. EXISTS
+// keeps duplicate or historical memberships from multiplying page counts.
+const projectInsightsCTE = `WITH accessible AS (
+ SELECT p.id,p.name,p.description,p.created FROM projects p
+ WHERE {:platformAdmin}=1 OR p.admin={:user} OR EXISTS (
+  SELECT 1 FROM project_memberships m
+  WHERE m.project=p.id AND m.user={:user} AND m.role='manager'
+ )
+), project_stats AS (
+ SELECT a.id,a.name,a.description,a.created,COUNT(pg.id) AS total,
+ COALESCE(SUM(CASE WHEN pg.status='pending' THEN 1 ELSE 0 END),0) AS unstarted,
+ COALESCE(SUM(CASE WHEN pg.status IN ('claimed','proofreading') THEN 1 ELSE 0 END),0) AS active,
+ COALESCE(SUM(CASE WHEN pg.status='proofread' THEN 1 ELSE 0 END),0) AS collecting,
+ COALESCE(SUM(CASE WHEN pg.status='arbitration' THEN 1 ELSE 0 END),0) AS arbitration,
+ COALESCE(SUM(CASE WHEN pg.status='approved' THEN 1 ELSE 0 END),0) AS approved
+ FROM accessible a LEFT JOIN pages pg ON pg.project=a.id
+ GROUP BY a.id,a.name,a.description,a.created
+) `
+
+func (s *importService) projectInsights(e *core.RequestEvent) error {
+	query := e.Request.URL.Query()
+	page, size := pageArgument(query.Get("page"), 1, 1000000), pageArgument(query.Get("perPage"), 12, 50)
+	filter := query.Get("filter")
+	if filter == "" {
+		filter = "all"
+	}
+	conditions := ""
+	switch filter {
+	case "all":
+	case "attention":
+		conditions = " AND arbitration>0"
+	case "incomplete":
+		conditions = " AND total-approved>0"
+	case "completed":
+		conditions = " AND total>0 AND total=approved"
+	default:
+		return apis.NewBadRequestError("filter 只能是 all、attention、incomplete 或 completed", nil)
+	}
+	params := dbx.Params{"user": e.Auth.Id, "platformAdmin": e.Auth.GetString("role") == "platform_admin"}
+	where := " WHERE 1=1"
+	if text := strings.TrimSpace(query.Get("q")); text != "" {
+		// instr treats wildcards and quotes as ordinary text; values stay bound.
+		where += " AND (instr(name,{:q})>0 OR instr(description,{:q})>0)"
+		params["q"] = text
+	}
+	where += conditions
+
+	var result map[string]any
+	err := s.app.RunInTransaction(func(app core.App) error {
+		overall := struct {
+			Projects    int `db:"projects"`
+			Total       int `db:"total"`
+			Unstarted   int `db:"unstarted"`
+			Active      int `db:"active"`
+			Collecting  int `db:"collecting"`
+			Arbitration int `db:"arbitration"`
+			Approved    int `db:"approved"`
+		}{}
+		summarySQL := projectInsightsCTE + `SELECT COUNT(*) AS projects,
+		 COALESCE(SUM(total),0) AS total,COALESCE(SUM(unstarted),0) AS unstarted,
+		 COALESCE(SUM(active),0) AS active,COALESCE(SUM(collecting),0) AS collecting,
+		 COALESCE(SUM(arbitration),0) AS arbitration,COALESCE(SUM(approved),0) AS approved
+		 FROM project_stats`
+		if err := app.DB().NewQuery(summarySQL).Bind(params).One(&overall); err != nil {
+			return err
+		}
+
+		var count int
+		if err := app.DB().NewQuery(projectInsightsCTE + "SELECT COUNT(*) FROM project_stats" + where).Bind(params).Row(&count); err != nil {
+			return err
+		}
+		totalPages := max(1, (count+size-1)/size)
+		page = min(page, totalPages)
+		rows := []struct {
+			ID          string `db:"id"`
+			Name        string `db:"name"`
+			Description string `db:"description"`
+			Created     string `db:"created"`
+			Total       int    `db:"total"`
+			Unstarted   int    `db:"unstarted"`
+			Active      int    `db:"active"`
+			Collecting  int    `db:"collecting"`
+			Arbitration int    `db:"arbitration"`
+			Approved    int    `db:"approved"`
+		}{}
+		listSQL := projectInsightsCTE + fmt.Sprintf("SELECT * FROM project_stats%s ORDER BY arbitration DESC,(total-approved) DESC,name COLLATE NOCASE,id LIMIT %d OFFSET %d", where, size, (page-1)*size)
+		if err := app.DB().NewQuery(listSQL).Bind(params).All(&rows); err != nil {
+			return err
+		}
+		items := []map[string]any{}
+		for _, row := range rows {
+			items = append(items, map[string]any{
+				"project": map[string]any{"id": row.ID, "name": row.Name, "description": row.Description, "created": row.Created},
+				"summary": makeProjectStats(row.Total, row.Unstarted, row.Active, row.Collecting, row.Arbitration, row.Approved),
+			})
+		}
+		summary := makeProjectStats(overall.Total, overall.Unstarted, overall.Active, overall.Collecting, overall.Arbitration, overall.Approved)
+		summary["projects"] = overall.Projects
+		result = map[string]any{"items": items, "summary": summary, "page": page, "perPage": size, "totalItems": count, "totalPages": totalPages}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return e.JSON(http.StatusOK, result)
 }
 
 func (s *importService) projectPages(e *core.RequestEvent) error {
@@ -108,26 +265,7 @@ func (s *importService) projectPages(e *core.RequestEvent) error {
 			return err
 		}
 		app.ExpandRecords(records, []string{"proofreader"}, nil)
-		counts := []struct {
-			Status string `db:"status"`
-			Count  int    `db:"count"`
-		}{}
-		if err := app.DB().NewQuery("SELECT status, COUNT(*) AS count FROM pages WHERE project={:project} GROUP BY status").Bind(params).All(&counts); err != nil {
-			return err
-		}
-		stats := map[string]int{"total": 0, "unstarted": 0, "active": 0, "collecting": 0, "arbitration": 0, "approved": 0, "incomplete": 0, "completionPct": 0}
-		for _, row := range counts {
-			stats["total"] += row.Count
-			key := map[string]string{"pending": "unstarted", "claimed": "active", "proofreading": "active", "proofread": "collecting", "arbitration": "arbitration", "approved": "approved"}[row.Status]
-			if key != "" {
-				stats[key] += row.Count
-			}
-		}
-		stats["incomplete"] = stats["total"] - stats["approved"]
-		if stats["total"] > 0 {
-			stats["completionPct"] = int(math.Round(100 * float64(stats["approved"]) / float64(stats["total"])))
-		}
-		result = map[string]any{"items": records, "page": page, "perPage": size, "totalItems": count, "totalPages": totalPages, "stats": stats}
+		result = map[string]any{"items": records, "page": page, "perPage": size, "totalItems": count, "totalPages": totalPages}
 		return nil
 	})
 	if err != nil {

@@ -101,18 +101,6 @@ export function summarizePages(pages) {
   return summary
 }
 
-export function sortProjectInsights(projects) {
-  return asList(projects)
-    .map((item, index) => ({ item, index }))
-    .sort((left, right) => {
-      const arbitrationDelta = asNumber(right.item?.summary?.arbitration) - asNumber(left.item?.summary?.arbitration)
-      if (arbitrationDelta) return arbitrationDelta
-      const incompleteDelta = asNumber(right.item?.summary?.incomplete) - asNumber(left.item?.summary?.incomplete)
-      return incompleteDelta || left.index - right.index
-    })
-    .map(({ item }) => item)
-}
-
 export function getDifferingHeadersForRows(headers, rows, policy) {
   const candidates = asList(rows)
   if (candidates.length < 2) return []

@@ -30,6 +30,22 @@ function membership(dao, projectId, userId) {
   return records.length ? records[0] : null
 }
 
+// Prefetch one user's memberships for a request. Passing null for a missing map
+// entry to capabilities() is what distinguishes a prefetched miss from a legacy
+// single-project lookup.
+function membershipsByProject(dao, authRecord) {
+  const result = new Map()
+  const records = dao.findRecordsByFilter(
+    "project_memberships",
+    `user = "${authRecord.id}"`,
+    "created",
+    1000000,
+    0
+  )
+  for (const record of records) result.set(record.getString("project"), record)
+  return result
+}
+
 function project(dao, projectId) {
   try {
     return dao.findRecordById("projects", projectId)
@@ -38,10 +54,14 @@ function project(dao, projectId) {
   }
 }
 
-function capabilities(dao, projectRecord, authRecord) {
+function capabilities(dao, projectRecord, authRecord, prefetchedMembership) {
   const platformAdmin = isPlatformAdmin(authRecord)
   const owner = projectRecord.getString("admin") === authRecord.id
-  const member = owner ? null : membership(dao, projectRecord.id, authRecord.id)
+  const member = owner
+    ? null
+    : prefetchedMembership === undefined
+      ? membership(dao, projectRecord.id, authRecord.id)
+      : prefetchedMembership
   const projectRole = owner ? "owner" : (member ? member.getString("role") : null)
   return {
     projectRole,
@@ -60,12 +80,12 @@ function capabilities(dao, projectRecord, authRecord) {
 function managedProjectIds(dao, authRecord) {
   const ids = new Set()
   if (isPlatformAdmin(authRecord)) {
-    for (const record of dao.findRecordsByFilter("projects", 'id != ""', "name", 500, 0)) ids.add(record.id)
+    for (const record of dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)) ids.add(record.id)
     return [...ids]
   }
-  for (const record of dao.findRecordsByFilter("projects", `admin = "${authRecord.id}"`, "name", 500, 0)) ids.add(record.id)
+  for (const record of dao.findRecordsByFilter("projects", `admin = "${authRecord.id}"`, "name", 1000000, 0)) ids.add(record.id)
   for (const record of dao.findRecordsByFilter(
-    "project_memberships", `user = "${authRecord.id}" && role = "manager"`, "created", 500, 0)) {
+    "project_memberships", `user = "${authRecord.id}" && role = "manager"`, "created", 1000000, 0)) {
     ids.add(record.getString("project"))
   }
   return [...ids]
@@ -119,8 +139,10 @@ function ownedProjectCount(dao, userId) {
   return dao.findRecordsByFilter("projects", `admin = "${userId}"`, "", 1000000, 0).length
 }
 
-function creationCapability(dao, authRecord) {
-  const ownedCount = ownedProjectCount(dao, authRecord.id)
+function creationCapability(dao, authRecord, precomputedOwnedCount) {
+  const ownedCount = precomputedOwnedCount === undefined
+    ? ownedProjectCount(dao, authRecord.id)
+    : precomputedOwnedCount
   if (isPlatformAdmin(authRecord)) {
     return {
       canCreateProjects: true,
@@ -144,8 +166,10 @@ function creationCapability(dao, authRecord) {
   }
 }
 
-function projectJson(dao, projectRecord, authRecord) {
-  const permissions = capabilities(dao, projectRecord, authRecord)
+function projectJson(dao, projectRecord, authRecord, precomputedPermissions) {
+  const permissions = precomputedPermissions === undefined
+    ? capabilities(dao, projectRecord, authRecord)
+    : precomputedPermissions
   const result = {
     id: projectRecord.id,
     name: projectRecord.getString("name"),
@@ -356,6 +380,7 @@ module.exports = {
   assertId,
   isPlatformAdmin,
   membership,
+  membershipsByProject,
   project,
   capabilities,
   requireManager,

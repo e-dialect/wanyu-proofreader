@@ -9,53 +9,304 @@
         <RouterLink v-if="project?.capabilities?.canManage" :to="`/admin/projects/${projectId}/settings#project-details`" class="btn btn-secondary btn-sm mt-3">编辑项目资料</RouterLink>
       </div>
       <nav v-if="project" class="project-section-nav" aria-label="项目页面分区">
-        <RouterLink :to="`/admin/projects/${projectId}/settings`">项目设置（资料与成员）</RouterLink>
-        <RouterLink :to="`/admin/projects/${projectId}/verification`">来源核验与问题处理</RouterLink>
+        <a href="#project-entries">条目管理</a>
         <a href="#project-files">文件准备</a>
         <a href="#project-ledger">批次台账</a>
         <a href="#project-export">导出结果</a>
-        <a href="#project-entries">条目管理</a>
         <a v-if="project?.capabilities?.canManage" href="#project-assist">机器疑点</a>
         <a v-if="project?.capabilities?.canManage" href="#project-scheme">拼音归一</a>
+        <RouterLink :to="`/admin/projects/${projectId}/verification`">来源核验与问题处理</RouterLink>
+        <RouterLink :to="`/admin/projects/${projectId}/settings`">项目设置（资料与成员）</RouterLink>
       </nav>
     </header>
 
-    <div v-if="loadingProject" class="text-muted">加载中...</div>
+    <div v-if="loadingProject" class="project-detail-skeleton" aria-label="正在加载项目">
+      <div class="skeleton-card project-detail-skeleton__heading" aria-hidden="true">
+        <span class="skeleton-line skeleton-line--short"></span>
+        <span class="skeleton-line"></span>
+      </div>
+      <div class="skeleton-card project-detail-skeleton__summary" aria-hidden="true">
+        <span class="skeleton-line"></span>
+        <span class="skeleton-line"></span>
+      </div>
+    </div>
     <div v-else-if="projectError" class="alert alert-error" role="alert">{{ projectError }}</div>
     <template v-else>
       <!-- Project summary -->
-      <section class="card project-overview mb-6" aria-labelledby="project-overview-title">
+      <section class="card project-overview mb-6" aria-labelledby="project-overview-title" :aria-busy="loadingPageStats">
         <div class="project-overview__lead">
           <div>
             <div class="page-eyebrow">实时管线</div>
-            <h2 id="project-overview-title">{{ approvedPct }}% 已完成</h2>
-            <p>{{ pageStats.approved }} / {{ pageStats.total }} 条已形成最终结果</p>
+            <h2 id="project-overview-title">{{ hasLoadedPageStats ? `${approvedPct}% 已完成` : '正在汇总状态' }}</h2>
+            <p v-if="hasLoadedPageStats">{{ pageStats.approved }} / {{ pageStats.total }} 条已形成最终结果</p>
+            <p v-else>条目列表会先显示，统计随后更新。</p>
           </div>
           <div class="project-completion-ring" :style="{ '--completion': approvedPct }" aria-hidden="true">
-            <span>{{ approvedPct }}%</span>
+            <span>{{ hasLoadedPageStats ? `${approvedPct}%` : '—' }}</span>
           </div>
         </div>
         <div class="project-status-actions">
-          <button type="button" :class="{ 'is-selected': selectedStatus === PAGE_STATUS.PENDING }" @click="filterByStatus(PAGE_STATUS.PENDING)">
-            <span>待开始</span><strong>{{ pageStats.unstarted }}</strong><small>尚无校对结果</small>
+          <button type="button" :aria-pressed="selectedStatus === PAGE_STATUS.PENDING" :class="{ 'is-selected': selectedStatus === PAGE_STATUS.PENDING }" @click="filterByStatus(PAGE_STATUS.PENDING)">
+            <span>待开始</span><strong>{{ hasLoadedPageStats ? pageStats.unstarted : '—' }}</strong><small>尚无校对结果</small>
           </button>
-          <button type="button" :class="{ 'is-selected': selectedStatus === ACTIVE_STATUS_FILTER }" @click="filterActivePages">
-            <span>处理中</span><strong>{{ pageStats.active }}</strong><small>校对员已领取</small>
+          <button type="button" :aria-pressed="selectedStatus === ACTIVE_STATUS_FILTER" :class="{ 'is-selected': selectedStatus === ACTIVE_STATUS_FILTER }" @click="filterActivePages">
+            <span>处理中</span><strong>{{ hasLoadedPageStats ? pageStats.active : '—' }}</strong><small>校对员已领取</small>
           </button>
-          <button type="button" :class="{ 'is-selected': selectedStatus === PAGE_STATUS.PROOFREAD }" @click="filterByStatus(PAGE_STATUS.PROOFREAD)">
-            <span>收集中</span><strong>{{ pageStats.collecting }}</strong><small>等待更多独立结果</small>
+          <button type="button" :aria-pressed="selectedStatus === PAGE_STATUS.PROOFREAD" :class="{ 'is-selected': selectedStatus === PAGE_STATUS.PROOFREAD }" @click="filterByStatus(PAGE_STATUS.PROOFREAD)">
+            <span>收集中</span><strong>{{ hasLoadedPageStats ? pageStats.collecting : '—' }}</strong><small>等待更多独立结果</small>
           </button>
           <button
             type="button"
             class="project-status-action--urgent"
+            :aria-pressed="selectedStatus === PAGE_STATUS.ARBITRATION"
             :class="{ 'is-empty': pageStats.arbitration === 0, 'is-selected': selectedStatus === PAGE_STATUS.ARBITRATION }"
             @click="filterByStatus(PAGE_STATUS.ARBITRATION)"
           >
-            <span>待仲裁</span><strong>{{ pageStats.arbitration }}</strong><small>{{ pageStats.arbitration ? '需要管理员处理' : '当前无异常' }}</small>
+            <span>待仲裁</span><strong>{{ hasLoadedPageStats ? pageStats.arbitration : '—' }}</strong><small>{{ pageStats.arbitration ? '需要管理员处理' : '当前无异常' }}</small>
           </button>
-          <button type="button" :class="{ 'is-selected': selectedStatus === PAGE_STATUS.APPROVED }" @click="filterByStatus(PAGE_STATUS.APPROVED)">
-            <span>已完成</span><strong>{{ pageStats.approved }}</strong><small>可导出结果</small>
+          <button type="button" :aria-pressed="selectedStatus === PAGE_STATUS.APPROVED" :class="{ 'is-selected': selectedStatus === PAGE_STATUS.APPROVED }" @click="filterByStatus(PAGE_STATUS.APPROVED)">
+            <span>已完成</span><strong>{{ hasLoadedPageStats ? pageStats.approved : '—' }}</strong><small>可导出结果</small>
           </button>
+        </div>
+      </section>
+      <div v-if="pageStatsError" class="alert alert-error" role="alert">
+        {{ pageStatsError }}
+        <button type="button" class="btn btn-secondary btn-sm ml-2" @click="loadPageStats">重新加载统计</button>
+      </div>
+
+      <!-- Pages list -->
+      <section id="project-entries" ref="entriesSection" class="card project-section">
+        <div class="section-heading admin-entry-heading">
+          <div>
+            <h2>条目管理</h2>
+            <p>共 {{ pageStats.total }} 条<span v-if="hasActiveListFilter">，当前条件显示 {{ totalFilteredItems }} 条</span>。</p>
+          </div>
+          <button v-if="hasActiveListFilter" type="button" class="btn btn-quiet btn-sm" @click="resetListFilters">查看全部条目</button>
+        </div>
+        <div v-if="mutationSuccess" class="alert alert-success" role="status">{{ mutationSuccess }}</div>
+        <div v-if="mutationError" class="alert alert-error" role="alert">{{ mutationError }}</div>
+        <!-- 质量状态汇总：#172 要求管理端能回答「还有多少未收口」。计数走服务端的
+             COUNT(*) GROUP BY（quality-summary），不是把当前这页的条目数一遍——
+             后者会把「本页有 2 条暂缓」说成「项目有 2 条暂缓」。 -->
+        <div v-if="qualitySummaryError" class="alert alert-error mb-2" role="alert">
+          {{ qualitySummaryError }}
+          <button type="button" class="btn btn-secondary btn-sm ml-2" @click="loadQualitySummary">重新加载</button>
+        </div>
+        <div v-else-if="qualitySummary" class="mb-2 flex gap-2 items-center">
+          <span class="text-sm text-muted">质量状态：</span>
+          <span
+            v-for="row in qualitySummaryRows"
+            :key="row.state"
+            :class="qualityStateBadgeClass(row.state)"
+            :title="QUALITY_STATE_HINTS[row.state] || '取值表外的状态，见迁移与代码的差异'"
+          >{{ row.label }} · {{ row.count }}</span>
+          <span class="text-sm text-muted">共 {{ qualitySummary.total }} 条</span>
+        </div>
+        <div v-if="pageStats.total || totalFilteredItems || hasActiveListFilter" class="admin-list-filters mb-4">
+          <label class="admin-filter-field">
+            <span>搜索条目</span>
+            <input
+              v-model="searchQuery"
+              type="search"
+              class="form-control"
+              placeholder="条号、PDF页码、文本或当前校对员"
+              @input="queueListQuery"
+            />
+          </label>
+          <label class="admin-filter-field">
+            <span>状态</span>
+            <select v-model="selectedStatus" class="form-control" @change="queueListQuery">
+              <option value="">全部状态</option>
+              <option :value="ACTIVE_STATUS_FILTER">处理中（已认领/校对中）</option>
+              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label class="admin-filter-field">
+            <span>质量状态</span>
+            <select v-model="selectedQualityState" class="form-control" @change="queueListQuery">
+              <option value="">全部质量状态</option>
+              <option v-for="option in qualityStateOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label class="admin-filter-field"><span>PDF 起始页</span><input v-model="minPdfPage" type="number" min="1" class="form-control" @input="queueListQuery" /></label>
+          <label class="admin-filter-field"><span>PDF 结束页</span><input v-model="maxPdfPage" type="number" min="1" class="form-control" @input="queueListQuery" /></label>
+          <label class="admin-filter-field admin-filter-size">
+            <span>每页显示</span>
+            <select v-model.number="listPageSize" class="form-control" @change="queueListQuery">
+              <option :value="10">10 条</option>
+              <option :value="25">25 条</option>
+              <option :value="50">50 条</option>
+              <option :value="100">100 条</option>
+            </select>
+          </label>
+          <button
+            v-if="hasActiveListFilter"
+            type="button"
+            class="btn btn-secondary btn-sm"
+            @click="resetListFilters"
+          >
+            清除筛选
+          </button>
+        </div>
+        <div v-if="loadingPages && hasLoadedPages" class="admin-entry-updating" role="status">正在更新条目，当前内容仍可查看。</div>
+        <div v-if="pagesError" class="alert alert-error" role="alert">
+          {{ pagesError }}
+          <button type="button" class="btn btn-secondary btn-sm ml-2" @click="loadPages">重新加载</button>
+        </div>
+        <div v-if="loadingPages && !hasLoadedPages" class="admin-entry-skeleton" aria-label="正在加载条目">
+          <div v-for="index in 4" :key="index" class="skeleton-card skeleton-line" aria-hidden="true"></div>
+        </div>
+        <div v-else-if="hasLoadedPages && totalFilteredItems === 0 && !hasActiveListFilter" class="empty-state">
+          <div class="empty-state-mark" aria-hidden="true">条</div>
+          <div class="empty-state-text">暂无条目，请上传 CSV 文件</div>
+        </div>
+        <div v-else-if="hasLoadedPages && filteredPages.length === 0" class="empty-state">
+          <div class="empty-state-mark" aria-hidden="true">筛</div>
+          <div class="empty-state-text">没有符合当前条件的条目</div>
+          <button type="button" class="btn btn-secondary mt-3" @click="resetListFilters">清除筛选</button>
+        </div>
+        <div v-else-if="hasLoadedPages" :class="{ 'admin-entry-results--updating': loadingPages }">
+          <div class="admin-table-actions mb-3" :class="{ 'admin-table-actions--selected': selectedPendingIds.length > 0 }">
+            <div class="selection-summary">
+              <strong>{{ selectedPendingIds.length }}</strong>
+              <span>条待校对条目已选择<br><small>范围始终按完整列表条号计算</small></span>
+            </div>
+            <div class="admin-bulk-actions">
+              <input
+                v-model.trim="rangeSelectInput"
+                type="text"
+                class="form-control"
+                placeholder="输入范围，如 1-33 或 1,3,5-8"
+                aria-label="按完整列表范围选择条目"
+                :disabled="mutatingRows"
+              />
+              <button class="btn btn-secondary btn-sm" @click="selectByRange" :disabled="mutatingRows || !rangeSelectInput">
+                范围选中
+              </button>
+              <button class="btn btn-secondary btn-sm" @click="toggleSelectAllPending" :disabled="mutatingRows || pageStats.unstarted === 0">
+                {{ allPendingSelected ? '取消全选待校对' : '全选待校对' }}
+              </button>
+              <button class="btn btn-secondary btn-sm" @click="moveSelectedRowsDown" :disabled="mutatingRows || selectedPendingIds.length === 0">
+                {{ mutatingRows ? '处理中...' : '批量下移所选' }}
+              </button>
+              <button class="btn btn-danger btn-sm" @click="deleteSelectedRows" :disabled="mutatingRows || selectedPendingIds.length === 0">
+                {{ mutatingRows ? '处理中...' : '批量删除所选' }}
+              </button>
+            </div>
+          </div>
+          <div class="table-wrapper" role="region" tabindex="0" aria-label="项目条目表" :aria-busy="loadingPages">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:64px">选择</th>
+                <th>条号</th>
+                <th>状态</th>
+                <th>校对进度</th>
+                <th>当前校对员</th>
+                <th>不一致次数</th>
+                <th>质量状态</th>
+                <th>OCR文本预览</th>
+                <th style="width:100px">操作</th>
+                <th style="width:160px">顺序</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(pg, idx) in displayedPages" :key="pg.id">
+                <td>
+                  <input
+                    type="checkbox"
+                    :checked="selectedPendingIds.includes(pg.id)"
+                    :disabled="!isPending(pg) || mutatingRows"
+                    :aria-label="`选择第 ${formatItemNo(pg.page_number, displayedPageOffset + idx)} 条`"
+                    @change="toggleRowSelection(pg.id, $event.target.checked)"
+                  />
+                </td>
+                <td>第 {{ formatItemNo(pg.page_number, displayedPageOffset + idx) }} 条</td>
+                <td><span :class="statusBadgeClass(pg.status)" class="badge">{{ statusLabel(pg.status) }}</span></td>
+                <td class="text-sm text-muted"><strong>{{ pg.proofread_count || 0 }} / {{ project?.required_proofreads || 2 }}</strong></td>
+                <td class="text-sm text-muted">{{ pg.expand?.proofreader?.name || pg.expand?.proofreader?.email || '—' }}</td>
+                <td class="text-sm text-muted">{{ pg.mismatch_count || 0 }}</td>
+                <td>
+                  <span :class="qualityStateBadgeClass(pg.quality_state)">{{ qualityStateLabel(pg.quality_state) }}</span>
+                  <button
+                    type="button"
+                    class="btn btn-quiet btn-sm ml-2"
+                    :disabled="mutatingRows"
+                    :aria-label="`设置第 ${pg.page_number} 条的质量状态`"
+                    @click="openQualityDialog(pg)"
+                  >
+                    标注
+                  </button>
+                </td>
+                <td class="text-sm text-muted" style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                  {{ Array.from(pg.ocr_text || '').slice(0, 80).join('') || '—' }}
+                </td>
+                <td>
+                  <div class="flex gap-2">
+                    <RouterLink
+                      v-if="pg.status === PAGE_STATUS.ARBITRATION"
+                      :to="`/admin/projects/${projectId}/arbitration/${pg.id}`"
+                      class="btn btn-warn btn-sm"
+                    >
+                      仲裁
+                    </RouterLink>
+                    <button
+                      type="button"
+                      class="btn btn-quiet btn-sm"
+                      :disabled="mutatingRows"
+                      @click="openContentEdit(pg)"
+                    >
+                      修正
+                    </button>
+                  </div>
+                </td>
+                <td>
+                  <div class="flex gap-2">
+                    <button
+                      class="btn btn-secondary btn-sm"
+                      :disabled="!canMoveUp(pg.id) || mutatingRows"
+                      @click="movePendingRow(pg.id, -1)"
+                    >
+                      上移
+                    </button>
+                    <button
+                      class="btn btn-secondary btn-sm"
+                      :disabled="!canMoveDown(pg.id) || mutatingRows"
+                      @click="movePendingRow(pg.id, 1)"
+                    >
+                      下移
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+          <nav v-if="listPagination.totalPages > 1" class="admin-pagination" aria-label="条目分页">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="listPagination.page <= 1 || loadingPages"
+              @click="changeListPage(listPagination.page - 1)"
+            >
+              上一页
+            </button>
+            <span class="text-sm text-muted">
+              第 {{ listPagination.page }} / {{ listPagination.totalPages }} 页
+            </span>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="listPagination.page >= listPagination.totalPages || loadingPages"
+              @click="changeListPage(listPagination.page + 1)"
+            >
+              下一页
+            </button>
+          </nav>
         </div>
       </section>
 
@@ -312,238 +563,6 @@
         </div>
       </section>
 
-      <!-- Pages list -->
-      <section id="project-entries" ref="entriesSection" class="card project-section">
-        <div class="section-heading admin-entry-heading">
-          <div>
-            <h2>条目管理</h2>
-            <p>共 {{ pageStats.total }} 条<span v-if="hasActiveListFilter">，当前条件显示 {{ totalFilteredItems }} 条</span>。</p>
-          </div>
-          <button v-if="hasActiveListFilter" type="button" class="btn btn-quiet btn-sm" @click="resetListFilters">查看全部条目</button>
-        </div>
-        <div v-if="mutationSuccess" class="alert alert-success" role="status">{{ mutationSuccess }}</div>
-        <div v-if="mutationError" class="alert alert-error" role="alert">{{ mutationError }}</div>
-        <!-- 质量状态汇总：#172 要求管理端能回答「还有多少未收口」。计数走服务端的
-             COUNT(*) GROUP BY（quality-summary），不是把当前这页的条目数一遍——
-             后者会把「本页有 2 条暂缓」说成「项目有 2 条暂缓」。 -->
-        <div v-if="qualitySummaryError" class="alert alert-error mb-2" role="alert">
-          {{ qualitySummaryError }}
-          <button type="button" class="btn btn-secondary btn-sm ml-2" @click="loadQualitySummary">重新加载</button>
-        </div>
-        <div v-else-if="qualitySummary" class="mb-2 flex gap-2 items-center">
-          <span class="text-sm text-muted">质量状态：</span>
-          <span
-            v-for="row in qualitySummaryRows"
-            :key="row.state"
-            :class="qualityStateBadgeClass(row.state)"
-            :title="QUALITY_STATE_HINTS[row.state] || '取值表外的状态，见迁移与代码的差异'"
-          >{{ row.label }} · {{ row.count }}</span>
-          <span class="text-sm text-muted">共 {{ qualitySummary.total }} 条</span>
-        </div>
-        <div v-if="pageStats.total" class="admin-list-filters mb-4">
-          <label class="admin-filter-field">
-            <span>搜索条目</span>
-            <input
-              v-model="searchQuery"
-              type="search"
-              class="form-control"
-              placeholder="条号、PDF页码、文本或当前校对员"
-            />
-          </label>
-          <label class="admin-filter-field">
-            <span>状态</span>
-            <select v-model="selectedStatus" class="form-control">
-              <option value="">全部状态</option>
-              <option :value="ACTIVE_STATUS_FILTER">处理中（已认领/校对中）</option>
-              <option v-for="option in statusOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label class="admin-filter-field">
-            <span>质量状态</span>
-            <select v-model="selectedQualityState" class="form-control">
-              <option value="">全部质量状态</option>
-              <option v-for="option in qualityStateOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label class="admin-filter-field"><span>PDF 起始页</span><input v-model="minPdfPage" type="number" min="1" class="form-control" /></label>
-          <label class="admin-filter-field"><span>PDF 结束页</span><input v-model="maxPdfPage" type="number" min="1" class="form-control" /></label>
-          <label class="admin-filter-field admin-filter-size">
-            <span>每页显示</span>
-            <select v-model.number="listPageSize" class="form-control">
-              <option :value="10">10 条</option>
-              <option :value="25">25 条</option>
-              <option :value="50">50 条</option>
-              <option :value="100">100 条</option>
-            </select>
-          </label>
-          <button
-            v-if="hasActiveListFilter"
-            type="button"
-            class="btn btn-secondary btn-sm"
-            @click="resetListFilters"
-          >
-            清除筛选
-          </button>
-        </div>
-        <div v-if="loadingPages" class="text-muted text-sm">加载中...</div>
-        <div v-else-if="pagesError" class="alert alert-error" role="alert">
-          {{ pagesError }}
-          <button type="button" class="btn btn-secondary btn-sm ml-2" @click="loadPages">重新加载</button>
-        </div>
-        <div v-else-if="pageStats.total === 0" class="empty-state">
-          <div class="empty-state-mark" aria-hidden="true">条</div>
-          <div class="empty-state-text">暂无条目，请上传 CSV 文件</div>
-        </div>
-        <div v-else-if="filteredPages.length === 0" class="empty-state">
-          <div class="empty-state-mark" aria-hidden="true">筛</div>
-          <div class="empty-state-text">没有符合当前条件的条目</div>
-          <button type="button" class="btn btn-secondary mt-3" @click="resetListFilters">清除筛选</button>
-        </div>
-        <div v-else>
-          <div class="admin-table-actions mb-3" :class="{ 'admin-table-actions--selected': selectedPendingIds.length > 0 }">
-            <div class="selection-summary">
-              <strong>{{ selectedPendingIds.length }}</strong>
-              <span>条待校对条目已选择<br><small>范围始终按完整列表条号计算</small></span>
-            </div>
-            <div class="admin-bulk-actions">
-              <input
-                v-model.trim="rangeSelectInput"
-                type="text"
-                class="form-control"
-                placeholder="输入范围，如 1-33 或 1,3,5-8"
-                aria-label="按完整列表范围选择条目"
-                :disabled="mutatingRows"
-              />
-              <button class="btn btn-secondary btn-sm" @click="selectByRange" :disabled="mutatingRows || !rangeSelectInput">
-                范围选中
-              </button>
-              <button class="btn btn-secondary btn-sm" @click="toggleSelectAllPending" :disabled="mutatingRows || pageStats.unstarted === 0">
-                {{ allPendingSelected ? '取消全选待校对' : '全选待校对' }}
-              </button>
-              <button class="btn btn-secondary btn-sm" @click="moveSelectedRowsDown" :disabled="mutatingRows || selectedPendingIds.length === 0">
-                {{ mutatingRows ? '处理中...' : '批量下移所选' }}
-              </button>
-              <button class="btn btn-danger btn-sm" @click="deleteSelectedRows" :disabled="mutatingRows || selectedPendingIds.length === 0">
-                {{ mutatingRows ? '处理中...' : '批量删除所选' }}
-              </button>
-            </div>
-          </div>
-          <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:64px">选择</th>
-                <th>条号</th>
-                <th>状态</th>
-                <th>校对进度</th>
-                <th>当前校对员</th>
-                <th>不一致次数</th>
-                <th>质量状态</th>
-                <th>OCR文本预览</th>
-                <th style="width:100px">操作</th>
-                <th style="width:160px">顺序</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(pg, idx) in displayedPages" :key="pg.id">
-                <td>
-                  <input
-                    type="checkbox"
-                    :checked="selectedPendingIds.includes(pg.id)"
-                    :disabled="!isPending(pg) || mutatingRows"
-                    :aria-label="`选择第 ${formatItemNo(pg.page_number, displayedPageOffset + idx)} 条`"
-                    @change="toggleRowSelection(pg.id, $event.target.checked)"
-                  />
-                </td>
-                <td>第 {{ formatItemNo(pg.page_number, displayedPageOffset + idx) }} 条</td>
-                <td><span :class="statusBadgeClass(pg.status)" class="badge">{{ statusLabel(pg.status) }}</span></td>
-                <td class="text-sm text-muted"><strong>{{ pg.proofread_count || 0 }} / {{ project?.required_proofreads || 2 }}</strong></td>
-                <td class="text-sm text-muted">{{ pg.expand?.proofreader?.name || pg.expand?.proofreader?.email || '—' }}</td>
-                <td class="text-sm text-muted">{{ pg.mismatch_count || 0 }}</td>
-                <td>
-                  <span :class="qualityStateBadgeClass(pg.quality_state)">{{ qualityStateLabel(pg.quality_state) }}</span>
-                  <button
-                    type="button"
-                    class="btn btn-quiet btn-sm ml-2"
-                    :disabled="mutatingRows"
-                    :aria-label="`设置第 ${pg.page_number} 条的质量状态`"
-                    @click="openQualityDialog(pg)"
-                  >
-                    标注
-                  </button>
-                </td>
-                <td class="text-sm text-muted" style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-                  {{ Array.from(pg.ocr_text || '').slice(0, 80).join('') || '—' }}
-                </td>
-                <td>
-                  <div class="flex gap-2">
-                    <RouterLink
-                      v-if="pg.status === PAGE_STATUS.ARBITRATION"
-                      :to="`/admin/projects/${projectId}/arbitration/${pg.id}`"
-                      class="btn btn-warn btn-sm"
-                    >
-                      仲裁
-                    </RouterLink>
-                    <button
-                      type="button"
-                      class="btn btn-quiet btn-sm"
-                      :disabled="mutatingRows"
-                      @click="openContentEdit(pg)"
-                    >
-                      修正
-                    </button>
-                  </div>
-                </td>
-                <td>
-                  <div class="flex gap-2">
-                    <button
-                      class="btn btn-secondary btn-sm"
-                      :disabled="!canMoveUp(pg.id) || mutatingRows"
-                      @click="movePendingRow(pg.id, -1)"
-                    >
-                      上移
-                    </button>
-                    <button
-                      class="btn btn-secondary btn-sm"
-                      :disabled="!canMoveDown(pg.id) || mutatingRows"
-                      @click="movePendingRow(pg.id, 1)"
-                    >
-                      下移
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          </div>
-          <nav v-if="listPagination.totalPages > 1" class="admin-pagination" aria-label="条目分页">
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              :disabled="listPagination.page <= 1"
-              @click="currentListPage -= 1"
-            >
-              上一页
-            </button>
-            <span class="text-sm text-muted">
-              第 {{ listPagination.page }} / {{ listPagination.totalPages }} 页
-            </span>
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              :disabled="listPagination.page >= listPagination.totalPages"
-              @click="currentListPage += 1"
-            >
-              下一页
-            </button>
-          </nav>
-        </div>
-      </section>
-
       <!-- #234 机器疑点：列级/页级与跨行判据只能整批跑，此前只有 curl 能触发 -->
       <section v-if="project?.capabilities?.canManage" id="project-assist" class="card project-section mb-6">
         <div class="section-heading">
@@ -679,7 +698,7 @@
       </section>
 
       <!-- #190 拼音归一：机器判不出来的进复核队列，人工结论写在条目上 -->
-      <section v-if="project?.capabilities?.canManage" id="project-scheme" class="card project-section mb-6">
+      <section v-if="project?.capabilities?.canManage" id="project-scheme" ref="schemeSection" class="card project-section mb-6" :aria-busy="schemeLoading">
         <div class="section-heading">
           <div>
             <h2>拼音归一</h2>
@@ -690,7 +709,11 @@
           </div>
         </div>
 
-        <p v-if="schemeNotice" class="alert alert-warning" role="alert">{{ schemeNotice }}</p>
+        <div v-if="!schemeLoaded" class="skeleton-card" aria-label="正在加载拼音归一">
+          <span class="skeleton-line skeleton-line--short" aria-hidden="true"></span>
+          <span class="skeleton-line" aria-hidden="true"></span>
+        </div>
+        <p v-else-if="schemeNotice" class="alert alert-warning" role="alert">{{ schemeNotice }}</p>
 
         <template v-else>
           <div class="admin-list-filters mb-4">
@@ -859,7 +882,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
-import { parseRangeInput } from '@/lib/adminPageList'
+import { adminPageRouteQuery, normalizeAdminPageQuery, parseRangeInput } from '@/lib/adminPageList'
 import { summarizePages } from '@/lib/workspaceInsights'
 import {
   PAGE_STATUS,
@@ -869,6 +892,7 @@ import {
 } from '@/constants/pageStatus'
 import {
   deletePendingPages,
+  getAdminProjectPageStats,
   listAdminProjectPages,
   listAllProjectPages,
   reorderPendingPages
@@ -941,7 +965,12 @@ const router = useRouter()
 const auth = useAuthStore()
 const projectId = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
 const ACTIVE_STATUS_FILTER = 'active'
-const initialStatus = Array.isArray(route.query.status) ? route.query.status[0] : route.query.status
+const listQueryOptions = {
+  statuses: [ACTIVE_STATUS_FILTER, ...Object.keys(PAGE_STATUS_LABELS)],
+  qualityStates: QUALITY_STATES,
+  pageSizes: [10, 25, 50, 100]
+}
+const initialListQuery = normalizeAdminPageQuery(route.query, listQueryOptions)
 
 const project = ref(null)
 const projectError = ref('')
@@ -949,12 +978,17 @@ const pages = ref([])
 const pagesError = ref('')
 const loadingProject = ref(true)
 const loadingPages = ref(true)
+const hasLoadedPages = ref(false)
 const pageStats = ref(summarizePages([]))
+const loadingPageStats = ref(true)
+const hasLoadedPageStats = ref(false)
+const pageStatsError = ref('')
 const totalFilteredItems = ref(0)
 const serverTotalPages = ref(1)
-const minPdfPage = ref('')
-const maxPdfPage = ref('')
+const minPdfPage = ref(initialListQuery.minPage)
+const maxPdfPage = ref(initialListQuery.maxPage)
 let pageLoadGeneration = 0
+let pageStatsLoadGeneration = 0
 let searchTimer
 
 const pdfInput = ref(null)
@@ -995,17 +1029,14 @@ const ledger = ref(null)
 const ledgerError = ref('')
 const loadingLedger = ref(false)
 const entriesSection = ref(null)
+const schemeSection = ref(null)
 const selectedPendingIds = ref([])
 const rangeSelectInput = ref('')
-const searchQuery = ref('')
-const selectedStatus = ref(
-  initialStatus === ACTIVE_STATUS_FILTER || PAGE_STATUS_LABELS[initialStatus]
-    ? String(initialStatus)
-    : ''
-)
-const currentListPage = ref(1)
-const listPageSize = ref(25)
-const selectedQualityState = ref('')
+const searchQuery = ref(initialListQuery.q)
+const selectedStatus = ref(initialListQuery.status)
+const currentListPage = ref(initialListQuery.page)
+const listPageSize = ref(initialListQuery.perPage)
+const selectedQualityState = ref(initialListQuery.qualityState)
 const qualitySummary = ref(null)
 const qualitySummaryError = ref('')
 const qualityTarget = ref(null)
@@ -1024,6 +1055,11 @@ const schemeJob = ref(null)
 const schemeBusy = ref(false)
 const schemeError = ref('')
 const schemeSuccess = ref('')
+const schemeLoading = ref(false)
+const schemeLoaded = ref(false)
+let schemeObserver
+let pdfResumeIdleId
+let pdfResumeTimer
 const reviewRows = ref([])
 const reviewDraft = ref({})
 const reviewBusy = ref(false)
@@ -1087,17 +1123,46 @@ async function gotoReviewPage(page) {
 }
 
 async function loadSchemeState() {
+  if (schemeLoading.value) return
+  schemeLoading.value = true
+  schemeError.value = ''
   try {
-    const adapters = await listSchemeAdapters()
+    const [adapters, conversions] = await Promise.all([
+      listSchemeAdapters(),
+      listConversions(projectId),
+      loadReviews()
+    ])
     schemeOptions.value = adapters.schemes || []
     schemeNotice.value = adapterNotice(adapters)
-    schemeError.value = ''
-    if (schemeNotice.value) return
-    const conversions = await listConversions(projectId)
     schemeJob.value = (conversions.items || [])[0] || null
-    await loadReviews()
   } catch (e) {
     schemeError.value = getPbMessage(e, '拼音归一状态加载失败。')
+  } finally {
+    schemeLoaded.value = true
+    schemeLoading.value = false
+  }
+}
+
+function setupSchemeObserver() {
+  if (!schemeSection.value) return
+  if (typeof IntersectionObserver === 'undefined') {
+    loadSchemeState()
+    return
+  }
+  schemeObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((entry) => entry.isIntersecting)) return
+    schemeObserver?.disconnect()
+    if (!schemeLoaded.value) loadSchemeState()
+  }, { rootMargin: '240px' })
+  schemeObserver.observe(schemeSection.value)
+}
+
+function scheduleSecondaryLoads() {
+  const load = () => Promise.all([loadPdfResume(), loadLedger()])
+  if (typeof window.requestIdleCallback === 'function') {
+    pdfResumeIdleId = window.requestIdleCallback(load, { timeout: 1500 })
+  } else {
+    pdfResumeTimer = setTimeout(load, 0)
   }
 }
 
@@ -1206,14 +1271,11 @@ const ocrJobStatusLabel = computed(() => ({
 const csvPreviewHeaders = computed(() => csvInspection.value?.headers.slice(0, 6) || [])
 const pdfResumeExpired = computed(() => Boolean(pdfResume.value?.expired))
 
-watch([searchQuery, selectedStatus, selectedQualityState, listPageSize, minPdfPage, maxPdfPage], () => {
-  currentListPage.value = 1
+watch(() => route.query, () => {
+  if (!project.value) return
+  applyListQuery(route.query)
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(loadPages, 200)
-})
-watch(currentListPage, () => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(loadPages, 200)
+  loadPages()
 })
 
 onMounted(async () => {
@@ -1239,8 +1301,11 @@ onMounted(async () => {
     return
   }
   loadingProject.value = false
-  await Promise.all([loadPages(), loadQualitySummary(), loadLedger(), loadPdfResume(), loadSchemeState()])
-  if (selectedStatus.value) {
+  await nextTick()
+  setupSchemeObserver()
+  await Promise.all([loadPages(), loadPageStats(), loadQualitySummary()])
+  scheduleSecondaryLoads()
+  if (hasActiveListFilter.value) {
     await nextTick()
     scrollToEntries()
   }
@@ -1249,12 +1314,63 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   projectExportController?.abort()
   pdfUploadController?.abort()
+  schemeObserver?.disconnect()
+  if (pdfResumeIdleId) window.cancelIdleCallback?.(pdfResumeIdleId)
+  clearTimeout(pdfResumeTimer)
   pdfPollGeneration += 1
   csvPollGeneration += 1
   pageLoadGeneration += 1
+  pageStatsLoadGeneration += 1
   schemePollGeneration += 1
   clearTimeout(searchTimer)
 })
+
+function applyListQuery(query) {
+  const normalized = normalizeAdminPageQuery(query, listQueryOptions)
+  searchQuery.value = normalized.q
+  selectedStatus.value = normalized.status
+  selectedQualityState.value = normalized.qualityState
+  minPdfPage.value = normalized.minPage
+  maxPdfPage.value = normalized.maxPage
+  currentListPage.value = normalized.page
+  listPageSize.value = normalized.perPage
+}
+
+function currentListQuery() {
+  return {
+    q: searchQuery.value.trim(),
+    status: selectedStatus.value,
+    qualityState: selectedQualityState.value,
+    minPage: minPdfPage.value,
+    maxPage: maxPdfPage.value,
+    page: currentListPage.value,
+    perPage: listPageSize.value
+  }
+}
+
+function commitListQuery({ page = currentListPage.value, push = false } = {}) {
+  currentListPage.value = page
+  const next = adminPageRouteQuery(currentListQuery())
+  const current = adminPageRouteQuery(normalizeAdminPageQuery(route.query, listQueryOptions))
+  if (JSON.stringify(next) === JSON.stringify(current)) {
+    loadPages()
+    return
+  }
+  const query = { ...route.query }
+  for (const key of ['q', 'status', 'qualityState', 'minPage', 'maxPage', 'page', 'perPage']) delete query[key]
+  Object.assign(query, next)
+  router[push ? 'push' : 'replace']({ query })
+}
+
+function queueListQuery() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => commitListQuery({ page: 1 }), 300)
+}
+
+function changeListPage(page) {
+  if (page < 1 || page > serverTotalPages.value || page === currentListPage.value) return
+  commitListQuery({ page, push: true })
+}
 
 async function loadPages() {
   const generation = ++pageLoadGeneration
@@ -1268,15 +1384,39 @@ async function loadPages() {
       minPage: minPdfPage.value, maxPage: maxPdfPage.value
     })
     if (generation !== pageLoadGeneration) return
+    const pageWasClamped = currentListPage.value !== result.page
     pages.value = result.items
     totalFilteredItems.value = result.totalItems
     serverTotalPages.value = result.totalPages
     currentListPage.value = result.page
-    pageStats.value = result.stats
+    hasLoadedPages.value = true
+    if (pageWasClamped) commitListQuery({ page: result.page })
   } catch (e) {
-    if (generation === pageLoadGeneration) pagesError.value = getPbMessage(e, '条目列表加载失败，请稍后重试。')
+    if (generation === pageLoadGeneration) {
+      const message = getPbMessage(e, '条目列表加载失败，请稍后重试。')
+      pagesError.value = hasLoadedPages.value ? `${message} 当前仍显示上次结果。` : message
+    }
   } finally {
     if (generation === pageLoadGeneration) loadingPages.value = false
+  }
+}
+
+async function loadPageStats() {
+  const generation = ++pageStatsLoadGeneration
+  loadingPageStats.value = true
+  pageStatsError.value = ''
+  try {
+    const result = await getAdminProjectPageStats(projectId)
+    if (generation !== pageStatsLoadGeneration) return
+    pageStats.value = result
+    hasLoadedPageStats.value = true
+  } catch (e) {
+    if (generation === pageStatsLoadGeneration) {
+      const message = getPbMessage(e, '项目状态统计加载失败。')
+      pageStatsError.value = hasLoadedPageStats.value ? `${message} 当前仍显示上次结果。` : message
+    }
+  } finally {
+    if (generation === pageStatsLoadGeneration) loadingPageStats.value = false
   }
 }
 
@@ -1370,8 +1510,8 @@ function resetListFilters() {
   maxPdfPage.value = ''
   selectedStatus.value = ''
   selectedQualityState.value = ''
-  currentListPage.value = 1
-  syncStatusQuery('')
+  listPageSize.value = 25
+  commitListQuery({ page: 1 })
 }
 
 function filterActivePages() {
@@ -1380,17 +1520,9 @@ function filterActivePages() {
 
 async function filterByStatus(status) {
   selectedStatus.value = selectedStatus.value === status ? '' : status
-  currentListPage.value = 1
-  syncStatusQuery(selectedStatus.value)
+  commitListQuery({ page: 1 })
   await nextTick()
   scrollToEntries()
-}
-
-function syncStatusQuery(status) {
-  const query = { ...route.query }
-  if (status) query.status = status
-  else delete query.status
-  router.replace({ query })
 }
 
 function scrollToEntries() {
@@ -1614,7 +1746,7 @@ async function confirmCsvImport() {
     selectedPendingIds.value = []
     // 导入会改变条目总数，汇总必须跟着走：只刷表格的话，三枚分桶芯片与「共 N 条」
     // 会停在旧数字上，与正下方刚刷新出来的表格对不上账（#172 验收第 4 条问的就是这个数）。
-    await Promise.all([loadPages(), loadQualitySummary(), loadLedger()])
+    await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
   } catch (e) {
     csvError.value = getPbMessage(e, '确认导入失败，请稍后重试。')
   } finally {
@@ -1831,7 +1963,7 @@ async function deleteSelectedRows() {
     await deletePendingPages(projectId, selectedPendingIds.value)
     selectedPendingIds.value = []
     // 同上：删除同样改变条目总数，汇总不跟着走就会与表格对不上账。
-    await Promise.all([loadPages(), loadQualitySummary(), loadLedger()])
+    await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
     mutationSuccess.value = `已删除 ${deleteCount} 条待校对条目，并重新整理条号。`
   } catch (e) {
     mutationError.value = getPbMessage(e, '批量删除失败，请重试')

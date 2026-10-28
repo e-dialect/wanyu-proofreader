@@ -1,4 +1,11 @@
 import pb from '@/lib/pocketbase'
+import { serializeProjectInsightsQuery } from '@/lib/adminProjectInsights'
+
+export async function listProjectInsights(query = {}) {
+  return pb.send(`/api/fangji/project-insights?${serializeProjectInsightsQuery(query)}`, {
+    requestKey: null
+  })
+}
 
 export async function getProject(projectId) {
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}`, {
