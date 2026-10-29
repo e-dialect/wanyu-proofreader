@@ -37,8 +37,9 @@
         <div class="project-overview__lead">
           <div>
             <div class="page-eyebrow">实时管线</div>
-            <h2 id="project-overview-title">{{ hasLoadedPageStats ? `${approvedPct}% 已完成` : '正在汇总状态' }}</h2>
+            <h2 id="project-overview-title">{{ hasLoadedPageStats ? `${approvedPct}% 已完成` : pageStatsError ? '状态统计暂不可用' : '正在汇总状态' }}</h2>
             <p v-if="hasLoadedPageStats">{{ pageStats.approved }} / {{ pageStats.total }} 条已形成最终结果</p>
+            <p v-else-if="pageStatsError">当前无法判断项目总体完成情况。</p>
             <p v-else>条目列表会先显示，统计随后更新。</p>
           </div>
           <div class="project-completion-ring" :style="{ '--completion': approvedPct }" aria-hidden="true">
@@ -59,10 +60,10 @@
             type="button"
             class="project-status-action--urgent"
             :aria-pressed="selectedStatus === PAGE_STATUS.ARBITRATION"
-            :class="{ 'is-empty': pageStats.arbitration === 0, 'is-selected': selectedStatus === PAGE_STATUS.ARBITRATION }"
+            :class="{ 'is-empty': hasLoadedPageStats && pageStats.arbitration === 0, 'is-selected': selectedStatus === PAGE_STATUS.ARBITRATION }"
             @click="filterByStatus(PAGE_STATUS.ARBITRATION)"
           >
-            <span>待仲裁</span><strong>{{ hasLoadedPageStats ? pageStats.arbitration : '—' }}</strong><small>{{ pageStats.arbitration ? '需要管理员处理' : '当前无异常' }}</small>
+            <span>待仲裁</span><strong>{{ hasLoadedPageStats ? pageStats.arbitration : '—' }}</strong><small>{{ hasLoadedPageStats ? (pageStats.arbitration ? '需要管理员处理' : '当前无异常') : '统计数据尚未加载' }}</small>
           </button>
           <button type="button" :aria-pressed="selectedStatus === PAGE_STATUS.APPROVED" :class="{ 'is-selected': selectedStatus === PAGE_STATUS.APPROVED }" @click="filterByStatus(PAGE_STATUS.APPROVED)">
             <span>已完成</span><strong>{{ hasLoadedPageStats ? pageStats.approved : '—' }}</strong><small>可导出结果</small>
@@ -79,7 +80,9 @@
         <div class="section-heading admin-entry-heading">
           <div>
             <h2>条目管理</h2>
-            <p>共 {{ pageStats.total }} 条<span v-if="hasActiveListFilter">，当前条件显示 {{ totalFilteredItems }} 条</span>。</p>
+            <p v-if="hasLoadedPageStats">共 {{ pageStats.total }} 条<span v-if="hasActiveListFilter">，当前条件显示 {{ totalFilteredItems }} 条</span>。</p>
+            <p v-else-if="hasLoadedPages">当前条件显示 {{ totalFilteredItems }} 条；项目总数暂不可用。</p>
+            <p v-else>条目总数暂不可用。</p>
           </div>
           <button v-if="hasActiveListFilter" type="button" class="btn btn-quiet btn-sm" @click="resetListFilters">查看全部条目</button>
         </div>
@@ -187,7 +190,7 @@
               <button class="btn btn-secondary btn-sm" @click="selectByRange" :disabled="mutatingRows || !rangeSelectInput">
                 范围选中
               </button>
-              <button class="btn btn-secondary btn-sm" @click="toggleSelectAllPending" :disabled="mutatingRows || pageStats.unstarted === 0">
+              <button class="btn btn-secondary btn-sm" @click="toggleSelectAllPending" :disabled="mutatingRows || !hasLoadedPageStats || pageStats.unstarted === 0">
                 {{ allPendingSelected ? '取消全选待校对' : '全选待校对' }}
               </button>
               <button class="btn btn-secondary btn-sm" @click="moveSelectedRowsDown" :disabled="mutatingRows || selectedPendingIds.length === 0">
@@ -1242,7 +1245,7 @@ const displayedPages = computed(() => pages.value)
 const displayedPageOffset = computed(() => (currentListPage.value - 1) * listPageSize.value)
 const hasActiveListFilter = computed(() => Boolean(searchQuery.value.trim() || selectedStatus.value || selectedQualityState.value || minPdfPage.value || maxPdfPage.value))
 const allPendingSelected = computed(() => {
-  return pageStats.value.unstarted > 0 && selectedPendingIds.value.length === pageStats.value.unstarted
+  return hasLoadedPageStats.value && pageStats.value.unstarted > 0 && selectedPendingIds.value.length === pageStats.value.unstarted
 })
 const csvJobProgress = computed(() => {
   const processed = Number(csvJob.value?.processed_count || 0)
@@ -1272,10 +1275,9 @@ const csvPreviewHeaders = computed(() => csvInspection.value?.headers.slice(0, 6
 const pdfResumeExpired = computed(() => Boolean(pdfResume.value?.expired))
 
 watch(() => route.query, () => {
-  if (!project.value) return
   applyListQuery(route.query)
   clearTimeout(searchTimer)
-  loadPages()
+  if (project.value) loadPages()
 })
 
 onMounted(async () => {
@@ -1301,6 +1303,7 @@ onMounted(async () => {
     return
   }
   loadingProject.value = false
+  applyListQuery(route.query)
   await nextTick()
   setupSchemeObserver()
   await Promise.all([loadPages(), loadPageStats(), loadQualitySummary()])

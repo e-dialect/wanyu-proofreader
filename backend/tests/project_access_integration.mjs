@@ -38,6 +38,14 @@ async function request(path, { expected = 200, ...options } = {}) {
   return response.payload
 }
 
+async function inBatches(values, size, worker) {
+  const results = []
+  for (let index = 0; index < values.length; index += size) {
+    results.push(...await Promise.all(values.slice(index, index + size).map(worker)))
+  }
+  return results
+}
+
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`
 const password = 'ProjectAccess123!'
 
@@ -553,6 +561,46 @@ try {
   assert.deepEqual(concurrentResults.map((item) => item.status).sort(), [201, 403])
   const concurrentProject = concurrentResults.find((item) => item.status === 201).payload
   projectIds.push(concurrentProject.id)
+
+  const superAuth = await request('/api/collections/_superusers/auth-with-password', {
+    method: 'POST',
+    body: {
+      identity: process.env.PB_SUPER_EMAIL || process.env.PB_ADMIN_EMAIL,
+      password: process.env.PB_SUPER_PASSWORD || process.env.PB_ADMIN_PASSWORD
+    }
+  })
+  const boundaryOwner = await createUser('boundary-owner')
+  const boundaryPrefix = `boundary-${suffix}-`
+  const boundaryProjects = await inBatches(Array.from({ length: 201 }, (_, index) => index), 20, async (index) => {
+    const record = await request('/api/collections/projects/records', {
+      method: 'POST',
+      token: superAuth.token,
+      body: {
+        name: `${boundaryPrefix}${String(index).padStart(3, '0')}`,
+        admin: boundaryOwner.id,
+        access_mode: 'members_only',
+        required_proofreads: 2
+      }
+    })
+    projectIds.push(record.id)
+    return record
+  })
+  await inBatches(boundaryProjects.flatMap((project) => [
+    { project: project.id, user: manager.id, role: 'manager' },
+    { project: project.id, user: proofreader.id, role: 'proofreader' }
+  ]), 20, (membership) => request('/api/collections/project_memberships/records', {
+    method: 'POST',
+    token: superAuth.token,
+    body: { ...membership, source: 'assigned', created_by: platform.id }
+  }))
+  const boundaryManaged = (await request('/api/fangji/projects?scope=managed', { token: manager.token }))
+    .filter((project) => project.name.startsWith(boundaryPrefix))
+  assert.equal(boundaryManaged.length, 201, 'managed list must not hit the filter-expression ceiling')
+  assert.equal(new Set(boundaryManaged.map((project) => project.id)).size, 201)
+  const boundaryProofreading = (await request('/api/fangji/projects?scope=proofreading', { token: proofreader.token }))
+    .filter((project) => project.name.startsWith(boundaryPrefix))
+  assert.equal(boundaryProofreading.length, 201, 'proofreading list must not hit the filter-expression ceiling')
+  assert.equal(new Set(boundaryProofreading.map((project) => project.id)).size, 201)
 
   const grants = await request('/api/fangji/platform/creator-grants', { token: platform.token })
   assert.equal(grants.find((item) => item.user === creator.id).projectLimit, 1)

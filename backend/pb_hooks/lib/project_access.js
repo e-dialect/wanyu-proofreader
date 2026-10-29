@@ -54,6 +54,39 @@ function project(dao, projectId) {
   }
 }
 
+// PocketBase caps filter expressions well below the number of projects a
+// manager may own. Batch relation-derived IDs so the query size stays fixed.
+const projectIdBatchSize = 100
+
+function projectsByIds(dao, projectIds) {
+  const records = []
+  const unique = [...new Set(projectIds.filter(Boolean))]
+  for (let index = 0; index < unique.length; index += projectIdBatchSize) {
+    const batch = unique.slice(index, index + projectIdBatchSize)
+    const filter = batch.map((id) => `id = "${id}"`).join(" || ")
+    records.push(...dao.findRecordsByFilter("projects", filter, "name", batch.length, 0))
+  }
+  return records
+}
+
+function mergeProjects(...groups) {
+  const byId = new Map()
+  for (const group of groups) {
+    for (const record of group) byId.set(record.id, record)
+  }
+  return [...byId.values()].sort((left, right) => {
+    const leftName = left.getString("name").toLowerCase()
+    const rightName = right.getString("name").toLowerCase()
+    return leftName < rightName ? -1 : leftName > rightName ? 1 : 0
+  })
+}
+
+function projectIdsWithRole(memberships, role) {
+  return [...memberships]
+    .filter(([, member]) => member.getString("role") === role)
+    .map(([projectId]) => projectId)
+}
+
 function capabilities(dao, projectRecord, authRecord, prefetchedMembership) {
   const platformAdmin = isPlatformAdmin(authRecord)
   const owner = projectRecord.getString("admin") === authRecord.id
@@ -382,6 +415,9 @@ module.exports = {
   membership,
   membershipsByProject,
   project,
+  projectsByIds,
+  mergeProjects,
+  projectIdsWithRole,
   capabilities,
   requireManager,
   managedProjectIds,

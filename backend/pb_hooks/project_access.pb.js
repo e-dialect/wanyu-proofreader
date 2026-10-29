@@ -40,7 +40,12 @@ routerAdd("GET", "/api/fangji/access-context", (c) => {
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/projects", (c) => {
-  const { auth: fangjiAuth, isPlatformAdmin: fangjiIsPlatformAdmin, capabilities: fangjiCapabilities, membershipsByProject: fangjiMembershipsByProject, projectJson: fangjiProjectJson } = require(`${__hooks}/lib/project_access.js`)
+  const {
+    auth: fangjiAuth, isPlatformAdmin: fangjiIsPlatformAdmin, capabilities: fangjiCapabilities,
+    membershipsByProject: fangjiMembershipsByProject, projectsByIds: fangjiProjectsByIds,
+    mergeProjects: fangjiMergeProjects, projectIdsWithRole: fangjiProjectIdsWithRole,
+    projectJson: fangjiProjectJson
+  } = require(`${__hooks}/lib/project_access.js`)
   const auth = fangjiAuth(c)
   const scope = String(c.request.url.query().get("scope") || "all")
   if (!["all", "managed", "proofreading", "discoverable"].includes(scope)) {
@@ -50,21 +55,17 @@ routerAdd("GET", "/api/fangji/projects", (c) => {
   const result = []
   const platformAdmin = fangjiIsPlatformAdmin(auth)
   const memberships = fangjiMembershipsByProject(dao, auth)
-  let projects = null
+  let projects = []
   if (scope === "all" || scope === "discoverable" || (scope === "managed" && platformAdmin)) {
     projects = dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)
+  } else if (scope === "managed") {
+    const owned = dao.findRecordsByFilter("projects", `admin = "${auth.id}"`, "name", 1000000, 0)
+    projects = fangjiMergeProjects(
+      owned,
+      fangjiProjectsByIds(dao, fangjiProjectIdsWithRole(memberships, "manager"))
+    )
   } else {
-    const filters = []
-    if (scope === "managed") filters.push(`admin = "${auth.id}"`)
-    for (const [projectId, member] of memberships) {
-      const role = member.getString("role")
-      if ((scope === "managed" && role === "manager") || (scope === "proofreading" && role === "proofreader")) {
-        filters.push(`id = "${projectId}"`)
-      }
-    }
-    projects = filters.length
-      ? dao.findRecordsByFilter("projects", filters.join(" || "), "name", 1000000, 0)
-      : []
+    projects = fangjiProjectsByIds(dao, fangjiProjectIdsWithRole(memberships, "proofreader"))
   }
   for (const project of projects) {
     const capabilities = fangjiCapabilities(dao, project, auth, memberships.get(project.id) || null)

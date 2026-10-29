@@ -59,3 +59,22 @@ test('keeps detail pagination decoupled from stats and defers scheme loading', (
   assert.doesNotMatch(mounted, /Promise\.all\(\[[^\]]*loadSchemeState/)
   assert.match(source, /new IntersectionObserver/)
 })
+
+test('detail stats failures stay unknown instead of becoming zero', () => {
+  const source = readFileSync(new URL('../src/views/admin/ProjectDetailView.vue', import.meta.url), 'utf8')
+  assert.match(source, /当前无法判断项目总体完成情况/)
+  assert.match(source, /hasLoadedPageStats \? \(pageStats\.arbitration \? '需要管理员处理' : '当前无异常'\) : '统计数据尚未加载'/)
+  assert.match(source, /'is-empty': hasLoadedPageStats && pageStats\.arbitration === 0/)
+  assert.match(source, /项目总数暂不可用/)
+  assert.doesNotMatch(source, /<p>共 \{\{ pageStats\.total \}\} 条/)
+})
+
+test('detail route changes are applied during project initialization', () => {
+  const source = readFileSync(new URL('../src/views/admin/ProjectDetailView.vue', import.meta.url), 'utf8')
+  const routeWatch = source.slice(source.indexOf("watch(() => route.query"), source.indexOf('onMounted(async'))
+  const mounted = source.slice(source.indexOf('onMounted(async'), source.indexOf('onBeforeUnmount(() =>'))
+  assert.match(routeWatch, /if \(project\.value\) loadPages\(\)/)
+  assert.ok(routeWatch.indexOf('applyListQuery(route.query)') < routeWatch.indexOf('if (project.value)'))
+  assert.doesNotMatch(routeWatch, /if \(!project\.value\) return/)
+  assert.match(mounted, /applyListQuery\(route\.query\)[\s\S]*Promise\.all\(\[loadPages\(\)/)
+})
