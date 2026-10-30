@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
 
+const { managedProjectIds } = createRequire(import.meta.url)('../pb_hooks/lib/project_access.js')
 const baseUrl = process.env.PB_URL || 'http://127.0.0.1:18091'
 const platformEmail = process.env.APP_ADMIN_EMAIL
 const platformPassword = process.env.APP_ADMIN_PASSWORD
@@ -36,6 +38,14 @@ async function request(path, { expected = 200, ...options } = {}) {
   return response.payload
 }
 
+async function inBatches(values, size, worker) {
+  const results = []
+  for (let index = 0; index < values.length; index += size) {
+    results.push(...await Promise.all(values.slice(index, index + size).map(worker)))
+  }
+  return results
+}
+
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`
 const password = 'ProjectAccess123!'
 
@@ -59,6 +69,45 @@ async function createUser(label, displayName = label) {
   })
   return { id: record.id, email, token: auth.token }
 }
+
+function accessUnitRecord(id, fields = {}) {
+  return { id, getString: (key) => String(fields[key] || '') }
+}
+
+function testManagedProjectIdsBeyondLegacyLimit() {
+  const auth = accessUnitRecord('unit-user', { role: 'user' })
+  const owned = Array.from({ length: 501 }, (_, index) => accessUnitRecord(`owned-${index}`))
+  const managerMemberships = Array.from({ length: 501 }, (_, index) => accessUnitRecord(
+    `membership-${index}`,
+    { project: `managed-${index}`, role: 'manager' }
+  ))
+  const dao = {
+    findRecordsByFilter(collection, filter, sort, limit, offset) {
+      assert.equal(offset, 0)
+      if (collection === 'projects') {
+        assert.equal(filter, 'admin = "unit-user"')
+        return owned.slice(offset, offset + limit)
+      }
+      assert.equal(collection, 'project_memberships')
+      assert.equal(filter, 'user = "unit-user" && role = "manager"')
+      return managerMemberships.slice(offset, offset + limit)
+    }
+  }
+  const ids = managedProjectIds(dao, auth)
+  assert.equal(ids.length, 1002, 'owned and manager project ids must both exceed the old 500-row cap')
+  assert.equal(new Set(ids).size, 1002)
+
+  const platformProjects = Array.from({ length: 501 }, (_, index) => accessUnitRecord(`platform-${index}`))
+  const platformIds = managedProjectIds({
+    findRecordsByFilter(collection, filter, sort, limit, offset) {
+      assert.equal(collection, 'projects', 'platform admin enumeration must not query memberships')
+      return platformProjects.slice(offset, offset + limit)
+    }
+  }, accessUnitRecord('unit-admin', { role: 'platform_admin' }))
+  assert.equal(platformIds.length, 501, 'platform admin ids must not stop at the old 500-row cap')
+}
+
+testManagedProjectIdsBeyondLegacyLimit()
 
 const platformAuth = await request('/api/collections/users/auth-with-password', {
   method: 'POST',
@@ -158,15 +207,75 @@ try {
     token: creator.token,
     body: { role: 'proofreader' }
   })
+  const demotedContext = await request('/api/fangji/access-context', { token: manager.token })
+  assert.ok(!demotedContext.managedProjectIds.includes(privateProject.id),
+    'manager demotion must be visible immediately')
+  assert.ok(demotedContext.proofreadingProjectIds.includes(privateProject.id),
+    'proofreader promotion must be visible immediately')
+  const demotedManaged = await request('/api/fangji/projects?scope=managed', { token: manager.token })
+  assert.ok(!demotedManaged.some((item) => item.id === privateProject.id))
+  const demotedProofreading = await request('/api/fangji/projects?scope=proofreading', { token: manager.token })
+  assert.ok(demotedProofreading.some((item) => item.id === privateProject.id))
+
   await request(`/api/fangji/projects/${privateProject.id}/members/${manager.id}`, {
     method: 'PUT',
     token: creator.token,
     body: { role: 'manager' }
   })
+  const restoredContext = await request('/api/fangji/access-context', { token: manager.token })
+  assert.ok(restoredContext.managedProjectIds.includes(privateProject.id),
+    'manager restoration must be visible immediately')
+  assert.ok(!restoredContext.proofreadingProjectIds.includes(privateProject.id))
+
   const members = await request(`/api/fangji/projects/${privateProject.id}/members`, { token: manager.token })
   assert.equal(members.filter((item) => item.user === manager.id).length, 1)
   assert.equal(members.find((item) => item.user === manager.id).role, 'manager')
   assert.equal(members.find((item) => item.user === proofreader.id).role, 'proofreader')
+
+  const accessCases = [
+    { label: 'owner', user: creator, managed: true, proofreading: false, projectRole: 'owner', visible: true },
+    { label: 'manager', user: manager, managed: true, proofreading: false, projectRole: 'manager', visible: true },
+    { label: 'proofreader', user: proofreader, managed: false, proofreading: true, projectRole: 'proofreader', visible: true },
+    { label: 'outsider', user: outsider, managed: false, proofreading: false, projectRole: null, visible: false },
+    { label: 'platform admin', user: platform, managed: true, proofreading: false, projectRole: null, visible: true }
+  ]
+  for (const item of accessCases) {
+    const context = await request('/api/fangji/access-context', { token: item.user.token })
+    assert.ok(Array.isArray(context.managedProjectIds), `${item.label} managed ids must stay an array`)
+    assert.ok(Array.isArray(context.proofreadingProjectIds), `${item.label} proofreading ids must stay an array`)
+    assert.equal(context.managedProjectIds.includes(privateProject.id), item.managed, `${item.label} managed context`)
+    assert.equal(context.proofreadingProjectIds.includes(privateProject.id), item.proofreading,
+      `${item.label} proofreading context`)
+    assert.equal(context.isPlatformAdmin, item.user === platform)
+
+    const managedList = await request('/api/fangji/projects?scope=managed', { token: item.user.token })
+    assert.ok(Array.isArray(managedList), `${item.label} managed list must stay an array`)
+    const managedRow = managedList.find((project) => project.id === privateProject.id)
+    assert.equal(Boolean(managedRow), item.managed, `${item.label} managed project list`)
+    if (managedRow) {
+      assert.equal(managedRow.capabilities.projectRole, item.projectRole)
+      assert.equal(managedRow.capabilities.canManage, true)
+      assert.ok(Object.hasOwn(managedRow, 'required_proofreads'))
+    }
+
+    const proofreadingList = await request('/api/fangji/projects?scope=proofreading', { token: item.user.token })
+    assert.ok(Array.isArray(proofreadingList), `${item.label} proofreading list must stay an array`)
+    const proofreadingRow = proofreadingList.find((project) => project.id === privateProject.id)
+    assert.equal(Boolean(proofreadingRow), item.proofreading, `${item.label} proofreading project list`)
+    if (proofreadingRow) {
+      assert.equal(proofreadingRow.capabilities.projectRole, 'proofreader')
+      assert.equal(proofreadingRow.capabilities.canProofread, true)
+      assert.equal(proofreadingRow.capabilities.canManage, false)
+    }
+
+    for (const scope of ['all', 'discoverable']) {
+      const visibleList = await request(`/api/fangji/projects?scope=${scope}`, { token: item.user.token })
+      assert.ok(Array.isArray(visibleList), `${item.label} ${scope} list must stay an array`)
+      const visibleRow = visibleList.find((project) => project.id === privateProject.id)
+      assert.equal(Boolean(visibleRow), item.visible, `${item.label} ${scope} visibility`)
+      if (visibleRow) assert.equal(visibleRow.capabilities.projectRole, item.projectRole)
+    }
+  }
 
   // The member picker reads this route. users.listRule limits account listing to
   // platform admins, so a project manager must only see accounts already
@@ -452,6 +561,46 @@ try {
   assert.deepEqual(concurrentResults.map((item) => item.status).sort(), [201, 403])
   const concurrentProject = concurrentResults.find((item) => item.status === 201).payload
   projectIds.push(concurrentProject.id)
+
+  const superAuth = await request('/api/collections/_superusers/auth-with-password', {
+    method: 'POST',
+    body: {
+      identity: process.env.PB_SUPER_EMAIL || process.env.PB_ADMIN_EMAIL,
+      password: process.env.PB_SUPER_PASSWORD || process.env.PB_ADMIN_PASSWORD
+    }
+  })
+  const boundaryOwner = await createUser('boundary-owner')
+  const boundaryPrefix = `boundary-${suffix}-`
+  const boundaryProjects = await inBatches(Array.from({ length: 201 }, (_, index) => index), 20, async (index) => {
+    const record = await request('/api/collections/projects/records', {
+      method: 'POST',
+      token: superAuth.token,
+      body: {
+        name: `${boundaryPrefix}${String(index).padStart(3, '0')}`,
+        admin: boundaryOwner.id,
+        access_mode: 'members_only',
+        required_proofreads: 2
+      }
+    })
+    projectIds.push(record.id)
+    return record
+  })
+  await inBatches(boundaryProjects.flatMap((project) => [
+    { project: project.id, user: manager.id, role: 'manager' },
+    { project: project.id, user: proofreader.id, role: 'proofreader' }
+  ]), 20, (membership) => request('/api/collections/project_memberships/records', {
+    method: 'POST',
+    token: superAuth.token,
+    body: { ...membership, source: 'assigned', created_by: platform.id }
+  }))
+  const boundaryManaged = (await request('/api/fangji/projects?scope=managed', { token: manager.token }))
+    .filter((project) => project.name.startsWith(boundaryPrefix))
+  assert.equal(boundaryManaged.length, 201, 'managed list must not hit the filter-expression ceiling')
+  assert.equal(new Set(boundaryManaged.map((project) => project.id)).size, 201)
+  const boundaryProofreading = (await request('/api/fangji/projects?scope=proofreading', { token: proofreader.token }))
+    .filter((project) => project.name.startsWith(boundaryPrefix))
+  assert.equal(boundaryProofreading.length, 201, 'proofreading list must not hit the filter-expression ceiling')
+  assert.equal(new Set(boundaryProofreading.map((project) => project.id)).size, 201)
 
   const grants = await request('/api/fangji/platform/creator-grants', { token: platform.token })
   assert.equal(grants.find((item) => item.user === creator.id).projectLimit, 1)

@@ -6,7 +6,6 @@ import {
   getDifferingHeadersForRows,
   getProofreaderQueueAction,
   getUnresolvedHeaders,
-  sortProjectInsights,
   summarizePages,
   summarizeProofreaderQueues
 } from '../src/lib/workspaceInsights.js'
@@ -81,20 +80,6 @@ test('workspace: summarizes page states for administrator attention', () => {
     incomplete: 5,
     completionPct: 29
   })
-})
-
-test('workspace: orders projects with arbitration work first while preserving source order on ties', () => {
-  const projects = [
-    { project: { id: 'quiet' }, summary: { arbitration: 0, incomplete: 4 } },
-    { project: { id: 'urgent' }, summary: { arbitration: 2, incomplete: 3 } },
-    { project: { id: 'busy' }, summary: { arbitration: 0, incomplete: 7 } },
-    { project: { id: 'busy-later' }, summary: { arbitration: 0, incomplete: 7 } }
-  ]
-
-  assert.deepEqual(
-    sortProjectInsights(projects).map((item) => item.project.id),
-    ['urgent', 'busy', 'busy-later', 'quiet']
-  )
 })
 
 test('workspace: identifies differences across an arbitrary number of attempts', () => {

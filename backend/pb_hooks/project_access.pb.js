@@ -1,28 +1,51 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 routerAdd("GET", "/api/fangji/access-context", (c) => {
-  const { auth: fangjiAuth, capabilities: fangjiCapabilities, isPlatformAdmin: fangjiIsPlatformAdmin, creationCapability: fangjiCreationCapability } = require(`${__hooks}/lib/project_access.js`)
+  const { auth: fangjiAuth, isPlatformAdmin: fangjiIsPlatformAdmin, creationCapability: fangjiCreationCapability, membershipsByProject: fangjiMembershipsByProject } = require(`${__hooks}/lib/project_access.js`)
   const auth = fangjiAuth(c)
   const dao = $app
+  const platformAdmin = fangjiIsPlatformAdmin(auth)
+  const memberships = fangjiMembershipsByProject(dao, auth)
   const managed = []
   const proofreading = []
-  const projects = dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)
-  for (const project of projects) {
-    const capabilities = fangjiCapabilities(dao, project, auth)
-    if (capabilities.canManage) managed.push(project.id)
-    if (capabilities.canProofread) proofreading.push(project.id)
+  const owned = new Set()
+  const existing = new Set()
+
+  if (platformAdmin) {
+    for (const project of dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)) {
+      managed.push(project.id)
+      existing.add(project.id)
+      if (project.getString("admin") === auth.id) owned.add(project.id)
+    }
+  } else {
+    for (const project of dao.findRecordsByFilter("projects", `admin = "${auth.id}"`, "name", 1000000, 0)) {
+      managed.push(project.id)
+      owned.add(project.id)
+    }
+  }
+  for (const [projectId, member] of memberships) {
+    // Owners have the synthetic owner role even if a stale membership row exists.
+    if (owned.has(projectId)) continue
+    const role = member.getString("role")
+    if (!platformAdmin && role === "manager") managed.push(projectId)
+    if (role === "proofreader" && (!platformAdmin || existing.has(projectId))) proofreading.push(projectId)
   }
   return c.json(200, {
     globalRole: auth.getString("role"),
-    isPlatformAdmin: fangjiIsPlatformAdmin(auth),
+    isPlatformAdmin: platformAdmin,
     managedProjectIds: managed,
     proofreadingProjectIds: proofreading,
-    ...fangjiCreationCapability(dao, auth)
+    ...fangjiCreationCapability(dao, auth, owned.size)
   })
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/projects", (c) => {
-  const { auth: fangjiAuth, capabilities: fangjiCapabilities, projectJson: fangjiProjectJson } = require(`${__hooks}/lib/project_access.js`)
+  const {
+    auth: fangjiAuth, isPlatformAdmin: fangjiIsPlatformAdmin, capabilities: fangjiCapabilities,
+    membershipsByProject: fangjiMembershipsByProject, projectsByIds: fangjiProjectsByIds,
+    mergeProjects: fangjiMergeProjects, projectIdsWithRole: fangjiProjectIdsWithRole,
+    projectJson: fangjiProjectJson
+  } = require(`${__hooks}/lib/project_access.js`)
   const auth = fangjiAuth(c)
   const scope = String(c.request.url.query().get("scope") || "all")
   if (!["all", "managed", "proofreading", "discoverable"].includes(scope)) {
@@ -30,9 +53,22 @@ routerAdd("GET", "/api/fangji/projects", (c) => {
   }
   const dao = $app
   const result = []
-  const projects = dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)
+  const platformAdmin = fangjiIsPlatformAdmin(auth)
+  const memberships = fangjiMembershipsByProject(dao, auth)
+  let projects = []
+  if (scope === "all" || scope === "discoverable" || (scope === "managed" && platformAdmin)) {
+    projects = dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)
+  } else if (scope === "managed") {
+    const owned = dao.findRecordsByFilter("projects", `admin = "${auth.id}"`, "name", 1000000, 0)
+    projects = fangjiMergeProjects(
+      owned,
+      fangjiProjectsByIds(dao, fangjiProjectIdsWithRole(memberships, "manager"))
+    )
+  } else {
+    projects = fangjiProjectsByIds(dao, fangjiProjectIdsWithRole(memberships, "proofreader"))
+  }
   for (const project of projects) {
-    const capabilities = fangjiCapabilities(dao, project, auth)
+    const capabilities = fangjiCapabilities(dao, project, auth, memberships.get(project.id) || null)
     const accessMode = project.getString("access_mode") || "members_only"
     const include = scope === "managed"
       ? capabilities.canManage
@@ -41,7 +77,7 @@ routerAdd("GET", "/api/fangji/projects", (c) => {
         : scope === "discoverable"
           ? capabilities.isMember || capabilities.isPlatformAdmin || accessMode !== "members_only"
           : capabilities.isMember || capabilities.isPlatformAdmin || accessMode !== "members_only"
-    if (include) result.push(fangjiProjectJson(dao, project, auth))
+    if (include) result.push(fangjiProjectJson(dao, project, auth, capabilities))
   }
   return c.json(200, result)
 }, $apis.requireAuth("users"))

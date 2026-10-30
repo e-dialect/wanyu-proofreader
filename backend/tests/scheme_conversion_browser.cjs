@@ -191,8 +191,8 @@ async function openProject (page, projectId) {
     }
 
     await manager.reload()
-    await schemeSection(manager).waitFor({ timeout: 60000 })
-    await manager.waitForTimeout(1500)
+    await schemeSection(manager).scrollIntoViewIfNeeded()
+    await schemeSection(manager).getByText(/共 1 条待复核/).waitFor({ timeout: 60000 })
     const onlyUnsupported = await schemeSection(manager).innerText()
     assert.match(onlyUnsupported, /共 1 条待复核/, `清空 AMBIGUOUS 后应只剩那 1 条 UNSUPPORTED：${onlyUnsupported.slice(0, 400)}`)
     assert.doesNotMatch(onlyUnsupported, /当前没有待复核的条目/, '还有一条暂未支持时不得显示「没有待复核」')
