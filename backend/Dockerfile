@@ -17,6 +17,9 @@ COPY cmd/delivery-replay/ ./cmd/delivery-replay/
 COPY scheme/ ./scheme/
 COPY pb_migrations/ ./pb_migrations/
 COPY keyboards/ ./keyboards/
+# TestGlyphPlaceholderRegexMatchesJS 读 JS 源比对占位符正则，需要把 pb_hooks/lib 也带进
+# 构建上下文（运行时阶段另有完整 pb_hooks，这里只为 go test 里那一个文件）。
+COPY pb_hooks/lib/ ./pb_hooks/lib/
 RUN go test ./...
 
 ARG VERSION=dev
