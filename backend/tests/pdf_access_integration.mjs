@@ -76,6 +76,8 @@ await check(pdfDescriptor,'',401)
 await check(pdfDescriptor,users[1].token,403)
 
 if(process.env.PDF_BROWSER_FIXTURE){
+ // Page-image clicks land on the editor. Record the choice first so the notice does not cover them.
+ await api('/api/fangji/research-notice',{method:'POST',token:users[0].token,body:{choice:'participate'}})
  await writeFile(process.env.PDF_BROWSER_FIXTURE,JSON.stringify({base,auth:users[0],claim,page,project,fileURL,imageInfo}))
  if(process.env.PDF_BROWSER_SCRIPT){const {spawnSync}=await import('node:child_process');assert.equal(spawnSync('node',[process.env.PDF_BROWSER_SCRIPT],{stdio:'inherit',env:process.env}).status,0)}
 }

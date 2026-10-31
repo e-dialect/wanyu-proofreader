@@ -38,6 +38,8 @@ const pdf=async(user,id)=>{const r=await fetch(`${base}/api/fangji/pages/${id}/p
 await api(`/api/fangji/projects/${project.id}/claim`,{method:'POST',token:users[0].token,body:{previousTaskId:pages[1].id},status:403})
 const first=await claim(users[0]);assert.equal(first.id,pages[0].id)
 if(process.env.PDF_REUSE_BROWSER_SCRIPT){
+ // The browser submits on its own fetch, outside the integration preload.
+ await api('/api/fangji/research-notice',{method:'POST',token:users[0].token,body:{choice:'participate'}})
  await writeFile(process.env.PDF_BROWSER_FIXTURE,JSON.stringify({base,auth:users[0],claim:first,pages,project,file,superToken:superAuth.token}))
  const {spawnSync}=await import('node:child_process');assert.equal(spawnSync('node',[process.env.PDF_REUSE_BROWSER_SCRIPT],{stdio:'inherit',env:process.env}).status,0)
 }else{

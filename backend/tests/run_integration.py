@@ -40,7 +40,7 @@ def main(argv=None):
         binary = harness.build_binary(root / 'pocketbase', race=args.race)
         with harness.server(binary, root, extra_env=extra) as env:
             try:
-                subprocess.run(['node', str(script)], env=env, check=True)
+                subprocess.run(['node', str(script)], env=harness.with_research_notice_preload(env), check=True)
             except subprocess.CalledProcessError as failure:
                 # Emit diagnostics before the temporary directory removes the evidence.
                 # This server only contains generated, disposable test identities.
