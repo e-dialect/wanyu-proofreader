@@ -12,6 +12,7 @@ if(url.endsWith('/keyboards'))data={items:[{keyboardId:'ipa',name:'音标键盘'
 if(url.endsWith('/arbitration'))data={page:record,attempts:[{id:'a',pass_no:1,row_json:JSON.stringify(row)},{id:'b',pass_no:2,row_json:JSON.stringify({...row,读音:'ta'})}]};
 if (url.endsWith('/keyboards') && realPreset) data={items:[{keyboardId:preset.id,name:preset.name,definition:preset}],defaultKeyboardId:preset.id};
 if(url.endsWith('/findings'))data={page:'page1',hints:[{field:'读音',kind:'reading_format_invalid',severity:'strong',message:{key:'long_digit_run',params:{runs:['5333'],run_count:1}},highlight:true,evidence:{char_offsets:[[0,2]]}},{field:'声调',kind:'punctuation_mix',severity:'warn',message:{key:'punctuation_width_mixed_in_column',params:{}},highlight:false,evidence:{}},{field:'',kind:'page_outlier',severity:'warn',message:{key:'pdf_page_backtrack',params:{from_page:9,to_page:5,backtrack:4}},highlight:false,evidence:{}},{field:'释义',kind:'punctuation_mix',severity:'warn',message:{key:'punctuation_width_mixed_in_column',params:{}},highlight:false,evidence:{}}],truncated:false};
+if(url.endsWith('/research-notice'))data={decided:true,choice:'participate',decided_at:'2026-10-17T00:00:00.000Z'};
 await route.fulfill({json:data});});
 for(const admin of [false,true]){
 await page.setViewportSize({width:1440,height:900});await page.goto('http://localhost:5173/tests/fixtures/review.html'+(admin?'?admin':''));await page.waitForTimeout(1000); await page.locator('.ipa-key').first().waitFor({timeout:3000});

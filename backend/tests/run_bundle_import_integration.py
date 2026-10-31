@@ -18,6 +18,8 @@ import tempfile
 import time
 import urllib.request
 
+import harness
+
 backend = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='fangji-bundle-') as temp:
     root = Path(temp)
@@ -57,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix='fangji-bundle-') as temp:
                 else:
                     raise RuntimeError('Temporary server did not become ready')
                 subprocess.run(['node', str(backend / 'tests/bundle_import_integration.mjs'), phase],
-                               env=env, check=True)
+                               env=harness.with_research_notice_preload(env), check=True)
             finally:
                 server.terminate()
                 try:

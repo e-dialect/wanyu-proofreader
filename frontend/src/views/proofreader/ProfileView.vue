@@ -29,6 +29,19 @@
       </form>
     </section>
 
+    <section class="card mb-6" aria-labelledby="research-notice-profile-title">
+      <h3 id="research-notice-profile-title" class="card-title">研究用途</h3>
+      <p class="text-sm text-muted mb-4">{{ researchBody }}</p>
+      <p v-if="researchChoiceLabel">当前选择：{{ researchChoiceLabel }}。可以改口，旧的选择会保留。</p>
+      <p v-else class="text-sm text-muted mb-4">还没有选择。第一次提交校对前需要在编辑器里选择一次。</p>
+      <div v-if="researchError" class="alert alert-error mb-4" role="alert">{{ researchError }}</div>
+      <div v-if="researchSaved" class="alert alert-success mb-4" role="status">{{ researchSaved }}</div>
+      <div class="flex gap-2">
+        <button type="button" class="btn btn-secondary" :disabled="researchSaving" @click="reviseResearchNotice('opt_out')">退出研究，继续校对</button>
+        <button type="button" class="btn btn-primary" :disabled="researchSaving" @click="reviseResearchNotice('participate')">同意用于研究</button>
+      </div>
+    </section>
+
     <section class="card mb-6" aria-labelledby="onboarding-title">
       <h3 id="onboarding-title" class="card-title">新手引导</h3>
       <p class="text-sm text-muted mb-4">第一次进入校对编辑器时会看到分步说明。跳过或完成后不会再自动弹出。</p>
@@ -136,7 +149,9 @@ import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { bindExternalIdentity, currentUserId, listExternalProviders, updateProfile } from '@/services/authService'
 import { getProofreaderProfileStats } from '@/services/proofreaderStatsService'
-import { formatPbError } from '@/utils/pbErrors'
+import { RESEARCH_NOTICE_COPY } from '@/lib/researchNoticeCopy'
+import { chooseResearchNotice, getResearchNotice } from '@/services/researchNoticeService'
+import { formatPbError, getPbMessage } from '@/utils/pbErrors'
 
 const auth = useAuthStore()
 const profile = reactive({ name: auth.user?.name || '', email: auth.user?.email || '' })
@@ -173,13 +188,47 @@ const bindingProvider = ref('')
 const bindingError = reactive({})
 const stats = ref(null)
 const onboardingRef = inject('proofreaderOnboarding', ref(null))
+const researchBody = RESEARCH_NOTICE_COPY.body
+const researchNotice = ref(null)
+const researchSaving = ref(false)
+const researchError = ref('')
+const researchSaved = ref('')
+const researchChoiceLabel = computed(() => {
+  const choice = researchNotice.value?.choice
+  if (choice === 'participate') return RESEARCH_NOTICE_COPY.participateLabel
+  if (choice === 'opt_out') return RESEARCH_NOTICE_COPY.optOutLabel
+  return ''
+})
+
+async function loadResearchNotice() {
+  try {
+    researchNotice.value = await getResearchNotice()
+  } catch {
+    researchNotice.value = null
+  }
+}
+
+async function reviseResearchNotice(choice) {
+  if (researchSaving.value) return
+  researchSaving.value = true
+  researchError.value = ''
+  researchSaved.value = ''
+  try {
+    researchNotice.value = await chooseResearchNotice(choice)
+    researchSaved.value = '研究用途选择已记下。退出后仍然可以正常领取和提交。'
+  } catch (error) {
+    researchError.value = getPbMessage(error, '研究用途选择没有记下，请再试一次。')
+  } finally {
+    researchSaving.value = false
+  }
+}
 
 const displayName = computed(() => auth.user?.name || auth.user?.email || auth.user?.username || '校对员')
 const accuracyLabel = computed(() => stats.value?.evaluatedCount ? `${stats.value.accuracy}%` : '未核验／不可计算')
 const matchLabel = computed(() => stats.value?.workflowEvaluatedCount ? `${stats.value.matchRate}%` : '暂无流程匹配结果')
 
 onMounted(async () => {
-  await Promise.all([loadStats(), loadProviders()])
+  await Promise.all([loadStats(), loadProviders(), loadResearchNotice()])
 })
 
 async function loadProviders() {

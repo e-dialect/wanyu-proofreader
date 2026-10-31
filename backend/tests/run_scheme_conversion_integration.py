@@ -76,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='fangji-scheme-') as temp:
                 else:
                     raise RuntimeError('Temporary server did not become ready')
                 subprocess.run(['node', str(backend / 'tests/scheme_conversion_integration.mjs'), phase],
-                               env=env, check=True)
+                               env=harness.with_research_notice_preload(env), check=True)
             finally:
                 server.terminate()
                 try:

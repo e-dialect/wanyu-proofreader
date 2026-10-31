@@ -8,6 +8,7 @@
         <div class="editor-context">
           <span>来源 PDF</span>
           <strong id="source-panel-title">PDF 物理第 {{ currentPdfPage }} 页</strong>
+          <p class="text-sm text-muted source-recall-note">已经下载的副本无法收回。</p>
         </div>
         <details class="source-actions-menu" :open="!compact">
           <summary>页码</summary>

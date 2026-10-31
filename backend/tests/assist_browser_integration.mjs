@@ -211,6 +211,13 @@ const blockedPages = await api(`/api/collections/pages/records?filter=${encodeUR
 const blockedPage = blockedPages.items[0]
 assert.ok(blockedPage, '有疑点的项目里必须有条目')
 assert.equal(blockedPage.blocked_reason ?? '', '', `截图要拍的那条必须还没有结论：${JSON.stringify(blockedPage.blocked_reason)}`)
+// Hall claim and the editor both open the proofreader view. Their fetches are
+// the browser's, so the integration preload never records this choice.
+for (const reader of [hallReader, editorReader]) {
+  await api('/api/fangji/research-notice', {
+    method: 'POST', token: reader.token, body: { choice: 'participate' }
+  })
+}
 writeFileSync(fixture, JSON.stringify({
   base, manager, reader, hallReader, editorReader,
   admin: { token: admin.token, record: admin.record },

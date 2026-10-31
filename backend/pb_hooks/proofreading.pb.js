@@ -408,6 +408,8 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/submit`, (c) => {
   const auth = c.auth
   if (!auth) throw new ForbiddenError("无权执行此操作")
   if (auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
+  const { latestResearchDecision: researchLatestDecision } = require(`${__hooks}/lib/research_notice.js`)
+  if (!researchLatestDecision($app, auth.id)) throw new ForbiddenError("请先完成研究用途选择后再提交")
   const userId = auth.id
   const pageId = c.request.pathValue("pageId")
   const body = c.requestInfo().body || {}
