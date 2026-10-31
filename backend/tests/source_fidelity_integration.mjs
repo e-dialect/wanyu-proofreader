@@ -221,6 +221,10 @@ let researchFixture = null
 if (process.env.FANGJI_RESEARCH_MODE === '1') researchFixture = await researchDemo()
 if (process.env.FIDELITY_BROWSER_FIXTURE) await writeFile(process.env.FIDELITY_BROWSER_FIXTURE, JSON.stringify({ base, admin, users, project, pages: [page1, page2, page3, page4], file, research: researchFixture }))
 if (process.env.FIDELITY_BROWSER_SCRIPT) {
+  // Playwright 自己发请求，走不到集成测试的自动同意。会打开编辑器的账号先记下选择。
+  for (const user of [users[0], users[2]]) {
+    await api('/api/fangji/research-notice', { method: 'POST', token: user.token, body: { choice: 'participate' } })
+  }
   const browser = spawnSync('node', [process.env.FIDELITY_BROWSER_SCRIPT], { stdio: 'inherit', env: process.env })
   assert.equal(browser.status, 0, 'source fidelity browser acceptance failed')
 }

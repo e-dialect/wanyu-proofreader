@@ -207,11 +207,27 @@ def server(binary, root, extra_env=None, data=None, migrations=MIGRATIONS, hooks
             raise RuntimeError(f'server exited {process.returncode}\n{_log_tail(root)}')
 
 
+def with_research_notice_preload(env):
+    """Record a research-use choice before legacy submit calls.
+
+    The proofreading submit route now refuses a user who has not chosen.
+    Suites that are not about that choice keep their old assertions because
+    this preload answers the notice for them. The research-notice suite opts out.
+    """
+    env = dict(env)
+    preload = BACKEND / 'tests' / 'research_notice_preload.cjs'
+    flag = f'--require {preload}'
+    current = env.get('NODE_OPTIONS', '')
+    if flag not in current:
+        env['NODE_OPTIONS'] = f'{current} {flag}'.strip()
+    return env
+
+
 def run_suite(name, env, cwd=None):
     """Run one node suite (or a python callable) with the server environment."""
     if callable(name):
         return name(env)
-    return subprocess.run(['node', str(BACKEND / 'tests' / name)], env=env, check=True, cwd=cwd)
+    return subprocess.run(['node', str(BACKEND / 'tests' / name)], env=with_research_notice_preload(env), check=True, cwd=cwd)
 
 
 def _race_excerpt(text):

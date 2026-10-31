@@ -33,6 +33,7 @@ async function main() {
         { id: 'a', pass_no: 1, row_json: JSON.stringify(row) },
         { id: 'b', pass_no: 2, row_json: JSON.stringify({ ...row, 读音: 'ta' }) }
       ] }
+      if (url.endsWith('/research-notice')) data = { decided: true, choice: 'participate', decided_at: '2026-10-17T00:00:00.000Z' }
       await route.fulfill({ json: data })
     })
 
