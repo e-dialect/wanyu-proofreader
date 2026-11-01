@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>发现项目 · 合成体验数据</title>
+<div id="app"></div>
+<output id="requests" aria-live="polite">加入请求：0</output>
+<script type="module">
+import { createApp, h } from 'vue'
+import { createPinia } from 'pinia'
+import { BaseAuthStore } from 'pocketbase'
+import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
+import Discovery from '../../src/views/ProjectDiscoveryView.vue'
+import pb from '../../src/lib/pocketbase'
+import '../../src/style.css'
+
+// The real view and services use synthetic in-memory responses only.
+pb.authStore = new BaseAuthStore()
+const projects = [
+  { id: 'password-project', name: '口令体验项目', access_mode: 'password' },
+  { id: 'public-project', name: '公开体验项目', access_mode: 'public' },
+].map(project => ({ ...project, description: '仅用于界面回归的虚构项目。', capabilities: {} }))
+let requests = 0
+pb.send = async (path, options = {}) => {
+  if (path.endsWith('/join')) {
+    requests += 1
+    document.querySelector('#requests').textContent = `加入请求：${requests}`
+    await new Promise(resolve => setTimeout(resolve, 600))
+    const project = projects.find(item => path.includes(`/${item.id}/`))
+    if (project.access_mode === 'password' && options.body.password !== 'demo-passphrase') {
+      throw { response: { message: '项目口令不正确，请重试。' } }
+    }
+    project.capabilities = { isMember: true, canProofread: true, projectRole: 'proofreader' }
+    return project
+  }
+  if (path.startsWith('/api/fangji/projects?')) return projects
+  throw new Error(`Unexpected fixture request: ${path}`)
+}
+const router = createRouter({ history: createMemoryHistory(), routes: [
+  { path: '/projects', component: Discovery },
+  { path: '/:pathMatch(.*)*', component: { render: () => h('p', '合成导航目标') } },
+] })
+await router.push('/projects')
+createApp({ render: () => h(RouterView) }).use(createPinia()).use(router).mount('#app')
+</script>
+</html>

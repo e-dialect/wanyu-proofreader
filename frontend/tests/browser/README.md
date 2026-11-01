@@ -10,6 +10,15 @@ No backend requests are made. Screenshots are saved in
 Set `BROWSER_CHANNEL=msedge` for installed Edge on Windows, or
 `REVIEW_BASE_URL` for a different Vite URL.
 
+With Vite running on port 5173, run `node tests/browser/discovery.cjs` from
+the frontend directory for project joining regression. The real discovery view
+uses synthetic in-memory projects and never contacts a backend. Desktop/mobile
+checks cover Enter submission, repeated Enter while busy, error/input retention,
+retry, public-project joining and existing-member navigation. Screenshots are
+saved in `output/playwright/discovery` at the repository root.
+Set `BROWSER_CHANNEL=msedge` for installed Edge on Windows, or
+`REVIEW_BASE_URL` for a different Vite URL.
+
 Start Vite on port 5173 with `npm run dev`, then run `node tests/browser/review.cjs`
 from the frontend directory with Playwright available (locally or through `NODE_PATH`).
 The default browser is installed Chrome; set `BROWSER_CHANNEL` to choose another channel.

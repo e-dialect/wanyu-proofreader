@@ -26,7 +26,14 @@
         <p>指定成员项目不会出现在这里，请联系项目管理员添加。</p>
       </div>
       <section v-else-if="!loadError" class="project-card-grid">
-        <article v-for="project in projects" :key="project.id" class="project-work-card">
+        <form
+          v-for="project in projects"
+          :key="project.id"
+          class="project-work-card"
+          :aria-label="project.name"
+          :aria-busy="joining === project.id"
+          @submit.prevent="join(project)"
+        >
           <header class="project-work-card__header">
             <div><span class="work-state">{{ accessLabel(project) }}</span><h3>{{ project.name }}</h3></div>
           </header>
@@ -36,18 +43,18 @@
           </div>
           <label v-else-if="project.access_mode === 'password'" class="form-group">
             <span class="form-label">项目口令</span>
-            <input v-model="passwords[project.id]" type="password" class="form-control" maxlength="72" autocomplete="off" placeholder="输入项目管理员提供的口令" />
+            <input v-model="passwords[project.id]" type="password" class="form-control" maxlength="72" autocomplete="off" placeholder="输入项目管理员提供的口令" :readonly="Boolean(joining)" />
           </label>
           <p v-if="joinErrorProjectId === project.id" class="alert alert-error" role="alert">{{ joinError }}</p>
           <footer class="project-work-card__footer">
             <span>{{ project.access_mode === 'members_only' ? '由项目管理员指定成员' : '加入后成为项目校对员' }}</span>
             <RouterLink v-if="project.capabilities.canManage" :to="`/admin/projects/${project.id}`" class="btn btn-secondary">管理项目</RouterLink>
             <RouterLink v-else-if="project.capabilities.canProofread" to="/tasks" class="btn btn-secondary">进入校对</RouterLink>
-            <button v-else class="btn btn-primary" :disabled="joining === project.id" @click="join(project)">
+            <button v-else type="submit" class="btn btn-primary" :disabled="Boolean(joining)">
               {{ joining === project.id ? '正在加入…' : '加入项目' }}
             </button>
           </footer>
-        </article>
+        </form>
       </section>
     </main>
   </div>
@@ -83,6 +90,7 @@ async function loadProjects() {
 }
 
 async function join(project) {
+  if (joining.value) return
   joining.value = project.id
   joinError.value = ''
   joinErrorProjectId.value = ''
