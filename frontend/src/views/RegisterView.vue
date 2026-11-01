@@ -34,20 +34,23 @@
 
       <p class="text-center mt-4 text-sm text-muted">
         已有账号？
-        <RouterLink to="/login">直接登录</RouterLink>
+        <RouterLink :to="loginLocation">直接登录</RouterLink>
       </p>
     </div>
   </main>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { checkNicknameAvailable } from '@/services/authService'
 import { getPbMessage } from '@/utils/pbErrors'
+import { authPageLocation } from '@/lib/authRedirect'
 
 const router = useRouter()
+const route = useRoute()
+const loginLocation = computed(() => authPageLocation('/login', route.query.redirect))
 const auth = useAuthStore()
 const name = ref('')
 const email = ref('')
@@ -77,7 +80,7 @@ async function handleRegister() {
     }
     await auth.register(email.value, password.value, passwordConfirm.value, name.value)
     success.value = true
-    setTimeout(() => router.push('/login'), 1500)
+    setTimeout(() => router.push(loginLocation.value), 1500)
   } catch (e) {
     error.value = getPbMessage(e, '注册失败，请检查填写的信息')
   } finally {

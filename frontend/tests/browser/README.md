@@ -1,5 +1,15 @@
 # Review workspace browser regression
 
+With Vite running on port 5173, run `node tests/browser/auth-navigation.cjs`
+from the frontend directory for login/registration navigation regression.
+It mounts the real views with a memory router and synthetic authentication,
+covering desktop/mobile round trips, automatic return after registration,
+restored destinations with query/hash, and the default workspace destination.
+No backend requests are made. Screenshots are saved in
+`output/playwright/auth-navigation` at the repository root.
+Set `BROWSER_CHANNEL=msedge` for installed Edge on Windows, or
+`REVIEW_BASE_URL` for a different Vite URL.
+
 Start Vite on port 5173 with `npm run dev`, then run `node tests/browser/review.cjs`
 from the frontend directory with Playwright available (locally or through `NODE_PATH`).
 The default browser is installed Chrome; set `BROWSER_CHANNEL` to choose another channel.

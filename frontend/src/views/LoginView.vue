@@ -70,7 +70,7 @@
 
       <p class="text-center mt-4 text-sm text-muted">
         还没有账号？
-        <RouterLink to="/register">立即注册</RouterLink>
+        <RouterLink :to="registerLocation">立即注册</RouterLink>
       </p>
     </div>
   </main>
@@ -82,6 +82,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { listExternalProviders } from '@/services/authService'
 import { useAuthStore } from '@/stores/auth'
 import { getPbMessage } from '@/utils/pbErrors'
+import { authPageLocation, authRedirect } from '@/lib/authRedirect'
 
 const emit = defineEmits(['close'])
 
@@ -96,14 +97,13 @@ const error = ref('')
 const success = computed(() => route.query.passwordChanged === '1' ? '密码已更新，请使用新密码登录。' : '')
 const providers = ref([])
 const selectedProviderId = ref('')
+const registerLocation = computed(() => authPageLocation('/register', route.query.redirect))
 
 const canSubmit = computed(() => email.value.trim() && password.value)
 const selectedProvider = computed(() => providers.value.find((provider) => provider.id === selectedProviderId.value) || null)
 
 async function redirectAfterLogin() {
-  const target = typeof route.query.redirect === 'string' && route.query.redirect
-    ? route.query.redirect
-    : '/workspace'
+  const target = authRedirect(route.query.redirect) || '/workspace'
 
   emit('close')
 

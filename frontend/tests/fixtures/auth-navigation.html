@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>登录注册导航回归</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h, reactive } from 'vue'
+      import { createPinia } from 'pinia'
+      import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+      import { BaseAuthStore } from 'pocketbase'
+      import LoginView from '../../src/views/LoginView.vue'
+      import RegisterView from '../../src/views/RegisterView.vue'
+      import { useAuthStore } from '../../src/stores/auth'
+      import { authState, resolveNavigation } from '../../src/lib/access'
+      import pb from '../../src/lib/pocketbase'
+      import '../../src/style.css'
+
+      // Keep this fixture isolated from saved accounts and the running backend.
+      pb.authStore = new BaseAuthStore()
+      const calls = reactive({ logins: 0, registrations: 0 })
+      pb.send = async (path) => {
+        if (path === '/api/fangji/auth/providers') return { providers: [] }
+        if (path === '/api/fangji/auth/nickname-available') return { available: true }
+        throw new Error(`Unexpected fixture API: ${path}`)
+      }
+
+      const pinia = createPinia()
+      const auth = useAuthStore(pinia)
+      const record = { id: 'fixture-user', name: '测试校对员', role: 'user' }
+      auth.register = async () => {
+        calls.registrations += 1
+        return record
+      }
+      auth.login = async () => {
+        calls.logins += 1
+        const token = `fixture.${btoa(JSON.stringify({ exp: 4102444800 }))}.fixture`
+        pb.authStore.save(token, record)
+        return { token, record }
+      }
+
+      const DestinationView = {
+        render: () => h('main', { class: 'container page', 'data-testid': 'destination' }, [
+          h('h1', '模拟目标页面'),
+          h('p', '登录完成，已返回原来要访问的站内页面。')
+        ])
+      }
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/login', component: LoginView, meta: { guest: true } },
+          { path: '/register', component: RegisterView, meta: { guest: true } },
+          { path: '/:pathMatch(.*)*', component: DestinationView, meta: { requiresAuth: true } }
+        ]
+      })
+      router.beforeEach((to) => resolveNavigation(to, authState({
+        isValid: pb.authStore.isValid,
+        model: pb.authStore.record
+      })))
+      const start = new URLSearchParams(location.search).get('start') || '/projects?language=莆仙#join-project'
+      await router.push(start)
+      createApp({
+        render: () => h('div', [
+          h('aside', { class: 'card', role: 'note', style: 'margin: 1rem;' }, [
+            h('p', '合成测试页面：登录和注册均为模拟，不连接后端。'),
+            h('p', ['当前路由：', h('output', { 'data-testid': 'current-route' }, router.currentRoute.value.fullPath)]),
+            h('span', { 'data-testid': 'login-count' }, `模拟登录 ${calls.logins} 次`),
+            h('span', { 'data-testid': 'registration-count', style: 'margin-left: 1rem;' }, `模拟注册 ${calls.registrations} 次`)
+          ]),
+          h(RouterView)
+        ])
+      }).use(pinia).use(router).mount('#app')
+    </script>
+  </body>
+</html>
