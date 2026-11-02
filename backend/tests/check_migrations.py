@@ -304,6 +304,12 @@ SPECS = {
             'current_selected': {'required': False},
         }),
     },
+    # 确认范围的成员指纹：四个计数相同但成员互换时，确认/导出必须能发现漂移。
+    '1793059200_adoption_scope_digest.js': {
+        'fields': ('adoption_batches', {
+            'scope_digest': {'required': False},
+        }),
+    },
 }
 FIRST = '1788940000_initial_schema.js'
 

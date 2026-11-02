@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -227,6 +229,20 @@ type adoptionComputation struct {
 	Entries  []adoptionEntry
 }
 
+// adoptionRightsFailure 是权利硬边界的唯一判据：返回空串表示 allow，否则返回理由码。
+// 例外、预览、确认与导出都必须经过它，不能有任何一条路径用「人填了例外」替代授权。
+func adoptionRightsFailure(row adoptionRow) string {
+	switch strings.TrimSpace(row.RightsDecision) {
+	case "allow":
+		return ""
+	case "deny":
+		return adoptionReasonPurposeDenied
+	default:
+		// 缺行、空值、以及任何枚举外的写法都按「未决定」处理：未知不是允许（D5.2）。
+		return adoptionReasonPurposeUnknown
+	}
+}
+
 // adoptionRuleVerdict 是纯判据：只看一行事实与规则，返回是否选中与理由码。
 //
 // 优先级刻意固定并在文档里写明：状态 → 质量状态 → 阻塞原因 → 用途权利 → 拼音。
@@ -254,13 +270,8 @@ func adoptionRuleVerdict(row adoptionRow, rule adoptionRule) (bool, string) {
 		}
 		return false, "unknown"
 	}
-	switch strings.TrimSpace(row.RightsDecision) {
-	case "allow":
-	case "deny":
-		return false, adoptionReasonPurposeDenied
-	default:
-		// 缺行、空值、以及任何枚举外的写法都按「未决定」处理：未知不是允许（D5.2）。
-		return false, adoptionReasonPurposeUnknown
+	if reason := adoptionRightsFailure(row); reason != "" {
+		return false, reason
 	}
 	if rule.RequirePinyin {
 		switch strings.TrimSpace(row.NormalizationStatus) {
@@ -293,12 +304,29 @@ func classifyAdoptionRows(rows []adoptionRow, rule adoptionRule, exceptions map[
 			Decision:   adoptionDecisionSelect,
 			Source:     "rule",
 		}
+		// 例外只能作用于「规则已选中」或「规则判不了（pending）」的条目；它不能
+		// 把状态/质量/阻塞原因不合格的条目直接拉进交付范围，也不能替代用途授权。
+		pending := adoptionUncertain(reason)
 		if exception, ok := exceptions[row.PageID]; ok {
-			entry.Source = "exception"
-			if exception.Decision == adoptionDecisionExclude {
-				selected, reason = false, exception.ReasonCode
-			} else {
-				selected, reason = true, ""
+			if selected || adoptionUncertain(reason) {
+				switch exception.Decision {
+				case adoptionDecisionExclude:
+					// 人已经对这条下过结论：即使理由码是 unknown，也不再算待处理。
+					entry.Source = "exception"
+					selected, reason = false, exception.ReasonCode
+					pending = false
+				case adoptionDecisionSelect:
+					if rightsReason := adoptionRightsFailure(row); rightsReason != "" {
+						// 例外说明不是授权记录：权利不是 allow 时 select 不生效。
+						// deny 是已定排除，unknown/缺行才留 pending。
+						selected, reason = false, rightsReason
+						pending = adoptionUncertain(rightsReason)
+					} else {
+						entry.Source = "exception"
+						selected, reason = true, ""
+						pending = false
+					}
+				}
 			}
 		}
 		computation.Total++
@@ -309,7 +337,7 @@ func classifyAdoptionRows(rows []adoptionRow, rule adoptionRule, exceptions map[
 		}
 		entry.Decision = adoptionDecisionExclude
 		entry.Reason = reason
-		entry.Pending = adoptionUncertain(reason)
+		entry.Pending = pending
 		computation.Reasons[reason]++
 		if entry.Pending {
 			computation.Pending++
@@ -319,6 +347,32 @@ func classifyAdoptionRows(rows []adoptionRow, rule adoptionRule, exceptions map[
 		computation.Entries = append(computation.Entries, entry)
 	}
 	return computation
+}
+
+// adoptionExceptionCandidate 回答「这条能不能被例外处理」。与 classify 共用同一条
+// 判据：规则已选中，或规则判不了（pending）。状态未到、质量不足、阻塞未清、拼音未定
+// 的条目不在例外范围内——那是应该改规则或上游数据，不是逐条例外。
+func adoptionExceptionCandidate(row adoptionRow, rule adoptionRule) bool {
+	selected, reason := adoptionRuleVerdict(row, rule)
+	return selected || adoptionUncertain(reason)
+}
+
+// adoptionScopeDigest 是确认范围的成员指纹。四个计数相同但成员换人时，
+// 仅比计数会漏掉范围漂移，所以确认与导出都要比这份指纹。
+func adoptionScopeDigest(computation adoptionComputation) string {
+	lines := make([]string, 0, len(computation.Entries))
+	for _, entry := range computation.Entries {
+		lines = append(lines, strings.Join([]string{
+			entry.PageID,
+			entry.Decision,
+			entry.Reason,
+			fmt.Sprintf("%t", entry.Pending),
+			entry.Source,
+		}, "|"))
+	}
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:])
 }
 
 func (c adoptionComputation) reasonCounts() []adoptionReasonCount {
@@ -618,6 +672,7 @@ func (s *importService) saveAdoptionCounts(record *core.Record, computation adop
 	record.Set("excluded_count", computation.Excluded)
 	record.Set("pending_count", computation.Pending)
 	record.Set("reasons_json", string(reasons))
+	record.Set("scope_digest", adoptionScopeDigest(computation))
 	return nil
 }
 
@@ -679,6 +734,11 @@ func adoptionCountsDrifted(record *core.Record, computation adoptionComputation)
 		return "未采用数量"
 	case record.GetInt("pending_count") != computation.Pending:
 		return "待处理数量"
+	}
+	// 四个数相同不代表范围相同：两条同状态条目互换会保持计数。空 digest 是
+	// 旧记录（本字段上线前确认的批次），没有可比对象，不能伪造一个漂移。
+	if stored := record.GetString("scope_digest"); stored != "" && stored != adoptionScopeDigest(computation) {
+		return "范围成员"
 	}
 	return ""
 }
@@ -766,6 +826,33 @@ func (s *importService) decideAdoptionException(c *core.RequestEvent) error {
 	}
 	if utf8.RuneCountInString(note) > adoptionNoteMax {
 		return apis.NewBadRequestError(fmt.Sprintf("依据最多 %d 个字符。", adoptionNoteMax), nil)
+	}
+	rule, err := parseAdoptionRule(json.RawMessage(record.GetString("rule_json")))
+	if err != nil {
+		return apis.NewBadRequestError(err.Error(), nil)
+	}
+	rows, err := s.adoptionRows(project.Id, record.GetString("purpose"))
+	if err != nil {
+		return apis.NewBadRequestError("计算编选范围失败。", err)
+	}
+	var target *adoptionRow
+	for index := range rows {
+		if rows[index].PageID == pageID {
+			target = &rows[index]
+			break
+		}
+	}
+	if target == nil {
+		return apis.NewNotFoundError("条目不在本项目的编选范围里。", nil)
+	}
+	if !adoptionExceptionCandidate(*target, rule) {
+		_, ruleReason := adoptionRuleVerdict(*target, rule)
+		return apis.NewBadRequestError(fmt.Sprintf("该条目不在本批例外范围内（%s）：状态、质量、阻塞或拼音前置条件未满足，请先修规则或上游数据。", ruleReason), nil)
+	}
+	if decision == adoptionDecisionSelect {
+		if rightsReason := adoptionRightsFailure(*target); rightsReason != "" {
+			return apis.NewBadRequestError(fmt.Sprintf("该用途的权利结论不是 allow（%s）。例外说明不能替代授权记录，请先在来源登记中更新用途结论。", rightsReason), nil)
+		}
 	}
 
 	collection, err := s.app.FindCollectionByNameOrId("adoption_exceptions")
@@ -943,11 +1030,19 @@ LEFT JOIN source_usages su
 WHERE p.project = {:project}
 ORDER BY p.page_number, p.id`
 
-func (s *importService) computeAdoption(projectID, purpose, batchID string, rule adoptionRule) (adoptionComputation, error) {
+func (s *importService) adoptionRows(projectID, purpose string) ([]adoptionRow, error) {
 	rows := []adoptionRow{}
 	if err := s.app.DB().NewQuery(adoptionRowsSQL).
 		Bind(dbx.Params{"project": projectID, "purpose": purpose}).
 		All(&rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (s *importService) computeAdoption(projectID, purpose, batchID string, rule adoptionRule) (adoptionComputation, error) {
+	rows, err := s.adoptionRows(projectID, purpose)
+	if err != nil {
 		return adoptionComputation{}, err
 	}
 	exceptions, err := s.adoptionExceptions(batchID)

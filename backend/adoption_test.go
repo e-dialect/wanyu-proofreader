@@ -169,21 +169,24 @@ func TestClassifyAdoptionRows(t *testing.T) {
 		{PageID: "e", PageNumber: 5, Status: "proofread", QualityState: "validated", RightsDecision: "deny"},
 		// 没有人处理过的未决权利：留在 pending，不并进 excluded，也不冒充已定。
 		{PageID: "f", PageNumber: 6, Status: "proofread", QualityState: "validated", RightsDecision: "unknown"},
+		// 权利允许、但阻塞原因无法自动判定：人可以写例外把它放进本批。
+		{PageID: "g", PageNumber: 7, Status: "proofread", QualityState: "validated", BlockedReason: "unknown", RightsDecision: "allow"},
 	}
 	exceptions := map[string]adoptionExceptionRecord{
-		// A human decides the unknown-rights row is fine: it becomes selected and the
-		// pending count has to drop with it.
+		// 人权不能替代授权：未知权利即使写了 select 例外也不得选中，留在 pending。
 		"b": {PageID: "b", Decision: adoptionDecisionSelect, Note: "已取得书面许可", ReasonCode: ""},
 		// A human excludes an otherwise selected row with a settled reason.
 		"a": {PageID: "a", Decision: adoptionDecisionExclude, Note: "本批不收线上展示", ReasonCode: "rights_gate"},
+		// 权利为 allow 时，例外 select 可以把 pending 的 unknown 条目放进来。
+		"g": {PageID: "g", Decision: adoptionDecisionSelect, Note: "人工确认可进入本批", ReasonCode: ""},
 	}
 	got := classifyAdoptionRows(rows, rule, exceptions)
 
-	if got.Total != 6 {
-		t.Fatalf("total = %d, want 6", got.Total)
+	if got.Total != 7 {
+		t.Fatalf("total = %d, want 7", got.Total)
 	}
-	if got.Selected != 1 || got.Excluded != 4 || got.Pending != 1 {
-		t.Fatalf("counts = selected %d / excluded %d / pending %d, want 1 / 4 / 1",
+	if got.Selected != 1 || got.Excluded != 4 || got.Pending != 2 {
+		t.Fatalf("counts = selected %d / excluded %d / pending %d, want 1 / 4 / 2",
 			got.Selected, got.Excluded, got.Pending)
 	}
 	if got.Total != got.Selected+got.Excluded+got.Pending {
@@ -196,16 +199,123 @@ func TestClassifyAdoptionRows(t *testing.T) {
 	if got.Reasons[adoptionReasonStatusNotReady] != 1 {
 		t.Fatalf("status reason count = %d, want 1", got.Reasons[adoptionReasonStatusNotReady])
 	}
-	if got.Reasons[adoptionReasonPurposeUnknown] != 1 {
-		t.Fatalf("purpose_unknown reason count = %d, want 1", got.Reasons[adoptionReasonPurposeUnknown])
+	if got.Reasons[adoptionReasonPurposeUnknown] != 2 {
+		t.Fatalf("purpose_unknown reason count = %d, want 2", got.Reasons[adoptionReasonPurposeUnknown])
 	}
 	// 例外来源要标出来：导出里「这条是人放的」与「这条是规则选的」不能混。
 	var sources = map[string]string{}
 	for _, entry := range got.Entries {
 		sources[entry.PageID] = entry.Source
 	}
-	if sources["a"] != "exception" || sources["b"] != "exception" || sources["c"] != "rule" {
+	if sources["a"] != "exception" || sources["b"] != "rule" || sources["c"] != "rule" || sources["g"] != "exception" {
 		t.Fatalf("entry sources = %v", sources)
+	}
+}
+
+func TestClassifyExceptionExcludeClearsPending(t *testing.T) {
+	// 人已经对这条下过结论：即使理由码是 unknown，也不能继续算待处理。
+	row := adoptionRow{PageID: "a", PageNumber: 1, Status: "proofread", RightsDecision: "unknown"}
+	got := classifyAdoptionRows([]adoptionRow{row}, defaultAdoptionRule(), map[string]adoptionExceptionRecord{
+		"a": {PageID: "a", Decision: adoptionDecisionExclude, ReasonCode: "unknown", Note: "看过，不进入本批"},
+	})
+	if got.Selected != 0 || got.Excluded != 1 || got.Pending != 0 {
+		t.Fatalf("counts = selected %d / excluded %d / pending %d, want 0 / 1 / 0",
+			got.Selected, got.Excluded, got.Pending)
+	}
+	if got.Entries[0].Pending || got.Entries[0].Reason != "unknown" {
+		t.Fatalf("entry = %+v", got.Entries[0])
+	}
+}
+
+func TestClassifyExceptionSelectAfterRightsRevoked(t *testing.T) {
+	// 例外是在 allow 时登记的；之后权利被撤回为 deny，这条必须退出采用范围。
+	row := adoptionRow{PageID: "a", PageNumber: 1, Status: "proofread", RightsDecision: "deny"}
+	got := classifyAdoptionRows([]adoptionRow{row}, defaultAdoptionRule(), map[string]adoptionExceptionRecord{
+		"a": {PageID: "a", Decision: adoptionDecisionSelect, Note: "当时已取得书面许可"},
+	})
+	if got.Selected != 0 || got.Excluded != 1 || got.Pending != 0 {
+		t.Fatalf("counts = selected %d / excluded %d / pending %d, want 0 / 1 / 0",
+			got.Selected, got.Excluded, got.Pending)
+	}
+	if got.Entries[0].Reason != adoptionReasonPurposeDenied || got.Entries[0].Pending {
+		t.Fatalf("entry = %+v", got.Entries[0])
+	}
+}
+
+func TestClassifyExceptionSelectDoesNotBypassRule(t *testing.T) {
+	// 例外不是万能覆盖：状态未到的条目仍不能被 select 拉进交付范围。
+	row := adoptionRow{PageID: "a", PageNumber: 1, Status: "pending", RightsDecision: "allow"}
+	got := classifyAdoptionRows([]adoptionRow{row}, defaultAdoptionRule(), map[string]adoptionExceptionRecord{
+		"a": {PageID: "a", Decision: adoptionDecisionSelect, Note: "想直接放进来"},
+	})
+	if got.Selected != 0 || got.Excluded != 1 || got.Pending != 0 {
+		t.Fatalf("counts = selected %d / excluded %d / pending %d, want 0 / 1 / 0",
+			got.Selected, got.Excluded, got.Pending)
+	}
+	if got.Entries[0].Reason != adoptionReasonStatusNotReady {
+		t.Fatalf("entry = %+v", got.Entries[0])
+	}
+}
+
+func TestAdoptionExceptionCandidate(t *testing.T) {
+	qualityRule := withRule(defaultAdoptionRule(), func(r *adoptionRule) {
+		r.QualityStates = []string{qualityStateValidated}
+	})
+	cases := []struct {
+		name string
+		row  adoptionRow
+		rule adoptionRule
+		want bool
+	}{
+		{"selected row is a valid exception target", adoptionRow{Status: "proofread", RightsDecision: "allow"}, defaultAdoptionRule(), true},
+		{"unknown rights is pending", adoptionRow{Status: "proofread", RightsDecision: "unknown"}, defaultAdoptionRule(), true},
+		{"unknown blocked reason is pending", adoptionRow{Status: "proofread", BlockedReason: "unknown", RightsDecision: "allow"}, defaultAdoptionRule(), true},
+		{"unproofread row is not a candidate", adoptionRow{Status: "pending", RightsDecision: "allow"}, defaultAdoptionRule(), false},
+		{"hard blocked row is not a candidate", adoptionRow{Status: "proofread", BlockedReason: "glyph_table", RightsDecision: "allow"}, defaultAdoptionRule(), false},
+		{"quality gate is not a candidate", adoptionRow{Status: "proofread", QualityState: qualityStateCandidate, RightsDecision: "allow"}, qualityRule, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			row := tc.row
+			if row.Status == "" {
+				row.Status = "proofread"
+			}
+			candidate := adoptionExceptionCandidate(row, tc.rule)
+			if candidate != tc.want {
+				t.Fatalf("candidate = %v, want %v", candidate, tc.want)
+			}
+		})
+	}
+}
+
+func TestAdoptionScopeDigestDetectsMemberSwap(t *testing.T) {
+	first := adoptionComputation{Entries: []adoptionEntry{
+		{PageID: "a", Decision: adoptionDecisionSelect},
+		{PageID: "b", Decision: adoptionDecisionExclude, Reason: "glyph_table"},
+	}}
+	swapped := adoptionComputation{Entries: []adoptionEntry{
+		{PageID: "a", Decision: adoptionDecisionExclude, Reason: "glyph_table"},
+		{PageID: "b", Decision: adoptionDecisionSelect},
+	}}
+	reordered := adoptionComputation{Entries: []adoptionEntry{
+		{PageID: "b", Decision: adoptionDecisionExclude, Reason: "glyph_table"},
+		{PageID: "a", Decision: adoptionDecisionSelect},
+	}}
+	if adoptionScopeDigest(first) == adoptionScopeDigest(swapped) {
+		t.Fatal("member swap with identical counts produced the same digest")
+	}
+	if adoptionScopeDigest(first) != adoptionScopeDigest(reordered) {
+		t.Fatal("digest must not depend on entry order")
+	}
+	provenance := adoptionComputation{Entries: []adoptionEntry{
+		{PageID: "a", Decision: adoptionDecisionSelect, Source: "exception"},
+		{PageID: "b", Decision: adoptionDecisionExclude, Reason: "glyph_table"},
+	}}
+	if adoptionScopeDigest(first) == adoptionScopeDigest(provenance) {
+		t.Fatal("rule/exception provenance change produced the same digest")
+	}
+	if adoptionScopeDigest(first) == "" {
+		t.Fatal("digest must not be empty")
 	}
 }
 

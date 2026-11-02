@@ -135,6 +135,17 @@ test('编选页把「不得静默遗漏」写进界面，而不是只留在接�
   assert.doesNotMatch(view, /style="/)
 })
 
+test('切换批次同时刷新例外与事件，并丢弃迟到响应', () => {
+  const view = read('../src/views/admin/AdoptionView.vue')
+  const start = view.indexOf('async function selectBatch')
+  assert.notEqual(start, -1, 'selectBatch not found')
+  const body = view.slice(start, view.indexOf('\n}\n', start) + 3)
+  assert.match(body, /loadBatchDetails\(id\)/)
+  assert.match(body, /batchLoadGeneration/)
+  assert.match(body, /EMPTY_EVENTS/)
+  assert.doesNotMatch(body, /loadExceptions\(\)\s*$/)
+})
+
 test('路由与项目页入口都指向编选页', () => {
   const router = read('../src/router/index.js')
   assert.match(router, /path: 'projects\/:id\/adoption'/)

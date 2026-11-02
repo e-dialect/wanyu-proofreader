@@ -30,8 +30,8 @@ const PURPOSES = [
   "raw_third_party_transfer"
 ]
 
-// 必须与 backend/adoption.go 的 adoptionStatuses 逐字一致：两边漂移会让
-// 「预览时算进去的条目」在导出时被判成 status_not_ready。
+// 必须与 backend/adoption.go 的 adoptionDecisionSelect / adoptionDecisionExclude
+// 逐字一致：迁移与 Go 侧漂移会让例外结论在加载时被判成非法。
 const DECISIONS = ["select", "exclude"]
 const BATCH_STATUSES = ["draft", "previewed", "confirmed"]
 

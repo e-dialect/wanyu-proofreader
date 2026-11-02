@@ -295,35 +295,49 @@ const createForm = reactive({
 const current = computed(() => batches.value.find((item) => item.id === currentId.value) || null)
 const counts = computed(() => normalizeCounts(current.value?.counts))
 const consistent = computed(() => countsConsistent(current.value?.counts))
+const EMPTY_EXCEPTIONS = { exceptions: [], pending: [], pendingTotal: 0 }
+const EMPTY_EVENTS = { events: [], stale: false }
+let batchLoadGeneration = 0
 
 onMounted(load)
 
 async function load() {
+  const generation = ++batchLoadGeneration
   loading.value = true
   loadError.value = ''
   try {
     const data = await listAdoptionBatches(projectId)
+    if (generation !== batchLoadGeneration) return
     batches.value = data.batches || []
     purposes.value = data.purposes || []
     reasonCodes.value = data.reasons || []
     if (!currentId.value || !batches.value.some((item) => item.id === currentId.value)) {
       currentId.value = batches.value[0]?.id || ''
     }
-    await Promise.all([loadExceptions(), loadEvents(), loadSummary()])
+    const [details] = await Promise.all([loadBatchDetails(currentId.value), loadSummary()])
+    if (generation !== batchLoadGeneration) return
+    applyBatchDetails(details)
     loaded.value = true
   } catch (e) {
+    if (generation !== batchLoadGeneration) return
     loadError.value = getPbMessage(e, '加载编选批次失败')
   } finally {
-    loading.value = false
+    if (generation === batchLoadGeneration) loading.value = false
   }
 }
 
-async function loadExceptions() {
-  if (!currentId.value) {
-    exceptions.value = { exceptions: [], pending: [], pendingTotal: 0 }
-    return
-  }
-  exceptions.value = await listAdoptionExceptions(currentId.value)
+async function loadBatchDetails(batchId) {
+  if (!batchId) return { exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } }
+  const [exceptionsData, eventsData] = await Promise.all([
+    listAdoptionExceptions(batchId),
+    listAdoptionEvents(batchId)
+  ])
+  return { exceptions: exceptionsData, events: eventsData }
+}
+
+function applyBatchDetails(details) {
+  exceptions.value = details.exceptions || { ...EMPTY_EXCEPTIONS }
+  batchEvents.value = details.events || { ...EMPTY_EVENTS }
   for (const item of exceptions.value.pending) draftFor(item.page)
 }
 
@@ -332,14 +346,6 @@ function draftFor(pageId) {
     decisionDrafts[pageId] = { decision: 'select', reason: '', note: '' }
   }
   return decisionDrafts[pageId]
-}
-
-async function loadEvents() {
-  if (!currentId.value) {
-    batchEvents.value = { events: [], stale: false }
-    return
-  }
-  batchEvents.value = await listAdoptionEvents(currentId.value)
 }
 
 async function loadSummary() {
@@ -448,14 +454,21 @@ async function decide(pageId) {
 
 async function selectBatch(id) {
   currentId.value = id
+  const generation = ++batchLoadGeneration
   loading.value = true
   loadError.value = ''
+  // 先清掉上一批的详情：加载期间旧事件/旧例外不能继续显示在新批次名下。
+  exceptions.value = { ...EMPTY_EXCEPTIONS }
+  batchEvents.value = { ...EMPTY_EVENTS }
   try {
-    await loadExceptions()
+    const details = await loadBatchDetails(id)
+    if (generation !== batchLoadGeneration) return
+    applyBatchDetails(details)
   } catch (e) {
-    loadError.value = getPbMessage(e, '加载例外失败')
+    if (generation !== batchLoadGeneration) return
+    loadError.value = getPbMessage(e, '加载批次详情失败')
   } finally {
-    loading.value = false
+    if (generation === batchLoadGeneration) loading.value = false
   }
 }
 </script>
