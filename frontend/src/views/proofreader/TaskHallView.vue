@@ -102,7 +102,7 @@
             </div>
           </dl>
 
-          <div v-if="tierRows(queue).length" class="queue-tiers" aria-label="按难度层级领取">
+          <div v-if="tierRows(queue).length || queue.missingGlyph" class="queue-tiers" aria-label="按难度层级领取">
             <button
               v-for="option in tierRows(queue)"
               :key="option.key"
@@ -110,6 +110,12 @@
               :disabled="claimingProject === queue.project.id"
               @click="enterProject(queue, option.key)"
             >{{ option.label }} · {{ option.count }}</button>
+            <button
+              v-if="queue.missingGlyph"
+              class="queue-tier queue-tier--glyph"
+              :disabled="claimingProject === queue.project.id"
+              @click="enterProject(queue, '', true)"
+            >缺字待登记 · {{ queue.missingGlyph }}</button>
             <span v-if="tierUnknown(queue)" class="queue-tier queue-tier--muted">
               信号不足 {{ tierUnknown(queue) }}
             </span>
@@ -153,7 +159,7 @@ import { claimNextProjectPage, listProjectQueueSummaries } from '@/services/page
 import { getProofreaderQueueAction, summarizeProofreaderQueues } from '@/lib/workspaceInsights'
 import { tierBreakdown } from '@/lib/taskTiers'
 import { formatClaimConflict, formatPbError } from '@/utils/pbErrors'
-import { saveTaskLease } from '@/lib/taskLease'
+import { saveTaskLease, saveGlyphQueue } from '@/lib/taskLease'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -194,7 +200,7 @@ async function loadProjects({ keepActionError = false } = {}) {
   }
 }
 
-async function enterProject(queue, tier = '') {
+async function enterProject(queue, tier = '', glyph = false) {
   const projectId = queue?.project?.id
   if (!projectId || claimingProject.value || !queueAction(queue).canEnter) return
   claimingProject.value = projectId
@@ -202,11 +208,13 @@ async function enterProject(queue, tier = '') {
   try {
     const userId = currentUserId(auth.user)
     if (!userId) throw new Error('登录状态已失效，请重新登录')
-    const page = await claimNextProjectPage(projectId, userId, '', tier)
+    const page = await claimNextProjectPage(projectId, userId, '', tier, glyph)
     if (!page?.id) {
-      actionError.value = tier
-        ? `${tier} 类暂时没有可领取的条目，换个层级或按默认顺序领一条。`
-        : '该项目暂无你可处理的条目。'
+      actionError.value = glyph
+        ? '缺字待登记队列暂时没有可领取的条目。'
+        : tier
+          ? `${tier} 类暂时没有可领取的条目，换个层级或按默认顺序领一条。`
+          : '该项目暂无你可处理的条目。'
       await loadProjects({ keepActionError: true })
       return
     }
@@ -216,6 +224,7 @@ async function enterProject(queue, tier = '') {
       token: page.leaseToken,
       expiresAt: page.leaseExpiresAt
     })
+    saveGlyphQueue(window.sessionStorage, { userId, projectId, glyph })
     await router.push(`/tasks/${page.id}/edit`)
   } catch (e) {
     actionError.value = `进入项目失败：${formatClaimConflict(e, '该项目的下一条任务可能已被其他校对员接取，请刷新后重试')}`

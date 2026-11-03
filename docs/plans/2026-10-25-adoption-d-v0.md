@@ -74,7 +74,7 @@ total = selected + excluded + pending
 预览之后数据变了，确认会被 409 拒绝并要求重新预览：不把新数字悄悄写进「已确认」。
 已确认批次导出时再复算一次，与确认时记下的数字对照，不一致写 `drift=<哪一项>`。
 四个数相同也不代表范围相同：确认时另存 `scope_digest`（全部条目的
-`page|decision|reason|pending` 排序后 SHA-256），成员互换会得到不同指纹，确认与导出
+`page|decision|reason|pending|source` 排序后 SHA-256），成员互换会得到不同指纹，确认与导出
 都比较它，命中时 `drift` 为「范围成员」。旧记录没有指纹时不伪造漂移。
 
 ## 例外的边界
@@ -83,7 +83,7 @@ total = selected + excluded + pending
 阻塞未清、拼音未定的条目不在例外范围内，应先改规则或上游数据。
 
 - `select` 例外必须在当前用途权利为 `allow` 时才生效；例外说明不是授权记录，
-  权利为 `deny`/`unknown` 时条目留在 pending，并提示先去来源登记更新结论。
+  权利为 `deny` 时已定排除，`unknown`/缺行时待处理；登记选入例外的 API 会拒绝这两种权利。
 - `exclude` 例外一旦写入，即使理由码选 `unknown`/`purpose_unknown`，也不再计入
   pending：人已经对这条下过结论。
 
@@ -108,10 +108,12 @@ total = selected + excluded + pending
 
 - **B**：只读 `pages.status`、`quality_state`、`blocked_reason`、`normalization_status`，
   不写任何校对列（D6.1）。
-- **C**：`requirePinyin` 读 #190 的 `normalization_status`，但 C 的异常清单还没有接成
-  不采用理由（D3.4 待 C 接 v2 后做）。
-- **E**：#332 现在用 `selection_authority=manual_handoff_pending_315` 绕过 D；本刀落地后
-  那份交接文件可以由 `manifest` 取代。
+- **C**：`requirePinyin` 读 #190 的 `normalization_status`；运行面已经通过 `scheme.Convert`
+  分派到 v2，但 C 的细分异常还没有接成不采用理由（D3.4）。
+- **E**：#332 当前通过 `selection_authority=manual_handoff_pending_315` 明示人工交接，
+  尚未从 D 权威范围独立对账。默认 `manifest` 仅含选中成员，不能直接替代 E 所需的整批分类清单。
+  范围分母、理由、确认凭据与权限差异见 [C→D→E 接口准备](2026-11-02-scheme-adoption-handoff.md)，
+  待原作者核对及接口确认后接续。
 
 ## 权利变更与重评（D5.3）
 
