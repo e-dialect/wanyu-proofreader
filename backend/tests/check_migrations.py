@@ -59,6 +59,16 @@ SPECS = {
             'missing_glyph': {'required': False},
         }),
     },
+    '1792800100_page_rework_status.js': {
+        'fields': ('pages', {
+            'status': {'values_contains': 'rework'},
+        }),
+    },
+    '1792800200_attempt_superseded_outcome.js': {
+        'fields': ('proofreading_attempts', {
+            'outcome': {'values_contains': 'superseded'},
+        }),
+    },
     '1791580800_unique_nickname_login.js': {
         'indexes': ['idx_users_nickname'],
         'collection_indexes': ('users', 'idx_users_nickname'),
