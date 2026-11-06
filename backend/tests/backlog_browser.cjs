@@ -18,7 +18,13 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true })
     page.on('pageerror', error => errors.push(error.message))
     page.on('request', request => { if (request.url().includes('/api/')) report.requests.push({ method: request.method(), path: new URL(request.url()).pathname }) })
-    await page.addInitScript(({ token, record }) => localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record })), fixture.manager)
+    // CI also builds this bundle with VITE_PB_URL=http://localhost for the
+    // older intercepted browser fixture. This host has a real random port,
+    // so select its same-origin proxy before the SPA initializes PocketBase.
+    await page.addInitScript(({ token, record }) => {
+      globalThis.__FANGJI_BACKEND_URL__ = window.location.origin
+      localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record }))
+    }, fixture.manager)
     const projectRoute = `/admin/projects/${fixture.project.id}`
     const open = async (route) => {
       await page.goto(host.origin + route)
@@ -29,7 +35,10 @@ async function main() {
       const baseline = await startHost(fixture.base, { dist: process.env.BACKLOG_BASELINE_DIST })
       const original = await browser.newPage({ viewport: { width: 320, height: 900 } })
       try {
-        await original.addInitScript(({ token, record }) => localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record })), fixture.manager)
+        await original.addInitScript(({ token, record }) => {
+          globalThis.__FANGJI_BACKEND_URL__ = window.location.origin
+          localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record }))
+        }, fixture.manager)
         await original.goto(baseline.origin + projectRoute)
         await original.locator('#project-entries table tbody tr').first().waitFor()
         await original.waitForLoadState('networkidle')
@@ -49,7 +58,10 @@ async function main() {
             const requests = []
             comparison.on('request', request => { const u = new URL(request.url()); if (u.pathname.startsWith('/api/fangji/projects/')) requests.push({ method: request.method(), path: u.pathname, query: u.search }) })
             await comparison.emulateMedia({ reducedMotion: 'reduce' })
-            await comparison.addInitScript(({ token, record }) => localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record })), fixture.manager)
+            await comparison.addInitScript(({ token, record }) => {
+              globalThis.__FANGJI_BACKEND_URL__ = window.location.origin
+              localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record }))
+            }, fixture.manager)
             await comparison.goto(origin + route)
             await comparison.waitForLoadState('networkidle')
             await comparison.evaluate(() => document.fonts.ready)
@@ -185,6 +197,7 @@ async function main() {
       }
     }
     const guest = await browser.newPage()
+    await guest.addInitScript(() => { globalThis.__FANGJI_BACKEND_URL__ = window.location.origin })
     try {
       for (const route of ['/login', '/register']) {
         for (const width of report.widths) {
