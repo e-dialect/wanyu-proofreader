@@ -253,3 +253,53 @@ func TestProjectExportScaleEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExportNormalizationDoesNotGuess(t *testing.T) {
+	_, collection, _ := exportFixture(t, 0, 0)
+	page := core.NewRecord(collection)
+	page.Set("status", "approved")
+	page.Set("source_system", "source_registry")
+	page.Set("source_id", "synthetic-source")
+	page.Set("source_version", "job-1")
+	page.Set("normalization_status", "UNSUPPORTED")
+	page.Set("canonical_pronunciation", "should-not-leak")
+	page.Set("normalization_rule_version", "puxian-dict-yanli-2026-10-18")
+	page.Set("normalization_source_snapshot", "bɑk4")
+	if got := exportColumnValue("normalized_reading", page); got != "" {
+		t.Fatalf("declined reading leaked: %#v", got)
+	}
+	if got := exportColumnValue("normalization_rule_version", page); got != "puxian-dict-yanli-2026-10-18" {
+		t.Fatalf("rule version = %#v", got)
+	}
+	if got := exportColumnValue("normalization_source", page); got != "bɑk4" {
+		t.Fatalf("source snapshot = %#v", got)
+	}
+	if got := exportColumnValue("source_trace", page); got != "registered" {
+		t.Fatalf("source trace = %#v", got)
+	}
+	if got := exportColumnValue("proofread_scope", page); got != "in_proofread_range" {
+		t.Fatalf("scope = %#v", got)
+	}
+	page.Set("status", "pending")
+	page.Set("source_id", "")
+	page.Set("normalization_status", "EXACT")
+	page.Set("canonical_pronunciation", "paʔ4")
+	if got := exportColumnValue("normalized_reading", page); got != "paʔ4" {
+		t.Fatalf("exact reading = %#v", got)
+	}
+	if got := exportColumnValue("source_trace", page); got != "unknown" {
+		t.Fatalf("missing source id was treated as registered: %#v", got)
+	}
+	if got := exportColumnValue("proofread_scope", page); got != "outside_final_proofread" {
+		t.Fatalf("unfinished scope = %#v", got)
+	}
+}
+
+func exportColumnValue(name string, page *core.Record) any {
+	for _, column := range exportColumns {
+		if column.Name == name {
+			return column.Value(page)
+		}
+	}
+	return nil
+}

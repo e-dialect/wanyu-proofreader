@@ -384,9 +384,30 @@ node_modules（`npm root -g` 里未必有，指向它会 `Cannot find module`）
 
 ## 拼音归一的规则目录（FANGJI_SCHEME_ADAPTER_DIR）
 
-管理端「拼音归一」的规则来自一个目录，路径由环境变量 `FANGJI_SCHEME_ADAPTER_DIR` 给出，
-目录里每个 `*.json` 是一套方案（`backend/scheme` 的 `LoadAdapter` 格式）。目录**刻意没有默认值**
-（#193/#195 的教训：写死的默认路径会把某个人的本机目录带进生产），所以运维必须显式给：
+管理端「拼音归一」的规则来自一个目录，路径由环境变量 `FANGJI_SCHEME_ADAPTER_DIR` 给出。
+这个目录**只扫这一层**，不进入子目录。目录**刻意没有默认值**
+（#193/#195 的教训：写死的默认路径会把某个人的本机目录带进生产），所以运维必须显式给一个扁平目录。
+
+同一层里的 JSON 分两种，不能再把每个文件都当成 `LoadAdapter`：
+
+- 有 `scheme_id`、没有 `source_scheme_id` 的是目标方案，按 `LoadScheme` 读入。
+- 有 `source_scheme_id` 的是适配器。`schema_version` 为 1 的仍走 `LoadAdapter`。
+  `schema_version` 大于等于 2 的必须用 `LoadAdapterWithScheme`，并且它点名的目标方案文件
+  必须就在这同一层。目标放在上级或子目录里都看不到，启动会因为找不到目标而失败。
+- v2 规则文件里某个源调没有调类、却把 `rule_status` 写成 `production` 的，同样起不来。
+  守卫在适配器上，不在目标方案上；目标方案没有 `rule_status`。这种文件保持 `test`，
+  用 `missing_category_reason` 说明缺什么，不要猜成生产规则。
+
+仓库里的真实布局正好踩这个限制：`backend/scheme/data/hinghwa_canonical.json` 在 `data/`，
+`backend/scheme/data/source/puxian-dict-preface.json` 在子目录。把变量指到 `data/` 时，
+子目录里的凡例不会被扫到；指到 `data/source/` 时，v2 凡例找不到同层的目标方案，进程起不来。
+要载入这套 v2 规则，把目标方案和凡例复制到同一个扁平目录，例如：
+
+```text
+scheme-adapters/
+  hinghwa_canonical.json
+  puxian-dict-preface.json
+```
 
 ```yaml
 # compose 里给 backend 服务
@@ -406,7 +427,8 @@ volumes:
   不要静默半生效）：半套规则在跑比不跑更危险——同一批条目会按两套规则得出不同结论，而界面上
   看不出区别。下面几种都算不合法，报错里会点名文件名：JSON 解析失败、缺 `rule_status` 或取值
   不是 `test`/`production`、声明 `production` 却没给 `rule_status_basis`、两套方案同名、
-  规则里引用了目标清单以外的音。**修复方式是改文件或改路径，不是放宽校验**。
+  规则里引用了目标清单以外的音、v2 适配器在同一层找不到它点名的目标方案、
+  v2 规则文件里某个源调没有调类却标成 `production`。**修复方式是改文件或改路径，不是放宽校验**。
 
 两个运维上要知道的语义：
 

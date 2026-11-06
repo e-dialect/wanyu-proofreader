@@ -30,8 +30,12 @@ CSV 为 UTF-8 BOM + CRLF：`pdf_page`、`field:原业务列名`、下表其余�
 | `proofread_rounds` / `proofread_count` | 分别为持久化 proofread_round 和 proofread_count，轮次不等同于人数 |
 | `consensus` | 非 approved 为 `not_final`；approved 有 arbitrated_by 为 `arbitrated`，其余为 `unanimous`，读取工作流结果而不重算文本一致性 |
 | `arbitrated_by` / `arbitrated_at` | 持久化仲裁人引用与时间，未仲裁保持空值 |
-| `normalized_reading` / `normalization_rule_version` | 预留空串；#114 接入后由同一投影输出，目前不宣称已经转换 |
-| `exported_at` / `schema_version` | 同一请求统一的 UTC 时间、`WanyuExport/v1` |
+| `source_trace` | 三个来源字段都非空为 `registered`，否则 `unknown`。不根据项目名补来源 |
+| `proofread_scope` | `status=approved` 为 `in_proofread_range`，其余为 `outside_final_proofread`。未校对和范围外都不会写成已校对 |
+| `normalization_source` / `normalization_status` | 读取已保存的转换快照和状态。没有快照时为空，不现场重算 |
+| `normalized_reading` | 只有 `normalization_status` 为 `EXACT` 或 `REVIEWED` 时才输出已保存的规范读音；其余情况（包括 decline、缺依据、未转换）为空串。空串表示没有或已拒绝，不是猜出来的读音 |
+| `normalization_rule_version` | 始终输出已保存的规则版本；没有保存过则为空串，不拿当前规则目录的版本填上 |
+| `exported_at` / `schema_version` | 同一请求统一的 UTC 时间、`WanyuExport/v2` |
 
 approved 优先最终结构化行，缺失时回退原始结构化行；两者均无时使用最终纯文本或原始文本。未完成记录始终用原始内容。此结果不包含逐位校对者的全文历史或字段级 decision_ref 审计链。
 
@@ -41,7 +45,7 @@ approved 优先最终结构化行，缺失时回退原始结构化行；两者�
 - `source_covered_count`（导出行中三个来源字段都非空）和 `source_missing_count`，二者相加等于导出数；这不等同于来源登记、权利许可或可发布性已通过。
 - `is_partial`（导出数是否小于项目总数）、完整 filters、业务 `field_order`、现有 `column_roles_json` 的角色映射。
 - `sampling=false`、`sampling_rule="none; all rows matching the declared filters"`、`extrapolatable=false`。本接口不抽样，无抽样比例；筛选子集不得被解释成随机样本或全量。
-- normalization 为 `not_implemented_pending_114`，以及 schema / 导出时间。
+- normalization 为 `stored_conversion_only; empty reading means absent or declined, not guessed`，以及 schema / 导出时间。本接口只投影已经保存的转换结果，不在导出时猜测读音。
 
 ## 完整性、资源与审计
 
@@ -61,6 +65,6 @@ approved 优先最终结构化行，缺失时回退原始结构化行；两者�
 
 管理端已删除生产浏览器逐页拉取并拼装 CSV 的路径。核验 CSV 仍由现有核验端点生成，浏览器只下载返回文本。`listAllProjectPages` 仍用于批量操作选择待处理 ID（仅 id/status/page_number），不是导出；测试目录的 legacy_csv_oracle 仅用于历史回归与内存对比。
 
-此变更新增 `export` 领域 scope，不新增 migration、配置或环境变量。前后端应一起部署；新 GET 的 CSV 表头及 JSONL 元数据首行是明确的新机器契约，消费者必须按 WanyuExport/v1 读取。回滚前后端代码即可，无需回滚数据库。#114 标准化、#185 审计链、#315 编选采用和 #316 交付发布的跨系统验收各自保留，不由本接口宣称完成。
+此变更新增 `export` 领域 scope，不新增 migration、配置或环境变量。前后端应一起部署；新 GET 的 CSV 表头及 JSONL 元数据首行是明确的新机器契约。`WanyuExport/v1` 把 `normalized_reading` 与 `normalization_rule_version` 留空，normalization 记为 `not_implemented_pending_114`。`WanyuExport/v2` 增加 `source_trace`、`proofread_scope`、`normalization_source`、`normalization_status`，并按上面的空读音口径投影已保存的转换结果。消费者必须按响应里的 `schema_version` 读取，不能把 v1 文档里的「预留空串」套到 v2 文件上。回滚前后端代码即可，无需回滚数据库。#114 标准化、#185 审计链、#315 编选采用和 #316 交付发布的跨系统验收各自保留，不由本接口宣称完成。
 
 本次为 R2（来源/权限与对外文件语义），自动化证据见 [验收记录](evidence/issue-184/README.md)；合并及真实资料人工核验由维护者执行。

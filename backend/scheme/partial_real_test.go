@@ -1,6 +1,8 @@
 package scheme
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,5 +85,29 @@ func TestPartialRealRegistrationDeclinesAtTheMissingToneClass(t *testing.T) {
 		if strings.Contains(joined, "ipa_to_target:") {
 			t.Fatalf("%s ran the second arrow although the tone class is unknown: %v", input, result.Trace)
 		}
+	}
+}
+
+func TestPartialRealRegistrationCannotBeRelabelledProduction(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("data", "source", "puxian-dict-preface.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err = json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["rule_status"] = RuleStatusProduction
+	encoded, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "relabelled.json")
+	if err = os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = LoadAdapterWithScheme(path, loadTargetScheme(t))
+	if err == nil || !strings.Contains(err.Error(), "production") {
+		t.Fatalf("a partial 凡例 relabelled as production loaded: %v", err)
 	}
 }

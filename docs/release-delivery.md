@@ -83,6 +83,8 @@ go run ./cmd/delivery-replay ../docs/evidence/issue-316/server-synthetic-result.
 | `withdrawal` | 追加停用，须责任人、原因、核查者及 Steering 升级凭据。永久阻止本包下载，即使许可后来恢复。 |
 | `notice` | 停用之后才能登记，自动关联最近停用事件，须人工通知消费方停用的凭据。系统不自动向外发消息，也不把「待通知」报告成「已通知」。 |
 
+列表里的 `receipt_channel` 只说明回执是怎么来的。`none` 表示还在 `awaiting_receipt`，没有人登记过回执。`manual` 表示成功、部分冲突或整体失败是人登记的；对方自动回传还没有接入，所以写入回执时渠道固定为人工。失败回执的渠道也是 `manual`，状态仍是 `failed_rolled_back`，不会被改写成尚未回执。
+
 责任人及凭据在写入前去除首尾空白；要求必填的事件不接受纯空格、制表符、换行或全角空格。拒绝请求不追加事件，也不解除待办或停用包。
 
 `GET /api/fangji/projects/{projectId}/deliveries` 给出历史、待办、等待时长与上述已生成包度量。`GET .../deliveries/impacts?source_ref={logical_id}` 列出项目内该来源的历史包、批次、条数与当前权利阻断。权利变更会立即阻断新下载；由责任人查询影响、追加停用、升级 Steering 并通知消费方。**不会自动收回外部副本、不会删除旧包，也不声称已自动通知。**
