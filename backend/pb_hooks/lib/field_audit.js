@@ -44,11 +44,12 @@ function pageEvents(dao, pageId, actor, manager, query) {
 // its recorded source basis, not an assertion that today's source was checked.
 // Aggregate in SQLite: no per-page lookups or full event arrays in JS/frontend.
 const resultsSQL = `
-WITH submission_fields AS (
-  SELECT a.id AS attempt, a.page, field.key AS field_name, CAST(field.value AS TEXT) AS submitted_value
+WITH field_totals AS (
+  SELECT field.key AS field_name, COUNT(*) AS submitted_fields
   FROM proofreading_attempts a,
        json_each(CASE WHEN json_valid(a.row_json) THEN CASE WHEN json_type(a.row_json) = 'object' THEN a.row_json ELSE '{}' END ELSE '{}' END) field
   WHERE a.project = {:project} AND a.kind = 'proofread'
+  GROUP BY field.key
 ), ordered_judgments AS (
   SELECT ref AS attempt, page, field_name,
          json_extract(payload_json, '$.state') AS state,
@@ -59,29 +60,45 @@ WITH submission_fields AS (
          ) AS position
   FROM verification_events
   WHERE project = {:project} AND kind = 'judgment' AND ref != 'final' AND json_valid(payload_json)
-), field_results AS (
-  SELECT f.field_name, j.state
-  FROM submission_fields f LEFT JOIN ordered_judgments j
-    ON j.attempt = f.attempt AND j.page = f.page AND j.field_name = f.field_name
-       AND j.position = 1 AND j.judged_value = f.submitted_value
+), known_fields AS (
+  SELECT j.field_name,
+         SUM(CASE WHEN j.state = 'correct' THEN 1 ELSE 0 END) AS correct_count,
+         SUM(CASE WHEN j.state = 'incorrect' THEN 1 ELSE 0 END) AS incorrect_count,
+         SUM(CASE WHEN j.state = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+         SUM(CASE WHEN j.state = 'withdrawn' THEN 1 ELSE 0 END) AS withdrawn_count
+  FROM ordered_judgments j
+  JOIN proofreading_attempts a ON a.id = j.attempt AND a.page = j.page
+       AND a.project = {:project} AND a.kind = 'proofread'
+  JOIN json_each(CASE WHEN json_valid(a.row_json) THEN CASE WHEN json_type(a.row_json) = 'object' THEN a.row_json ELSE '{}' END ELSE '{}' END) field
+       ON field.key = j.field_name AND CAST(field.value AS TEXT) = j.judged_value
+  WHERE j.position = 1 AND j.state IN ('correct','incorrect','pending','withdrawn')
+  GROUP BY j.field_name
 ), summary AS (
-  SELECT field_name,
-         COUNT(*) AS submitted_fields,
-         SUM(CASE WHEN state = 'correct' THEN 1 ELSE 0 END) AS correct_count,
-         SUM(CASE WHEN state = 'incorrect' THEN 1 ELSE 0 END) AS incorrect_count,
-         SUM(CASE WHEN state = 'pending' THEN 1 ELSE 0 END) AS pending_count,
-         SUM(CASE WHEN state = 'withdrawn' THEN 1 ELSE 0 END) AS withdrawn_count,
-         SUM(CASE WHEN state IS NULL OR state NOT IN ('correct','incorrect','pending','withdrawn') THEN 1 ELSE 0 END) AS unrecorded_count
-  FROM field_results GROUP BY field_name
+  SELECT t.field_name, t.submitted_fields,
+         COALESCE(k.correct_count, 0) AS correct_count,
+         COALESCE(k.incorrect_count, 0) AS incorrect_count,
+         COALESCE(k.pending_count, 0) AS pending_count,
+         COALESCE(k.withdrawn_count, 0) AS withdrawn_count,
+         t.submitted_fields - COALESCE(k.correct_count, 0) - COALESCE(k.incorrect_count, 0)
+           - COALESCE(k.pending_count, 0) - COALESCE(k.withdrawn_count, 0) AS unrecorded_count
+  FROM field_totals t LEFT JOIN known_fields k ON k.field_name = t.field_name
 )`
+// Count and clamp in the same aggregation. A separate COUNT(summary) would
+// expand all historical submission fields again just to get the page count.
+const pagedSummarySQL = resultsSQL + `, ranked AS (
+  SELECT summary.*, COUNT(*) OVER () AS total_items,
+         ROW_NUMBER() OVER (ORDER BY field_name COLLATE BINARY) AS row_position
+  FROM summary
+)
+SELECT * FROM ranked
+WHERE row_position > MIN({:offset}, CAST((total_items - 1) / {:limit} AS INTEGER) * {:limit})
+ORDER BY row_position LIMIT {:limit}`
 function fieldSummary(dao, project, query) {
   const requested = pagination(query)
-  const count = new DynamicModel({ total: 0 })
-  dao.db().newQuery(resultsSQL + " SELECT COUNT(*) AS total FROM summary").bind({ project }).one(count)
-  const info = pageInfo(Number(count.total), requested.page, requested.perPage)
-  const rows = arrayOf(new DynamicModel({ field_name: "", submitted_fields: 0, correct_count: 0, incorrect_count: 0, pending_count: 0, withdrawn_count: 0, unrecorded_count: 0 }))
-  dao.db().newQuery(resultsSQL + " SELECT * FROM summary ORDER BY field_name COLLATE BINARY LIMIT {:limit} OFFSET {:offset}")
-    .bind({ project, limit: info.perPage, offset: (info.page - 1) * info.perPage }).all(rows)
+  const rows = arrayOf(new DynamicModel({ field_name: "", submitted_fields: 0, correct_count: 0, incorrect_count: 0, pending_count: 0, withdrawn_count: 0, unrecorded_count: 0, total_items: 0, row_position: 0 }))
+  dao.db().newQuery(pagedSummarySQL)
+    .bind({ project, limit: requested.perPage, offset: (requested.page - 1) * requested.perPage }).all(rows)
+  const info = pageInfo(rows.length ? Number(rows[0].total_items) : 0, requested.page, requested.perPage)
   const legacy = new DynamicModel({ total: 0 })
   dao.db().newQuery(`SELECT COUNT(*) AS total FROM pages p WHERE p.project = {:project}
     AND p.status = 'approved' AND NOT EXISTS (

@@ -97,6 +97,9 @@ async function fields() {
   assert.equal(first.totalItems, 3); assert.equal(first.totalPages, 2)
   const second = await api(summaryURL + '?page=2&perPage=2', { token: manager.token })
   assert.equal(second.items.length, 1)
+  const clamped = await api(summaryURL + '?page=999999&perPage=2', { token: manager.token })
+  assert.equal(clamped.page, 2); assert.equal(clamped.totalItems, 3)
+  assert.deepEqual(clamped.items, second.items)
   return Object.fromEntries([...first.items, ...second.items].map(item => [item.field, item]))
 }
 let counts = await fields()
@@ -121,4 +124,6 @@ const emptyProject = await api('/api/fangji/projects', { method: 'POST', token: 
 await api(`/api/fangji/projects/${emptyProject.id}/field-error-summary`, { token: manager.token, status: 403 })
 const empty = await api(`/api/fangji/projects/${emptyProject.id}/field-error-summary`, { token: admin.token })
 assert.equal(empty.totalItems, 0); assert.deepEqual(empty.items, [])
+const emptyClamped = await api(`/api/fangji/projects/${emptyProject.id}/field-error-summary?page=999999&perPage=2`, { token: admin.token })
+assert.equal(emptyClamped.page, 1); assert.equal(emptyClamped.totalPages, 1); assert.deepEqual(emptyClamped.items, [])
 console.log('PASS: paginated field audit, actor-only blind projection, manager-scoped historical field counts, revisions/withdrawals, unknown legacy coverage, empty and permission boundaries (synthetic data).')

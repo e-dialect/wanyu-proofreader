@@ -6,10 +6,12 @@ inserted only while this script's temporary server is stopped. They measure
 storage/query scale, not the cost or correctness of 1.6m HTTP submissions.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
 import platform
+import re
 import sqlite3
 import statistics
 import subprocess
@@ -221,45 +223,116 @@ def rollback_probe(env, db, fixture):
     return checks, project, benchmark
 
 
+def summary_snapshot(base, token, project):
+    root = f'/api/fangji/projects/{project}/field-error-summary'
+    first = request(base, root + '?perPage=100', token)
+    items = list(first['items'])
+    for page in range(2, first['totalPages'] + 1):
+        items.extend(request(base, root + f'?page={page}&perPage=100', token)['items'])
+    assert len(items) == first['totalItems']
+    return {item['field']: item for item in items}
+
+
+def validate_summary_growth(before, after, entries):
+    assert set(before) == set(after), (set(before), set(after))
+    delta = entries * 2
+    for field, previous in before.items():
+        current = after[field]
+        for key in ['submittedFields', 'unrecordedCount', 'unverifiedCount']:
+            assert current[key] == previous[key] + delta, (field, key, previous[key], current[key], delta)
+        for key in ['correctCount', 'incorrectCount', 'evaluatedCount', 'pendingCount', 'withdrawnCount']:
+            assert current[key] == previous[key], (field, key, previous[key], current[key])
+    return {'added_submission_fields': entries * 2 * len(before),
+            'added_submissions_per_field': delta, 'all_fields_grow_without_fabricated_judgments': True,
+            'before': before, 'after': after}
+
+
+def validate_seeded_api(env, fixture, entries):
+    user = fixture['users'][0]
+    for index in sorted({0, entries - 1}):
+        page = f'cap{index:012d}'
+        events = request(env['PB_URL'], f'/api/fangji/pages/{page}/events?perPage=100', user['token'])
+        assert events['totalItems'] == 9 and len(events['items']) == 9
+        assert all(item['actor'] == user['id'] and item['ref'] == f'cat{index * 2:012d}' for item in events['items'])
+        submissions = [item for item in events['items'] if item['kind'] == 'submission']
+        actions = [item for item in events['items'] if item['kind'] == 'field_action']
+        assert len(submissions) == 1 and len(actions) == 8
+        assert {item['field'] for item in actions} == set(submissions[0]['payload']['row'])
+    return {'first_and_last_seeded_pages_expose_only_own_eight_actions_and_submission': True}
+
+
 def bulk_seed(db, fixture, entries, events_per_entry):
     start = time.perf_counter()
     with closing(sqlite3.connect(db)) as sql, sql:
         sql.row_factory = sqlite3.Row
-        template = dict(sql.execute('SELECT * FROM pages WHERE id=?', (fixture['pages'][1]['id'],)).fetchone())
-        event = dict(sql.execute("SELECT * FROM verification_events WHERE page=? AND kind='field_action' LIMIT 1", (fixture['pages'][1]['id'],)).fetchone())
-        assert event, 'the real integration must have produced a field action'
+        target = fixture['pages'][1]['id']
+        template = dict(sql.execute('SELECT * FROM pages WHERE id=?', (target,)).fetchone())
+        attempts = [dict(row) for row in sql.execute("SELECT * FROM proofreading_attempts WHERE page=? AND kind='proofread' ORDER BY pass_no,id", (target,))]
+        assert len(attempts) == 2
+        fields = json.loads(template['row_headers_json'])
+        assert len(fields) == 8 and events_per_entry == len(fields) * len(attempts), 'this probe requires two eight-field submissions and 16 actions per entry'
+        assert all(set(json.loads(attempt['row_json'])) == set(fields) for attempt in attempts)
+        action_samples, submission_samples = [], []
+        for attempt in attempts:
+            action_samples.append(dict(sql.execute("SELECT * FROM verification_events WHERE page=? AND kind='field_action' AND ref=? AND actor=? LIMIT 1", (target, attempt['id'], attempt['proofreader'])).fetchone()))
+            submission_samples.append(dict(sql.execute("SELECT * FROM verification_events WHERE page=? AND kind='submission' AND ref=? AND actor=? LIMIT 1", (target, attempt['id'], attempt['proofreader'])).fetchone()))
         # Journal-off bulk loading is limited to the script-owned disposable DB.
-        # Server is stopped here, and no URL or existing data-dir is accepted.
+        # Server is stopped; no URL or existing data-dir is accepted. All rows
+        # retain real schema and point to corresponding synthetic identities.
         sql.execute('PRAGMA journal_mode=OFF')
         sql.execute('PRAGMA synchronous=OFF')
-        page_columns = list(template)
-        event_columns = list(event)
-        insert_page = f'INSERT INTO pages ({",".join(page_columns)}) VALUES ({",".join("?" for _ in page_columns)})'
-        insert_event = f'INSERT INTO verification_events ({",".join(event_columns)}) VALUES ({",".join("?" for _ in event_columns)})'
-        sample_bytes = len(event['context_json'].encode()) + len(event['payload_json'].encode())
+        page_columns, attempt_columns, event_columns = list(template), list(attempts[0]), list(action_samples[0])
+        def insert(table, columns):
+            return f'INSERT INTO {table} ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})'
+        insert_page = insert('pages', page_columns)
+        insert_attempt = insert('proofreading_attempts', attempt_columns)
+        insert_event = insert('verification_events', event_columns)
+        sample_bytes = len(action_samples[0]['context_json'].encode()) + len(action_samples[0]['payload_json'].encode())
+        seeded_sample_bytes = None
         for batch in range(0, entries, 1000):
-            pages, events = [], []
+            pages, submitted, events = [], [], []
             for index in range(batch, min(batch + 1000, entries)):
                 page_id = f'cap{index:012d}'
                 row = {**template, 'id': page_id, 'page_number': 1000 + index}
                 pages.append(tuple(row[column] for column in page_columns))
-                context = json.loads(event['context_json'])
-                context['page'] = page_id
-                context_json = json.dumps(context, ensure_ascii=False, separators=(',', ':'))
-                for offset in range(events_per_entry):
-                    number = index * events_per_entry + offset
-                    item = {**event, 'id': f'cev{number:012d}', 'page': page_id,
-                            'field_name': f'合成字段{offset % 8}', 'context_json': context_json}
-                    events.append(tuple(item[column] for column in event_columns))
+                for actor_index, attempt in enumerate(attempts):
+                    attempt_id = f'cat{index * 2 + actor_index:012d}'
+                    context = json.loads(attempt['verification_context_json'])
+                    context['page'] = page_id
+                    if context.get('machine'):
+                        context['machine']['analysis'] = {'status': 'no_execution_record'}
+                    context_json = json.dumps(context, ensure_ascii=False, separators=(',', ':'))
+                    if seeded_sample_bytes is None:
+                        seeded_sample_bytes = len(context_json.encode()) + len(action_samples[actor_index]['payload_json'].encode())
+                    record = {**attempt, 'id': attempt_id, 'page': page_id, 'verification_context_json': context_json}
+                    submitted.append(tuple(record[column] for column in attempt_columns))
+                    event = {**submission_samples[actor_index], 'id': f'cse{index * 2 + actor_index:012d}',
+                             'page': page_id, 'ref': attempt_id, 'actor': attempt['proofreader'], 'context_json': context_json}
+                    events.append(tuple(event[column] for column in event_columns))
+                    for field_index, field in enumerate(fields):
+                        number = index * events_per_entry + actor_index * len(fields) + field_index
+                        event = {**action_samples[actor_index], 'id': f'cev{number:012d}', 'page': page_id,
+                                 'ref': attempt_id, 'actor': attempt['proofreader'], 'field_name': field, 'context_json': context_json}
+                        events.append(tuple(event[column] for column in event_columns))
             sql.executemany(insert_page, pages)
+            sql.executemany(insert_attempt, submitted)
             sql.executemany(insert_event, events)
             sql.commit()
             if batch % 10000 == 0:
-                print(f'bulk fixture: {min(batch + 1000, entries)}/{entries} entries', flush=True)
+                print(f'bulk fixture: {min(batch + 1000, entries)}/{entries} entries, two eight-field attempts each', flush=True)
         sql.execute('PRAGMA journal_mode=WAL')
         sql.execute('ANALYZE')
+        # Check all 1.6m action links, not just the sampled API pages.
+        bad_links = sql.execute("""SELECT COUNT(*) FROM verification_events e
+          LEFT JOIN proofreading_attempts a ON a.id=e.ref
+          WHERE e.project=? AND e.kind='field_action' AND substr(e.id,1,3)='cev'
+            AND (a.id IS NULL OR e.actor!=a.proofreader OR e.page!=a.page OR
+                 NOT EXISTS (SELECT 1 FROM json_each(a.row_json) field WHERE field.key=e.field_name))""", (fixture['project']['id'],)).fetchone()[0]
+        assert bad_links == 0
+        project_attempts = sql.execute("SELECT COUNT(*) FROM proofreading_attempts WHERE project=? AND kind='proofread'", (fixture['project']['id'],)).fetchone()[0]
+        generated_attempts = sql.execute("SELECT COUNT(*) FROM proofreading_attempts WHERE project=? AND substr(id,1,3)='cat'", (fixture['project']['id'],)).fetchone()[0]
+        assert generated_attempts == entries * 2
         plans = {}
-        target = fixture['pages'][1]['id']
         for name, query, parameters in (
             ('page_history', 'SELECT * FROM verification_events WHERE page=? ORDER BY created,id LIMIT 500', (target,)),
             ('page_kind', 'SELECT * FROM verification_events WHERE page=? AND kind=? ORDER BY created,id LIMIT 500', (target, 'final_adoption')),
@@ -269,19 +342,33 @@ def bulk_seed(db, fixture, entries, events_per_entry):
             assert any('USING INDEX idx_verification_events_' in value for value in details), (name, details)
             assert not any('SCAN verification_events' in value for value in details), (name, details)
             plans[name] = details
+        # Explain the actual production aggregation SQL rather than a surrogate.
+        library = (harness.HOOKS / 'lib/field_audit.js').read_text()
+        match = re.search(r'const resultsSQL = `([\s\S]*?)`', library)
+        assert match, 'cannot locate the production summary CTE'
+        paged = re.search(r'const pagedSummarySQL = resultsSQL \+ `([\s\S]*?)`', library)
+        assert paged, 'cannot locate the production summary pagination SQL'
+        summary_sql = match[1] + paged[1]
+        for key in ['project', 'limit', 'offset']:
+            summary_sql = summary_sql.replace('{:' + key + '}', ':' + key)
+        plans['field_error_summary'] = [row[3] for row in sql.execute('EXPLAIN QUERY PLAN ' + summary_sql, {'project': fixture['project']['id'], 'limit': 100, 'offset': 0})]
         count = sql.execute('SELECT COUNT(*) FROM verification_events').fetchone()[0]
         pages = sql.execute('SELECT COUNT(*) FROM pages').fetchone()[0]
         kinds = dict(sql.execute('SELECT kind,COUNT(*) FROM verification_events WHERE project=? GROUP BY kind', (fixture['project']['id'],)))
         sizes = {row[0]: row[1] for row in sql.execute('SELECT name,SUM(pgsize) FROM dbstat GROUP BY name')}
     return {'seed_seconds': round(time.perf_counter() - start, 3),
-            'added_entries': entries, 'added_events': entries * events_per_entry,
-            'total_entries': pages, 'total_events': count,
-            'project_event_kinds': kinds,
-            'copied_real_context_and_payload_bytes': sample_bytes,
+            'added_entries': entries, 'added_attempts': entries * 2,
+            'added_field_actions': entries * events_per_entry, 'added_submission_events': entries * 2,
+            'added_events': entries * (events_per_entry + 2),
+            'total_entries': pages, 'total_events': count, 'project_proofreading_attempts': project_attempts,
+            'project_event_kinds': kinds, 'all_action_refs_actors_pages_and_fields_valid': bad_links == 0,
+            'native_sample_context_and_payload_bytes': sample_bytes,
+            'seeded_action_context_and_payload_bytes': seeded_sample_bytes,
             'database_bytes': db.stat().st_size,
             'verification_events_table_bytes': sizes['verification_events'],
+            'proofreading_attempts_table_bytes': sizes['proofreading_attempts'],
             'verification_events_index_bytes': {key: value for key, value in sizes.items() if key.startswith('idx_verification_events_')},
-            'query_plans': plans}
+            'query_plans': plans, 'query_plan_sqlite_version': sqlite3.sqlite_version}
 
 
 def main():
@@ -291,10 +378,11 @@ def main():
     parser.add_argument('--samples', type=int, default=15)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    if args.entries < 1 or args.events_per_entry < 1 or args.samples < 5:
-        parser.error('entries/events must be positive; at least five timing samples are required')
+    if args.entries < 1 or args.events_per_entry != 16 or args.samples < 5:
+        parser.error('entries must be positive, events-per-entry must be 16 (two eight-field submissions), and at least five timing samples are required')
     report = {'synthetic': True, 'host': platform.platform(),
               'method': 'Temporary full-migration PocketBase; bulk storage fixture, not HTTP import throughput or human latency.'}
+    report['summary_library_sha256'] = hashlib.sha256((harness.HOOKS / 'lib/field_audit.js').read_bytes()).hexdigest()
     with tempfile.TemporaryDirectory(prefix='wanyu-field-audit-') as directory:
         root = Path(directory)
         binary = harness.build_binary(root / 'pocketbase')
@@ -306,11 +394,14 @@ def main():
             superauth = request(env['PB_URL'], '/api/collections/_superusers/auth-with-password', method='POST', body={'identity': env['PB_SUPER_EMAIL'], 'password': env['PB_SUPER_PASSWORD']})
             fixture['super_token'] = superauth['token']
             report['correctness'], fixture['project'], fixture['pages'][1] = rollback_probe(env, db, fixture)
+            summary_before = summary_snapshot(env['PB_URL'], fixture['admin']['token'], fixture['project']['id'])
             report['before'] = timed_reads(env['PB_URL'], fixture['admin']['token'], fixture['pages'][1]['id'], args.samples, fixture['project']['id'])
             report['browser_before'] = browser_read(env, root, fixture, 'before', args.output)
         report['capacity'] = bulk_seed(db, fixture, args.entries, args.events_per_entry)
         with harness.server(binary, root) as env:
             # Tokens survive a process restart but never leave this temporary fixture.
+            report['summary_growth'] = validate_summary_growth(summary_before, summary_snapshot(env['PB_URL'], fixture['admin']['token'], fixture['project']['id']), args.entries)
+            report['seeded_api'] = validate_seeded_api(env, fixture, args.entries)
             report['after'] = timed_reads(env['PB_URL'], fixture['admin']['token'], fixture['pages'][1]['id'], args.samples, fixture['project']['id'])
             report['browser_after'] = browser_read(env, root, fixture, 'after', args.output)
         args.output.parent.mkdir(parents=True, exist_ok=True)
