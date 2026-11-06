@@ -1,0 +1,112 @@
+{
+  "synthetic": true,
+  "host": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+  "method": "Temporary full-migration PocketBase; bulk storage fixture, not HTTP import throughput or human latency.",
+  "correctness": {
+    "event_failure_rolls_back_attempt_events_and_page": true,
+    "retry_after_removing_failure_succeeds_once": true,
+    "eight_fields_trace_original_and_submitted_values": true,
+    "ordinary_response_hides_manager_event_history": true,
+    "nonmember_denied": true,
+    "two_actors_all_eight_fields_recorded": true,
+    "arbitration_attempt_A_attempt_B_and_custom_trace": true,
+    "arbitration_preserves_original_submissions": true,
+    "ordinary_response_hides_other_submission_and_final_values": true
+  },
+  "before": {
+    "arbitration": {
+      "samples": 15,
+      "p50_ms": 1.923,
+      "p95_ms": 4.205,
+      "response_bytes": 2212
+    },
+    "verification": {
+      "samples": 15,
+      "p50_ms": 8.914,
+      "p95_ms": 11.038,
+      "response_bytes": 61431
+    },
+    "field-error-summary": {
+      "samples": 15,
+      "p50_ms": 3.436,
+      "p95_ms": 3.581,
+      "response_bytes": 1752
+    }
+  },
+  "browser_before": {
+    "synthetic": true,
+    "samples": 7,
+    "p50_ms": 242.832,
+    "p95_ms": 265.286,
+    "viewport": "1440x1000",
+    "fields": 8,
+    "source_pdf_rendered": true,
+    "backend_responses_mocked": false,
+    "method": "Actual built app; real backend forwarded same-origin; one warm-up then seven full navigations; wait for eight fields and rendered real PDF."
+  },
+  "capacity": {
+    "seed_seconds": 51.802,
+    "added_entries": 100000,
+    "added_events": 1600000,
+    "total_entries": 100006,
+    "total_events": 1600114,
+    "project_event_kinds": {
+      "field_action": 1600032,
+      "final_adoption": 1,
+      "judgment": 24,
+      "machine_analysis": 5,
+      "review_completed": 1,
+      "review_progress": 1,
+      "submission": 4
+    },
+    "copied_real_context_and_payload_bytes": 2453,
+    "database_bytes": 6976360448,
+    "verification_events_table_bytes": 6570545152,
+    "verification_events_index_bytes": {
+      "idx_verification_events_page": 119246848,
+      "idx_verification_events_project": 136818688
+    },
+    "query_plans": {
+      "page_history": [
+        "SEARCH verification_events USING INDEX idx_verification_events_page (page=?)"
+      ],
+      "page_kind": [
+        "SEARCH verification_events USING INDEX idx_verification_events_page (page=?)"
+      ],
+      "project_kind": [
+        "SEARCH verification_events USING INDEX idx_verification_events_project (project=? AND kind=?)"
+      ]
+    }
+  },
+  "after": {
+    "arbitration": {
+      "samples": 15,
+      "p50_ms": 2.05,
+      "p95_ms": 2.874,
+      "response_bytes": 2212
+    },
+    "verification": {
+      "samples": 15,
+      "p50_ms": 9.404,
+      "p95_ms": 12.417,
+      "response_bytes": 61431
+    },
+    "field-error-summary": {
+      "samples": 15,
+      "p50_ms": 3.677,
+      "p95_ms": 4.622,
+      "response_bytes": 1752
+    }
+  },
+  "browser_after": {
+    "synthetic": true,
+    "samples": 7,
+    "p50_ms": 221.725,
+    "p95_ms": 261.853,
+    "viewport": "1440x1000",
+    "fields": 8,
+    "source_pdf_rendered": true,
+    "backend_responses_mocked": false,
+    "method": "Actual built app; real backend forwarded same-origin; one warm-up then seven full navigations; wait for eight fields and rendered real PDF."
+  }
+}
