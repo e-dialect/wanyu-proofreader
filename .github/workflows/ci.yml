@@ -596,7 +596,10 @@ jobs:
       - name: Audit reachable Go vulnerabilities
         working-directory: backend
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          # v1.1.4 embeds x/tools v0.29.0, whose SSA builder panics on Go 1.27.
+          # Keep source/symbol analysis; v1.9.0 embeds compatible x/tools v0.52.0.
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck -version
           govulncheck ./...
       - name: Publish Go coverage summary
         working-directory: backend
