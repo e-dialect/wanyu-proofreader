@@ -725,7 +725,7 @@ jobs:
 
       - name: Verify production font HTTP cache and headers
         run: |
-          container=$(docker run -d -p 127.0.0.1:18080:8080 fangji-frontend:ci)
+          container=$(docker run -d --add-host backend:127.0.0.1 -p 127.0.0.1:18080:8080 fangji-frontend:ci)
           trap 'docker rm -f "$container"' EXIT
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:18080/ >/dev/null; then break; fi
