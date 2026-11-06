@@ -81,6 +81,23 @@ Poppler（`poppler-utils`）和 libwebp（`libwebp-tools`），应全部保留�
 许可审计。上面的 OCR 二进制和模型例子是未来分发方案的判定示例，不表示当前已
 包含这些组件；后续发布物改变时须重新核对。
 
+
+### 可选 OCR 镜像分发（#122 / #310，2026-11-06）
+
+上面的 #245 记录保留其历史范围；本轮新增
+[`backend/ocr-worker.Dockerfile`](./backend/ocr-worker.Dockerfile)，发布物现在可包含
+Tesseract、eng/chi_sim 权重与 Poppler。引擎代码和模型分别登记于
+[`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)：Alpine 3.24 的官方
+[APKBUILD](https://github.com/alpinelinux/aports/blob/3.24-stable/community/tesseract-ocr/APKBUILD)
+将引擎 5.5.2 与 `tessdata` 4.1.0 分开取源，不能把包版本 5.5.2 误写成模型训练版本。
+两份上游 Apache 许可证原文保存在 `backend/ocrengine/licenses/` 并复制进 worker
+镜像。运行时模型只读，不下载额外权重；变更权重必须重新登记来源、版本与许可。
+
+`project_artifacts` 的 OCR JSON、原始文本、坐标、置信度、机器三态和识别输出都继承
+输入材料及贡献者的权利边界，不因本应用 AGPL 或引擎 Apache 许可自动获得数据许可。
+这些工件为 manager-only protected 文件，不得作为公开调试附件上传。合成测试材料
+只用于自动验收，不替代真实语料授权、人工 gold 或实用质量结论。
+
 ---
 
 根 AGPL 声明只覆盖 e-dialect 有权授权的原创软件代码。文档、语料、词典、录音、标注、

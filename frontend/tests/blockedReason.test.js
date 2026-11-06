@@ -1,3 +1,4 @@
+import { projectDetailSource } from './helpers/projectDetailSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -39,7 +40,10 @@ test('回读串里 who / when / basis 三件齐备，缺一件要显式说出来
   assert.match(line, /小林/)
   // 署名优先用名字，但名字拿不到时不许把 who 整段丢掉
   assert.match(conclusionSummary({ ...settled, blocked_reason_by_name: '' }), /u_123/)
-  assert.match(conclusionSummary({ ...settled, blocked_reason_by: '', blocked_reason_by_name: '' }), /（无记录）/)
+  assert.match(
+    conclusionSummary({ ...settled, blocked_reason_by: '', blocked_reason_by_name: '' }),
+    /（无记录）/
+  )
   assert.match(conclusionSummary({ ...settled, blocked_reason_note: '' }), /（无依据）/)
   assert.match(conclusionSummary({ ...settled, blocked_reason_at: '' }), /（无时间）/)
 })
@@ -47,7 +51,10 @@ test('回读串里 who / when / basis 三件齐备，缺一件要显式说出来
 test('没见过的桶要原样显示，不能被标签表吞成空', () => {
   assert.equal(bucketLabel(''), '（无人登记）')
   assert.equal(bucketLabel('some_new_bucket'), 'some_new_bucket')
-  assert.match(conclusionSummary({ ...settled, blocked_reason: 'some_new_bucket' }), /some_new_bucket/)
+  assert.match(
+    conclusionSummary({ ...settled, blocked_reason: 'some_new_bucket' }),
+    /some_new_bucket/
+  )
 })
 
 test('提交门禁：reason 与 basis 都要有非空白内容', () => {
@@ -62,22 +69,42 @@ test('提交门禁：reason 与 basis 都要有非空白内容', () => {
 // 值域的权威在后端。这份标签表是抄本，所以抄本必须能被证明没有漂：
 // 少一个键会让管理员选不到那个结论，多一个键则会 400 在提交那一步。
 test('BUCKET_LABELS 的键集与后端 BLOCKED_BUCKETS 完全一致', () => {
-  const source = readFileSync(new URL('../../backend/pb_hooks/lib/assist_difficulty.js', import.meta.url), 'utf8')
+  const source = readFileSync(
+    new URL('../../backend/pb_hooks/lib/assist_difficulty.js', import.meta.url),
+    'utf8'
+  )
   const match = source.match(/const BLOCKED_BUCKETS = \[([^\]]*)\]/)
   assert.ok(match, '后端 BLOCKED_BUCKETS 定义没找到：这条防漂测试已经失效')
-  const backend = match[1].split(',').map((entry) => entry.trim().replace(/^"|"$/g, '')).filter(Boolean)
+  const backend = match[1]
+    .split(',')
+    .map((entry) => entry.trim().replace(/^"|"$/g, ''))
+    .filter(Boolean)
   assert.deepEqual([...backend].sort(), Object.keys(BUCKET_LABELS).sort())
 })
 
-const viewSource = () => readFileSync(new URL('../src/views/admin/ProjectDetailView.vue', import.meta.url), 'utf8')
+const viewSource = () => projectDetailSource()
 
 test('管理端区块只对平台管理员渲染，且撤销只在已有结论时可用', () => {
   const source = viewSource()
-  assert.match(source, /v-if="auth\.isPlatformAdmin"[\s\S]{0,200}blocked-conclusion/, '区块没有挂在 isPlatformAdmin 门禁下')
-  for (const used of ['getBlockedReason', 'setBlockedReason', 'clearBlockedReason', 'conclusionSummary', 'canSubmitBlocked']) {
+  assert.match(
+    source,
+    /v-if="auth\.isPlatformAdmin"[\s\S]{0,200}blocked-conclusion/,
+    '区块没有挂在 isPlatformAdmin 门禁下'
+  )
+  for (const used of [
+    'getBlockedReason',
+    'setBlockedReason',
+    'clearBlockedReason',
+    'conclusionSummary',
+    'canSubmitBlocked'
+  ]) {
     assert.ok(source.includes(used), `视图没有用到 ${used}：接口或纯逻辑成了死代码`)
   }
   // 「登记后层级」那行必须来自接口返回，而不是前端自己估
   assert.match(source, /difficulty_tier[\s\S]{0,120}blockedTier\.value/, '写值之后没有回显层级')
-  assert.match(source, /:disabled="blockedBusy \|\| blockedState === 'unset'"/, '没有结论时撤销按钮仍然可点')
+  assert.match(
+    source,
+    /:disabled="blockedBusy \|\| blockedState === 'unset'"/,
+    '没有结论时撤销按钮仍然可点'
+  )
 })

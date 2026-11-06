@@ -1,41 +1,14 @@
 import pb from '@/lib/pocketbase'
-import {
-  PAGE_STATUS,
-  PROOFREADER_ACTIVE_STATUSES,
-  statusFilter
-} from '@/constants/pageStatus'
+import { createPageListLoader } from '../lib/pageListLoader.js'
+import { PAGE_STATUS, PROOFREADER_ACTIVE_STATUSES, statusFilter } from '@/constants/pageStatus'
 
 function relationFilter(field, id) {
   return `${field}="${id}"`
 }
 
-function compactOptions(options) {
-  return Object.fromEntries(
-    Object.entries(options).filter(([, value]) => value !== undefined && value !== '')
-  )
-}
-
-export async function listPagesWithFallback({ page = 1, perPage = 50, filter, sort, expand, fields }) {
-  const baseOptions = compactOptions({
-    filter,
-    sort,
-    fields,
-    requestKey: null
-  })
-  try {
-    return await pb.collection('pages').getList(page, perPage, {
-      ...baseOptions,
-      expand
-    })
-  } catch (firstError) {
-    if (!expand) throw firstError
-    try {
-      return await pb.collection('pages').getList(page, perPage, baseOptions)
-    } catch (secondError) {
-      throw secondError || firstError
-    }
-  }
-}
+// Injectable implementation is exercised against the same PocketBase contract
+// in native Node tests; production retains this public service signature.
+export const listPagesWithFallback = createPageListLoader(pb)
 
 export async function countPages(filter) {
   const result = await pb.collection('pages').getList(1, 1, {
@@ -57,16 +30,28 @@ export async function listPendingProofreadTasks(page, perPage) {
   })
 }
 
-export async function listProjectQueueSummaries(page = 1, perPage = 12) {
-  return pb.send('/api/fangji/proofreading-queues', { query: { page, perPage }, requestKey: null })
+export async function listProjectQueueSummaries(page = 1, perPage = 12, options = {}) {
+  return pb.send('/api/fangji/proofreading-queues', {
+    query: { page, perPage },
+    signal: options.signal,
+    requestKey: null
+  })
 }
 
-export async function listAdminProjectPages(projectId, query) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pages`, { query, requestKey: null })
+export async function listAdminProjectPages(projectId, options = {}) {
+  const { signal, ...query } = options
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pages`, {
+    query,
+    signal,
+    requestKey: null
+  })
 }
 
-export async function getAdminProjectPageStats(projectId) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pages/stats`, { requestKey: null })
+export async function getAdminProjectPageStats(projectId, options = {}) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pages/stats`, {
+    signal: options.signal,
+    requestKey: null
+  })
 }
 
 export async function listProofreaderTasks(userId, page, perPage) {
@@ -81,7 +66,9 @@ export async function listProofreaderTasks(userId, page, perPage) {
 }
 
 export async function countActiveProofreaderTasks(userId) {
-  return countPages(`${relationFilter('proofreader', userId)} && (${statusFilter(PROOFREADER_ACTIVE_STATUSES)})`)
+  return countPages(
+    `${relationFilter('proofreader', userId)} && (${statusFilter(PROOFREADER_ACTIVE_STATUSES)})`
+  )
 }
 
 export async function getPage(pageId, options = {}) {
@@ -100,9 +87,12 @@ export async function getProofreaderTask(pageId, { review = false } = {}) {
 
 export async function listReviewedProofreads(projectId) {
   if (!projectId) return { items: [], position: 0, total: 0 }
-  const result = await pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/tasks/reviewed`, {
-    requestKey: null
-  })
+  const result = await pb.send(
+    `/api/fangji/projects/${encodeURIComponent(projectId)}/tasks/reviewed`,
+    {
+      requestKey: null
+    }
+  )
   const items = Array.isArray(result?.items) ? result.items : []
   return {
     items,
@@ -130,12 +120,19 @@ export async function deletePendingPages(projectId, ids) {
 // #124：管理员修正「识别产出」（导入原文）内容。
 // expectedUpdated 用于乐观锁，服务端比对不符返回 409。
 // ocr_text 由服务端按 rowJson + headersJson 生成，不接受调用方传入。
-export async function updatePageContent(projectId, pageId, { rowJson, headersJson, expectedUpdated }) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pages/${encodeURIComponent(pageId)}/content`, {
-    method: 'POST',
-    body: { rowJson, headersJson, expectedUpdated },
-    requestKey: null
-  })
+export async function updatePageContent(
+  projectId,
+  pageId,
+  { rowJson, headersJson, expectedUpdated }
+) {
+  return pb.send(
+    `/api/fangji/projects/${encodeURIComponent(projectId)}/pages/${encodeURIComponent(pageId)}/content`,
+    {
+      method: 'POST',
+      body: { rowJson, headersJson, expectedUpdated },
+      requestKey: null
+    }
+  )
 }
 
 export async function listAllProjectPages(projectId, options = {}) {
@@ -163,7 +160,13 @@ export async function listProofreaderNeighborTasks(projectId, userId) {
   })
 }
 
-export async function claimNextProjectPage(projectId, userId, previousTaskId = '', tier = '', glyph = false) {
+export async function claimNextProjectPage(
+  projectId,
+  userId,
+  previousTaskId = '',
+  tier = '',
+  glyph = false
+) {
   if (!projectId || !userId) throw new Error('缺少项目或校对员身份')
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/claim`, {
     method: 'POST',
@@ -199,7 +202,11 @@ export async function returnToSource(pageId, { reason, basis }) {
   })
 }
 
-export async function submitTwoPassProofread(pageId, userId, { rowJson, text, leaseToken, ...verification }) {
+export async function submitTwoPassProofread(
+  pageId,
+  userId,
+  { rowJson, text, leaseToken, ...verification }
+) {
   if (!pageId || !userId) throw new Error('缺少任务或校对员身份')
   return pb.send(`/api/fangji/pages/${encodeURIComponent(pageId)}/submit`, {
     method: 'POST',
@@ -211,7 +218,8 @@ export async function submitTwoPassProofread(pageId, userId, { rowJson, text, le
 // #161 — 疑点只读接口（契约见 docs/plans/2026-09-25-review-findings.md §3.1）。
 // 任何失败都退化成空 hints：疑点标注是渐进增强，读不到绝不影响校对本身。
 export async function getPageFindings(pageId) {
-  if (!pageId) return { page: '', hints: [], truncated: false, suppressedByGate: 0, gateRowsTruncated: false }
+  if (!pageId)
+    return { page: '', hints: [], truncated: false, suppressedByGate: 0, gateRowsTruncated: false }
   try {
     const result = await pb.send(`/api/fangji/pages/${encodeURIComponent(pageId)}/findings`, {
       requestKey: null
@@ -222,13 +230,23 @@ export async function getPageFindings(pageId) {
       truncated: Boolean(result?.truncated),
       // #228 的字段级区分能力：没下发 ≠ 没疑点。缺字段按 0 处理，让老后端不至于报错。
       suppressedByGate: Number.isFinite(Number(result?.suppressed_by_gate))
-        ? Math.max(0, Math.floor(Number(result.suppressed_by_gate))) : 0,
-      gateRowsTruncated: Boolean(result?.gate_rows_truncated)
-      , inputVersion: result?.input_version || '', candidateCount: result?.candidate_count ?? null,
-      countsAreLowerBounds: Boolean(result?.counts_are_lower_bounds), offsetsStale: result?.offsets_stale || 0, offsetsUnbaselined: result?.offsets_unbaselined || 0
-      , research: result?.research || null
+        ? Math.max(0, Math.floor(Number(result.suppressed_by_gate)))
+        : 0,
+      gateRowsTruncated: Boolean(result?.gate_rows_truncated),
+      inputVersion: result?.input_version || '',
+      candidateCount: result?.candidate_count ?? null,
+      countsAreLowerBounds: Boolean(result?.counts_are_lower_bounds),
+      offsetsStale: result?.offsets_stale || 0,
+      offsetsUnbaselined: result?.offsets_unbaselined || 0,
+      research: result?.research || null
     }
   } catch {
-    return { page: String(pageId), hints: [], truncated: false, suppressedByGate: 0, gateRowsTruncated: false }
+    return {
+      page: String(pageId),
+      hints: [],
+      truncated: false,
+      suppressedByGate: 0,
+      gateRowsTruncated: false
+    }
   }
 }

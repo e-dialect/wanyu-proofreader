@@ -1,0 +1,326 @@
+{
+  "name": "莆仙话拼音",
+  "accent": "莆田城里口音",
+  "retrieved": "2026-10-07",
+  "provenance": [
+    {
+      "what": "声母 15、韵母 44（开尾 19 + 鼻尾 12 + 塞尾 13）、声调 7 的清单，以及每条的 IPA 与例字",
+      "locator": "https://hinghwa.cn/pinyin"
+    },
+    {
+      "what": "页面自述的定名：「本拼音定名为\"莆仙话拼音\"」；社群内亦称「莆仙乡音社拼音」。本仓库的 scheme_id 用 puxian-xiangyin",
+      "locator": "同上 chunk 的页面正文段"
+    },
+    {
+      "what": "清单原文实际所在的构建产物。该页是 SPA，HTML 外壳里没有正文；四组数据在按需加载的 chunk 的组件 data() 里，键名 shengmu / kai / bi / se / tone",
+      "locator": "https://hinghwa.cn/js/166.c91cbba4.js"
+    },
+    {
+      "what": "口音口径：「下面介绍的拼音方案为莆田城里口音」。本文件只登记这一个口音，不代表整个莆仙地区",
+      "locator": "同上 chunk 的页面正文段"
+    },
+    {
+      "what": "来源归属：莆仙乡音社（微信公众号 PhouSengUa）；例字音频由 cos.edialect.top 托管",
+      "locator": "同上 chunk"
+    }
+  ],
+  "onsets": [
+    {
+      "ipa": "p",
+      "notation": "b",
+      "example": "布 bou4 班 bang1"
+    },
+    {
+      "ipa": "pʰ",
+      "notation": "p",
+      "example": "破 pua4 片 peng4"
+    },
+    {
+      "ipa": "m",
+      "notation": "m",
+      "example": "骂 mor4 免 meng3"
+    },
+    {
+      "ipa": "t",
+      "notation": "d",
+      "example": "刀 do1 东 dorng1"
+    },
+    {
+      "ipa": "tʰ",
+      "notation": "t",
+      "example": "桃 to2 头 tao2"
+    },
+    {
+      "ipa": "n",
+      "notation": "n",
+      "example": "脑 nor3 年 ning2"
+    },
+    {
+      "ipa": "l",
+      "notation": "l",
+      "example": "老 lao5 梨 li2"
+    },
+    {
+      "ipa": "ts",
+      "notation": "z",
+      "example": "纸 zyo3 粽 zang4"
+    },
+    {
+      "ipa": "tsʰ",
+      "notation": "c",
+      "example": "厝 cou4 葱 cang1"
+    },
+    {
+      "ipa": "ɬ",
+      "notation": "s",
+      "example": "洗 se3 收 siu1"
+    },
+    {
+      "ipa": "k",
+      "notation": "g",
+      "example": "狗 gao3 讲 gorng3"
+    },
+    {
+      "ipa": "kʰ",
+      "notation": "k",
+      "example": "裤 kou4 轻 king1"
+    },
+    {
+      "ipa": "ŋ",
+      "notation": "ng-",
+      "example": "硬 nge5 颜 ngang2"
+    },
+    {
+      "ipa": "h",
+      "notation": "h",
+      "example": "雨 hou5 喜 hi3"
+    },
+    {
+      "ipa": "∅",
+      "notation": "",
+      "example": "乌 ou1 云 ong2"
+    }
+  ],
+  "rimes": [
+    {
+      "ipa": "a",
+      "notation": "a",
+      "example": "家 ga1 百 ba5"
+    },
+    {
+      "ipa": "ɒ",
+      "notation": "or",
+      "example": "下 or5 马 bor3"
+    },
+    {
+      "ipa": "ɛ",
+      "notation": "ae",
+      "example": "十 sae2"
+    },
+    {
+      "ipa": "e",
+      "notation": "e",
+      "example": "鞋 e2 鸡 ge1"
+    },
+    {
+      "ipa": "ø",
+      "notation": "oe",
+      "example": "退 toe4 所 soe3"
+    },
+    {
+      "ipa": "o",
+      "notation": "o",
+      "example": "学 o2 刀 do1"
+    },
+    {
+      "ipa": "i",
+      "notation": "i",
+      "example": "枝 gi1 戏 hi4"
+    },
+    {
+      "ipa": "y",
+      "notation": "y",
+      "example": "鱼 hy2 猪 dy1"
+    },
+    {
+      "ipa": "u",
+      "notation": "u",
+      "example": "有 u5 牛 gu2"
+    },
+    {
+      "ipa": "ai",
+      "notation": "ai",
+      "example": "菜 cai4 海 hai3"
+    },
+    {
+      "ipa": "au",
+      "notation": "ao",
+      "example": "后 ao5 豆 dao5"
+    },
+    {
+      "ipa": "ɔu",
+      "notation": "ou",
+      "example": "乌 ou1 古 gou3"
+    },
+    {
+      "ipa": "ia",
+      "notation": "ia",
+      "example": "车 cia1 谢 sia5"
+    },
+    {
+      "ipa": "ieu",
+      "notation": "ieo",
+      "example": "药 ieo2 鸟 zieo3"
+    },
+    {
+      "ipa": "iu",
+      "notation": "iu",
+      "example": "油 iu2 救giu4"
+    },
+    {
+      "ipa": "ua",
+      "notation": "ua",
+      "example": "画 ua5 花 hua1"
+    },
+    {
+      "ipa": "uei",
+      "notation": "ue",
+      "example": "歪 ue1 飞 bue1"
+    },
+    {
+      "ipa": "ui",
+      "notation": "ui",
+      "example": "位 ui5 水 zui3"
+    },
+    {
+      "ipa": "yɒ",
+      "notation": "yo",
+      "example": "蛇 syo2 鹅 gyo2"
+    },
+    {
+      "ipa": "aŋ",
+      "notation": "ang",
+      "example": "红 ang2 重 dang5"
+    },
+    {
+      "ipa": "ɒŋ",
+      "notation": "orng",
+      "example": "王 orng2 公 gorng1"
+    },
+    {
+      "ipa": "ɛŋ",
+      "notation": "eng",
+      "example": "灯 deng1 生 seng1"
+    },
+    {
+      "ipa": "œŋ",
+      "notation": "oeng",
+      "example": "宫 goeng1 窗 toeng1"
+    },
+    {
+      "ipa": "ɔŋ",
+      "notation": "ong",
+      "example": "云 ong2 分 bong1"
+    },
+    {
+      "ipa": "iŋ",
+      "notation": "ing",
+      "example": "冰 bing1 心 sing1"
+    },
+    {
+      "ipa": "iɛŋ",
+      "notation": "ieng",
+      "example": "盐 ieng2 尖 zieng1"
+    },
+    {
+      "ipa": "uŋ",
+      "notation": "ung",
+      "example": "光 gung1 霜 sung1"
+    },
+    {
+      "ipa": "uaŋ",
+      "notation": "uang",
+      "example": "弯 uang1 团duang2"
+    },
+    {
+      "ipa": "yŋ",
+      "notation": "yng",
+      "example": "斤 gyng1 银 ngyng2"
+    },
+    {
+      "ipa": "yɒŋ",
+      "notation": "yong",
+      "example": "上 syong5 场 dyong2"
+    },
+    {
+      "ipa": "ŋ̍",
+      "notation": "ng",
+      "example": "黄 ng2 方 hng1"
+    },
+    {
+      "ipa": "aʔ",
+      "notation": "ah",
+      "example": "合 hah7 读 tah7"
+    },
+    {
+      "ipa": "ɒʔ",
+      "notation": "orh",
+      "example": "盒 orh7 国 gorh6"
+    },
+    {
+      "ipa": "ɛʔ",
+      "notation": "eh",
+      "example": "踢 teh6 热 zeh7"
+    },
+    {
+      "ipa": "œʔ",
+      "notation": "oeh",
+      "example": "竹 doeh6 玉 goeh7"
+    },
+    {
+      "ipa": "ɔʔ",
+      "notation": "oh",
+      "example": "出 coh6 骨 goh6"
+    },
+    {
+      "ipa": "iʔ",
+      "notation": "ih",
+      "example": "笔 bih6 七 cih6"
+    },
+    {
+      "ipa": "iaʔ",
+      "notation": "iah",
+      "example": "食 siah7 揲 iah7(扇动)"
+    },
+    {
+      "ipa": "iɛʔ",
+      "notation": "ieh",
+      "example": "页 ieh7 业 gieh7"
+    },
+    {
+      "ipa": "uʔ",
+      "notation": "uh",
+      "example": "*"
+    },
+    {
+      "ipa": "uaʔ",
+      "notation": "uah",
+      "example": "刷 suah6 发 huah6"
+    },
+    {
+      "ipa": "uoʔ",
+      "notation": "uoh",
+      "example": "我 guoh3"
+    },
+    {
+      "ipa": "yʔ",
+      "notation": "yh",
+      "example": "疫 yh7 域 yh7"
+    },
+    {
+      "ipa": "yɒʔ",
+      "notation": "yoh",
+      "example": "约 yoh6 雀 cyoh6"
+    }
+  ]
+}

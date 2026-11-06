@@ -73,6 +73,19 @@ def moved_ahead_of(text, job, other):
     return rest[:target] + block + rest[target:]
 
 
+class LiteralMatrix(unittest.TestCase):
+    def test_only_a_consumed_literal_suite_counts(self):
+        document = {'jobs': {'core': {
+            'strategy': {'matrix': {'suite': ['core_logic_integration.mjs']}},
+            'steps': [{'run': 'python3 backend/tests/run_integration.py ${{ matrix.suite }}'}]
+        }}}
+        self.assertEqual(inventory.literal_matrix_suites(document), {'core_logic_integration.mjs'})
+        document['jobs']['core']['steps'][0]['run'] = 'echo ${{ matrix.suite }}'
+        self.assertEqual(inventory.literal_matrix_suites(document), set())
+        document['jobs']['core']['steps'][0]['run'] = 'python3 backend/tests/run_integration.py fixed_integration.mjs'
+        self.assertEqual(inventory.literal_matrix_suites(document), set())
+
+
 class MatrixLink(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -293,6 +306,11 @@ class DeletedRunStepsAreCaught(GuardExitCodes):
         for label, job, anchor, replacement, expected in self.MUTATIONS:
             with self.subTest(label):
                 mutated = mutate_job(self.real_ci(), job, anchor, replacement)
+                if label == 'a suite is no longer invoked anywhere':
+                    # The dedicated core check also executes this suite. Removing
+                    # one duplicate must stay green; removing both must fail.
+                    self.assertEqual(self.run_against(mutated)[0], 0)
+                    mutated = mutated.replace('          - pdf_chunks_integration.mjs\n', '')
                 self.assertFailsFor(mutated, expected)
 
     def test_matrix_job_fails_for_its_own_reason(self):

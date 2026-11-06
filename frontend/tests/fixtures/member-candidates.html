@@ -1,0 +1,16 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<div id="app"></div>
+<script type="module">
+import { createApp, h } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
+import Settings from '../../src/views/admin/ProjectSettingsView.vue'
+import pb from '../../src/lib/pocketbase'
+import '../../src/style.css'
+pb.authStore.save('synthetic-token', { id: 'owner', role: 'platform_admin' })
+const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:id', component: Settings }] })
+await router.push('/projects/project1')
+globalThis.fixtureRouter = router
+createApp({ render: () => h(RouterView) }).use(createPinia()).use(router).mount('#app')
+</script>

@@ -117,13 +117,32 @@ def ci_builds_matrix_from_registry(workflow):
     return suite_matrix_is_consumed(matrix)
 
 
+def literal_matrix_suites(workflow):
+    """Literal suites count only when the real runner consumes that exact value.
+
+    This permits de-duplicating dedicated required checks without pretending
+    that a matrix declaration or an echo executes a suite.
+    """
+    result = set()
+    for _, job in suite_matrix_jobs(workflow):
+        matrix = job['strategy']['matrix']['suite']
+        if not isinstance(matrix, list):
+            continue
+        if not any(re.search(re.escape(RUNNER) + r'\s+["\']?\$\{\{\s*matrix\.suite\s*\}\}', command)
+                   for command in runner_steps(job)):
+            continue
+        result.update(value for value in matrix if isinstance(value, str)
+                      and re.fullmatch(r'[a-z0-9_]+_integration\.mjs', value))
+    return result
+
+
 def main():
     entries = json.loads((TESTS / 'suites.json').read_text(encoding='utf-8'))
     registered = {entry['suite']: entry for entry in entries}
     on_disk = sorted(path.name for path in TESTS.glob('*_integration.mjs'))
     workflow = yaml.safe_load(CI.read_text(encoding='utf-8'))
     commands = run_commands(workflow)
-    executed = '\n'.join(commands.values())
+    executed = '\n'.join([*commands.values(), *literal_matrix_suites(workflow)])
     problems = []
 
     if not executed.strip():

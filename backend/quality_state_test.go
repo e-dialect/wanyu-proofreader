@@ -1,6 +1,18 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"time"
+
+	"github.com/dop251/goja"
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/plugins/jsvm"
 	"os"
 	"strings"
 	"testing"
@@ -108,4 +120,181 @@ func TestQualityStateValuesTrackMigration(t *testing.T) {
 	if got := strings.Count(list, `"`) / 2; got != len(qualityStateLabels) {
 		t.Errorf("迁移的 STATES 有 %d 个值，本包识别 %d 个: %s", got, len(qualityStateLabels), strings.TrimSpace(list))
 	}
+}
+
+func TestQualitySummaryReconcilesTwentyThousandActualSchemaRows(t *testing.T) {
+	app := newSchemaTestApp(t)
+	// Execute the actual additive migrations through PocketBase's own JS bindings,
+	// rather than replacing the production schema with a summary-only test table.
+	for _, path := range []string{"pb_migrations/1789200000_source_registry.js", "pb_migrations/1789200400_page_quality_state.js"} {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		vm := goja.New()
+		jsvm.BindCore(vm)
+		jsvm.BindDbx(vm)
+		var up func(core.App) error
+		vm.Set("migrate", func(apply, rollback func(core.App) error) { up = apply })
+		if _, err := vm.RunString(string(source)); err != nil {
+			t.Fatalf("load actual migration %s: %v", path, err)
+		}
+		if up == nil {
+			t.Fatalf("migration %s did not register", path)
+		}
+		if err := app.RunInTransaction(up); err != nil {
+			t.Fatalf("apply actual migration %s: %v", path, err)
+		}
+	}
+	users, _ := app.FindCollectionByNameOrId("users")
+	owner := core.NewRecord(users)
+	owner.Set("role", "platform_admin")
+	owner.SetPassword("SyntheticQuality123!")
+	if err := app.Save(owner); err != nil {
+		t.Fatal(err)
+	}
+	projects, _ := app.FindCollectionByNameOrId("projects")
+	makeProject := func(name string) *core.Record {
+		project := core.NewRecord(projects)
+		project.Set("name", name)
+		project.Set("admin", owner.Id)
+		project.Set("access_mode", "members_only")
+		project.Set("required_proofreads", 2)
+		if err := app.Save(project); err != nil {
+			t.Fatal(err)
+		}
+		return project
+	}
+	project, other := makeProject("Synthetic 20000 quality summary"), makeProject("Synthetic unrelated quality project")
+	sources, _ := app.FindCollectionByNameOrId("sources")
+	sourceIDs := []string{}
+	for i := 0; i < 2; i++ {
+		source := core.NewRecord(sources)
+		source.Set("logical_id", fmt.Sprintf("synthetic-quality-source-%d", i))
+		source.Set("title", "Synthetic quality source")
+		source.Set("original_vs_derived", "original")
+		source.Set("status", "unregistered")
+		if err := app.Save(source); err != nil {
+			t.Fatal(err)
+		}
+		sourceIDs = append(sourceIDs, source.Id)
+	}
+	jobs := []string{"qualitybatch001", "qualitybatch002", "qualitybatch003", "qualitybatch004"}
+	for i, id := range jobs {
+		source := ""
+		if i < 2 {
+			source = sourceIDs[0]
+		} else if i == 2 {
+			source = sourceIDs[1]
+		}
+		_, err := app.DB().NewQuery(`INSERT INTO import_jobs(id,project,created_by,original_filename,file_hash,file_size,mode,status,source)
+   VALUES({:id},{:project},{:actor},'synthetic.csv',{:hash},1,'skip_invalid','completed',{:source})`).Bind(dbx.Params{"id": id, "project": project.Id, "actor": owner.Id, "hash": fmt.Sprintf("%064x", i+1), "source": source}).Execute()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	started := time.Now()
+	_, err := app.DB().NewQuery(`WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<20000)
+  INSERT INTO pages(id,project,page_number,import_job,status,quality_state,ocr_text)
+  SELECT printf('quality%08d',n),{:project},n,
+   CASE n%5 WHEN 0 THEN '' WHEN 1 THEN 'qualitybatch001' WHEN 2 THEN 'qualitybatch002' WHEN 3 THEN 'qualitybatch003' ELSE 'qualitybatch004' END,
+   CASE n%5 WHEN 0 THEN 'pending' WHEN 1 THEN 'claimed' WHEN 2 THEN 'proofread' WHEN 3 THEN 'approved' ELSE 'arbitration' END,
+   CASE n%4 WHEN 0 THEN '' WHEN 1 THEN 'candidate' WHEN 2 THEN 'validated' ELSE 'withheld' END,
+   'synthetic summary entry'
+  FROM sequence`).Bind(dbx.Params{"project": project.Id}).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`INSERT INTO pages(id,project,page_number,status,quality_state) VALUES('qualityother001',{:project},1,'approved','validated')`).Bind(dbx.Params{"project": other.Id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	service := newImportService(app)
+	service.registerQualityState()
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.OnServe().Trigger(&core.ServeEvent{App: app, Router: router}); err != nil {
+		t.Fatal(err)
+	}
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _ := owner.NewAuthToken()
+	request := httptest.NewRequest("GET", "/api/fangji/projects/"+project.Id+"/quality-summary", nil)
+	request.Header.Set("Authorization", token)
+	response := httptest.NewRecorder()
+	handlerStarted := time.Now()
+	mux.ServeHTTP(response, request)
+	duration := time.Since(handlerStarted)
+	if response.Code != http.StatusOK {
+		t.Fatalf("actual quality summary handler: %d %s", response.Code, response.Body)
+	}
+	var result struct {
+		Total    int            `json:"total"`
+		ByState  map[string]int `json:"byState"`
+		BySource []struct {
+			Source string `json:"source"`
+			Count  int    `json:"count"`
+		} `json:"bySource"`
+		ByImportBatch []struct {
+			ImportJob string `json:"importJob"`
+			Count     int    `json:"count"`
+		} `json:"byImportBatch"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 20000 || !reflect.DeepEqual(result.ByState, map[string]int{"candidate": 10000, "validated": 5000, "withheld": 5000}) {
+		t.Fatalf("default state buckets lost rows: %#v", result)
+	}
+	// Independent direct SQL uses separate predicates, not a copy of the handler's
+	// GROUP BY expression. Legacy empty + explicit candidate share one bucket.
+	direct := map[string]int{}
+	for state, clause := range map[string]string{"candidate": "(quality_state='' OR quality_state='candidate')", "validated": "quality_state='validated'", "withheld": "quality_state='withheld'"} {
+		var count int
+		if err := app.DB().NewQuery("SELECT COUNT(*) FROM pages WHERE project={:project} AND " + clause).Bind(dbx.Params{"project": project.Id}).Row(&count); err != nil {
+			t.Fatal(err)
+		}
+		direct[state] = count
+	}
+	if !reflect.DeepEqual(result.ByState, direct) {
+		t.Fatalf("handler != independent SQL: %v != %v", result.ByState, direct)
+	}
+	stateTotal := 0
+	for _, count := range direct {
+		stateTotal += count
+	}
+	if stateTotal != result.Total {
+		t.Fatal("state default bucket dropped rows")
+	}
+	batches := map[string]int{}
+	for _, row := range result.ByImportBatch {
+		batches[row.ImportJob] = row.Count
+	}
+	expectedBatches := map[string]int{"": 4000}
+	for _, id := range jobs {
+		expectedBatches[id] = 4000
+	}
+	if !reflect.DeepEqual(batches, expectedBatches) {
+		t.Fatalf("batch buckets lost legacy unlinked rows: %v", batches)
+	}
+	sourceCounts := map[string]int{}
+	for _, row := range result.BySource {
+		sourceCounts[row.Source] = row.Count
+	}
+	if !reflect.DeepEqual(sourceCounts, map[string]int{"": 8000, sourceIDs[0]: 8000, sourceIDs[1]: 4000}) {
+		t.Fatalf("source join dropped rows: %v", sourceCounts)
+	}
+	for _, bucket := range []map[string]int{batches, sourceCounts} {
+		sum := 0
+		for _, count := range bucket {
+			sum += count
+		}
+		if sum != result.Total {
+			t.Fatalf("aggregation default bucket lost rows: %v", bucket)
+		}
+	}
+	t.Logf("synthetic actual-schema rows=%d; summary handler=%s; fixture+verification=%s; counts candidate=10000 validated=5000 withheld=5000, 5 batch buckets and 3 source buckets reconcile", result.Total, duration, time.Since(started))
 }

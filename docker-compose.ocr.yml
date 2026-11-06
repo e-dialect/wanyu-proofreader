@@ -1,0 +1,43 @@
+# Explicit opt-in overlay; existing entry points remain OCR-disabled.
+# Set a random OCR_WORKER_TOKEN (>=32 chars) in operator-owned .env first.
+# docker compose -f docker-compose.yml -f docker-compose.ocr.yml up -d --build
+services:
+  backend:
+    environment:
+      - OCR_ENGINE_ENABLED=${OCR_ENGINE_ENABLED:-false}
+      - OCR_WORKER_URL=http://ocr-worker:8091
+      - OCR_WORKER_TOKEN=${OCR_WORKER_TOKEN:?Set a random internal OCR worker token}
+    networks:
+      ocr_internal: {}
+  ocr-worker:
+    build:
+      context: ./backend
+      dockerfile: ocr-worker.Dockerfile
+    read_only: true
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 64
+    environment:
+      - OCR_WORKER_TOKEN=${OCR_WORKER_TOKEN:?Set a random internal OCR worker token}
+      - OMP_THREAD_LIMIT=1
+    networks:
+      ocr_internal: {}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8091/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  ocr_internal:
+    internal: true

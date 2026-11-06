@@ -1,6 +1,6 @@
+import { projectDetailSource } from './helpers/projectDetailSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 
 // #234 验收第 5 条的后半句：「重算进行中按钮禁用，重复点击不并发触发」。
 // 模板上的 `:disabled="assistBusy"` 只挡得住鼠标，挡不住脚本或双击的竞态，
@@ -8,8 +8,7 @@ import { readFileSync } from 'node:fs'
 // 并发两次就是 issue 里那句"duration_ms 翻倍吃掉管理员"。
 // 所以这里不看模板字符串，直接把处理函数**取出来执行**：
 // 数它到底调了几次服务，比断言它"写着 disabled"更接近那条验收。
-const source = readFileSync(new URL('../src/views/admin/ProjectDetailView.vue', import.meta.url), 'utf8')
-  .replace(/\r\n/g, '\n')
+const source = projectDetailSource().replace(/\r\n/g, '\n')
 
 function handler(name) {
   const match = source.match(new RegExp(`async function ${name}\\(\\) \\{[\\s\\S]*?\\n\\}\\n`))
@@ -20,7 +19,9 @@ function handler(name) {
 // 一个"永远不 resolve"的请求，用来把界面钉在"进行中"这一帧上。
 function pending() {
   let release
-  const promise = new Promise((resolve) => { release = resolve })
+  const promise = new Promise((resolve) => {
+    release = resolve
+  })
   return { promise, release }
 }
 
@@ -41,7 +42,8 @@ function context({ service }) {
     recomputeNotice: () => 'notice',
     loadAssistFindings: async () => {}
   }
-  const body = (name) => handler(name).replace(`async function ${name}() {`, 'return async function () {')
+  const body = (name) =>
+    handler(name).replace(`async function ${name}() {`, 'return async function () {')
   return {
     refs,
     // new Function(...) 的返回值是**处理函数本身**，还要再调一次才算真的跑起来。
@@ -53,7 +55,12 @@ for (const name of ['runFindingsRecompute', 'runIdentityRecompute']) {
   test(`${name}：进行中重复点击不得再发第二次请求，结束后必须解锁`, async () => {
     const gate = pending()
     let calls = 0
-    const { refs, run } = context({ service: async () => { calls += 1; return gate.promise } })
+    const { refs, run } = context({
+      service: async () => {
+        calls += 1
+        return gate.promise
+      }
+    })
     const first = run(name)
     await Promise.resolve()
     assert.equal(refs.assistBusy.value, true, `${name} 没有在请求期间置 busy`)
@@ -70,7 +77,11 @@ for (const name of ['runFindingsRecompute', 'runIdentityRecompute']) {
   })
 
   test(`${name}：请求失败也要解锁，否则整个区块被一次网络抖动永久禁用`, async () => {
-    const { refs, run } = context({ service: async () => { throw new Error('boom') } })
+    const { refs, run } = context({
+      service: async () => {
+        throw new Error('boom')
+      }
+    })
     await run(name)
     assert.equal(refs.assistBusy.value, false, '失败后 busy 没释放')
     assert.match(refs.assistError.value, /boom/)
@@ -80,7 +91,12 @@ for (const name of ['runFindingsRecompute', 'runIdentityRecompute']) {
 test('两个重算按钮共用同一个 busy，跨行与列级不许并行打满同一个同步接口', async () => {
   const gate = pending()
   let calls = 0
-  const { refs, run } = context({ service: async () => { calls += 1; return gate.promise } })
+  const { refs, run } = context({
+    service: async () => {
+      calls += 1
+      return gate.promise
+    }
+  })
   const findings = run('runFindingsRecompute')
   await Promise.resolve()
   const identity = run('runIdentityRecompute')

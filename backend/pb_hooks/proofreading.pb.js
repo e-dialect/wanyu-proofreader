@@ -190,6 +190,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/task`, (c) => {
     status: page.getString("status"),
     ocr_text: page.getString("ocr_text"),
     ocr_row_json: page.getString("ocr_row_json"),
+    ocr_cells_json: page.getString("ocr_cells_json"),
     row_headers_json: page.getString("row_headers_json"),
     expand: {
       project: { id: project.id, name: project.getString("name") }
@@ -597,6 +598,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/arbitration`, (c) => {
       proofread_round: page.getInt("proofread_round") || 1,
       mismatch_count: page.getInt("mismatch_count") || 0,
       ocr_row_json: page.getString("ocr_row_json"),
+    ocr_cells_json: page.getString("ocr_cells_json"),
     row_headers_json: page.getString("row_headers_json"),
       ocr_text: page.getString("ocr_text"),
       proofread_row_json: page.getString("proofread_row_json")

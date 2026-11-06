@@ -11,6 +11,7 @@
 *.bcmap binary
 *.pfb binary
 *.png binary
+*.pdf binary
 *.zip binary
 *.ttf binary
 *.woff2 binary

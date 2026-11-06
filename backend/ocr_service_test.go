@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -80,9 +83,8 @@ func TestProcessOCRDisabledEngineFails(t *testing.T) {
 	}
 }
 
-// 验收点：配置了引擎开关、但真实引擎尚未接入时，作业也必须明确失败，
-// 绝不能用 completed 宣告"识别完成"（不得对外宣称具备真实识别能力）。
-func TestProcessOCREnabledEngineStillPending(t *testing.T) {
+// 开关不能代替运行时配置：本地 worker 尚未配置时必须明确失败。
+func TestProcessOCREnabledEngineRequiresLocalWorker(t *testing.T) {
 	os.Setenv(ocrEngineEnv, "true")
 	t.Cleanup(func() { os.Unsetenv(ocrEngineEnv) })
 	svc, jobs := newOCRTestService(t)
@@ -97,8 +99,8 @@ func TestProcessOCREnabledEngineStillPending(t *testing.T) {
 	if loaded.GetString("status") != "failed" {
 		t.Fatalf("expected failed status (engine pending), got %q", loaded.GetString("status"))
 	}
-	if loaded.GetString("error_code") != "OCR_ENGINE_PENDING" {
-		t.Fatalf("expected OCR_ENGINE_PENDING, got %q", loaded.GetString("error_code"))
+	if loaded.GetString("error_code") != "OCR_WORKER_UNAVAILABLE" {
+		t.Fatalf("expected OCR_WORKER_UNAVAILABLE, got %q", loaded.GetString("error_code"))
 	}
 }
 
@@ -208,5 +210,158 @@ func TestStartOCRAuthorization(t *testing.T) {
 	// 管理员应能通过鉴权（后续因无主 PDF 返回 400，而非 401/403）
 	if code := post(adminToken); code != http.StatusBadRequest {
 		t.Fatalf("管理员应通过鉴权（无主 PDF 时 400），got %d", code)
+	}
+}
+
+func TestOCROptionsRequireExplicitSegmentsAndSingleColumn(t *testing.T) {
+	if _, err := normalizeOCROptions(ocrOptions{}, 201); err == nil {
+		t.Fatal("a 201-page book must require an explicit range")
+	}
+	if value, err := normalizeOCROptions(ocrOptions{StartPage: 101, EndPage: 200}, 400); err != nil || value.StartPage != 101 || value.EndPage != 200 {
+		t.Fatalf("valid range changed: %#v %v", value, err)
+	}
+	for _, options := range []ocrOptions{{StartPage: -1}, {StartPage: 3, EndPage: 2}, {EndPage: 201}, {Layout: "mixed"}, {Language: "shell;bad"}} {
+		if _, err := normalizeOCROptions(options, 200); err == nil {
+			t.Fatalf("invalid options accepted: %#v", options)
+		}
+	}
+	if localOCRHost("example.com") || localOCRHost("ocr-worker.example.com") {
+		t.Fatal("external OCR endpoint accepted")
+	}
+}
+
+func TestOCRRequestHashScopesTransportRetries(t *testing.T) {
+	key := "synthetic-request-0001"
+	hash := ocrRequestHash("project-a", "actor-a", key)
+	if hash != "6baee7e0a5a1200defe5d3baade1576e0c1fecdb50fc5071e6a7ba6c5d058444" || hash != ocrRequestHash("project-a", "actor-a", key) || len(hash) != 64 {
+		t.Fatal("request hash is not stable")
+	}
+	for _, other := range []string{ocrRequestHash("project-b", "actor-a", key), ocrRequestHash("project-a", "actor-b", key), ocrRequestHash("project-a", "actor-a", key+"x")} {
+		if other == hash {
+			t.Fatal("request hash crossed operation scope")
+		}
+	}
+	if ocrRequestHash("project-a", "actor-a", "") == ocrRequestHash("project-a", "actor-a", "") {
+		t.Fatal("legacy callers must retain independent random operations")
+	}
+}
+
+// The frontend must retain the operation nonce after any uncertain server
+// failure. Only malformed/client-conflicting parameters may be 4xx.
+func TestOCRInternalReadAndCreateErrorsKeepRetryableIntent(t *testing.T) {
+	app := newSchemaTestApp(t)
+	users, _ := app.FindCollectionByNameOrId("users")
+	owner := core.NewRecord(users)
+	owner.Set("role", "platform_admin")
+	owner.SetPassword("SyntheticRetry123!")
+	if err := app.Save(owner); err != nil {
+		t.Fatal(err)
+	}
+	projects, _ := app.FindCollectionByNameOrId("projects")
+	project := core.NewRecord(projects)
+	project.Set("name", "Synthetic retry classification")
+	project.Set("admin", owner.Id)
+	project.Set("access_mode", "members_only")
+	project.Set("required_proofreads", 2)
+	if err := app.Save(project); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := app.FindCollectionByNameOrId("project_files")
+	file := core.NewRecord(files)
+	file.Set("project", project.Id)
+	file.Set("status", "ready")
+	file.Set("is_primary", true)
+	file.Set("page_count", 1)
+	if err := app.Save(file); err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ := app.FindCollectionByNameOrId("import_jobs")
+	mode := jobs.Fields.GetByName("mode").(*core.SelectField)
+	mode.Values = append(mode.Values, "ocr")
+	jobs.Fields.GetByName("source_file").(*core.FileField).Required = false
+	jobs.Fields.GetByName("file_size").(*core.NumberField).Required = false
+	jobs.Fields.Add(&core.TextField{Name: "ocr_request_id", Max: 80}, &core.TextField{Name: "ocr_options_json", Max: 16384})
+	if err := app.Save(jobs); err != nil {
+		t.Fatal(err)
+	}
+	failCreation, creationReached := true, false
+	app.OnRecordCreate("import_jobs").BindFunc(func(e *core.RecordEvent) error {
+		creationReached = true
+		if failCreation {
+			return errors.New("synthetic persistence unavailable")
+		}
+		return e.Next()
+	})
+	service := newImportService(app)
+	service.registerOCR()
+	router, err := apis.NewRouter(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.OnServe().Trigger(&core.ServeEvent{App: app, Router: router}); err != nil {
+		t.Fatal(err)
+	}
+	mux, err := router.BuildMux()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _ := owner.NewAuthToken()
+	post := func(body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest("POST", "/api/fangji/projects/"+project.Id+"/imports/ocr", bytes.NewBufferString(body))
+		request.Header.Set("Authorization", token)
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		return response
+	}
+	body := `{"requestId":"synthetic-retry-intent-0001"}`
+	if response := post(body); response.Code != 503 || !creationReached {
+		t.Fatalf("persistence failure must preserve intent: %d reached=%v %s", response.Code, creationReached, response.Body)
+	}
+	failCreation = false
+	first := post(body)
+	if first.Code != 202 {
+		t.Fatalf("same intent cannot recover: %d %s", first.Code, first.Body)
+	}
+	again := post(body)
+	if again.Code != 202 {
+		t.Fatalf("accepted intent retry failed: %d %s", again.Code, again.Body)
+	}
+	var original, retried map[string]any
+	json.Unmarshal(first.Body.Bytes(), &original)
+	json.Unmarshal(again.Body.Bytes(), &retried)
+	if original["id"] != retried["id"] {
+		t.Fatal("server failure recovery created a second operation")
+	}
+	saved, err := app.FindRecordById("import_jobs", original["id"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := saved.GetString("ocr_options_json")
+	saved.Set("ocr_options_json", "broken")
+	if err := app.Save(saved); err != nil {
+		t.Fatal(err)
+	}
+	if response := post(body); response.Code != 503 {
+		t.Fatalf("corrupt stored parameters became client rejection: %d %s", response.Code, response.Body)
+	}
+	saved.Set("ocr_options_json", options)
+	if err := app.Save(saved); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery("DROP TABLE import_jobs").Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if response := post(body); response.Code != 503 {
+		t.Fatalf("internal lookup failure became client rejection: %d %s", response.Code, response.Body)
+	}
+	if response := post(`{"requestId":"short"}`); response.Code != 400 {
+		t.Fatalf("malformed request identity should remain a client 400: %d", response.Code)
+	}
+	if _, err := app.DB().NewQuery("DROP TABLE project_files").Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if response := post(`{}`); response.Code != 503 {
+		t.Fatalf("PDF lookup failure became missing-input 400: %d %s", response.Code, response.Body)
 	}
 }

@@ -1,0 +1,82 @@
+{
+  "page": 1,
+  "engine": "poppler_text",
+  "has_images": false,
+  "rows": [
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "ALPHA 123",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            64.527345,
+            125.41405499999999,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "BETA 456",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            116.527345,
+            109.394555,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "GAMMA 789",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            168.527345,
+            137.378855,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "DELTA 012",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            220.527345,
+            124.06645499999999,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    }
+  ],
+  "raw_text": "ALPHA 123\n\nBETA 456\n\nGAMMA 789\n\nDELTA 012\n",
+  "raw_layout": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n<title>untitled</title>\n<meta name=\"Subject\" content=\"unspecified\"/>\n<meta name=\"Keywords\" content=\"\"/>\n<meta name=\"Author\" content=\"anonymous\"/>\n<meta name=\"Creator\" content=\"anonymous\"/>\n<meta name=\"Producer\" content=\"ReportLab PDF Library - (opensource)\"/>\n<meta name=\"CreationDate\" content=\"2000-01-01T00:00:00Z\"/>\n<meta name=\"ModDate\" content=\"2000-01-01T00:00:00Z\"/>\n</head>\n<body>\n<doc>\n  <page width=\"595.000000\" height=\"842.000000\">\n    <flow>\n      <block xMin=\"54.000000\" yMin=\"64.527345\" xMax=\"179.414055\" yMax=\"87.050781\">\n        <line xMin=\"54.000000\" yMin=\"64.527345\" xMax=\"179.414055\" yMax=\"87.050781\">\n          <word xMin=\"54.000000\" yMin=\"64.527345\" xMax=\"132.703113\" yMax=\"87.050781\">ALPHA</word>\n          <word xMin=\"139.371100\" yMin=\"64.527345\" xMax=\"179.414055\" yMax=\"87.050781\">123</word>\n        </line>\n      </block>\n      <block xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"163.394555\" yMax=\"139.050781\">\n        <line xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"163.394555\" yMax=\"139.050781\">\n          <word xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"116.683613\" yMax=\"139.050781\">BETA</word>\n          <word xMin=\"123.351600\" yMin=\"116.527345\" xMax=\"163.394555\" yMax=\"139.050781\">456</word>\n        </line>\n      </block>\n      <block xMin=\"54.000000\" yMin=\"168.527345\" xMax=\"191.378855\" yMax=\"191.050781\">\n        <line xMin=\"54.000000\" yMin=\"168.527345\" xMax=\"191.378855\" yMax=\"191.050781\">\n          <word xMin=\"54.000000\" yMin=\"168.527345\" xMax=\"144.668013\" yMax=\"191.050781\">GAMMA</word>\n          <word xMin=\"151.335900\" yMin=\"168.527345\" xMax=\"191.378855\" yMax=\"191.050781\">789</word>\n        </line>\n      </block>\n      <block xMin=\"54.000000\" yMin=\"220.527345\" xMax=\"178.066455\" yMax=\"243.050781\">\n        <line xMin=\"54.000000\" yMin=\"220.527345\" xMax=\"178.066455\" yMax=\"243.050781\">\n          <word xMin=\"54.000000\" yMin=\"220.527345\" xMax=\"131.355513\" yMax=\"243.050781\">DELTA</word>\n          <word xMin=\"138.023400\" yMin=\"220.527345\" xMax=\"178.066455\" yMax=\"243.050781\">012</word>\n        </line>\n      </block>\n    </flow>\n  </page>\n</doc>\n</body>\n</html>\n",
+  "duration_ms": 21
+}

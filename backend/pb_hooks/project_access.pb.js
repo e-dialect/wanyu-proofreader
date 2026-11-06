@@ -18,7 +18,7 @@ routerAdd("GET", "/api/fangji/access-context", (c) => {
       if (project.getString("admin") === auth.id) owned.add(project.id)
     }
   } else {
-    for (const project of dao.findRecordsByFilter("projects", `admin = "${auth.id}"`, "name", 1000000, 0)) {
+    for (const project of dao.findRecordsByFilter("projects", "admin = {:user}", "name", 1000000, 0, { user: auth.id })) {
       managed.push(project.id)
       owned.add(project.id)
     }
@@ -59,7 +59,7 @@ routerAdd("GET", "/api/fangji/projects", (c) => {
   if (scope === "all" || scope === "discoverable" || (scope === "managed" && platformAdmin)) {
     projects = dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)
   } else if (scope === "managed") {
-    const owned = dao.findRecordsByFilter("projects", `admin = "${auth.id}"`, "name", 1000000, 0)
+    const owned = dao.findRecordsByFilter("projects", "admin = {:user}", "name", 1000000, 0, { user: auth.id })
     projects = fangjiMergeProjects(
       owned,
       fangjiProjectsByIds(dao, fangjiProjectIdsWithRole(memberships, "manager"))
@@ -315,11 +315,11 @@ routerAdd("GET", "/api/fangji/projects/{projectId}/members", (c) => {
     user: owner.id,
     name: owner.getString("name"),
     username: owner.getString("username"),
-    email: owner.getString("email"),
+    email: owner.id === auth.id || owner.getBool("emailVisibility") ? owner.getString("email") : "",
     role: "owner",
     source: "assigned"
   })
-  const memberships = dao.findRecordsByFilter("project_memberships", `project = "${projectId}"`, "created", 1000000, 0)
+  const memberships = dao.findRecordsByFilter("project_memberships", "project = {:project}", "created", 1000000, 0, { project: projectId })
   for (const membership of memberships) {
     let user = null
     try { user = dao.findRecordById("users", membership.getString("user")) } catch { continue }
@@ -328,7 +328,7 @@ routerAdd("GET", "/api/fangji/projects/{projectId}/members", (c) => {
       user: user.id,
       name: user.getString("name"),
       username: user.getString("username"),
-      email: user.getString("email"),
+      email: user.id === auth.id || user.getBool("emailVisibility") ? user.getString("email") : "",
       role: membership.getString("role"),
       source: membership.getString("source")
     })
@@ -337,59 +337,12 @@ routerAdd("GET", "/api/fangji/projects/{projectId}/members", (c) => {
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/projects/{projectId}/member-candidates", (c) => {
-  const {
-    auth: fangjiAuth, assertId: fangjiAssertId, requireManager: fangjiRequireManager,
-    isPlatformAdmin: fangjiIsPlatformAdmin, managedProjectIds: fangjiManagedProjectIds
-  } = require(`${__hooks}/lib/project_access.js`)
-  const auth = fangjiAuth(c)
-  const projectId = fangjiAssertId(c.request.pathValue("projectId"), "项目")
-  const dao = $app
-  const { project: managedProject } = fangjiRequireManager(dao, projectId, auth)
-
-  // users.listRule grants account listing to platform admins only, and email is
-  // redacted outside emailVisibility, so a manager or owner is offered the people
-  // already connected to the projects they run — never the platform roster.
-  // A freshly created project has no members yet, so `term` restores the documented
-  // "add a person I already know" flow. It is an EXACT identifier match on purpose:
-  // a contains/LIKE search over all users would let any project manager sweep the
-  // roster two characters at a time, which is the boundary this change removes.
-  // Being able to confirm one known username is an existence oracle, so lookups
-  // are still capped, and rate limiting is tracked as follow-up.
-  const term = String(c.request.url.query().get("term") || "").trim()
-  const pool = new Set([auth.id, managedProject.getString("admin")])
-  // A negated class, not \p{L}: goja has no Unicode property escapes, and an
-  // unsupported class silently matches almost nothing. This blocks the characters
-  // that could break out of the filter, and % and _ which would widen a LIKE.
-  if (term && !/^[^"'\\%`_;(){}<>=!|&*?~\n\r\t]{2,64}$/.test(term)) {
-    throw new BadRequestError("查找词需为 2-64 个字符，且不能包含引号、%、_ 或括号")
-  }
-  if (term) {
-    for (const user of dao.findRecordsByFilter(
-      "users", `name = "${term}" || username = "${term}"`, "name,username", 50, 0)) {
-      pool.add(user.id)
-    }
-  } else if (fangjiIsPlatformAdmin(auth)) {
-    for (const user of dao.findRecordsByFilter("users", 'id != ""', "name,username", 500, 0)) pool.add(user.id)
-  } else {
-    for (const managed of fangjiManagedProjectIds(dao, auth)) {
-      for (const member of dao.findRecordsByFilter(
-        "project_memberships", `project = "${managed}"`, "created", 500, 0)) {
-        pool.add(member.getString("user"))
-      }
-    }
-  }
-
-  const candidates = []
-  for (const userId of pool) {
-    let user = null
-    try { user = dao.findRecordById("users", userId) } catch { continue }
-    candidates.push({ id: user.id, name: user.getString("name"), username: user.getString("username") })
-  }
-  // Order before truncating, so this project's own members can never be dropped
-  // in favour of an older project's, in a locale-independent code-unit order.
-  candidates.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1
-    : a.username < b.username ? -1 : a.username > b.username ? 1 : 0))
-  return c.json(200, candidates.slice(0, 200))
+  const { auth, assertId, requireManager } = require(`${__hooks}/lib/project_access.js`)
+  const { listCandidates } = require(`${__hooks}/lib/member_candidates.js`)
+  const actor = auth(c)
+  const projectId = assertId(c.request.pathValue("projectId"), "项目")
+  const { project } = requireManager($app, projectId, actor)
+  return c.json(200, listCandidates($app, actor, project, c.request.url.query()))
 }, $apis.requireAuth("users"))
 
 routerAdd("PUT", "/api/fangji/projects/{projectId}/members/{userId}", (c) => {
@@ -397,15 +350,21 @@ routerAdd("PUT", "/api/fangji/projects/{projectId}/members/{userId}", (c) => {
   const auth = fangjiAuth(c)
   const projectId = fangjiAssertId(c.request.pathValue("projectId"), "项目")
   const userId = fangjiAssertId(c.request.pathValue("userId"), "用户")
-  const body = new DynamicModel({ role: "proofreader" })
+  const body = new DynamicModel({ role: "proofreader", candidateTerm: "" })
   c.bindBody(body)
   const role = String(body.role || "proofreader")
   if (!["manager", "proofreader"].includes(role)) throw new BadRequestError("项目角色无效")
+  fangjiRequireManager($app, projectId, auth)
+  const { consumeLookup, lookupTerm } = require(`${__hooks}/lib/member_candidates.js`)
+  if (lookupTerm(body.candidateTerm)) consumeLookup($app, auth)
   let result = null
   $app.runInTransaction((txDao) => {
     const { project } = fangjiRequireManager(txDao, projectId, auth)
     if (project.getString("admin") === userId) throw new BadRequestError("项目所有者不能重复添加为成员")
-    try { txDao.findRecordById("users", userId) } catch { throw new NotFoundError("用户不存在") }
+    const { canAssignCandidate } = require(`${__hooks}/lib/member_candidates.js`)
+    if (!canAssignCandidate(txDao, auth, project, userId, body.candidateTerm)) {
+      throw new ForbiddenError("请先从可用成员中选择，或精确查找已知的昵称/用户名")
+    }
     let membership = fangjiMembership(txDao, projectId, userId)
     if (!membership) membership = new Record(txDao.findCollectionByNameOrId("project_memberships"))
     membership.set("project", projectId)

@@ -1,0 +1,64 @@
+{
+  "page": 3,
+  "engine": "poppler_text",
+  "has_images": false,
+  "rows": [
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "IPA ɑɡ",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            64.527345,
+            72.164045,
+            23.332029000000006
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "COMBINING á",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            116.527345,
+            158.6836,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "RARE 𠮷",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            168.527345,
+            97.3477,
+            24.38465500000001
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    }
+  ],
+  "raw_text": "IPA ɑɡ\n\nCOMBINING á\n\nRARE 𠮷\n",
+  "raw_layout": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n<title>untitled</title>\n<meta name=\"Subject\" content=\"unspecified\"/>\n<meta name=\"Keywords\" content=\"\"/>\n<meta name=\"Author\" content=\"anonymous\"/>\n<meta name=\"Creator\" content=\"anonymous\"/>\n<meta name=\"Producer\" content=\"ReportLab PDF Library - (opensource)\"/>\n<meta name=\"CreationDate\" content=\"2000-01-01T00:00:00Z\"/>\n<meta name=\"ModDate\" content=\"2000-01-01T00:00:00Z\"/>\n</head>\n<body>\n<doc>\n  <page width=\"595.000000\" height=\"842.000000\">\n    <flow>\n      <block xMin=\"54.000000\" yMin=\"56.218744\" xMax=\"126.164045\" yMax=\"87.859374\">\n        <line xMin=\"54.000000\" yMin=\"56.218744\" xMax=\"126.164045\" yMax=\"87.859374\">\n          <word xMin=\"54.000000\" yMin=\"64.527345\" xMax=\"92.683593\" yMax=\"87.050781\">IPA</word>\n          <word xMin=\"99.351560\" yMin=\"56.218744\" xMax=\"126.164045\" yMax=\"87.859374\">ɑɡ</word>\n        </line>\n      </block>\n      <block xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"212.683600\" yMax=\"139.050781\">\n        <line xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"212.683600\" yMax=\"139.050781\">\n          <word xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"192.667968\" yMax=\"139.050781\">COMBINING</word>\n          <word xMin=\"199.335900\" yMin=\"116.527345\" xMax=\"212.683600\" yMax=\"139.050781\">á</word>\n        </line>\n      </block>\n      <block xMin=\"54.000000\" yMin=\"158.160000\" xMax=\"151.347700\" yMax=\"192.912000\">\n        <line xMin=\"54.000000\" yMin=\"158.160000\" xMax=\"151.347700\" yMax=\"192.912000\">\n          <word xMin=\"54.000000\" yMin=\"168.527345\" xMax=\"120.679713\" yMax=\"191.050781\">RARE</word>\n          <word xMin=\"127.347700\" yMin=\"158.160000\" xMax=\"151.347700\" yMax=\"192.912000\">𠮷</word>\n        </line>\n      </block>\n    </flow>\n  </page>\n</doc>\n</body>\n</html>\n",
+  "duration_ms": 22
+}

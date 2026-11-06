@@ -22,10 +22,11 @@ function isPlatformAdmin(record) {
 function membership(dao, projectId, userId) {
   const records = dao.findRecordsByFilter(
     "project_memberships",
-    `project = "${projectId}" && user = "${userId}"`,
+    "project = {:project} && user = {:user}",
     "",
     1,
-    0
+    0,
+    { project: projectId, user: userId }
   )
   return records.length ? records[0] : null
 }
@@ -37,10 +38,11 @@ function membershipsByProject(dao, authRecord) {
   const result = new Map()
   const records = dao.findRecordsByFilter(
     "project_memberships",
-    `user = "${authRecord.id}"`,
+    "user = {:user}",
     "created",
     1000000,
-    0
+    0,
+    { user: authRecord.id }
   )
   for (const record of records) result.set(record.getString("project"), record)
   return result
@@ -63,8 +65,9 @@ function projectsByIds(dao, projectIds) {
   const unique = [...new Set(projectIds.filter(Boolean))]
   for (let index = 0; index < unique.length; index += projectIdBatchSize) {
     const batch = unique.slice(index, index + projectIdBatchSize)
-    const filter = batch.map((id) => `id = "${id}"`).join(" || ")
-    records.push(...dao.findRecordsByFilter("projects", filter, "name", batch.length, 0))
+    const params = {}
+    const filter = batch.map((id, index) => { params[`id${index}`] = id; return `id = {:id${index}}` }).join(" || ")
+    records.push(...dao.findRecordsByFilter("projects", filter, "name", batch.length, 0, params))
   }
   return records
 }
@@ -116,9 +119,9 @@ function managedProjectIds(dao, authRecord) {
     for (const record of dao.findRecordsByFilter("projects", 'id != ""', "name", 1000000, 0)) ids.add(record.id)
     return [...ids]
   }
-  for (const record of dao.findRecordsByFilter("projects", `admin = "${authRecord.id}"`, "name", 1000000, 0)) ids.add(record.id)
+  for (const record of dao.findRecordsByFilter("projects", "admin = {:user}", "name", 1000000, 0, { user: authRecord.id })) ids.add(record.id)
   for (const record of dao.findRecordsByFilter(
-    "project_memberships", `user = "${authRecord.id}" && role = "manager"`, "created", 1000000, 0)) {
+    "project_memberships", 'user = {:user} && role = "manager"', "created", 1000000, 0, { user: authRecord.id })) {
     ids.add(record.getString("project"))
   }
   return [...ids]
@@ -160,16 +163,17 @@ function nullableLimit(record) {
 function creatorGrant(dao, userId) {
   const records = dao.findRecordsByFilter(
     "project_creator_grants",
-    `user = "${userId}"`,
+    "user = {:user}",
     "",
     1,
-    0
+    0,
+    { user: userId }
   )
   return records.length ? records[0] : null
 }
 
 function ownedProjectCount(dao, userId) {
-  return dao.findRecordsByFilter("projects", `admin = "${userId}"`, "", 1000000, 0).length
+  return dao.findRecordsByFilter("projects", "admin = {:user}", "", 1000000, 0, { user: userId }).length
 }
 
 function creationCapability(dao, authRecord, precomputedOwnedCount) {
@@ -224,26 +228,28 @@ function projectJson(dao, projectRecord, authRecord, precomputedPermissions) {
 function projectSecret(dao, projectId) {
   const records = dao.findRecordsByFilter(
     "project_access_secrets",
-    `project = "${projectId}"`,
+    "project = {:project}",
     "",
     1,
-    0
+    0,
+    { project: projectId }
   )
   return records.length ? records[0] : null
 }
 
 function projectAcl(dao, projectId) {
-  const records = dao.findRecordsByFilter("project_acls", `project = "${projectId}"`, "", 1, 0)
+  const records = dao.findRecordsByFilter("project_acls", "project = {:project}", "", 1, 0, { project: projectId })
   return records.length ? records[0] : null
 }
 
 function projectJoinAttempt(dao, projectId, userId) {
   const records = dao.findRecordsByFilter(
     "project_join_attempts",
-    `project = "${projectId}" && user = "${userId}"`,
+    "project = {:project} && user = {:user}",
     "",
     1,
-    0
+    0,
+    { project: projectId, user: userId }
   )
   return records.length ? records[0] : null
 }
@@ -256,10 +262,11 @@ function projectJoinSourceKey(source) {
 function projectJoinSourceAttempt(dao, projectId, sourceKey) {
   const records = dao.findRecordsByFilter(
     "project_join_source_attempts",
-    `project = "${projectId}" && source_key = "${sourceKey}"`,
+    "project = {:project} && source_key = {:source}",
     "",
     1,
-    0
+    0,
+    { project: projectId, source: sourceKey }
   )
   return records.length ? records[0] : null
 }
@@ -328,19 +335,21 @@ function clearProjectJoinSourceAttempt(dao, projectId, sourceKey) {
 function clearProjectJoinAttempts(dao, projectId) {
   const attempts = dao.findRecordsByFilter(
     "project_join_attempts",
-    `project = "${projectId}"`,
+    "project = {:project}",
     "",
     1000000,
-    0
+    0,
+    { project: projectId }
   )
   for (const attempt of attempts) dao.delete(attempt)
 
   const sourceAttempts = dao.findRecordsByFilter(
     "project_join_source_attempts",
-    `project = "${projectId}"`,
+    "project = {:project}",
     "",
     1000000,
-    0
+    0,
+    { project: projectId }
   )
   for (const attempt of sourceAttempts) dao.delete(attempt)
 }
@@ -362,10 +371,11 @@ function syncProjectAcl(dao, projectId) {
   const projectRecord = project(dao, projectId)
   const memberships = dao.findRecordsByFilter(
     "project_memberships",
-    `project = "${projectId}"`,
+    "project = {:project}",
     "created",
     1000000,
-    0
+    0,
+    { project: projectId }
   )
   const managerIds = []
   const proofreaderIds = []

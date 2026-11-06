@@ -442,3 +442,89 @@ volumes:
 
 判断当前实例到底载入了什么，看管理端方案清单（`GET /api/fangji/scheme-adapters`）：每套方案带
 `source_scheme_id`、`rule_version`、`rule_status`，以及没有目录时的那条 `notice`。
+
+## 可选本地 OCR worker（#122 / #310）
+
+默认入口不启动 OCR worker；`OCR_ENGINE_ENABLED=false` 时作业明确失败为
+`OCR_ENGINE_DISABLED`，登录、CSV/PDF、校对、仲裁与导出继续使用原链路。
+正式识别只支持不含图像的数字原生单列可映射文本层，使用 Poppler；含图像的
+页面（包括原生标题配扫描正文、装饰图）明确失败为 `OCR_SCANNED_UNSUPPORTED`，不会发布任何暂存行。Tesseract 5.5.2
+仅保留本地实验（Alpine 3.24 包版本以实际镜像元数据为准）。首版不猜词头/音读/释义
+列，也不启用 `ocr/extract_text.py` 的 mixed 启发式。
+
+操作者确认材料有本地处理权利后，在仓外 `.env` 设置随机 `OCR_WORKER_TOKEN`
+（至少 32 字符，例如用 `openssl rand -hex 32` 生成）与 `OCR_ENGINE_ENABLED=true`。
+同一 token 仅供 backend 与 worker 内部鉴权，不是用户 token，不应放入前端、URL、
+日志或镜像层。显式选用 overlay 才会构建/启动 worker：
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.ocr.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.ocr.yml up -d --build
+```
+
+Traefik/dev 入口把第一个 `-f` 换成对应文件即可；named-volume overlay 放在 OCR
+文件之前。`scripts/check_ocr_compose.py` 验证三种入口与命名卷的六种组合。
+worker 没有 host port、代理标签或外网网络，只连接 `internal: true` 的
+`ocr_internal`；backend 保持原前后端网络，并追加该私网。其 `OCR_WORKER_URL`
+只接受 `ocr-worker` 或本机 loopback 的 HTTP 地址、禁止跳转/代理；不支持云识别 API。
+`ALPINE_MIRROR` 是构建时包镜像参数，默认官方 CDN；变更镜像仍由 Alpine 签名
+验证包，不允许关闭签名校验。运行时不下载模型。
+
+管理端 `POST /api/fangji/projects/:id/imports/ocr` 接受
+`{startPage,endPage,language,layout,requestId}`：页码从 1 起，语言为 `eng`、`chi_sim` 或
+`chi_sim+eng`，布局仅 `single_column`。空参数默认完整 PDF；超出单作业 200 页必须
+显式分段，返回 400 而不截断。作业 `total_count/processed_count/success_count` 按 PDF
+页计；`ocr_result_json.rows` 为条目数。`requestId` 可选，需为 16–80 位字母、数字、点、
+下划线或连字符；界面为一次明确发起操作生成 UUID，网络错误后重试沿用同一编号及
+参数。服务端以项目、操作者与编号命名同一作业：相同归一化参数返回原作业 202，
+不同参数返回 409；完成/失败终态和服务重启后都不会再入队。主 PDF 被替换或移除也
+仍按原作业的 PDF 页数快照归一化。新的识别意图应使用新编号；无编号的旧客户端
+保留每次创建独立随机作业的兼容行为。非空编号另有覆盖所有终态的唯一索引，避免
+旧 `status != failed` 去重索引在快速失败后失效。内部读取/存储故障返回 503，客户端
+须保留未知结果的编号重试；只有明确的参数 400/冲突 409 才表示该组新参数未被接受。每页最多 2000 行、响应最多 16 MiB、输入 PDF
+最多 100 MiB。原文 `ocr_row_json` 仍为 `{原文:字符串}`；另存 `ocr_cells_json` 的原始
+文本、bbox、来源、confidence、reason 与三态：
+
+- `certain`：文本层成功提取且没有显式解码失败，仍须人工对照原图；不表示校对正确。
+- `needs_review`：扫描 OCR 或原文含 PUA/IDS；高置信度也不提升为正确。
+- `abstained`：空识别或 U+FFFD/解码失败；原有合法字符保留，不替换为常用字或伪造 PUA。
+
+文本层坐标单位为 PDF point；扫描 TSV 坐标单位为该页栅格像素。中间态逐页保存为
+`project_artifacts.kind=ocr_json` 的 protected 文件，含未压缩的 `raw_text`、原始
+bbox XML/TSV 与单元格；token 不进入 JSON。`ocr_result_json.artifacts` 含 id、页码、
+file_name 与受保护下载路由。下载必须用 Authorization header，只允许项目 manager；
+无登录/非成员/校对员都不能下载。原文更正保留机器初始证据，不把旧机器状态解释为
+对更正文本的再次判断。工件继承项目材料的权限与保留政策，随项目/作业删除清理；
+备份仍需包含整个 `pb_data`，不能只留数据库。
+
+### 八项运行边界与恢复
+
+| 边界 | 实现与验证入口 |
+|---|---|
+| 主站最小权限不降级 | backend 原 read_only/non-root/cap_drop/no-new-privileges 保留；OCR worker 同样 non-root 10001、只读根、丢全部能力 |
+| 材料不外发 | worker 仅内部私网，无外部识别 API；输入只有本项目不可变 PDF 快照 |
+| 不新增公网端口 | overlay 不含 ports/Traefik 标签，私网 worker token 必须配置且 constant-time 比较 |
+| 模型只读、临时盘有界 | eng/chi_sim 模型在只读镜像；`/tmp` 为 256 MiB noexec/nosuid tmpfs；每请求关闭文件并清目录，容器重启销毁临时挂载 |
+| 故障隔离与收尾 | OCR 独立串行队列；worker 并发 1、CPU 1、内存 768 MiB、pids 64；页级引擎 90 秒、backend 100 秒超时；失败清暂存行并有终态，CSV/PDF 队列可继续 |
+| 许可可追溯 | `backend/ocr-worker.Dockerfile`、`backend/ocrengine/licenses`、`THIRD_PARTY_NOTICES.md`；Alpine APKBUILD 明确 tessdata 4.1.0 来源；不得用引擎许可替代模型许可 |
+| 作业可观测 | 共用 work_queued/work_started/work_finished/worker_panic 和失败日志，带 request_id/job_id；请求响应回传 X-Request-ID；记录不含材料或secret |
+| 性能有实测边界 | `ocr/runtime-benchmark.py` 与 `docs/evidence/issue-122-310` 记录合成 native/scanned 分页、全书耗时和容器内存；不能推断真实词典质量或生产容量 |
+
+真实合成扫描样本出现难字静默替换，因此扫描质量未达标；`OCR_ALLOW_SCANNED_TEST=1`
+只供独立 benchmark 容器显式启用，不出现在 Compose 或 .env.example。即使 worker
+误开实验功能并返回 HTTP200，backend 仍独立拒绝任何 source=tesseract 的输出。无词且
+无图像的空/轮廓页只生成原文为空的 abstained 条目，不猜测文字，需对照 PDF 确认。
+
+worker 退出/OOM/超时会使该作业失败，已生成条目保持 importing 并在失败时清除，不会
+把半本书送入校对。完成时才在事务中发布为 pending。backend 重启会重放 queued 或
+processing 作业的同一 PDF 快照，先清旧暂存行和旧工件，避免重复；故障后也可重新
+发起新作业。`run_ocr_runtime_integration.py` 用真实迁移/API、受控本地故障 worker
+验证这些状态与 CSV 隔离；真实引擎数字另见 benchmark，二者不混为同一质量证据。
+
+停用/回退：先设置 `OCR_ENGINE_ENABLED=false` 并重建 backend，再停止 OCR worker；
+保留已经完成的 pages 与工件。回滚应用镜像时通常保留新增可选字段；若必须回退迁移，
+先备份并归档/移除 OCR 工件（迁移拒绝在仍有 OCR 工件时 down），再由维护者确认
+元数据丢失范围。不要为了停用能力而删除整个数据库或原 PDF。
+
+本节是可复现配置与本地验证记录，没有执行生产启用。真实材料的新人走查、双人 gold
+和生产资源验收仍须由具备材料权限的人员完成。

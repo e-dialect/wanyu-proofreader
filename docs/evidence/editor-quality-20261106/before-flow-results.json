@@ -1,0 +1,33 @@
+{
+  "fonts": [],
+  "feedback": [
+    {
+      "width": 1280,
+      "draftSaved": true,
+      "submitting": true,
+      "failurePreservesInput": true,
+      "retrySamePayload": true,
+      "nextTask": true,
+      "submitReleased": true
+    },
+    {
+      "width": 1440,
+      "draftSaved": true,
+      "submitting": true,
+      "failurePreservesInput": true,
+      "retrySamePayload": true,
+      "nextTask": true,
+      "submitReleased": true
+    },
+    {
+      "width": 390,
+      "draftSaved": true,
+      "submitting": true,
+      "failurePreservesInput": true,
+      "retrySamePayload": true,
+      "nextTask": true,
+      "submitReleased": true
+    }
+  ],
+  "scope": "Synthetic local fixtures; no real volunteer or linguistic acceptance implied"
+}

@@ -1,0 +1,64 @@
+{
+  "page": 2,
+  "engine": "poppler_text",
+  "has_images": false,
+  "rows": [
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "ONE TWO THREE",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            64.527345,
+            202.664013,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "FOUR FIVE SIX",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            116.527345,
+            173.355513,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "SEVEN EIGHT NINE",
+          "status": "certain",
+          "confidence": null,
+          "bbox": [
+            54,
+            168.527345,
+            225.37501300000002,
+            22.523436000000004
+          ],
+          "source": "pdf_text",
+          "reason": "native_text_extracted_not_human_verified"
+        }
+      ]
+    }
+  ],
+  "raw_text": "ONE TWO THREE\n\nFOUR FIVE SIX\n\nSEVEN EIGHT NINE\n",
+  "raw_layout": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n<title>untitled</title>\n<meta name=\"Subject\" content=\"unspecified\"/>\n<meta name=\"Keywords\" content=\"\"/>\n<meta name=\"Author\" content=\"anonymous\"/>\n<meta name=\"Creator\" content=\"anonymous\"/>\n<meta name=\"Producer\" content=\"ReportLab PDF Library - (opensource)\"/>\n<meta name=\"CreationDate\" content=\"2000-01-01T00:00:00Z\"/>\n<meta name=\"ModDate\" content=\"2000-01-01T00:00:00Z\"/>\n</head>\n<body>\n<doc>\n  <page width=\"595.000000\" height=\"842.000000\">\n    <flow>\n      <block xMin=\"54.000000\" yMin=\"64.527345\" xMax=\"256.664013\" yMax=\"87.050781\">\n        <line xMin=\"54.000000\" yMin=\"64.527345\" xMax=\"256.664013\" yMax=\"87.050781\">\n          <word xMin=\"54.000000\" yMin=\"64.527345\" xMax=\"106.007813\" yMax=\"87.050781\">ONE</word>\n          <word xMin=\"112.675800\" yMin=\"64.527345\" xMax=\"168.656268\" yMax=\"87.050781\">TWO</word>\n          <word xMin=\"175.324200\" yMin=\"64.527345\" xMax=\"256.664013\" yMax=\"87.050781\">THREE</word>\n        </line>\n      </block>\n      <block xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"227.355513\" yMax=\"139.050781\">\n        <line xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"227.355513\" yMax=\"139.050781\">\n          <word xMin=\"54.000000\" yMin=\"116.527345\" xMax=\"121.992232\" yMax=\"139.050781\">FOUR</word>\n          <word xMin=\"128.660200\" yMin=\"116.527345\" xMax=\"182.003913\" yMax=\"139.050781\">FIVE</word>\n          <word xMin=\"188.671900\" yMin=\"116.527345\" xMax=\"227.355513\" yMax=\"139.050781\">SIX</word>\n        </line>\n      </block>\n      <block xMin=\"54.000000\" yMin=\"168.527345\" xMax=\"279.375013\" yMax=\"191.050781\">\n        <line xMin=\"54.000000\" yMin=\"168.527345\" xMax=\"279.375013\" yMax=\"191.050781\">\n          <word xMin=\"54.000000\" yMin=\"168.527345\" xMax=\"135.363232\" yMax=\"191.050781\">SEVEN</word>\n          <word xMin=\"142.031200\" yMin=\"168.527345\" xMax=\"215.367155\" yMax=\"191.050781\">EIGHT</word>\n          <word xMin=\"222.035200\" yMin=\"168.527345\" xMax=\"279.375013\" yMax=\"191.050781\">NINE</word>\n        </line>\n      </block>\n    </flow>\n  </page>\n</doc>\n</body>\n</html>\n",
+  "duration_ms": 22
+}

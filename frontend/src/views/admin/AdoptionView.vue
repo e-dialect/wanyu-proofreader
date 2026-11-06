@@ -4,12 +4,18 @@
     <h1>用途编选（D 工序）</h1>
     <p>
       按这一批交付的用途圈定范围：先选接收方与筛选规则、看数量，人工只处理少数例外，再确认本批范围。
-      这里的「编选」是整批交付取舍，不是仲裁台里选哪一份校对结果的「采用」；B 的校对成果与状态不会因为编选而改变。
+      这里的「编选」是整批交付取舍，不是仲裁台里选哪一份校对结果的「采用」；B
+      的校对成果与状态不会因为编选而改变。
     </p>
-    <p v-if="loading" role="status">正在加载…</p>
-    <div v-if="loadError && !loaded" class="alert alert-error" role="alert">
-      {{ loadError }} <button class="btn btn-secondary btn-sm" :disabled="loading" @click="load()">重试</button>
-    </div>
+    <AppStatusPanel v-if="loading && !loaded" state="pending" message="正在加载编选批次…" />
+    <AppStatusPanel
+      v-if="loadError && !loaded"
+      state="error"
+      :message="loadError"
+      retry-label="重试"
+      :busy="loading"
+      @retry="load()"
+    />
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
 
@@ -22,36 +28,60 @@
         </p>
         <form @submit.prevent="create">
           <div class="adoption-form-grid">
-            <label class="form-label">用途
-              <select v-model="createForm.purpose" class="form-control" required>
-                <option v-for="code in purposes" :key="code" :value="code">{{ purposeLabel(code) }}</option>
+            <AppField layout="plain"
+              ><template #label>用途 </template
+              ><select v-model="createForm.purpose" class="form-control" required>
+                <option v-for="code in purposes" :key="code" :value="code">
+                  {{ purposeLabel(code) }}
+                </option>
               </select>
-            </label>
-            <label class="form-label">接收方
-              <input v-model="createForm.recipient" class="form-control" maxlength="120" required placeholder="例如：乡声集盒春节版">
-            </label>
+            </AppField>
+            <AppField layout="plain"
+              ><template #label>接收方 </template
+              ><input
+                v-model="createForm.recipient"
+                class="form-control"
+                maxlength="120"
+                required
+                placeholder="例如：乡声集盒春节版"
+              />
+            </AppField>
           </div>
           <fieldset class="adoption-fieldset">
             <legend>校对状态</legend>
             <label v-for="code in pageStatuses" :key="code" class="adoption-check">
-              <input v-model="createForm.statuses" type="checkbox" :value="code"> {{ statusLabel(code) }}
+              <input v-model="createForm.statuses" type="checkbox" :value="code" />
+              {{ statusLabel(code) }}
             </label>
           </fieldset>
           <fieldset class="adoption-fieldset">
             <legend>质量状态（不勾＝不看这一维）</legend>
             <label v-for="code in qualityStates" :key="code" class="adoption-check">
-              <input v-model="createForm.qualityStates" type="checkbox" :value="code"> {{ qualityStateLabel(code) }}
+              <input v-model="createForm.qualityStates" type="checkbox" :value="code" />
+              {{ qualityStateLabel(code) }}
             </label>
           </fieldset>
           <label class="adoption-check">
-            <input v-model="createForm.requirePinyin" type="checkbox"> 要求拼音已定稿（EXACT / REVIEWED）
+            <input v-model="createForm.requirePinyin" type="checkbox" /> 要求拼音已定稿（EXACT /
+            REVIEWED）
           </label>
-          <label class="form-label">只在这些导入批次里选（可选）
-            <input v-model="createForm.importJobsText" class="form-control" placeholder="15 位批次 id，逗号分隔；留空表示整个项目">
-          </label>
-          <label class="form-label">说明（可选）
-            <textarea v-model="createForm.note" class="form-control" maxlength="500" rows="2"></textarea>
-          </label>
+          <AppField layout="plain"
+            ><template #label>只在这些导入批次里选（可选） </template
+            ><input
+              v-model="createForm.importJobsText"
+              class="form-control"
+              placeholder="15 位批次 id，逗号分隔；留空表示整个项目"
+            />
+          </AppField>
+          <AppField layout="plain"
+            ><template #label>说明（可选） </template
+            ><textarea
+              v-model="createForm.note"
+              class="form-control"
+              maxlength="500"
+              rows="2"
+            ></textarea>
+          </AppField>
           <button class="btn btn-primary mt-3" :disabled="busy || loading">创建并预览数量</button>
         </form>
       </section>
@@ -62,21 +92,36 @@
           <span class="badge">{{ batchStatusLabel(current.status) }}</span>
         </header>
         <p>
-          {{ purposeLabel(current.purpose) }} · 交给 {{ current.recipient }} · 规则：{{ ruleSummary(current.rule) }}
+          {{ purposeLabel(current.purpose) }} · 交给 {{ current.recipient }} · 规则：{{
+            ruleSummary(current.rule)
+          }}
         </p>
         <p v-if="current.note">{{ current.note }}</p>
 
         <div class="adoption-counts">
-          <div class="adoption-count"><span class="adoption-count-value">{{ counts.total }}</span><span>本批条目</span></div>
-          <div class="adoption-count"><span class="adoption-count-value">{{ counts.selected }}</span><span>进入本批</span></div>
-          <div class="adoption-count"><span class="adoption-count-value">{{ counts.excluded }}</span><span>已定不进入</span></div>
-          <div class="adoption-count"><span class="adoption-count-value">{{ counts.pending }}</span><span>待处理（规则判不了）</span></div>
+          <div class="adoption-count">
+            <span class="adoption-count-value">{{ counts.total }}</span
+            ><span>本批条目</span>
+          </div>
+          <div class="adoption-count">
+            <span class="adoption-count-value">{{ counts.selected }}</span
+            ><span>进入本批</span>
+          </div>
+          <div class="adoption-count">
+            <span class="adoption-count-value">{{ counts.excluded }}</span
+            ><span>已定不进入</span>
+          </div>
+          <div class="adoption-count">
+            <span class="adoption-count-value">{{ counts.pending }}</span
+            ><span>待处理（规则判不了）</span>
+          </div>
         </div>
         <p v-if="!consistent" class="alert alert-warning" role="alert">
           三个数之和对不上总数，界面不照抄：请重新预览；若仍不一致，说明数据被绕过接口改过。
         </p>
         <p v-else-if="counts.pending > 0" class="alert alert-warning" role="alert">
-          还有 {{ counts.pending }} 条待处理。确认后导出的清单会写明 <code>complete: false</code>，不会把部分结果冒充全量。
+          还有 {{ counts.pending }} 条待处理。确认后导出的清单会写明
+          <code>complete: false</code>，不会把部分结果冒充全量。
         </p>
         <p v-if="batchEvents.stale" class="alert alert-warning" role="alert">
           这一批确认之后，来源的用途权利变过。采用范围可能需要重评——重评只会追加一条记录，
@@ -93,23 +138,45 @@
         </div>
 
         <div class="adoption-actions">
-          <button class="btn btn-secondary" :disabled="busy || loading || current.status === 'confirmed'" @click="preview">重新预览数量</button>
+          <button
+            class="btn btn-secondary"
+            :disabled="busy || loading || current.status === 'confirmed'"
+            @click="preview"
+          >
+            重新预览数量
+          </button>
           <button
             class="btn btn-primary"
             :disabled="busy || loading || current.status !== 'previewed'"
             @click="confirm"
-          >确认本批采用范围</button>
-          <button class="btn btn-secondary" :disabled="busy || loading" @click="reevaluate">按当前数据重新评估</button>
-          <button class="btn btn-secondary" :disabled="busy || loading" @click="exportManifest('select')">导出本批清单</button>
-          <button class="btn btn-quiet" :disabled="busy || loading" @click="exportManifest('all')">导出全部条目（需平台管理员）</button>
+          >
+            确认本批采用范围
+          </button>
+          <button class="btn btn-secondary" :disabled="busy || loading" @click="reevaluate">
+            按当前数据重新评估
+          </button>
+          <button
+            class="btn btn-secondary"
+            :disabled="busy || loading"
+            @click="exportManifest('select')"
+          >
+            导出本批清单
+          </button>
+          <button class="btn btn-quiet" :disabled="busy || loading" @click="exportManifest('all')">
+            导出全部条目（需平台管理员）
+          </button>
           <button
             v-if="current.status !== 'confirmed'"
             class="btn btn-quiet"
             :disabled="busy || loading"
             @click="remove"
-          >删除这一批</button>
+          >
+            删除这一批
+          </button>
         </div>
-        <p class="adoption-hint">导出默认只含进入本批的条目；未采用与待处理的数量写在清单的 <code>omitted</code> 里。</p>
+        <p class="adoption-hint">
+          导出默认只含进入本批的条目；未采用与待处理的数量写在清单的 <code>omitted</code> 里。
+        </p>
         <details v-if="batchEvents.events.length" class="mt-3">
           <summary>这一批的事件（{{ batchEvents.events.length }}）</summary>
           <ul class="adoption-reasons">
@@ -118,7 +185,8 @@
               <span v-if="item.affected"> · 涉及 {{ item.affected }} 条</span>
               <div>{{ item.note }}</div>
               <div v-if="item.stored" class="adoption-hint">
-                确认时 {{ item.stored.selected }}/{{ item.stored.total }} → 重评时 {{ item.current.selected }}/{{ item.current.total }}
+                确认时 {{ item.stored.selected }}/{{ item.stored.total }} → 重评时
+                {{ item.current.selected }}/{{ item.current.total }}
               </div>
             </li>
           </ul>
@@ -135,27 +203,39 @@
         <article v-for="item in exceptions.pending" :key="item.page" class="adoption-pending">
           <h3>第 {{ item.pageNumber }} 条 · {{ reasonLabel(item.reason) }}</h3>
           <div class="adoption-form-grid">
-            <label class="form-label">结论
-              <select v-model="draftFor(item.page).decision" class="form-control">
+            <AppField layout="plain"
+              ><template #label>结论 </template
+              ><select v-model="draftFor(item.page).decision" class="form-control">
                 <option value="select">{{ DECISION_LABELS.select }}</option>
                 <option value="exclude">{{ DECISION_LABELS.exclude }}</option>
               </select>
-            </label>
-            <label v-if="draftFor(item.page).decision === 'exclude'" class="form-label">理由
-              <select v-model="draftFor(item.page).reason" class="form-control">
+            </AppField>
+            <AppField v-if="draftFor(item.page).decision === 'exclude'" layout="plain"
+              ><template #label>理由 </template
+              ><select v-model="draftFor(item.page).reason" class="form-control">
                 <option value="">请选择理由</option>
-                <option v-for="code in reasonCodes" :key="code" :value="code">{{ reasonLabel(code) }}</option>
+                <option v-for="code in reasonCodes" :key="code" :value="code">
+                  {{ reasonLabel(code) }}
+                </option>
               </select>
-            </label>
+            </AppField>
           </div>
-          <label class="form-label">依据
-            <input v-model="draftFor(item.page).note" class="form-control" maxlength="500" placeholder="写清为什么这样判，例如取得书面许可、缺字表已补齐">
-          </label>
+          <AppField layout="plain"
+            ><template #label>依据 </template
+            ><input
+              v-model="draftFor(item.page).note"
+              class="form-control"
+              maxlength="500"
+              placeholder="写清为什么这样判，例如取得书面许可、缺字表已补齐"
+            />
+          </AppField>
           <button
             class="btn btn-secondary btn-sm mt-3"
             :disabled="busy || loading"
             @click="decide(item.page)"
-          >保存这一条</button>
+          >
+            保存这一条
+          </button>
         </article>
 
         <details v-if="exceptions.exceptions.length" class="mt-3">
@@ -180,7 +260,11 @@
           <div class="adoption-metric">
             <dt>批次</dt>
             <dd>{{ summary.batches.total }}</dd>
-            <small>草稿 {{ summary.batches.byStatus.draft || 0 }} · 已预览 {{ summary.batches.byStatus.previewed || 0 }} · 已确认 {{ summary.batches.byStatus.confirmed || 0 }}</small>
+            <small
+              >草稿 {{ summary.batches.byStatus.draft || 0 }} · 已预览
+              {{ summary.batches.byStatus.previewed || 0 }} · 已确认
+              {{ summary.batches.byStatus.confirmed || 0 }}</small
+            >
           </div>
           <div class="adoption-metric">
             <dt>已确认范围</dt>
@@ -195,7 +279,9 @@
           <div class="adoption-metric">
             <dt>需重评</dt>
             <dd>{{ summary.events.staleBatches }}</dd>
-            <small>批在确认后遇到权利变更（另有 {{ summary.events.reevaluated }} 次重评记录）</small>
+            <small
+              >批在确认后遇到权利变更（另有 {{ summary.events.reevaluated }} 次重评记录）</small
+            >
           </div>
         </dl>
         <p v-if="!summary.confirmed.complete" class="adoption-hint">
@@ -204,37 +290,66 @@
         <div v-if="summary.reasons.length" class="mt-3">
           <h3 class="adoption-subhead">已确认批次的排除理由分布</h3>
           <ul class="adoption-reasons">
-            <li v-for="item in summary.reasons" :key="item.code">{{ reasonLabel(item.code) }} · {{ item.count }} 条</li>
+            <li v-for="item in summary.reasons" :key="item.code">
+              {{ reasonLabel(item.code) }} · {{ item.count }} 条
+            </li>
           </ul>
         </div>
       </section>
 
       <section class="card" :aria-busy="loading">
         <h2>历史批次</h2>
-        <p v-if="loading" role="status">正在加载历史批次…</p>
+        <AppStatusPanel v-if="loading" state="pending" message="正在加载历史批次…" />
         <div v-if="loadError" class="alert alert-error" role="alert">
-          {{ loadError }} <button class="btn btn-secondary btn-sm" :disabled="loading" @click="load()">重试</button>
+          {{ loadError }}
+          <button class="btn btn-secondary btn-sm" :disabled="loading" @click="load()">重试</button>
         </div>
-        <p v-if="!batches.length" class="empty-state-text">这个项目还没有编选批次。</p>
+        <AppStatusPanel
+          v-if="!loading && !loadError && !batches.length"
+          state="empty"
+          reason="none"
+          message="这个项目还没有编选批次。"
+        />
         <ul class="adoption-history">
-          <li v-for="item in batches" :key="item.id" :class="{ 'adoption-history-current': item.id === currentId }">
-            <button class="btn btn-quiet btn-sm" :disabled="busy || loading" @click="selectBatch(item.id)">
-              {{ purposeLabel(item.purpose) }} · {{ batchStatusLabel(item.status) }} · {{ item.counts.selected }}/{{ item.counts.total }} 条进入本批
+          <li
+            v-for="item in batches"
+            :key="item.id"
+            :class="{ 'adoption-history-current': item.id === currentId }"
+          >
+            <button
+              class="btn btn-quiet btn-sm"
+              :disabled="busy || loading"
+              @click="selectBatch(item.id)"
+            >
+              {{ purposeLabel(item.purpose) }} · {{ batchStatusLabel(item.status) }} ·
+              {{ item.counts.selected }}/{{ item.counts.total }} 条进入本批
             </button>
             <span class="adoption-hint">交给 {{ item.recipient }} · {{ item.created }}</span>
           </li>
         </ul>
-        <nav class="adoption-actions" aria-label="编选历史分页">
-          <button class="btn btn-secondary btn-sm" :disabled="busy || loading || historyPage <= 1" @click="load(historyPage - 1)">上一页</button>
-          <span role="status">第 {{ historyPage }} / {{ historyTotalPages }} 页 · 共 {{ historyTotalItems }} 批</span>
-          <button class="btn btn-secondary btn-sm" :disabled="busy || loading || historyPage >= historyTotalPages" @click="load(historyPage + 1)">下一页</button>
-        </nav>
+        <AppPagination
+          :page="historyPage"
+          :total-pages="historyTotalPages"
+          :busy="busy || loading"
+          label="编选历史分页"
+          button-class="btn btn-secondary btn-sm"
+          @change="load"
+        >
+          <template #position
+            >第 {{ historyPage }} / {{ historyTotalPages }} 页 · 共
+            {{ historyTotalItems }} 批</template
+          >
+        </AppPagination>
       </section>
     </template>
   </main>
 </template>
 
 <script setup>
+import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import AppPagination from '@/components/AppPagination.vue'
+import { useAsyncResource } from '@/composables/useAsyncResource'
+import AppField from '@/components/AppField.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
@@ -276,10 +391,38 @@ const projectId = computed(() => String(route.params.id))
 const pageStatuses = Object.keys(PAGE_STATUS_LABELS)
 const qualityStates = Object.keys(QUALITY_STATE_LABELS)
 
-const loading = ref(false)
+const {
+  pending: loadingBatches,
+  error: batchError,
+  reload: reloadBatches,
+  cancel: cancelBatchLoad
+} = useAsyncResource(
+  async ({ signal }, id, page, selectedId) => {
+    const data = await listAdoptionBatches(id, { page, perPage: 25, signal })
+    const nextBatches = data.batches || []
+    const nextId = nextBatches.some((item) => item.id === selectedId)
+      ? selectedId
+      : nextBatches[0]?.id || ''
+    const [details, nextSummary] = await Promise.all([
+      loadBatchDetails(nextId, signal),
+      getAdoptionSummary(id, { signal })
+    ])
+    return { data, nextBatches, nextId, details, nextSummary }
+  },
+  { formatError: (cause) => getPbMessage(cause, '加载编选批次失败') }
+)
+const {
+  pending: loadingDetails,
+  error: detailsError,
+  reload: reloadDetails,
+  cancel: cancelDetails
+} = useAsyncResource(({ signal }, id) => loadBatchDetails(id, signal), {
+  formatError: (cause) => getPbMessage(cause, '加载批次详情失败')
+})
+const loading = computed(() => loadingBatches.value || loadingDetails.value)
+const loadError = computed(() => batchError.value || detailsError.value)
 const loaded = ref(false)
 const busy = ref(false)
-const loadError = ref('')
 const operationError = ref('')
 const message = ref('')
 
@@ -315,9 +458,14 @@ let batchLoadGeneration = 0
 let projectGeneration = 0
 
 watch(projectId, resetProject, { immediate: true })
-onBeforeUnmount(() => { ++batchLoadGeneration; ++projectGeneration })
+onBeforeUnmount(() => {
+  ++batchLoadGeneration
+  ++projectGeneration
+})
 
 function resetProject() {
+  cancelBatchLoad()
+  cancelDetails()
   ++batchLoadGeneration
   ++projectGeneration
   loaded.value = false
@@ -332,50 +480,43 @@ function resetProject() {
   summary.value = null
   operationError.value = message.value = ''
   for (const key of Object.keys(decisionDrafts)) delete decisionDrafts[key]
-  Object.assign(createForm, { purpose: 'public_display', recipient: '', note: '', statuses: [...DEFAULT_STATUSES], qualityStates: [], requirePinyin: false, importJobsText: '' })
+  Object.assign(createForm, {
+    purpose: 'public_display',
+    recipient: '',
+    note: '',
+    statuses: [...DEFAULT_STATUSES],
+    qualityStates: [],
+    requirePinyin: false,
+    importJobsText: ''
+  })
   return load(1)
 }
 
 async function load(page = requestedHistoryPage.value) {
-  const generation = ++batchLoadGeneration
-  const id = projectId.value
+  ++batchLoadGeneration
+  cancelDetails()
   requestedHistoryPage.value = page
-  loading.value = true
-  loadError.value = ''
-  try {
-    const data = await listAdoptionBatches(id, { page, perPage: 25 })
-    if (generation !== batchLoadGeneration) return
-    const nextBatches = data.batches || []
-    const nextId = nextBatches.some((item) => item.id === currentId.value)
-      ? currentId.value : nextBatches[0]?.id || ''
-    const [details, nextSummary] = await Promise.all([loadBatchDetails(nextId), getAdoptionSummary(id)])
-    if (generation !== batchLoadGeneration) return
-    // Commit the page and its details together. A failed page request keeps
-    // the last successful page visible; retry still targets the requested page.
-    batches.value = nextBatches
-    currentId.value = nextId
-    historyPage.value = data.page
-    requestedHistoryPage.value = data.page
-    historyTotalPages.value = data.totalPages
-    historyTotalItems.value = data.totalItems
-    purposes.value = data.purposes || []
-    reasonCodes.value = data.reasons || []
-    summary.value = nextSummary
-    applyBatchDetails(details)
-    loaded.value = true
-  } catch (e) {
-    if (generation !== batchLoadGeneration) return
-    loadError.value = getPbMessage(e, '加载编选批次失败')
-  } finally {
-    if (generation === batchLoadGeneration) loading.value = false
-  }
+  const result = await reloadBatches(projectId.value, page, currentId.value)
+  if (!result.ok) return
+  const { data, nextBatches, nextId, details, nextSummary } = result.data
+  // Commit history and details together; failed reload keeps drafts and the last page.
+  batches.value = nextBatches
+  currentId.value = nextId
+  historyPage.value = requestedHistoryPage.value = data.page
+  historyTotalPages.value = data.totalPages
+  historyTotalItems.value = data.totalItems
+  purposes.value = data.purposes || []
+  reasonCodes.value = data.reasons || []
+  summary.value = nextSummary
+  applyBatchDetails(details)
+  loaded.value = true
 }
 
-async function loadBatchDetails(batchId) {
+async function loadBatchDetails(batchId, signal) {
   if (!batchId) return { exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } }
   const [exceptionsData, eventsData] = await Promise.all([
-    listAdoptionExceptions(batchId),
-    listAdoptionEvents(batchId)
+    listAdoptionExceptions(batchId, { signal }),
+    listAdoptionEvents(batchId, { signal })
   ])
   return { exceptions: exceptionsData, events: eventsData }
 }
@@ -440,7 +581,10 @@ async function preview() {
 }
 
 async function confirm() {
-  await act(() => confirmAdoptionBatch(current.value.id), '已确认本批采用范围；导出与下游都以这份清单为准。')
+  await act(
+    () => confirmAdoptionBatch(current.value.id),
+    '已确认本批采用范围；导出与下游都以这份清单为准。'
+  )
 }
 
 // 重评只追加一条事件，不改写确认时的数字：D5.3 的红线是「追加，不改历史」。
@@ -473,9 +617,10 @@ async function exportManifest(include) {
     const manifest = await exportAdoptionManifest(batch.id, include)
     if (generation !== projectGeneration) return
     downloadText(JSON.stringify(manifest, null, 2), manifestFilename(batch), 'application/json')
-    message.value = include === 'select'
-      ? includeLabel('select')
-      : `${includeLabel('all')}；未采用与待处理的数量写在清单里。`
+    message.value =
+      include === 'select'
+        ? includeLabel('select')
+        : `${includeLabel('all')}；未采用与待处理的数量写在清单里。`
   } catch (e) {
     if (generation !== projectGeneration) return
     operationError.value = getPbMessage(e, '导出失败')
@@ -510,43 +655,107 @@ async function selectBatch(id) {
   requestedHistoryPage.value = historyPage.value
   currentId.value = id
   const generation = ++batchLoadGeneration
-  loading.value = true
-  loadError.value = ''
-  // 先清掉上一批的详情：加载期间旧事件/旧例外不能继续显示在新批次名下。
+  // Clear old details immediately: they must never appear under a new batch.
   exceptions.value = { ...EMPTY_EXCEPTIONS }
   batchEvents.value = { ...EMPTY_EVENTS }
-  try {
-    const details = await loadBatchDetails(id)
-    if (generation !== batchLoadGeneration) return
-    applyBatchDetails(details)
-  } catch (e) {
-    if (generation !== batchLoadGeneration) return
-    loadError.value = getPbMessage(e, '加载批次详情失败')
-  } finally {
-    if (generation === batchLoadGeneration) loading.value = false
-  }
+  const result = await reloadDetails(id)
+  if (!result.ok || generation !== batchLoadGeneration) return
+  applyBatchDetails(result.data)
 }
 </script>
 
 <style scoped>
-.back-link { display: inline-block; margin-bottom: var(--space-3); }
-.adoption-form-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-.adoption-fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-2) var(--space-3); margin: var(--space-3) 0; }
-.adoption-check { display: inline-block; margin-right: var(--space-3); }
-.adoption-batch-head { display: flex; align-items: center; gap: var(--space-2); }
-.adoption-counts { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: var(--space-3) 0; }
-.adoption-count { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-2) var(--space-3); }
-.adoption-count-value { display: block; font-size: 1.6rem; font-weight: 600; }
-.adoption-reasons { margin: var(--space-2) 0 0; padding-left: 1.2rem; }
-.adoption-subhead { font-size: 1rem; margin: var(--space-3) 0 var(--space-1); }
-.adoption-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
-.adoption-hint { color: var(--gray-600); font-size: .85rem; }
-.adoption-pending { border-top: 1px solid var(--line); margin-top: var(--space-3); padding-top: var(--space-2); }
-.adoption-metrics { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: var(--space-3) 0; }
-.adoption-metric { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-2) var(--space-3); }
-.adoption-metric dt { font-size: .85rem; color: var(--gray-600); }
-.adoption-metric dd { font-size: 1.4rem; font-weight: 600; margin: 0; }
-.adoption-metric small { color: var(--gray-600); }
-.adoption-history { list-style: none; padding: 0; }
-.adoption-history-current { font-weight: 600; }
+.back-link {
+  display: inline-block;
+  margin-bottom: var(--space-3);
+}
+.adoption-form-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.adoption-fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-3) 0;
+}
+.adoption-check {
+  display: inline-block;
+  margin-right: var(--space-3);
+}
+.adoption-batch-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.adoption-counts {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: var(--space-3) 0;
+}
+.adoption-count {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+.adoption-count-value {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+.adoption-reasons {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.2rem;
+}
+.adoption-subhead {
+  font-size: 1rem;
+  margin: var(--space-3) 0 var(--space-1);
+}
+.adoption-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.adoption-hint {
+  color: var(--gray-600);
+  font-size: 0.85rem;
+}
+.adoption-pending {
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+}
+.adoption-metrics {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin: var(--space-3) 0;
+}
+.adoption-metric {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+.adoption-metric dt {
+  font-size: 0.85rem;
+  color: var(--gray-600);
+}
+.adoption-metric dd {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+.adoption-metric small {
+  color: var(--gray-600);
+}
+.adoption-history {
+  list-style: none;
+  padding: 0;
+}
+.adoption-history-current {
+  font-weight: 600;
+}
 </style>

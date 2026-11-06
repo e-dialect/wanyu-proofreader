@@ -1,3 +1,4 @@
+import { proofreadSource } from './helpers/proofreadSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -33,33 +34,44 @@ test('research notice copy matches the server and names the opt-out', () => {
 test('onboarding repeats the research notice before submit', () => {
   const steps = readFileSync(new URL('../src/lib/onboardingSteps.js', import.meta.url), 'utf8')
   assert.equal(steps.includes(RESEARCH_NOTICE_COPY.body), true)
-  const editor = readFileSync(new URL('../src/views/proofreader/ProofreadEditorView.vue', import.meta.url), 'utf8')
+  const editor = proofreadSource()
   assert.match(editor, /researchOpen/)
   assert.match(editor, /close-on-esc="false"/)
   assert.match(editor, /if \(!researchDecided\.value\) return/)
-  assert.match(editor, /!researchDecided\.value \|\| !sourceChecked\.value/)
+  assert.match(editor, /!researchDecided\.value\s*\|\|\s*!sourceChecked\.value/)
 })
 
 test('profile can change a research choice after the first decision', () => {
-  const profile = readFileSync(new URL('../src/views/proofreader/ProfileView.vue', import.meta.url), 'utf8')
+  const profile = readFileSync(
+    new URL('../src/views/proofreader/ProfileView.vue', import.meta.url),
+    'utf8'
+  )
   assert.match(profile, /reviseResearchNotice\('opt_out'\)/)
   assert.match(profile, /reviseResearchNotice\('participate'\)/)
   assert.match(profile, /退出研究，继续校对/)
-  const editor = readFileSync(new URL('../src/views/proofreader/ProofreadEditorView.vue', import.meta.url), 'utf8')
+  const editor = proofreadSource()
   assert.match(editor, /message\.includes\('研究用途'\)/)
   assert.match(editor, /await loadResearchNotice\(\)/)
 })
 
 test('editor browser fixtures already have a research choice', () => {
   for (const file of ['review.cjs', 'modal.cjs']) {
-    const source = readFileSync(new URL(`./browser/${file}`, import.meta.url), 'utf8')
+    const entry = readFileSync(new URL(`./browser/${file}`, import.meta.url), 'utf8')
+    const source =
+      entry +
+      (entry.includes('reviewFixture.cjs')
+        ? readFileSync(new URL('./browser/reviewFixture.cjs', import.meta.url), 'utf8')
+        : '')
     assert.match(source, /research-notice/)
     assert.match(source, /decided:\s*true/)
   }
 })
 
 test('the source panel says a downloaded copy cannot be recalled', () => {
-  const workspace = readFileSync(new URL('../src/components/editor/DocumentReviewWorkspace.vue', import.meta.url), 'utf8')
+  const workspace = readFileSync(
+    new URL('../src/components/editor/DocumentReviewWorkspace.vue', import.meta.url),
+    'utf8'
+  )
   assert.match(workspace, /已经下载的副本无法收回/)
   for (const term of leakTerms) {
     assert.equal(workspace.includes(term), false, `source panel leaked ${term}`)

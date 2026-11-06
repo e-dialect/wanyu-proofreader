@@ -10,7 +10,10 @@ test('equal-width columns are assigned correctly', () => {
   assert.equal(result[0].assignedHeader, '词头')
   assert.equal(result[1].assignedHeader, '莆田IPA')
   assert.equal(result[2].assignedHeader, '释义')
-  assert.equal(result.every((r) => r.merged === false), true)
+  assert.equal(
+    result.every((r) => r.merged === false),
+    true
+  )
 })
 
 test('unboxed columns separated by whitespace keep their reading', () => {
@@ -83,8 +86,8 @@ test('char_offsets are consumable by fieldHints.locateSpan', () => {
 })
 
 test('placeholder (PUA/IDS) headword is assigned to headword column', () => {
-  const pua = String.fromCodePoint(0xE123)
-  const ids = String.fromCodePoint(0x2FF0)
+  const pua = String.fromCodePoint(0xe123)
+  const ids = String.fromCodePoint(0x2ff0)
   const row1 = assignRow(['词头', '音读', '释义'], [pua, 'kiā', '站'])
   assert.equal(row1.词头, pua)
   assert.equal(row1.音读, 'kiā')
@@ -129,7 +132,9 @@ test('extra cells keep empty assignedHeader', () => {
 })
 
 test('empty headers or cells do not throw', () => {
-  assert.deepEqual(assignColumns([], ['徛']), [{ cellIndex: 0, assignedHeader: '', merged: false, charOffsets: undefined }])
+  assert.deepEqual(assignColumns([], ['徛']), [
+    { cellIndex: 0, assignedHeader: '', merged: false, charOffsets: undefined }
+  ])
   assert.deepEqual(assignColumns(['词头'], []), [])
 })
 
@@ -137,4 +142,36 @@ test('assignColumns is a pure function (deterministic)', () => {
   const a = assignColumns(['词头', '音读', '释义'], ['徛', 'kiā', '站'])
   const b = assignColumns(['词头', '音读', '释义'], ['徛', 'kiā', '站'])
   assert.deepEqual(a, b)
+})
+
+test('known middle empty reading columns never exchange regional IPA values', () => {
+  const headers = ['词条', '拼音', '莆田IPA', '仙游IPA', '释义']
+  for (const readings of [
+    ['', 'kʰiam21'],
+    ['tsam12', ''],
+    ['', ''],
+    ['tsam12', 'kʰiam21']
+  ]) {
+    const cells = ['三笔', 'tsam12', ...readings, '三样东西']
+    const original = [...cells]
+    const row = assignRow(headers, cells)
+    assert.deepEqual(
+      headers.map((header) => row[header]),
+      cells
+    )
+    assert.deepEqual(cells, original, 'classification must not edit source input')
+    assert.deepEqual(
+      assignColumns(headers, cells).map((item) => item.assignedHeader),
+      headers
+    )
+  }
+})
+
+test('positional evidence also preserves empty leading cells and mixed definition text', () => {
+  const headers = ['词条', '拼音', '莆田IPA', '仙游IPA', '释义']
+  const cells = ['', '', 'ã21', '', '〔仙游〕也念 ga2']
+  assert.deepEqual(
+    assignRow(headers, cells),
+    Object.fromEntries(headers.map((key, index) => [key, cells[index]]))
+  )
 })

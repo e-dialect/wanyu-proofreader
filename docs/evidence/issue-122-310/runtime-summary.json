@@ -1,0 +1,142 @@
+{
+  "image": "wanyu-ocr-validation:local",
+  "imageId": "sha256:38551c2242f688e419db094156fc02950ceb387a72bfd28714263a6978c464e4",
+  "generatedOnly": true,
+  "source": "Original synthetic phrases; rendered with repository redistributed fonts",
+  "physicalFields": [
+    "原文"
+  ],
+  "notDictionaryColumnAcceptance": true,
+  "experimentalScannedFlag": "OCR_ALLOW_SCANNED_TEST=1",
+  "productionDefaultProbe": {
+    "nativeStatus": 200,
+    "nativeEngine": "poppler_text",
+    "scannedStatus": 422,
+    "scannedError": "native PDF text required; scanned rare-character safety is not qualified\n",
+    "mixedStatus": 422,
+    "mixedError": "native PDF text required; scanned rare-character safety is not qualified\n",
+    "experimentalMixedStatus": 422
+  },
+  "pages": [
+    {
+      "kind": "native",
+      "page": 1,
+      "httpStatus": 200,
+      "seconds": 0.024126744014211,
+      "engine": "poppler_text",
+      "workerDurationMs": 21,
+      "statuses": [
+        "certain",
+        "certain",
+        "certain",
+        "certain"
+      ]
+    },
+    {
+      "kind": "native",
+      "page": 2,
+      "httpStatus": 200,
+      "seconds": 0.024256716016680002,
+      "engine": "poppler_text",
+      "workerDurationMs": 22,
+      "statuses": [
+        "certain",
+        "certain",
+        "certain"
+      ]
+    },
+    {
+      "kind": "native",
+      "page": 3,
+      "httpStatus": 200,
+      "seconds": 0.024197077989811078,
+      "engine": "poppler_text",
+      "workerDurationMs": 22,
+      "statuses": [
+        "certain",
+        "certain",
+        "certain"
+      ]
+    },
+    {
+      "kind": "native",
+      "page": 4,
+      "httpStatus": 200,
+      "seconds": 0.0241251650149934,
+      "engine": "poppler_text",
+      "workerDurationMs": 21,
+      "statuses": [
+        "abstained"
+      ]
+    },
+    {
+      "kind": "scanned",
+      "page": 1,
+      "httpStatus": 200,
+      "seconds": 2.7193539309955668,
+      "engine": "tesseract_single_column",
+      "workerDurationMs": 2716,
+      "statuses": [
+        "needs_review",
+        "needs_review",
+        "needs_review",
+        "needs_review"
+      ]
+    },
+    {
+      "kind": "scanned",
+      "page": 2,
+      "httpStatus": 200,
+      "seconds": 2.3232875599933323,
+      "engine": "tesseract_single_column",
+      "workerDurationMs": 2321,
+      "statuses": [
+        "needs_review",
+        "needs_review",
+        "needs_review"
+      ]
+    },
+    {
+      "kind": "scanned",
+      "page": 3,
+      "httpStatus": 200,
+      "seconds": 2.0088476669916417,
+      "engine": "tesseract_single_column",
+      "workerDurationMs": 2006,
+      "statuses": [
+        "needs_review",
+        "needs_review",
+        "needs_review"
+      ]
+    },
+    {
+      "kind": "scanned",
+      "page": 4,
+      "httpStatus": 200,
+      "seconds": 2.8585597529890947,
+      "engine": "tesseract_single_column",
+      "workerDurationMs": 2855,
+      "statuses": [
+        "abstained"
+      ]
+    }
+  ],
+  "failureRate": 0.0,
+  "elapsedSeconds": 10.006754614005331,
+  "throughputPagesPerSecond": 0.7994599956316805,
+  "p50Seconds": 1.0165521915041609,
+  "p95SecondsNearestRank": 2.8585597529890947,
+  "containerPeakMemoryBytes": 319131648,
+  "resourceLimits": {
+    "cpus": 1,
+    "memoryMiB": 768,
+    "tmpfsMiB": 256,
+    "pids": 64
+  },
+  "versionsAndModelHashes": "pdftotext version 25.12.0\nCopyright 2005-2025 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC\ntesseract 5.5.2\n leptonica-1.87.0\n  libgif 5.2.2 : libjpeg 8d (libjpeg-turbo 3.1.3) : libpng 1.6.59 : libtiff 4.7.2 : zlib 1.3.2 : libwebp 1.6.0\n Found AVX2\n Found AVX\n Found FMA\n Found SSE4.1\n Found OpenMP 201511\npoppler-utils-25.12.0-r1 x86_64 {poppler} (GPL-2.0-or-later) [installed]\ntesseract-ocr-5.5.2-r0 x86_64 {tesseract-ocr} (Apache-2.0) [installed]\ntesseract-ocr-data-chi_sim-5.5.2-r0 x86_64 {tesseract-ocr} (Apache-2.0) [installed]\ntesseract-ocr-data-eng-5.5.2-r0 x86_64 {tesseract-ocr} (Apache-2.0) [installed]\ndaa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047  /usr/share/tessdata/eng.traineddata\nfc05d89ab31d8b4e226910f16a8bcbf78e43bae3e2580bb5feefd052efdab363  /usr/share/tessdata/chi_sim.traineddata",
+  "fixtureSha256": {
+    "native": "f7fb241f68fb8324657fb9e65b00a79f65c2a10f1ff13bce054f57fe359d5e67",
+    "scanned": "a232165f8c9bb71a6a239b7de523b0db316760c1fd0aa9f0f8b1ff7a83f8efcc",
+    "mixed": "78d6b342249fdb059f18b278d7173ea467693146501efc0f6b0bb76324ecdb24"
+  }
+}

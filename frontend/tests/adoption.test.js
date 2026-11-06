@@ -1,3 +1,4 @@
+import { projectDetailSource } from './helpers/projectDetailSource.js'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
@@ -34,12 +35,21 @@ test('三个数之和必须等于总数，缺字段按 0 处理', () => {
   assert.equal(countsConsistent({}), true)
   // 负数与字符串不是合法计数，归零而不是让 NaN 传到界面上。
   assert.deepEqual(normalizeCounts({ total: '12', selected: -1, pending: null }), {
-    total: 12, selected: 0, excluded: 0, pending: 0, complete: false
+    total: 12,
+    selected: 0,
+    excluded: 0,
+    pending: 0,
+    complete: false
   })
 })
 
 test('规则表单挡住空状态与形状不对的批次 id', () => {
-  const built = ruleFromForm({ statuses: ['proofread'], qualityStates: ['validated'], requirePinyin: true, importJobsText: 'aaaaaaaaaaaaaaa, bbbbbbbbbbbbbbb' })
+  const built = ruleFromForm({
+    statuses: ['proofread'],
+    qualityStates: ['validated'],
+    requirePinyin: true,
+    importJobsText: 'aaaaaaaaaaaaaaa, bbbbbbbbbbbbbbb'
+  })
   assert.deepEqual(built.rule, {
     statuses: ['proofread'],
     qualityStates: ['validated'],
@@ -47,21 +57,27 @@ test('规则表单挡住空状态与形状不对的批次 id', () => {
     requirePinyin: true
   })
   assert.match(ruleFromForm({ statuses: [] }).error, /至少要选一个校对状态/)
-  assert.match(ruleFromForm({ statuses: ['proofread'], importJobsText: 'not-an-id' }).error, /15 位/)
+  assert.match(
+    ruleFromForm({ statuses: ['proofread'], importJobsText: 'not-an-id' }).error,
+    /15 位/
+  )
   // 中文逗号也要能分开：管理员多半是从表格里粘过来的。
   assert.deepEqual(
-    ruleFromForm({ statuses: ['approved'], importJobsText: 'aaaaaaaaaaaaaaa，bbbbbbbbbbbbbbb' }).rule.importJobs,
+    ruleFromForm({ statuses: ['approved'], importJobsText: 'aaaaaaaaaaaaaaa，bbbbbbbbbbbbbbb' })
+      .rule.importJobs,
     ['aaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbb']
   )
 })
 
 test('规则摘要读得出来，不只是一个结果数字', () => {
-  assert.equal(
-    ruleSummary(defaultRule()),
-    '校对状态：已校对、已通过'
-  )
+  assert.equal(ruleSummary(defaultRule()), '校对状态：已校对、已通过')
   assert.match(
-    ruleSummary({ statuses: ['approved'], qualityStates: ['validated'], importJobs: ['aaaaaaaaaaaaaaa'], requirePinyin: true }),
+    ruleSummary({
+      statuses: ['approved'],
+      qualityStates: ['validated'],
+      importJobs: ['aaaaaaaaaaaaaaa'],
+      requirePinyin: true
+    }),
     /质量状态：已确认；限定 1 个导入批次；要求拼音已定稿/
   )
 })
@@ -89,7 +105,10 @@ test('漏翻的取值原样返回，不假装认识', () => {
   assert.equal(purposeLabel('something_new'), 'something_new')
   assert.equal(reasonLabel(''), '')
   assert.equal(includeLabel('all'), '导出全部条目（含未采用与待处理，需平台管理员）')
-  assert.equal(manifestFilename({ purpose: 'public_display', id: 'abc' }), '编选-public_display-abc.json')
+  assert.equal(
+    manifestFilename({ purpose: 'public_display', id: 'abc' }),
+    '编选-public_display-abc.json'
+  )
 })
 
 test('事件类型与 Go 侧同源，且「权利变过」与「重评过」不混用', () => {
@@ -140,7 +159,7 @@ test('切换批次同时刷新例外与事件，并丢弃迟到响应', () => {
   const start = view.indexOf('async function selectBatch')
   assert.notEqual(start, -1, 'selectBatch not found')
   const body = view.slice(start, view.indexOf('\n}\n', start) + 3)
-  assert.match(body, /loadBatchDetails\(id\)/)
+  assert.match(body, /reloadDetails\(id\)/)
   assert.match(body, /batchLoadGeneration/)
   assert.match(body, /EMPTY_EVENTS/)
   assert.doesNotMatch(body, /loadExceptions\(\)\s*$/)
@@ -150,13 +169,16 @@ test('路由与项目页入口都指向编选页', () => {
   const router = read('../src/router/index.js')
   assert.match(router, /path: 'projects\/:id\/adoption'/)
   assert.match(router, /name: 'ProjectAdoption'/)
-  const detail = read('../src/views/admin/ProjectDetailView.vue')
+  const detail = projectDetailSource()
   assert.match(detail, /\/adoption`">用途编选（D 工序）/)
 })
 
 test('服务层只走 /api/fangji 路由，不直接读集合', () => {
   const service = read('../src/services/adoptionService.js')
-  assert.match(service, /\/api\/fangji\/projects\/\$\{encodeURIComponent\(projectId\)\}\/adoption-batches/)
+  assert.match(
+    service,
+    /\/api\/fangji\/projects\/\$\{encodeURIComponent\(projectId\)\}\/adoption-batches/
+  )
   assert.match(service, /\/manifest\?/)
   assert.match(service, /\/events`/)
   assert.match(service, /\/reevaluate`/)

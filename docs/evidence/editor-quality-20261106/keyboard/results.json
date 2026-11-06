@@ -1,0 +1,39 @@
+{
+  "synthetic": true,
+  "results": [
+    {
+      "width": 1280,
+      "tabAndShiftTab": true,
+      "virtualCharacterViaEnter": true,
+      "helpViaKeyboard": true,
+      "submitEscapeRestoresTrigger": true,
+      "returnFailurePreservesInputAndFocus": true,
+      "returnRetryNext": true
+    },
+    {
+      "width": 1440,
+      "tabAndShiftTab": true,
+      "virtualCharacterViaEnter": true,
+      "helpViaKeyboard": true,
+      "submitEscapeRestoresTrigger": true,
+      "returnFailurePreservesInputAndFocus": true,
+      "returnRetryNext": true
+    },
+    {
+      "width": 390,
+      "tabAndShiftTab": true,
+      "virtualCharacterViaEnter": true,
+      "helpViaKeyboard": true,
+      "submitEscapeRestoresTrigger": true,
+      "returnFailurePreservesInputAndFocus": true,
+      "returnRetryNext": true
+    },
+    {
+      "ownReview": true,
+      "noWrites": true,
+      "noLease": true,
+      "noKeyboard": true,
+      "immutableText": true
+    }
+  ]
+}

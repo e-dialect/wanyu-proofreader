@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "captured_from": "fix/ui-debt-gate (2026-10-20)",
-  "reason": "Stable-zero classes now fail so new debt cannot merge. inline_styles was fixed from 28 to 27 before promoting it to fail; the limit is not raised. bare_tables stays warn at 10 until the in-flight project-detail/import PRs merge, then it flips to fail at the measured count and only decreases with #268 migrations.",
+  "captured_from": "feat/backlog-quality-iteration (2026-11-06)",
+  "reason": "All literal inline styles were migrated to named CSS; nine runtime dimensions/progress styles remain. Native tables exist only in AppDataTable. Every category is a failing ratchet and limits only decrease.",
   "kinds": {
     "hardcoded_colors": {
       "limit": 0,
@@ -16,12 +16,12 @@
       "mode": "fail"
     },
     "inline_styles": {
-      "limit": 27,
+      "limit": 9,
       "mode": "fail"
     },
     "bare_tables": {
-      "limit": 10,
-      "mode": "warn"
+      "limit": 1,
+      "mode": "fail"
     },
     "alerts_without_role": {
       "limit": 0,

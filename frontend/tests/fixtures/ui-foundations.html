@@ -1,0 +1,23 @@
+<html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">
+import { createApp, h, ref } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
+import Sources from '../../src/views/admin/SourcesView.vue'
+import Gates from '../../src/views/admin/GateRulesView.vue'
+import Grants from '../../src/views/admin/CreatorGrantsView.vue'
+import Workspace from '../../src/views/WorkspaceHomeView.vue'
+import Dashboard from '../../src/views/admin/DashboardView.vue'
+import Adoption from '../../src/views/admin/AdoptionView.vue'
+import AppStatusPanel from '../../src/components/AppStatusPanel.vue'
+import ConfirmDialog from '../../src/components/ConfirmDialog.vue'
+import pb from '../../src/lib/pocketbase'
+import '../../src/style.css'
+const token = 'eyJhbGciOiJIUzI1NiJ9.' + btoa(JSON.stringify({ exp: Math.floor(Date.now()/1000)+3600 })) + '.fixture' // Synthetic unsigned browser auth fixture. gitleaks:allow
+pb.authStore.save(token, { id: 'adminfixture001', role: 'platform_admin', name: '合成管理者' })
+const StatusDemo = { setup: () => () => h('main', [h(AppStatusPanel,{state:'empty',reason:'none',message:'没有符合条件的记录'}),h(AppStatusPanel,{state:'empty',reason:'not_computed'}),h(AppStatusPanel,{state:'empty',reason:'not_authorized'})]) }
+const ConfirmDemo = { setup() { const open=ref(false); return () => h('main',[h('button',{onClick:()=>open.value=true},'打开确认'),h(ConfirmDialog,{open:open.value,titleId:'demo-confirm',onClose:()=>open.value=false},{default:()=>[h('h1',{id:'demo-confirm'},'合成确认'),h('input',{'aria-label':'合成输入'})],actions:()=>[h('button',{onClick:()=>open.value=false},'取消'),h('button',{onClick:()=>open.value=false},'确认')]})]) } }
+const router = createRouter({ history:createMemoryHistory(),routes:[{path:'/sources',component:Sources},{path:'/gates',component:Gates},{path:'/grants',component:Grants},{path:'/workspace',component:Workspace},{path:'/dashboard',component:Dashboard},{path:'/projects/:id/adoption',component:Adoption},{path:'/states',component:StatusDemo},{path:'/confirm',component:ConfirmDemo},{path:'/blank',component:{render:()=>h('main','已离开')}}] })
+await router.push(new URLSearchParams(location.search).get('route') || '/sources')
+window.__uiRouter=router
+createApp({render:()=>h(RouterView)}).use(createPinia()).use(router).mount('#app')
+</script></html>

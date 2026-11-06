@@ -1,0 +1,82 @@
+{
+  "page": 1,
+  "engine": "tesseract_single_column",
+  "has_images": true,
+  "rows": [
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "ALPHA 123",
+          "status": "needs_review",
+          "confidence": 93.456615,
+          "bbox": [
+            224,
+            270,
+            516,
+            71
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "BETA 456",
+          "status": "needs_review",
+          "confidence": 92.56504100000001,
+          "bbox": [
+            232,
+            487,
+            442,
+            71
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "GAMMA 789",
+          "status": "needs_review",
+          "confidence": 90.1441955,
+          "bbox": [
+            229,
+            702,
+            561,
+            71
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "DELTA 012",
+          "status": "needs_review",
+          "confidence": 93.447113,
+          "bbox": [
+            232,
+            918,
+            503,
+            71
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    }
+  ],
+  "raw_text": "ALPHA 123\nBETA 456\nGAMMA 789\nDELTA 012\n",
+  "raw_layout": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t2474\t3500\t-1\t\n2\t1\t1\t0\t0\t0\t224\t270\t566\t719\t-1\t\n3\t1\t1\t1\t0\t0\t224\t270\t566\t719\t-1\t\n4\t1\t1\t1\t1\t0\t224\t270\t516\t71\t-1\t\n5\t1\t1\t1\t1\t1\t224\t272\t326\t68\t90.707748\tALPHA\n5\t1\t1\t1\t1\t2\t586\t270\t154\t71\t96.205482\t123\n4\t1\t1\t1\t2\t0\t232\t487\t442\t71\t-1\t\n5\t1\t1\t1\t2\t1\t232\t488\t252\t69\t88.811646\tBETA\n5\t1\t1\t1\t2\t2\t514\t487\t160\t71\t96.318436\t456\n4\t1\t1\t1\t3\t0\t229\t702\t561\t71\t-1\t\n5\t1\t1\t1\t3\t1\t229\t702\t371\t71\t92.203407\tGAMMA\n5\t1\t1\t1\t3\t2\t633\t702\t157\t71\t88.084984\t789\n4\t1\t1\t1\t4\t0\t232\t918\t503\t71\t-1\t\n5\t1\t1\t1\t4\t1\t232\t919\t312\t69\t90.888634\tDELTA\n5\t1\t1\t1\t4\t2\t576\t918\t159\t71\t96.005592\t012\n",
+  "duration_ms": 2716
+}

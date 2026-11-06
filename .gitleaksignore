@@ -1,0 +1,6 @@
+# Reviewed synthetic fixtures only. Exact historical fingerprints, never a
+# path/rule-wide exclusion. The two source_key literals are PDF audit assertions;
+# RareIntegration12345 is a disposable integration account password.
+c3d9933a39c6a023369eee7cf438729eff77ec68:backend/pdf_images_test.go:generic-api-key:219
+8ffb8a7d2c21315ef246f99800708070fef5e682:backend/pdf_images_test.go:generic-api-key:215
+9090505c9f942f262ca3314f5dc6286a4a9921a9:backend/tests/rare_characters_integration.mjs:generic-api-key:9

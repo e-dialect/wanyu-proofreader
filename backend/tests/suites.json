@@ -1,49 +1,220 @@
 [
-  { "suite": "core_logic_integration.mjs", "ci_matrix": true },
-  { "suite": "source_fidelity_integration.mjs", "ci_matrix": true },
-  { "suite": "field_audit_integration.mjs", "ci_matrix": true },
-  { "suite": "upload_jobs_integration.mjs", "ci_matrix": true },
-  { "suite": "proofreading_quorum_integration.mjs", "ci_matrix": true },
-  { "suite": "arbitration_queue_integration.mjs", "ci_matrix": true },
-  { "suite": "reviewed_tasks_integration.mjs", "ci_matrix": true },
-  { "suite": "task_leases_integration.mjs", "ci_matrix": true },
-  { "suite": "project_access_integration.mjs", "ci_matrix": true },
-  { "suite": "phase1_integration.mjs", "ci_matrix": true },
-  { "suite": "pdf_access_integration.mjs", "ci_matrix": true },
-  { "suite": "pdf_reuse_integration.mjs", "ci_matrix": true },
-  { "suite": "keyboards_integration.mjs", "ci_matrix": true },
-  { "suite": "column_order_integration.mjs", "ci_matrix": true },
-  { "suite": "volunteer_accounts_integration.mjs", "ci_matrix": true },
-  { "suite": "nickname_login_integration.mjs", "ci_matrix": true },
-  { "suite": "findings_integration.mjs", "ci_matrix": true },
-  { "suite": "assist_rules_integration.mjs", "ci_matrix": true },
-  { "suite": "assist_baseline_integration.mjs", "ci_matrix": true },
-  { "suite": "difficulty_integration.mjs", "ci_matrix": true },
-  { "suite": "identity_integration.mjs", "ci_matrix": true },
-  { "suite": "review_bundle_integration.mjs", "ci_matrix": true },
-  { "suite": "pdf_chunks_integration.mjs", "ci_matrix": false, "note": "also runs in core-workflows and the chunk-upload-browser job" },
-  { "suite": "rare_characters_integration.mjs", "ci_matrix": false, "ci_runner": "run_rare_characters_integration.py", "note": "restarts the server to prove persistence" },
-  { "suite": "source_registry_integration.mjs", "ci_matrix": true },
-  { "suite": "import_ledger_integration.mjs", "ci_matrix": true },
-  { "suite": "glyph_table_integration.mjs", "ci_matrix": true },
-  { "suite": "return_to_source_integration.mjs", "ci_matrix": true },
-  { "suite": "column_roles_integration.mjs", "ci_matrix": true },
-  { "suite": "gate_release_integration.mjs", "ci_matrix": true },
-  { "suite": "blocked_reason_integration.mjs", "ci_matrix": true },
-  { "suite": "cross_source_integration.mjs", "ci_matrix": true },
-  { "suite": "assist_chain_integration.mjs", "ci_matrix": true },
-  { "suite": "assist_browser_integration.mjs", "ci_matrix": false, "requires_env": "ASSIST_BROWSER_SCRIPT", "note": "需要 playwright 与已构建的 frontend/dist；截图由 assist-browser 作业产出" },
-  { "suite": "tier_dispatch_integration.mjs", "ci_matrix": true },
-  { "suite": "assist_admin_integration.mjs", "ci_matrix": true },
-  { "suite": "artifact_export_integration.mjs", "ci_matrix": true },
-  { "suite": "delivery_integration.mjs", "ci_matrix": true },
-  { "suite": "project_export_integration.mjs", "ci_matrix": true },
-  { "suite": "quality_state_integration.mjs", "ci_matrix": true },
-  { "suite": "quality_state_browser_integration.mjs", "ci_matrix": false, "requires_env": "QUALITY_BROWSER_SCRIPT", "note": "需要 playwright 与已构建的 frontend/dist；截图由 quality-state-browser 作业产出" },
-  { "suite": "bundle_import_integration.mjs", "ci_matrix": false, "ci_runner": "run_bundle_import_integration.py", "note": "restarts the server to prove an interrupted bundle job reaches a terminal state" },
-  { "suite": "page_content_integration.mjs", "ci_matrix": true },
-  { "suite": "adoption_integration.mjs", "ci_matrix": true },
-  { "suite": "research_notice_integration.mjs", "ci_matrix": true },
-  { "suite": "scheme_conversion_browser_integration.mjs", "ci_matrix": false, "ci_runner": "run_scheme_conversion_browser.py", "requires_env": "SCHEME_BROWSER_SCRIPT", "note": "需要 playwright、已构建的 frontend/dist 与合成适配器；截图由 scheme-conversion-browser 作业产出" },
-  { "suite": "scheme_conversion_integration.mjs", "ci_matrix": false, "ci_runner": "run_scheme_conversion_integration.py", "note": "需要规则目录与一次重启；用合成适配器" }
+  {
+    "suite": "core_logic_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "source_fidelity_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "field_audit_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "upload_jobs_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "proofreading_quorum_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "arbitration_queue_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "reviewed_tasks_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "task_leases_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "project_access_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "phase1_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "pdf_access_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "pdf_reuse_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "keyboards_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "column_order_integration.mjs",
+    "ci_matrix": false,
+    "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "volunteer_accounts_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "nickname_login_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "findings_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "assist_rules_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "assist_baseline_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "difficulty_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "identity_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "review_bundle_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "pdf_chunks_integration.mjs",
+    "ci_matrix": false,
+    "note": "also runs in core-workflows and the chunk-upload-browser job"
+  },
+  {
+    "suite": "rare_characters_integration.mjs",
+    "ci_matrix": false,
+    "ci_runner": "run_rare_characters_integration.py",
+    "note": "restarts the server to prove persistence"
+  },
+  {
+    "suite": "source_registry_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "import_ledger_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "glyph_table_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "return_to_source_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "column_roles_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "gate_release_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "blocked_reason_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "cross_source_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "assist_chain_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "assist_browser_integration.mjs",
+    "ci_matrix": false,
+    "requires_env": "ASSIST_BROWSER_SCRIPT",
+    "note": "需要 playwright 与已构建的 frontend/dist；截图由 assist-browser 作业产出"
+  },
+  {
+    "suite": "tier_dispatch_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "assist_admin_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "artifact_export_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "delivery_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "project_export_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "quality_state_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "quality_state_browser_integration.mjs",
+    "ci_matrix": false,
+    "requires_env": "QUALITY_BROWSER_SCRIPT",
+    "note": "需要 playwright 与已构建的 frontend/dist；截图由 quality-state-browser 作业产出"
+  },
+  {
+    "suite": "bundle_import_integration.mjs",
+    "ci_matrix": false,
+    "ci_runner": "run_bundle_import_integration.py",
+    "note": "restarts the server to prove an interrupted bundle job reaches a terminal state"
+  },
+  {
+    "suite": "page_content_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "adoption_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "research_notice_integration.mjs",
+    "ci_matrix": true
+  },
+  {
+    "suite": "scheme_conversion_browser_integration.mjs",
+    "ci_matrix": false,
+    "ci_runner": "run_scheme_conversion_browser.py",
+    "requires_env": "SCHEME_BROWSER_SCRIPT",
+    "note": "需要 playwright、已构建的 frontend/dist 与合成适配器；截图由 scheme-conversion-browser 作业产出"
+  },
+  {
+    "suite": "scheme_conversion_integration.mjs",
+    "ci_matrix": false,
+    "ci_runner": "run_scheme_conversion_integration.py",
+    "note": "需要规则目录与一次重启；用合成适配器"
+  },
+  {
+    "suite": "ocr_runtime_integration.mjs",
+    "ci_matrix": false,
+    "ci_runner": "run_ocr_runtime_integration.py",
+    "note": "Disposable controlled worker and two backend restarts; no external OCR provider."
+  }
 ]

@@ -112,6 +112,7 @@ func logUploadRejected(requestID, kind, projectID, stage, message string, err er
 type importService struct {
 	app          *pocketbase.PocketBase
 	queue        chan importWork
+	ocrQueue     chan importWork
 	imageQueue   chan importWork
 	imageContext context.Context
 	imageCancel  context.CancelFunc
@@ -130,6 +131,7 @@ func newImportService(app *pocketbase.PocketBase) *importService {
 	return &importService{
 		app:          app,
 		queue:        make(chan importWork, 1024),
+		ocrQueue:     make(chan importWork, 1024),
 		imageQueue:   make(chan importWork, 16),
 		imageContext: ctx,
 		imageCancel:  cancel,
@@ -160,6 +162,7 @@ func (s *importService) register() {
 		s.cleanupPDFImageStaging()
 		go s.runPDFImageWorker(s.processPDFImages)
 		go s.runWorker()
+		go s.runWorkQueue(s.ocrQueue)
 		go s.recoverPendingWork()
 		return e.Next()
 	})
@@ -548,7 +551,11 @@ func (s *importService) enqueue(work importWork) {
 		"kind":       work.kind,
 		"record_id":  work.id,
 	})
-	s.queue <- work
+	if work.kind == "ocr" && s.ocrQueue != nil {
+		s.ocrQueue <- work
+	} else {
+		s.queue <- work
+	}
 }
 
 func (s *importService) finishWork(work importWork) {
@@ -595,8 +602,10 @@ func init() {
 	}
 }
 
-func (s *importService) runWorker() {
-	for work := range s.queue {
+func (s *importService) runWorker() { s.runWorkQueue(s.queue) }
+
+func (s *importService) runWorkQueue(queue <-chan importWork) {
+	for work := range queue {
 		func() {
 			startedAt := time.Now()
 			logUpload("info", "work_started", map[string]any{
@@ -756,7 +765,7 @@ func (s *importService) markFatal(work importWork, code, message string, cause e
 		record.Set("finished_at", types.NowDateTime())
 	}
 	var cleanup func() error
-	if work.kind == "csv" {
+	if work.kind == "csv" || work.kind == "ocr" {
 		cleanup = func() error {
 			return s.clearJobPages(work.id)
 		}
@@ -949,11 +958,13 @@ func (s *importService) openRecordFile(record *core.Record, field string) (io.Re
 }
 
 type csvPage struct {
-	line        int
-	pdfPage     int
-	rowJSON     string
-	headersJSON string
-	entryText   string
+	ocrCellsJSON string
+	ocrAbstained bool
+	line         int
+	pdfPage      int
+	rowJSON      string
+	headersJSON  string
+	entryText    string
 }
 
 type csvCounters struct {
@@ -1615,24 +1626,24 @@ func buildCSVPageWithLimit(headers, values []string, pdfIndex, line, maxPDFPage 
 }
 
 func (s *importService) primaryPDFSnapshot(projectID string) (string, int) {
-	records, err := s.app.FindRecordsByFilter(
-		"project_files",
-		fmt.Sprintf(`project = %q && status = "ready" && is_primary = true`, projectID),
-		"-created",
-		1,
-		0,
-	)
+	id, pages, err := s.primaryPDFSnapshotWithError(projectID)
 	if err != nil {
-		logUpload("error", "primary_pdf_lookup_failed", map[string]any{
-			"project_id": projectID,
-			"error":      err.Error(),
-		})
-		return "", 0
+		logUpload("error", "primary_pdf_lookup_failed", map[string]any{"project_id": projectID, "error": err.Error()})
+	}
+	return id, pages
+}
+
+// OCR needs the read error separately: an uncertain retry must not become a
+// parameter-rejected 400 which would let a client discard its request identity.
+func (s *importService) primaryPDFSnapshotWithError(projectID string) (string, int, error) {
+	records, err := s.app.FindRecordsByFilter("project_files", fmt.Sprintf(`project = %q && status = "ready" && is_primary = true`, projectID), "-created", 1, 0)
+	if err != nil {
+		return "", 0, err
 	}
 	if len(records) == 0 {
-		return "", 0
+		return "", 0, nil
 	}
-	return records[0].Id, records[0].GetInt("page_count")
+	return records[0].Id, records[0].GetInt("page_count"), nil
 }
 
 func (s *importService) nextProjectPageNumber(projectID string) int {
@@ -1647,6 +1658,19 @@ func (s *importService) nextProjectPageNumber(projectID string) int {
 		return 1
 	}
 	return records[0].GetInt("page_number") + 1
+}
+
+// allocateProjectPageNumber must run inside the caller's write transaction.
+// OCR and CSV use separate workers, so a number read before entering that
+// transaction may already belong to the other writer by the time it is saved.
+func allocateProjectPageNumber(tx core.App, projectID string, minimum int) (int, error) {
+	var next struct {
+		Number int `db:"number"`
+	}
+	if err := tx.DB().NewQuery("SELECT COALESCE(MAX(page_number),0)+1 AS number FROM pages WHERE project={:project}").Bind(dbx.Params{"project": projectID}).One(&next); err != nil {
+		return 0, err
+	}
+	return max(next.Number, minimum), nil
 }
 
 func (s *importService) csvLinkedSource(job *core.Record) (string, string, string) {
@@ -1679,6 +1703,11 @@ func (s *importService) flushCSVBatch(
 	projectID := job.GetString("project")
 	projectFileID := job.GetString("project_file")
 	err := s.app.RunInTransaction(func(txDao core.App) error {
+		allocated, err := allocateProjectPageNumber(txDao, projectID, nextPageNumber)
+		if err != nil {
+			return err
+		}
+		nextPageNumber = allocated
 		for index, row := range rows {
 			if err := savePage(txDao, job.Id, projectID, projectFileID, nextPageNumber+index, row, sourceSystem, sourceID, sourceVersion); err != nil {
 				return err
@@ -1702,7 +1731,15 @@ func (s *importService) flushCSVBatch(
 	// Fall back to individual writes so one unexpected database error doesn't
 	// prevent later valid rows from importing.
 	for _, row := range rows {
-		if err := savePage(s.app, job.Id, projectID, projectFileID, nextPageNumber, row, sourceSystem, sourceID, sourceVersion); err != nil {
+		err := s.app.RunInTransaction(func(tx core.App) error {
+			allocated, err := allocateProjectPageNumber(tx, projectID, nextPageNumber)
+			if err != nil {
+				return err
+			}
+			nextPageNumber = allocated
+			return savePage(tx, job.Id, projectID, projectFileID, allocated, row, sourceSystem, sourceID, sourceVersion)
+		})
+		if err != nil {
 			counters.failed++
 			s.addJobError(
 				job.Id,
@@ -1744,6 +1781,12 @@ func savePage(dao core.App, jobID, projectID, projectFileID string, pageNumber i
 		record.Set("source_entry_id", strconv.Itoa(row.line))
 	}
 	record.Set("ocr_row_json", row.rowJSON)
+	if row.ocrCellsJSON != "" {
+		record.Set("ocr_cells_json", row.ocrCellsJSON)
+	}
+	if row.ocrAbstained {
+		record.Set("missing_glyph", true)
+	}
 	record.Set("row_headers_json", row.headersJSON)
 	record.Set("ocr_text", row.entryText)
 	record.Set("proofread_round", 1)

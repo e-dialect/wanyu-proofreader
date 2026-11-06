@@ -2,13 +2,32 @@
   <div ref="viewerRef" class="pdf-viewer">
     <div class="pdf-toolbar">
       <div class="pdf-toolbar-group">
-        <button type="button" class="pdf-tool" :disabled="zoom <= 0.5" aria-label="缩小" @click="changeZoom(-0.25)">－</button>
+        <button
+          type="button"
+          class="pdf-tool"
+          :disabled="zoom <= 0.5"
+          aria-label="缩小"
+          @click="changeZoom(-0.25)"
+        >
+          －
+        </button>
         <span class="pdf-zoom-label">{{ Math.round(zoom * 100) }}%</span>
-        <button type="button" class="pdf-tool" :disabled="zoom >= 3" aria-label="放大" @click="changeZoom(0.25)">＋</button>
+        <button
+          type="button"
+          class="pdf-tool"
+          :disabled="zoom >= 3"
+          aria-label="放大"
+          @click="changeZoom(0.25)"
+        >
+          ＋
+        </button>
         <button type="button" class="pdf-tool" @click="resetView">适合宽度</button>
       </div>
       <div class="pdf-toolbar-group">
-        <span class="pdf-page-label" aria-live="polite">第 {{ sourcePageNumber || safePageLabel }} / {{ sourceTotalPages || totalPages || '—' }} 页</span>
+        <span class="pdf-page-label" aria-live="polite"
+          >第 {{ sourcePageNumber || safePageLabel }} /
+          {{ sourceTotalPages || totalPages || '—' }} 页</span
+        >
         <button type="button" class="pdf-tool" @click="rotateClockwise">旋转 90°</button>
         <button type="button" class="pdf-tool" @click="toggleFullscreen">
           {{ isFullscreen ? '退出全屏' : '全屏' }}
@@ -16,20 +35,41 @@
       </div>
     </div>
 
-    <div v-if="fullscreenError" class="alert alert-warning pdf-fullscreen-notice" role="status">{{ fullscreenError }}</div>
-    <div v-if="error" class="alert alert-error" role="alert" style="margin:1rem">{{ error }}</div>
+    <div v-if="fullscreenError" class="alert alert-warning pdf-fullscreen-notice" role="status">
+      {{ fullscreenError }}
+    </div>
+    <div v-if="error" class="alert alert-error pdf-error" role="alert">{{ error }}</div>
     <div v-else ref="wrapRef" class="pdf-scroll" role="region" tabindex="0" aria-label="PDF 原文">
       <div
         class="pdf-canvas-stage"
         :style="{ width: `${canvasCssWidth}px`, height: `${canvasCssHeight}px` }"
       >
-        <img v-if="pageImage" class="pdf-page-image" :src="src" :width="pageImage.width" :height="pageImage.height" :style="imageStyle" alt="原文页面" @error="emit('image-error')" />
-        <canvas v-else ref="canvasRef" class="pdf-canvas" role="img" aria-label="PDF 页面图像"></canvas>
+        <img
+          v-if="pageImage"
+          class="pdf-page-image"
+          :src="src"
+          :width="pageImage.width"
+          :height="pageImage.height"
+          :style="imageStyle"
+          alt="原文页面"
+          @error="emit('image-error')"
+        />
+        <canvas
+          v-else
+          ref="canvasRef"
+          class="pdf-canvas"
+          role="img"
+          aria-label="PDF 页面图像"
+        ></canvas>
         <div v-if="src && watermarkUserId" class="pdf-identity-watermark" aria-hidden="true">
-          <span v-for="tile in watermarkTileCount" :key="tile" class="pdf-identity-watermark-tile">{{ identityStamp }}</span>
+          <span
+            v-for="tile in watermarkTileCount"
+            :key="tile"
+            class="pdf-identity-watermark-tile"
+            >{{ identityStamp }}</span
+          >
         </div>
         <div v-if="loading || rendering" class="pdf-loading-mask">PDF 加载中...</div>
-
       </div>
     </div>
   </div>
@@ -74,17 +114,35 @@ let renderGeneration = 0
 // Keep the access time stable while reading; renew it for a new viewer or
 // asset without changing the underlying shared image/PDF.
 const accessedAt = ref('')
-watch([() => props.src, () => props.watermarkUserId, () => props.watermarkProjectId], () => {
-  accessedAt.value = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
-}, { immediate: true })
-const identityStamp = computed(() => `万语校坊 · UID ${props.watermarkUserId}\n项目 ${props.watermarkProjectId}\n${accessedAt.value}`)
-const watermarkTileCount = computed(() => Math.max(1, Math.floor(canvasCssWidth.value / 210)) * Math.max(1, Math.ceil(canvasCssHeight.value / 100)))
+watch(
+  [() => props.src, () => props.watermarkUserId, () => props.watermarkProjectId],
+  () => {
+    accessedAt.value = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+  },
+  { immediate: true }
+)
+const identityStamp = computed(
+  () =>
+    `万语校坊 · UID ${props.watermarkUserId}\n项目 ${props.watermarkProjectId}\n${accessedAt.value}`
+)
+const watermarkTileCount = computed(
+  () =>
+    Math.max(1, Math.floor(canvasCssWidth.value / 210)) *
+    Math.max(1, Math.ceil(canvasCssHeight.value / 100))
+)
 const imageStyle = computed(() => {
   if (!props.pageImage) return {}
   const odd = rotation.value % 180 !== 0
   const width = odd ? canvasCssHeight.value : canvasCssWidth.value
   const height = odd ? canvasCssWidth.value : canvasCssHeight.value
-  return { width: `${width}px`, height: `${height}px`, position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%, -50%) rotate(${rotation.value}deg)` }
+  return {
+    width: `${width}px`,
+    height: `${height}px`,
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    transform: `translate(-50%, -50%) rotate(${rotation.value}deg)`
+  }
 })
 
 const safePageLabel = computed(() => {
@@ -100,12 +158,9 @@ watch(
   { immediate: true }
 )
 
-watch(
-  [() => props.pageNumber, zoom, rotation],
-  async () => {
-    await renderCurrentPage()
-  }
-)
+watch([() => props.pageNumber, zoom, rotation], async () => {
+  await renderCurrentPage()
+})
 
 onMounted(() => {
   document.addEventListener('fullscreenchange', syncFullscreenState)
@@ -125,7 +180,13 @@ async function loadPdf(src) {
   }
 
   if (props.pageImage) {
-    if (pdfDocTask) { try { await pdfDocTask.destroy() } catch { /* already gone */ } }
+    if (pdfDocTask) {
+      try {
+        await pdfDocTask.destroy()
+      } catch {
+        /* already gone */
+      }
+    }
     if (generation !== loadGeneration) return
     pdfDocTask = null
     pdfDoc = null
@@ -145,11 +206,24 @@ async function loadPdf(src) {
     lib.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js'
 
     if (pdfDocTask) {
-      try { await pdfDocTask.destroy() } catch { /* the previous document may already be gone */ }
+      try {
+        await pdfDocTask.destroy()
+      } catch {
+        /* the previous document may already be gone */
+      }
     }
-    pdfDocTask = lib.getDocument({ url: src, cMapUrl: '/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/pdfjs/standard_fonts/', isEvalSupported: false })
+    pdfDocTask = lib.getDocument({
+      url: src,
+      cMapUrl: '/pdfjs/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: '/pdfjs/standard_fonts/',
+      isEvalSupported: false
+    })
     const document = await pdfDocTask.promise
-    if (generation !== loadGeneration) { await document.destroy(); return }
+    if (generation !== loadGeneration) {
+      await document.destroy()
+      return
+    }
     pdfDoc = document
     totalPages.value = pdfDoc.numPages || 0
     await nextTick()
@@ -194,7 +268,7 @@ async function renderCurrentPage() {
     const odd = rotation.value % 180 !== 0
     const width = odd ? props.pageImage.height : props.pageImage.width
     const height = odd ? props.pageImage.width : props.pageImage.height
-    const scale = Math.max(1, wrapRef.value.clientWidth - 16) / width * zoom.value
+    const scale = (Math.max(1, wrapRef.value.clientWidth - 16) / width) * zoom.value
     canvasCssWidth.value = width * scale
     canvasCssHeight.value = height * scale
     return
@@ -205,14 +279,21 @@ async function renderCurrentPage() {
   const safePage = safePageLabel.value
 
   if (renderTask) {
-    try { renderTask.cancel() } catch { /* the task may have already settled */ }
+    try {
+      renderTask.cancel()
+    } catch {
+      /* the task may have already settled */
+    }
     renderTask = null
   }
 
   try {
     const page = await pdfDoc.getPage(safePage)
     if (generation !== renderGeneration) return
-    const baseViewport = page.getViewport({ scale: 1, rotation: (page.rotate + rotation.value) % 360 })
+    const baseViewport = page.getViewport({
+      scale: 1,
+      rotation: (page.rotate + rotation.value) % 360
+    })
     const availableWidth = Math.max(1, wrapRef.value.clientWidth - 16)
     const fitScale = availableWidth / baseViewport.width
     const viewport = page.getViewport({
@@ -278,7 +359,9 @@ async function toggleFullscreen() {
     }
   } catch {
     if (generation === loadGeneration) {
-      fullscreenError.value = exiting ? '浏览器未允许退出全屏模式，请重试。' : '浏览器未允许进入全屏模式，请重试。'
+      fullscreenError.value = exiting
+        ? '浏览器未允许退出全屏模式，请重试。'
+        : '浏览器未允许进入全屏模式，请重试。'
     }
   }
 }
@@ -301,7 +384,11 @@ function cleanupRenderOnly() {
   renderGeneration++
   rendering.value = false
   if (renderTask) {
-    try { renderTask.cancel() } catch { /* the task may have already settled */ }
+    try {
+      renderTask.cancel()
+    } catch {
+      /* the task may have already settled */
+    }
     renderTask = null
   }
 }
@@ -315,7 +402,11 @@ onBeforeUnmount(async () => {
     resizeObserver = null
   }
   if (pdfDocTask) {
-    try { await pdfDocTask.destroy() } catch { /* the previous document may already be gone */ }
+    try {
+      await pdfDocTask.destroy()
+    } catch {
+      /* the previous document may already be gone */
+    }
     pdfDocTask = null
   }
   pdfDoc = null
@@ -323,6 +414,9 @@ onBeforeUnmount(async () => {
 </script>
 
 <style scoped>
+.pdf-error {
+  margin: var(--space-4);
+}
 .pdf-viewer {
   width: 100%;
   height: 100%;
@@ -348,8 +442,8 @@ onBeforeUnmount(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .75rem;
-  padding: .5rem .75rem;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--pdf-track-strong);
   background: var(--pdf-toolbar);
 }
@@ -357,11 +451,11 @@ onBeforeUnmount(async () => {
 .pdf-toolbar-group {
   display: flex;
   align-items: center;
-  gap: .4rem;
+  gap: 0.4rem;
 }
 
 .pdf-tool {
-  padding: .3rem .6rem;
+  padding: 0.3rem 0.6rem;
   border: 1px solid var(--pdf-track-strong);
   border-radius: var(--radius-nav);
   background: var(--surface);
@@ -370,7 +464,7 @@ onBeforeUnmount(async () => {
 }
 
 .pdf-tool:disabled {
-  opacity: .45;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -378,7 +472,7 @@ onBeforeUnmount(async () => {
 .pdf-page-label {
   min-width: 48px;
   color: var(--ink-muted);
-  font-size: .8rem;
+  font-size: 0.8rem;
   text-align: center;
 }
 
@@ -401,7 +495,9 @@ onBeforeUnmount(async () => {
   background: var(--surface);
 }
 
-.pdf-page-image { display: block; }
+.pdf-page-image {
+  display: block;
+}
 .pdf-identity-watermark {
   position: absolute;
   inset: 0;
@@ -440,9 +536,13 @@ onBeforeUnmount(async () => {
     align-items: flex-start;
     flex-direction: row;
     overflow-x: auto;
-    padding: .25rem;
+    padding: 0.25rem;
   }
-  .pdf-toolbar-group { flex: 0 0 auto; }
-  .pdf-tool { white-space: nowrap; }
+  .pdf-toolbar-group {
+    flex: 0 0 auto;
+  }
+  .pdf-tool {
+    white-space: nowrap;
+  }
 }
 </style>

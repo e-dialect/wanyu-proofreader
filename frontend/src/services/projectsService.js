@@ -1,22 +1,25 @@
 import pb from '@/lib/pocketbase'
+import { createMemberCandidatesClient } from '../lib/memberCandidatesClient.js'
 import { serializeProjectInsightsQuery } from '@/lib/adminProjectInsights'
 
-export async function listProjectInsights(query = {}) {
+export async function listProjectInsights(query = {}, { signal } = {}) {
   return pb.send(`/api/fangji/project-insights?${serializeProjectInsightsQuery(query)}`, {
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
-export async function getProject(projectId) {
+export async function getProject(projectId, { signal } = {}) {
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}`, {
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
 export async function listProjects(options = {}) {
   const scope = options.scope || 'all'
   return pb.send(`/api/fangji/projects?scope=${encodeURIComponent(scope)}`, {
-    requestKey: null,
+    requestKey: null
   })
 }
 
@@ -79,26 +82,17 @@ export async function listProjectMembers(projectId) {
   })
 }
 
-export async function listMemberCandidates(projectId, term = '') {
-  const query = term.trim() ? `?term=${encodeURIComponent(term.trim())}` : ''
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/member-candidates${query}`, {
-    requestKey: null
-  })
-}
-
-export async function setProjectMember(projectId, userId, role) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, {
-    method: 'PUT',
-    body: { role },
-    requestKey: null
-  })
-}
+export const { listMemberCandidates, listMemberCandidatePage, setProjectMember } =
+  createMemberCandidatesClient(pb)
 
 export async function removeProjectMember(projectId, userId) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, {
-    method: 'DELETE',
-    requestKey: null
-  })
+  return pb.send(
+    `/api/fangji/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`,
+    {
+      method: 'DELETE',
+      requestKey: null
+    }
+  )
 }
 
 export async function generateProjectVolunteers(projectId, options) {
@@ -109,12 +103,12 @@ export async function generateProjectVolunteers(projectId, options) {
   })
 }
 
-export async function getAccessContext() {
-  return pb.send('/api/fangji/access-context', { requestKey: null })
+export async function getAccessContext({ signal } = {}) {
+  return pb.send('/api/fangji/access-context', { requestKey: null, signal })
 }
 
-export async function listCreatorGrants() {
-  return pb.send('/api/fangji/platform/creator-grants', { requestKey: null })
+export async function listCreatorGrants({ signal } = {}) {
+  return pb.send('/api/fangji/platform/creator-grants', { requestKey: null, signal })
 }
 
 export async function setCreatorGrant(userId, { enabled, projectLimit }) {

@@ -58,6 +58,8 @@ verify-static:
 	@git diff --cached --check
 	@echo 'line endings (index holds LF or binary only)'
 	@python3 scripts/check_line_endings.py
+	@echo 'Prettier on touched frontend source files'
+	@python3 scripts/check_prettier.py --base $(BASE)
 	@echo 'UI debt ratchet (per-kind warn/fail policy)'
 	@python3 scripts/check_ui_debt.py
 	@echo 'docker build context (every Go package directory is copied)'
@@ -86,6 +88,7 @@ verify-compose:
 		echo 'SKIP docker compose config: docker is not installed (CI runs these assertions)'; \
 	fi
 	@python3 scripts/check_compose_structure.py
+	@python3 scripts/check_ocr_compose.py
 
 # ---------------------------------------------------------------- tests
 
