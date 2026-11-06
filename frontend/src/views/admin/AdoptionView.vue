@@ -7,8 +7,8 @@
       这里的「编选」是整批交付取舍，不是仲裁台里选哪一份校对结果的「采用」；B 的校对成果与状态不会因为编选而改变。
     </p>
     <p v-if="loading" role="status">正在加载…</p>
-    <div v-if="loadError" class="alert alert-error" role="alert">
-      {{ loadError }} <button class="btn btn-secondary btn-sm" @click="load">重试</button>
+    <div v-if="loadError && !loaded" class="alert alert-error" role="alert">
+      {{ loadError }} <button class="btn btn-secondary btn-sm" :disabled="loading" @click="load()">重试</button>
     </div>
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
@@ -52,7 +52,7 @@
           <label class="form-label">说明（可选）
             <textarea v-model="createForm.note" class="form-control" maxlength="500" rows="2"></textarea>
           </label>
-          <button class="btn btn-primary mt-3" :disabled="busy">创建并预览数量</button>
+          <button class="btn btn-primary mt-3" :disabled="busy || loading">创建并预览数量</button>
         </form>
       </section>
 
@@ -93,19 +93,19 @@
         </div>
 
         <div class="adoption-actions">
-          <button class="btn btn-secondary" :disabled="busy || current.status === 'confirmed'" @click="preview">重新预览数量</button>
+          <button class="btn btn-secondary" :disabled="busy || loading || current.status === 'confirmed'" @click="preview">重新预览数量</button>
           <button
             class="btn btn-primary"
-            :disabled="busy || current.status !== 'previewed'"
+            :disabled="busy || loading || current.status !== 'previewed'"
             @click="confirm"
           >确认本批采用范围</button>
-          <button class="btn btn-secondary" :disabled="busy" @click="reevaluate">按当前数据重新评估</button>
-          <button class="btn btn-secondary" :disabled="busy" @click="exportManifest('select')">导出本批清单</button>
-          <button class="btn btn-quiet" :disabled="busy" @click="exportManifest('all')">导出全部条目（需平台管理员）</button>
+          <button class="btn btn-secondary" :disabled="busy || loading" @click="reevaluate">按当前数据重新评估</button>
+          <button class="btn btn-secondary" :disabled="busy || loading" @click="exportManifest('select')">导出本批清单</button>
+          <button class="btn btn-quiet" :disabled="busy || loading" @click="exportManifest('all')">导出全部条目（需平台管理员）</button>
           <button
             v-if="current.status !== 'confirmed'"
             class="btn btn-quiet"
-            :disabled="busy"
+            :disabled="busy || loading"
             @click="remove"
           >删除这一批</button>
         </div>
@@ -153,7 +153,7 @@
           </label>
           <button
             class="btn btn-secondary btn-sm mt-3"
-            :disabled="busy"
+            :disabled="busy || loading"
             @click="decide(item.page)"
           >保存这一条</button>
         </article>
@@ -209,24 +209,33 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" :aria-busy="loading">
         <h2>历史批次</h2>
+        <p v-if="loading" role="status">正在加载历史批次…</p>
+        <div v-if="loadError" class="alert alert-error" role="alert">
+          {{ loadError }} <button class="btn btn-secondary btn-sm" :disabled="loading" @click="load()">重试</button>
+        </div>
         <p v-if="!batches.length" class="empty-state-text">这个项目还没有编选批次。</p>
         <ul class="adoption-history">
           <li v-for="item in batches" :key="item.id" :class="{ 'adoption-history-current': item.id === currentId }">
-            <button class="btn btn-quiet btn-sm" :disabled="busy" @click="selectBatch(item.id)">
+            <button class="btn btn-quiet btn-sm" :disabled="busy || loading" @click="selectBatch(item.id)">
               {{ purposeLabel(item.purpose) }} · {{ batchStatusLabel(item.status) }} · {{ item.counts.selected }}/{{ item.counts.total }} 条进入本批
             </button>
             <span class="adoption-hint">交给 {{ item.recipient }} · {{ item.created }}</span>
           </li>
         </ul>
+        <nav class="adoption-actions" aria-label="编选历史分页">
+          <button class="btn btn-secondary btn-sm" :disabled="busy || loading || historyPage <= 1" @click="load(historyPage - 1)">上一页</button>
+          <span role="status">第 {{ historyPage }} / {{ historyTotalPages }} 页 · 共 {{ historyTotalItems }} 批</span>
+          <button class="btn btn-secondary btn-sm" :disabled="busy || loading || historyPage >= historyTotalPages" @click="load(historyPage + 1)">下一页</button>
+        </nav>
       </section>
     </template>
   </main>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
   DECISION_LABELS,
@@ -262,7 +271,8 @@ import {
 import { downloadText } from '@/lib/downloadText'
 import { getPbMessage } from '@/utils/pbErrors'
 
-const projectId = String(useRoute().params.id)
+const route = useRoute()
+const projectId = computed(() => String(route.params.id))
 const pageStatuses = Object.keys(PAGE_STATUS_LABELS)
 const qualityStates = Object.keys(QUALITY_STATE_LABELS)
 
@@ -274,6 +284,10 @@ const operationError = ref('')
 const message = ref('')
 
 const batches = ref([])
+const historyPage = ref(1)
+const requestedHistoryPage = ref(1)
+const historyTotalPages = ref(1)
+const historyTotalItems = ref(0)
 const purposes = ref([])
 const reasonCodes = ref([])
 const currentId = ref('')
@@ -298,24 +312,55 @@ const consistent = computed(() => countsConsistent(current.value?.counts))
 const EMPTY_EXCEPTIONS = { exceptions: [], pending: [], pendingTotal: 0 }
 const EMPTY_EVENTS = { events: [], stale: false }
 let batchLoadGeneration = 0
+let projectGeneration = 0
 
-onMounted(load)
+watch(projectId, resetProject, { immediate: true })
+onBeforeUnmount(() => { ++batchLoadGeneration; ++projectGeneration })
 
-async function load() {
+function resetProject() {
+  ++batchLoadGeneration
+  ++projectGeneration
+  loaded.value = false
+  busy.value = false
+  batches.value = []
+  currentId.value = ''
+  historyPage.value = requestedHistoryPage.value = 1
+  historyTotalPages.value = 1
+  historyTotalItems.value = 0
+  exceptions.value = { ...EMPTY_EXCEPTIONS }
+  batchEvents.value = { ...EMPTY_EVENTS }
+  summary.value = null
+  operationError.value = message.value = ''
+  for (const key of Object.keys(decisionDrafts)) delete decisionDrafts[key]
+  Object.assign(createForm, { purpose: 'public_display', recipient: '', note: '', statuses: [...DEFAULT_STATUSES], qualityStates: [], requirePinyin: false, importJobsText: '' })
+  return load(1)
+}
+
+async function load(page = requestedHistoryPage.value) {
   const generation = ++batchLoadGeneration
+  const id = projectId.value
+  requestedHistoryPage.value = page
   loading.value = true
   loadError.value = ''
   try {
-    const data = await listAdoptionBatches(projectId)
+    const data = await listAdoptionBatches(id, { page, perPage: 25 })
     if (generation !== batchLoadGeneration) return
-    batches.value = data.batches || []
+    const nextBatches = data.batches || []
+    const nextId = nextBatches.some((item) => item.id === currentId.value)
+      ? currentId.value : nextBatches[0]?.id || ''
+    const [details, nextSummary] = await Promise.all([loadBatchDetails(nextId), getAdoptionSummary(id)])
+    if (generation !== batchLoadGeneration) return
+    // Commit the page and its details together. A failed page request keeps
+    // the last successful page visible; retry still targets the requested page.
+    batches.value = nextBatches
+    currentId.value = nextId
+    historyPage.value = data.page
+    requestedHistoryPage.value = data.page
+    historyTotalPages.value = data.totalPages
+    historyTotalItems.value = data.totalItems
     purposes.value = data.purposes || []
     reasonCodes.value = data.reasons || []
-    if (!currentId.value || !batches.value.some((item) => item.id === currentId.value)) {
-      currentId.value = batches.value[0]?.id || ''
-    }
-    const [details] = await Promise.all([loadBatchDetails(currentId.value), loadSummary()])
-    if (generation !== batchLoadGeneration) return
+    summary.value = nextSummary
     applyBatchDetails(details)
     loaded.value = true
   } catch (e) {
@@ -348,22 +393,23 @@ function draftFor(pageId) {
   return decisionDrafts[pageId]
 }
 
-async function loadSummary() {
-  summary.value = await getAdoptionSummary(projectId)
-}
-
 async function act(fn, success) {
+  const id = projectId.value
+  const generation = projectGeneration
+  const isCurrent = () => generation === projectGeneration
   busy.value = true
   operationError.value = ''
   message.value = ''
   try {
-    await fn()
+    await fn(id, isCurrent)
+    if (!isCurrent()) return
     if (success) message.value = success
     await load()
   } catch (e) {
+    if (!isCurrent()) return
     operationError.value = getPbMessage(e, '操作失败，请重试')
   } finally {
-    busy.value = false
+    if (isCurrent()) busy.value = false
   }
 }
 
@@ -373,15 +419,17 @@ async function create() {
     operationError.value = built.error
     return
   }
-  await act(async () => {
-    const batch = await createAdoptionBatch(projectId, {
+  await act(async (id, isCurrent) => {
+    const batch = await createAdoptionBatch(id, {
       purpose: createForm.purpose,
       recipient: createForm.recipient.trim(),
       note: createForm.note.trim(),
       rule: built.rule
     })
-    currentId.value = batch.id
     await previewAdoptionBatch(batch.id)
+    if (!isCurrent()) return
+    currentId.value = batch.id
+    requestedHistoryPage.value = 1
     // 接收方保留：同一批交付常常要按不同用途连续开几条；说明是一次性的。
     createForm.note = ''
   }, '批次已创建并完成预览；核对数量后再确认。')
@@ -398,8 +446,9 @@ async function confirm() {
 // 重评只追加一条事件，不改写确认时的数字：D5.3 的红线是「追加，不改历史」。
 // 界面上必须把这件事说出来，否则「重新评估」会被读成「把这一批改了」。
 async function reevaluate() {
-  await act(async () => {
+  await act(async (_id, isCurrent) => {
     const result = await reevaluateAdoptionBatch(current.value.id)
+    if (!isCurrent()) return
     message.value = result.drift
       ? `已追加重评记录：${result.stored.selected}/${result.stored.total} → ${result.current.selected}/${result.current.total}，差异在「${result.drift}」。已确认的数字没有改。`
       : `已追加重评记录：与确认时一致（${result.current.selected}/${result.current.total}）。`
@@ -407,26 +456,31 @@ async function reevaluate() {
 }
 
 async function remove() {
-  await act(async () => {
-    await deleteAdoptionBatch(current.value.id)
-    currentId.value = ''
+  const batchId = current.value.id
+  await act(async (_id, isCurrent) => {
+    await deleteAdoptionBatch(batchId)
+    if (isCurrent()) currentId.value = ''
   }, '草稿已删除。')
 }
 
 async function exportManifest(include) {
+  const generation = projectGeneration
+  const batch = current.value
   busy.value = true
   operationError.value = ''
   message.value = ''
   try {
-    const manifest = await exportAdoptionManifest(current.value.id, include)
-    downloadText(JSON.stringify(manifest, null, 2), manifestFilename(current.value), 'application/json')
+    const manifest = await exportAdoptionManifest(batch.id, include)
+    if (generation !== projectGeneration) return
+    downloadText(JSON.stringify(manifest, null, 2), manifestFilename(batch), 'application/json')
     message.value = include === 'select'
       ? includeLabel('select')
       : `${includeLabel('all')}；未采用与待处理的数量写在清单里。`
   } catch (e) {
+    if (generation !== projectGeneration) return
     operationError.value = getPbMessage(e, '导出失败')
   } finally {
-    busy.value = false
+    if (generation === projectGeneration) busy.value = false
   }
 }
 
@@ -453,6 +507,7 @@ async function decide(pageId) {
 }
 
 async function selectBatch(id) {
+  requestedHistoryPage.value = historyPage.value
   currentId.value = id
   const generation = ++batchLoadGeneration
   loading.value = true

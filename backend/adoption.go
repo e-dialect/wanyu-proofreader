@@ -592,22 +592,40 @@ func (s *importService) listAdoptionBatches(c *core.RequestEvent) error {
 	if _, _, err := s.requireAdoptionManager(c, projectID); err != nil {
 		return err
 	}
-	records, err := s.app.FindRecordsByFilter(
-		"adoption_batches", "project = {:project}", "-created", 100, 0,
-		dbx.Params{"project": projectID},
-	)
+	query := c.Request.URL.Query()
+	page := pageArgument(query.Get("page"), 1, 1000000)
+	perPage := pageArgument(query.Get("perPage"), 25, 100)
+	var result map[string]any
+	// Count and page share one snapshot, including when a draft is deleted
+	// while the user is browsing the last page.
+	err := s.app.RunInTransaction(func(app core.App) error {
+		params := dbx.Params{"project": projectID}
+		totalItems, err := app.CountRecords("adoption_batches", dbx.HashExp{"project": projectID})
+		if err != nil {
+			return err
+		}
+		totalPages := max(1, (int(totalItems)+perPage-1)/perPage)
+		page = min(page, totalPages)
+		records, err := app.FindRecordsByFilter(
+			"adoption_batches", "project = {:project}", "-created,-id", perPage, (page-1)*perPage, params,
+		)
+		if err != nil {
+			return err
+		}
+		batches := make([]map[string]any, 0, len(records))
+		for _, record := range records {
+			batches = append(batches, adoptionBatchView(record))
+		}
+		result = map[string]any{
+			"batches": batches, "purposes": adoptionPurposes, "reasons": adoptionReasonCodes(),
+			"page": page, "perPage": perPage, "totalItems": totalItems, "totalPages": totalPages,
+		}
+		return nil
+	})
 	if err != nil {
 		return apis.NewBadRequestError("读取编选批次失败。", err)
 	}
-	batches := make([]map[string]any, 0, len(records))
-	for _, record := range records {
-		batches = append(batches, adoptionBatchView(record))
-	}
-	return c.JSON(http.StatusOK, map[string]any{
-		"batches":  batches,
-		"purposes": adoptionPurposes,
-		"reasons":  adoptionReasonCodes(),
-	})
+	return c.JSON(http.StatusOK, result)
 }
 
 func (s *importService) getAdoptionBatch(c *core.RequestEvent) error {
