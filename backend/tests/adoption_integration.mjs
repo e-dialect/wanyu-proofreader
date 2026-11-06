@@ -179,4 +179,65 @@ assert.equal(manifest.counts.selected, 1)
 assert.equal(manifest.drift, false)
 assert.equal(manifest.entries[0].page, blockedPage.id)
 
+// History must remain reachable after the old fixed 100-record window. Seed
+// confirmed, synthetic records directly as superuser so this fixture tests
+// list pagination rather than repeatedly exercising preview/confirmation.
+const historyIds = []
+const historyRecords = [confirmed]
+for (let number = 1; number <= 101; number++) {
+  const id = `hist${String(number).padStart(11, '0')}`
+  const record = await api('/api/collections/adoption_batches/records', {
+    method: 'POST', token: superAuth.token,
+    body: {
+      id, project: project.id, purpose: 'public_display', recipient: '合成历史接收方',
+      status: 'confirmed', rule_json: JSON.stringify({ statuses: ['approved'] }),
+      created_by: owner.id
+    }
+  })
+  historyIds.push(id)
+  historyRecords.push(record)
+}
+const expected = historyRecords.sort((a, b) => b.created.localeCompare(a.created) || b.id.localeCompare(a.id)).map(item => item.id)
+const seen = []
+for (let page = 1; page <= 5; page++) {
+  const result = await api(`${listPath}?page=${page}&perPage=25`, { token: owner.token })
+  assert.equal(result.page, page)
+  assert.equal(result.perPage, 25)
+  assert.equal(result.totalItems, 102)
+  assert.equal(result.totalPages, 5)
+  assert.equal(result.batches.length, page === 5 ? 2 : 25)
+  seen.push(...result.batches.map(item => item.id))
+}
+assert.deepEqual(seen, expected, 'newest first, then id DESC for tied creation times')
+assert.equal(new Set(seen).size, 102, 'history has neither duplicates nor omissions')
+const last = await api(`${listPath}?page=999&perPage=25`, { token: manager.token })
+assert.equal(last.page, 5)
+assert.deepEqual(last.batches.map(item => item.id), expected.slice(-2))
+const oldestId = expected.at(-1)
+const oldestPath = `/api/fangji/adoption-batches/${oldestId}`
+assert.equal((await api(oldestPath, { token: owner.token })).id, oldestId)
+assert.equal((await api(oldestPath, { token: manager.token })).id, oldestId)
+await api(`${listPath}?page=5&perPage=25`, { token: reader.token, status: 403 })
+await api(`${listPath}?page=5&perPage=25`, { token: outsider.token, status: 403 })
+await api(`${listPath}?page=5&perPage=25`, { status: 401 })
+await api(oldestPath, { token: outsider.token, status: 403 })
+await api(oldestPath, { token: reader.token, status: 403 })
+const defaults = await api(`${listPath}?page=-2&perPage=bad`, { token: owner.token })
+assert.equal(defaults.page, 1)
+assert.equal(defaults.perPage, 25)
+const capped = await api(`${listPath}?perPage=99999`, { token: owner.token })
+assert.equal(capped.perPage, 100)
+assert.equal(capped.batches.length, 100)
+
+const emptyProject = await api('/api/fangji/projects', {
+  method: 'POST', token: admin.token, status: 201, body: { name: `空编选历史 ${suffix}` }
+})
+const empty = await api(`/api/fangji/projects/${emptyProject.id}/adoption-batches?page=9`, { token: admin.token })
+assert.equal(empty.page, 1)
+assert.equal(empty.totalPages, 1)
+assert.equal(empty.totalItems, 0)
+assert.deepEqual(empty.batches, [])
+assert.equal((await api(listPath, { token: admin.token })).totalItems, 102, 'project histories remain isolated')
+
 console.log('PASS: adoption permissions cover all five identities; exceptions cannot override rights or rule prerequisites; unknown-reason exclusions leave pending; member swaps with identical counts are caught as scope drift')
+console.log('PASS: adoption history paginates 102 synthetic batches with stable ordering, reachable oldest details, last/empty pages, bounded input and project permissions')

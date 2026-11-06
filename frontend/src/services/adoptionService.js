@@ -2,8 +2,9 @@ import pb from '@/lib/pocketbase'
 
 // #315 D 用途编选的服务端入口。集合写规则全是 null：一律走 /api/fangji 路由，
 // 前端不直接读 adoption_batches / adoption_exceptions，权限与过滤都由服务端说了算。
-export async function listAdoptionBatches(projectId) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/adoption-batches`, {
+export async function listAdoptionBatches(projectId, { page = 1, perPage = 25 } = {}) {
+  const query = new URLSearchParams({ page: String(page), perPage: String(perPage) })
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/adoption-batches?${query}`, {
     requestKey: null
   })
 }
