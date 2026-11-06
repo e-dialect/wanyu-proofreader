@@ -1,5 +1,11 @@
 import pb from '@/lib/pocketbase'
 
+export async function getArbitrationQueue(projectId, anchor) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/arbitration-queue`, {
+    method: 'GET', query: { anchor, perPage: 25 }, requestKey: null
+  })
+}
+
 export async function getArbitrationCase(pageId, mode = '') {
   return pb.send(`/api/fangji/pages/${encodeURIComponent(pageId)}/arbitration`, {
     method: 'GET',

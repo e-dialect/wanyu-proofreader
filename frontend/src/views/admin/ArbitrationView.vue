@@ -19,21 +19,31 @@
         </div>
         <div class="editor-toolbar">
           <RouterLink v-if="mobile" :to="`/admin/projects/${projectId}?status=arbitration`" class="btn btn-quiet">返回列表</RouterLink>
-          <span v-if="casePage" class="task-position">{{ resolvedCount }} / {{ differingHeaders.length }} 项差异</span>
+          <span v-if="submitted" class="task-position">本条已保存</span>
+          <span v-else-if="casePage" class="task-position">{{ resolvedCount }} / {{ differingHeaders.length }} 项差异</span>
           <button
+            v-if="!submitted"
             class="btn btn-success btn-sm"
-            :disabled="submitting || loading || unresolvedHeaders.length > 0 || !caseData"
+            :disabled="submitting || loading || submitted || unresolvedHeaders.length > 0 || !caseData"
             @click="openSubmitReview"
           >{{ submitting ? '保存中…' : verificationMode ? '检查并完成核验' : '检查并完成仲裁' }}</button>
         </div>
       </header>
+      <nav v-if="!verificationMode" class="arbitration-queue" aria-label="待仲裁队列">
+        <span class="task-position" role="status">{{ queuePositionLabel }}</span>
+        <button class="btn btn-secondary btn-sm" :disabled="queueState !== 'ready' || !queueData?.previous || submitting || loading || submitted" @click="navigateQueue(queueData.previous)">上一条</button>
+        <button class="btn btn-secondary btn-sm" :disabled="queueState !== 'ready' || !queueData?.next || submitting || loading || submitted || unresolvedHeaders.length > 0" @click="navigateQueue(queueData.next, true)">下一条</button>
+        <button v-if="queueState === 'error'" class="btn btn-secondary btn-sm" :disabled="submitting" @click="submitted ? continueAfterSubmit() : loadQueue()">重试加载队列</button>
+      </nav>
+      <p v-if="!verificationMode && queueError" class="alert alert-error" role="alert">{{ queueError }}</p>
+      <p v-if="queueMessage" class="alert alert-success" role="status">{{ queueMessage }}</p>
     </template>
 
     <template #default="{ inputMode }">
     <div v-if="loading" class="panel-loading" aria-live="polite">正在加载校对结果与原文…</div>
     <div v-else-if="error" class="alert alert-error" role="alert">{{ error }}</div>
 
-    <template v-else-if="caseData">
+    <template v-else-if="caseData && !submitted">
       <section v-if="verificationData" class="alert" role="note">
         <strong>来源 PDF：{{ verificationData.context.source?.name || '未记录' }} · 物理第 {{ verificationData.context.pdf_page }} 页</strong>
         <p>{{ verificationData.context.policy?.instructions || '逐字段对照固定来源 PDF；约定版本尚未记录。' }}</p>
@@ -189,10 +199,10 @@
       </section>
     </template>
     </template>
-    <template #navigation><FieldNavigation :headers="visibleHeaders" :index="fieldIndex" :overview="overview" @select="selectField" @next="nextField">
+    <template #navigation><FieldNavigation v-if="caseData && !submitted" :headers="visibleHeaders" :index="fieldIndex" :overview="overview" @select="selectField" @next="nextField">
       <template #submit><button class="btn btn-success" @click="openSubmitReview">检查并提交</button></template>
     </FieldNavigation></template>
-    <template #keyboard><ProjectKeyboard v-if="casePage" :project-id="casePage.project" @availability="keyboardAvailable = $event" @insert="insertText" /></template>
+    <template #keyboard><ProjectKeyboard v-if="casePage && !submitted" :project-id="casePage.project" @availability="keyboardAvailable = $event" @insert="insertText" /></template>
   </DocumentReviewWorkspace>
 
   <AppModal
@@ -220,7 +230,7 @@ import AppModal from '@/components/AppModal.vue'
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
 import SourceJudgmentInput from '@/components/editor/SourceJudgmentInput.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { RouterLink, onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import DocumentReviewWorkspace from '@/components/editor/DocumentReviewWorkspace.vue'
 import FieldNavigation from '@/components/editor/FieldNavigation.vue'
 import { useFieldNavigation } from '@/composables/useFieldNavigation'
@@ -228,14 +238,19 @@ import ProjectKeyboard from '@/components/editor/ProjectKeyboard.vue'
 import { composeRowText, safeParseRowJson } from '@/composables/useStructuredRow'
 import { getDifferingHeadersForRows, getUnresolvedHeaders } from '@/lib/workspaceInsights'
 import { currentUserId as getCurrentUserId } from '@/services/authService'
-import { getArbitrationCase, submitArbitration } from '@/services/arbitrationService'
+import { getArbitrationCase, getArbitrationQueue, submitArbitration } from '@/services/arbitrationService'
+import { useArbitrationQueue } from '@/composables/useArbitrationQueue'
 import { getVerification, saveSourceJudgments } from '@/services/verificationService'
 import { getPbMessage } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
-const projectId = String(route.params.projectId || '')
-const pageId = String(route.params.pageId || '')
+const projectId = computed(() => String(route.params.projectId || ''))
+const pageId = computed(() => String(route.params.pageId || ''))
+const { state: queueState, error: queueError, data: queueData, refresh: refreshQueue, positionLabel: queuePositionLabel } = useArbitrationQueue(getArbitrationQueue)
+const queueMessage = ref('')
+const loadQueue = () => refreshQueue(projectId.value, pageId.value)
+let caseVersion = 0
 const verificationMode = computed(() => caseData.value?.mode === 'verification' || route.query.mode === 'verification')
 const verificationData = ref(null)
 const judgmentDrafts = reactive({})
@@ -282,27 +297,71 @@ const hasUnsubmittedWork = computed(() => !submitted.value && (touchedHeaders.si
 
 onMounted(() => {
   window.addEventListener('beforeunload', handleBeforeUnload)
-  loadCase()
 })
 
 onBeforeUnmount(() => {
+  caseVersion += 1
   window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 
-onBeforeRouteLeave(() => {
+function confirmLeave() {
   if (!hasUnsubmittedWork.value || submitting.value) return true
   return window.confirm('仲裁选择尚未提交，确定离开吗？')
-})
+}
+onBeforeRouteLeave(confirmLeave)
+onBeforeRouteUpdate(confirmLeave)
+
+watch(() => [projectId.value, pageId.value, route.query.mode], () => {
+  loadCase()
+  if (route.query.mode !== 'verification') loadQueue()
+}, { immediate: true })
+
+async function navigateQueue(item, forward = false) {
+  if (!item || submitting.value || loading.value) return
+  if (forward && unresolvedHeaders.value.length) {
+    submitError.value = '请先逐字段确认差异，再进入下一条。'
+    return
+  }
+  await router.push(`/admin/projects/${projectId.value}/arbitration/${item.id}`)
+}
+
+async function continueAfterSubmit() {
+  const version = caseVersion
+  const requestedPageId = pageId.value
+  const requestedProjectId = projectId.value
+  const result = await refreshQueue(requestedProjectId, requestedPageId)
+  if (version !== caseVersion || requestedPageId !== pageId.value || requestedProjectId !== projectId.value) return
+  if (!result) {
+    queueMessage.value = '本条仲裁已保存；加载后续队列失败，请重试继续。'
+    return
+  }
+  if (!result.totalItems) {
+    queueMessage.value = '本条仲裁已保存，当前待仲裁队列已处理完。'
+    return
+  }
+  const next = result.next || result.items[0]
+  await router.push(`/admin/projects/${requestedProjectId}/arbitration/${next.id}`)
+}
 
 async function loadCase() {
+  const version = ++caseVersion
+  const requestedPageId = pageId.value
+  const requestedProjectId = projectId.value
   loading.value = true
   error.value = ''
+  caseData.value = null; verificationData.value = null; attemptRows.value = []
+  for (const values of [originalRow, finalRow, resolutionSource, judgmentDrafts]) for (const key of Object.keys(values)) delete values[key]
+  resolvedHeaders.clear(); touchedHeaders.clear(); textareaRefs.clear()
+  note.value = ''; lastSavedNote.value = ''; progressMessage.value = ''; submitError.value = ''
+  submitted.value = false; reviewingSubmission.value = false; reviewSourceChecked.value = false; queueMessage.value = ''
+  submitting.value = false
   try {
-    const results = await Promise.allSettled([getArbitrationCase(pageId, route.query.mode === 'verification' ? 'verification' : ''), getVerification(pageId)])
+    const results = await Promise.allSettled([getArbitrationCase(requestedPageId, route.query.mode === 'verification' ? 'verification' : ''), getVerification(requestedPageId)])
+    if (version !== caseVersion) return
     for (const result of results) if (result.status === 'rejected') throw result.reason
     const [result, verification] = results.map(result => result.value)
     verificationData.value = verification
-    if (result?.page?.project && projectId && result.page.project !== projectId) {
+    if (result?.page?.project && requestedProjectId && result.page.project !== requestedProjectId) {
       throw new Error('仲裁条目与当前项目不匹配，请返回项目详情页后重新进入。')
     }
     caseData.value = result
@@ -333,9 +392,9 @@ async function loadCase() {
     showAllFields.value = true
     for (const field of headers.value) for (const target of ['final', ...attemptRows.value.map(item => item.attempt.id)]) judgmentFor(target, field)
   } catch (e) {
-    error.value = getPbMessage(e, '加载仲裁材料失败')
+    if (version === caseVersion) error.value = getPbMessage(e, '加载仲裁材料失败')
   } finally {
-    loading.value = false
+    if (version === caseVersion) loading.value = false
   }
 }
 
@@ -419,18 +478,25 @@ function judgmentPayload() {
 }
 async function saveProgress(defer) {
   if (submitting.value || !verificationData.value) return
+  const version = caseVersion
+  const requestedPageId = pageId.value
+  const requestedProjectId = projectId.value
+  const isCurrent = () => version === caseVersion && requestedPageId === pageId.value && requestedProjectId === projectId.value
   submitting.value = true; submitError.value = ''; progressMessage.value = ''
   try {
-    const result = await saveSourceJudgments(pageId, { basis: verificationData.value.context.basis, row: { ...finalRow }, judgments: judgmentPayload(), note: note.value, selections: { ...resolutionSource }, defer })
+    const result = await saveSourceJudgments(requestedPageId, { basis: verificationData.value.context.basis, row: { ...finalRow }, judgments: judgmentPayload(), note: note.value, selections: { ...resolutionSource }, defer })
+    if (!isCurrent()) return
     for (const event of result.judgments) {
       judgmentDrafts[`${event.ref}\u0000${event.field}`] = { state: event.payload.state, reason: event.payload.reason, location: event.payload.location, value: event.payload.value, replaces: event.id, dirty: false, stale: false }
     }
-    verificationData.value = await getVerification(pageId)
+    const verification = await getVerification(requestedPageId)
+    if (!isCurrent()) return
+    verificationData.value = verification
     touchedHeaders.clear()
     lastSavedNote.value = note.value
     progressMessage.value = defer ? '进度已保存，本条暂缓完成；不会混入业务已完成结果。' : '已保存实际判断及进度；未核实字段仍保持未记录。'
-  } catch (e) { submitError.value = getPbMessage(e, '保存判断失败') }
-  finally { submitting.value = false }
+  } catch (e) { if (isCurrent()) submitError.value = getPbMessage(e, '保存判断失败') }
+  finally { if (isCurrent()) submitting.value = false }
 }
 
 function onFinalInput(header) {
@@ -502,6 +568,7 @@ async function insertText(text) {
 }
 
 function openSubmitReview() {
+  if (loading.value || submitted.value || !caseData.value) return
   if (mobile.value && !overview.value) { overview.value = true; return }
   if (unresolvedHeaders.value.length || submitting.value) {
     submitError.value = unresolvedHeaders.value.length
@@ -525,7 +592,11 @@ function handleBeforeUnload(event) {
 }
 
 async function submitFinal() {
-  if (submitting.value || unresolvedHeaders.value.length) return
+  if (submitting.value || unresolvedHeaders.value.length || submitted.value || loading.value || !caseData.value) return
+  const version = caseVersion
+  const requestedPageId = pageId.value
+  const requestedProjectId = projectId.value
+  const isCurrent = () => version === caseVersion && requestedPageId === pageId.value && requestedProjectId === projectId.value
   submitting.value = true
   submitError.value = ''
   try {
@@ -536,21 +607,25 @@ async function submitFinal() {
       sourceChecked: reviewSourceChecked.value,
       judgments: judgmentPayload(), selections: { ...resolutionSource }
     }
-    if (verificationMode.value) await saveSourceJudgments(pageId, { ...body, complete: true, adoptFinal: casePage.value.status === 'approved' })
-    else await submitArbitration(pageId, body)
+    if (verificationMode.value) await saveSourceJudgments(requestedPageId, { ...body, complete: true, adoptFinal: casePage.value.status === 'approved' })
+    else await submitArbitration(requestedPageId, body)
+    if (!isCurrent()) return
     submitted.value = true
     reviewingSubmission.value = false
-    await router.push(verificationMode.value ? `/admin/projects/${projectId}/verification` : `/admin/projects/${projectId}?status=arbitration&arbitrated=1`)
+    if (verificationMode.value) await router.push(`/admin/projects/${requestedProjectId}/verification`)
+    else await continueAfterSubmit()
   } catch (e) {
+    if (!isCurrent()) return
     reviewingSubmission.value = false
     submitError.value = getPbMessage(e, '仲裁提交失败')
   } finally {
-    submitting.value = false
+    if (isCurrent()) submitting.value = false
   }
 }
 </script>
 
 <style scoped>
+.arbitration-queue { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .arbitration-summary { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
 .arbitration-workspace { overflow: hidden; border: 1px solid var(--gray-200); border-radius: var(--radius); background: var(--surface); }
 .arbitration-source-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }

@@ -1,0 +1,13 @@
+<html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">
+import { createApp, h } from 'vue'
+import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
+import Arbitration from '../../src/views/admin/ArbitrationView.vue'
+import pb from '../../src/lib/pocketbase'
+import '../../src/style.css'
+pb.authStore.save('synthetic-fixture', { id: 'synthetic-manager' })
+const router = createRouter({ history: createMemoryHistory(), routes: [
+  { path: '/admin/projects/:projectId/arbitration/:pageId', component: Arbitration }
+] })
+await router.push('/admin/projects/syntheticproject/arbitration/first')
+createApp({ render: () => h(RouterView) }).use(router).mount('#app')
+</script></html>

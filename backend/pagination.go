@@ -30,6 +30,7 @@ func (s *importService) registerPagination() {
 		e.Router.GET("/api/fangji/project-insights", s.projectInsights).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/pages", s.projectPages).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/pages/stats", s.projectPagesStats).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/fangji/projects/{projectId}/arbitration-queue", s.arbitrationQueue).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/proofreading-queues", s.proofreadingQueues).Bind(apis.RequireAuth("users"))
 		return e.Next()
 	})
