@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "host": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+  "workload": {
+    "added_entries": 100000,
+    "added_attempts": 200000,
+    "added_field_actions": 1600000,
+    "added_submission_events": 200000,
+    "project_proofreading_attempts": 200004
+  },
+  "judgment_events": 24,
+  "unoptimized": {
+    "library_commit": "f251830fa28dc6b659ad6f701cee5231cde059c8",
+    "library_sha256": "f21576807e718489e13f3dd42dfc8d01364558c954721af16f4a664704f074f6",
+    "strategy": "two complete aggregations; per-submitted-field LEFT JOIN; separate count and result queries",
+    "samples": 15,
+    "p50_ms": 7447.205,
+    "p95_ms": 7831.768,
+    "response_bytes": 1872
+  },
+  "optimized": {
+    "library_sha256": "0528a70c6ccb14bb5cb420efba61ddb4b6990e290ad2798126f356397265ce7a",
+    "strategy": "field totals plus latest known judgments; single SQL with pagination metadata",
+    "samples": 15,
+    "p50_ms": 2303.344,
+    "p95_ms": 2330.527,
+    "response_bytes": 1872
+  },
+  "method": "Two separate disposable full-migration runs on the same host with equivalent linked workload; 3 warm-ups and 15 sequential API samples per run. Historical judgment volume is 24, not a million-judgment worst-case benchmark."
+}

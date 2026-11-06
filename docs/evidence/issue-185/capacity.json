@@ -1,0 +1,336 @@
+{
+  "synthetic": true,
+  "host": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+  "method": "Temporary full-migration PocketBase; bulk storage fixture, not HTTP import throughput or human latency.",
+  "summary_library_sha256": "0528a70c6ccb14bb5cb420efba61ddb4b6990e290ad2798126f356397265ce7a",
+  "correctness": {
+    "event_failure_rolls_back_attempt_events_and_page": true,
+    "retry_after_removing_failure_succeeds_once": true,
+    "eight_fields_trace_original_and_submitted_values": true,
+    "ordinary_response_hides_manager_event_history": true,
+    "nonmember_denied": true,
+    "two_actors_all_eight_fields_recorded": true,
+    "arbitration_attempt_A_attempt_B_and_custom_trace": true,
+    "arbitration_preserves_original_submissions": true,
+    "ordinary_response_hides_other_submission_and_final_values": true
+  },
+  "before": {
+    "arbitration": {
+      "samples": 15,
+      "p50_ms": 2.275,
+      "p95_ms": 2.829,
+      "response_bytes": 2212
+    },
+    "verification": {
+      "samples": 15,
+      "p50_ms": 9.202,
+      "p95_ms": 20.906,
+      "response_bytes": 61431
+    },
+    "field-error-summary": {
+      "samples": 15,
+      "p50_ms": 3.21,
+      "p95_ms": 3.398,
+      "response_bytes": 1752
+    }
+  },
+  "browser_before": {
+    "synthetic": true,
+    "samples": 7,
+    "p50_ms": 221.036,
+    "p95_ms": 280.341,
+    "viewport": "1440x1000",
+    "fields": 8,
+    "source_pdf_rendered": true,
+    "backend_responses_mocked": false,
+    "method": "Actual built app; real backend forwarded same-origin; one warm-up then seven full navigations; wait for eight fields and rendered real PDF."
+  },
+  "capacity": {
+    "seed_seconds": 154.41,
+    "added_entries": 100000,
+    "added_attempts": 200000,
+    "added_field_actions": 1600000,
+    "added_submission_events": 200000,
+    "added_events": 1800000,
+    "total_entries": 100006,
+    "total_events": 1800114,
+    "project_proofreading_attempts": 200004,
+    "project_event_kinds": {
+      "field_action": 1600032,
+      "final_adoption": 1,
+      "judgment": 24,
+      "machine_analysis": 5,
+      "review_completed": 1,
+      "review_progress": 1,
+      "submission": 200004
+    },
+    "all_action_refs_actors_pages_and_fields_valid": true,
+    "native_sample_context_and_payload_bytes": 2453,
+    "seeded_action_context_and_payload_bytes": 2453,
+    "database_bytes": 8702820352,
+    "verification_events_table_bytes": 7391805440,
+    "proofreading_attempts_table_bytes": 821293056,
+    "verification_events_index_bytes": {
+      "idx_verification_events_page": 134160384,
+      "idx_verification_events_project": 157528064
+    },
+    "query_plans": {
+      "page_history": [
+        "SEARCH verification_events USING INDEX idx_verification_events_page (page=?)"
+      ],
+      "page_kind": [
+        "SEARCH verification_events USING INDEX idx_verification_events_page (page=?)"
+      ],
+      "project_kind": [
+        "SEARCH verification_events USING INDEX idx_verification_events_project (project=? AND kind=?)"
+      ],
+      "field_error_summary": [
+        "CO-ROUTINE ranked",
+        "CO-ROUTINE (subquery-7)",
+        "CO-ROUTINE (subquery-8)",
+        "CO-ROUTINE field_totals",
+        "SCAN a",
+        "SCAN field VIRTUAL TABLE INDEX 1:",
+        "USE TEMP B-TREE FOR GROUP BY",
+        "MATERIALIZE known_fields",
+        "CO-ROUTINE ordered_judgments",
+        "CO-ROUTINE (subquery-9)",
+        "SEARCH verification_events USING INDEX idx_verification_events_project (project=? AND kind=?)",
+        "USE TEMP B-TREE FOR ORDER BY",
+        "SCAN (subquery-9)",
+        "SCAN j",
+        "SEARCH a USING INDEX sqlite_autoindex_proofreading_attempts_1 (id=?)",
+        "SCAN field VIRTUAL TABLE INDEX 1:",
+        "USE TEMP B-TREE FOR GROUP BY",
+        "SCAN t",
+        "BLOOM FILTER ON k (field_name=?)",
+        "SEARCH k USING AUTOMATIC COVERING INDEX (field_name=?) LEFT-JOIN",
+        "USE TEMP B-TREE FOR ORDER BY",
+        "SCAN (subquery-8)",
+        "SCAN (subquery-7)",
+        "SCAN ranked",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    "query_plan_sqlite_version": "3.54.0"
+  },
+  "summary_growth": {
+    "added_submission_fields": 1600000,
+    "added_submissions_per_field": 200000,
+    "all_fields_grow_without_fabricated_judgments": true,
+    "before": {
+      "字段0": {
+        "incorrectCount": 1,
+        "pendingCount": 0,
+        "withdrawnCount": 0,
+        "field": "字段0",
+        "evaluatedCount": 2,
+        "unverifiedCount": 2,
+        "unrecordedCount": 2,
+        "submittedFields": 4,
+        "correctCount": 1
+      },
+      "字段1": {
+        "field": "字段1",
+        "correctCount": 1,
+        "pendingCount": 0,
+        "withdrawnCount": 0,
+        "unrecordedCount": 2,
+        "submittedFields": 4,
+        "incorrectCount": 1,
+        "evaluatedCount": 2,
+        "unverifiedCount": 2
+      },
+      "字段2": {
+        "field": "字段2",
+        "incorrectCount": 2,
+        "pendingCount": 0,
+        "withdrawnCount": 0,
+        "unrecordedCount": 2,
+        "submittedFields": 4,
+        "correctCount": 0,
+        "evaluatedCount": 2,
+        "unverifiedCount": 2
+      },
+      "字段3": {
+        "field": "字段3",
+        "incorrectCount": 1,
+        "unverifiedCount": 2,
+        "pendingCount": 0,
+        "withdrawnCount": 0,
+        "submittedFields": 4,
+        "correctCount": 1,
+        "evaluatedCount": 2,
+        "unrecordedCount": 2
+      },
+      "字段4": {
+        "submittedFields": 4,
+        "correctCount": 1,
+        "evaluatedCount": 2,
+        "unverifiedCount": 2,
+        "unrecordedCount": 2,
+        "field": "字段4",
+        "incorrectCount": 1,
+        "pendingCount": 0,
+        "withdrawnCount": 0
+      },
+      "字段5": {
+        "field": "字段5",
+        "correctCount": 1,
+        "unverifiedCount": 2,
+        "withdrawnCount": 0,
+        "unrecordedCount": 2,
+        "submittedFields": 4,
+        "incorrectCount": 1,
+        "evaluatedCount": 2,
+        "pendingCount": 0
+      },
+      "字段6": {
+        "submittedFields": 4,
+        "incorrectCount": 1,
+        "evaluatedCount": 2,
+        "unrecordedCount": 2,
+        "field": "字段6",
+        "correctCount": 1,
+        "unverifiedCount": 2,
+        "pendingCount": 0,
+        "withdrawnCount": 0
+      },
+      "字段7": {
+        "unrecordedCount": 2,
+        "submittedFields": 4,
+        "incorrectCount": 1,
+        "pendingCount": 0,
+        "withdrawnCount": 0,
+        "field": "字段7",
+        "correctCount": 1,
+        "evaluatedCount": 2,
+        "unverifiedCount": 2
+      }
+    },
+    "after": {
+      "字段0": {
+        "submittedFields": 200004,
+        "correctCount": 1,
+        "evaluatedCount": 2,
+        "withdrawnCount": 0,
+        "field": "字段0",
+        "incorrectCount": 1,
+        "unverifiedCount": 200002,
+        "pendingCount": 0,
+        "unrecordedCount": 200002
+      },
+      "字段1": {
+        "field": "字段1",
+        "correctCount": 1,
+        "incorrectCount": 1,
+        "evaluatedCount": 2,
+        "pendingCount": 0,
+        "submittedFields": 200004,
+        "unverifiedCount": 200002,
+        "withdrawnCount": 0,
+        "unrecordedCount": 200002
+      },
+      "字段2": {
+        "withdrawnCount": 0,
+        "field": "字段2",
+        "correctCount": 0,
+        "incorrectCount": 2,
+        "evaluatedCount": 2,
+        "unverifiedCount": 200002,
+        "pendingCount": 0,
+        "unrecordedCount": 200002,
+        "submittedFields": 200004
+      },
+      "字段3": {
+        "withdrawnCount": 0,
+        "unrecordedCount": 200002,
+        "field": "字段3",
+        "correctCount": 1,
+        "pendingCount": 0,
+        "submittedFields": 200004,
+        "incorrectCount": 1,
+        "evaluatedCount": 2,
+        "unverifiedCount": 200002
+      },
+      "字段4": {
+        "submittedFields": 200004,
+        "correctCount": 1,
+        "evaluatedCount": 2,
+        "unverifiedCount": 200002,
+        "pendingCount": 0,
+        "unrecordedCount": 200002,
+        "field": "字段4",
+        "incorrectCount": 1,
+        "withdrawnCount": 0
+      },
+      "字段5": {
+        "pendingCount": 0,
+        "withdrawnCount": 0,
+        "unrecordedCount": 200002,
+        "field": "字段5",
+        "correctCount": 1,
+        "incorrectCount": 1,
+        "submittedFields": 200004,
+        "evaluatedCount": 2,
+        "unverifiedCount": 200002
+      },
+      "字段6": {
+        "field": "字段6",
+        "submittedFields": 200004,
+        "incorrectCount": 1,
+        "pendingCount": 0,
+        "unrecordedCount": 200002,
+        "correctCount": 1,
+        "evaluatedCount": 2,
+        "unverifiedCount": 200002,
+        "withdrawnCount": 0
+      },
+      "字段7": {
+        "pendingCount": 0,
+        "field": "字段7",
+        "correctCount": 1,
+        "incorrectCount": 1,
+        "evaluatedCount": 2,
+        "unverifiedCount": 200002,
+        "withdrawnCount": 0,
+        "unrecordedCount": 200002,
+        "submittedFields": 200004
+      }
+    }
+  },
+  "seeded_api": {
+    "first_and_last_seeded_pages_expose_only_own_eight_actions_and_submission": true
+  },
+  "after": {
+    "arbitration": {
+      "samples": 15,
+      "p50_ms": 2.107,
+      "p95_ms": 2.477,
+      "response_bytes": 2212
+    },
+    "verification": {
+      "samples": 15,
+      "p50_ms": 10.047,
+      "p95_ms": 19.479,
+      "response_bytes": 61431
+    },
+    "field-error-summary": {
+      "samples": 15,
+      "p50_ms": 2303.344,
+      "p95_ms": 2330.527,
+      "response_bytes": 1872
+    }
+  },
+  "browser_after": {
+    "synthetic": true,
+    "samples": 7,
+    "p50_ms": 244.191,
+    "p95_ms": 316.054,
+    "viewport": "1440x1000",
+    "fields": 8,
+    "source_pdf_rendered": true,
+    "backend_responses_mocked": false,
+    "method": "Actual built app; real backend forwarded same-origin; one warm-up then seven full navigations; wait for eight fields and rendered real PDF."
+  }
+}
