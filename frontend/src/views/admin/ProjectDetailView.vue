@@ -379,11 +379,7 @@
               <div class="progress mt-2">
                 <div class="progress-bar" :style="{ width: csvJobProgress + '%' }"></div>
               </div>
-              <div class="text-sm mt-2">
-                已处理 {{ csvJob.processed_count || 0 }} 条；
-                成功 {{ csvJob.success_count || 0 }} 条；
-                跳过 {{ csvJob.failed_count || 0 }} 条
-              </div>
+              <div class="text-sm mt-2">{{ csvJobProgressText(csvJob) }}</div>
               <div class="text-sm text-muted mt-1">
                 {{ csvJob.source_link === 'linked' ? '本批已关联来源。' : '本批未关联来源，已标为 source:unknown。' }}
               </div>
@@ -509,6 +505,7 @@
                   <th>入库</th>
                   <th>跳过</th>
                   <th>失败</th>
+                  <th>对账</th>
                   <th>来源</th>
                 </tr>
               </thead>
@@ -522,14 +519,21 @@
                   <td>{{ batch.inserted_count }}</td>
                   <td>{{ batch.skipped_count }}</td>
                   <td>{{ batch.failed_count }}</td>
-                  <td>{{ batch.source_logical_id || (batch.source_link === 'unknown' ? '未登记来源' : '—') }}</td>
+                  <td>{{ batch.counts_label }}<span v-if="batch.counts_note" class="text-muted">（{{ batch.counts_note }}）</span></td>
+                  <td>{{ batch.source_hint || batch.source_logical_id || (batch.source_link === 'unknown' ? '未登记来源' : '—') }}</td>
                 </tr>
                 <tr v-if="!ledger.batches.length">
-                  <td colspan="9" class="text-muted">还没有导入批次。</td>
+                  <td colspan="10" class="text-muted">还没有导入批次。</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <ul v-if="ledger.errors && ledger.errors.length" class="text-sm mt-3">
+            <li v-for="item in ledger.errors" :key="`${item.job}-${item.error_code}-${item.column_name}`">
+              作业 <code>{{ item.job }}</code> · {{ item.error_code }} · 字段 {{ item.column_name || '—' }} · {{ item.count }} 条 · 首行 {{ item.first_row }} · {{ item.message }}
+            </li>
+          </ul>
+          <p v-if="ledger.errors_omitted" class="text-sm text-muted mt-2">另有 {{ ledger.errors_omitted }} 组未列出。</p>
         </template>
       </section>
 
@@ -739,7 +743,7 @@
                （引擎需要它），但它建不出真实作业——这句话必须在按钮旁边说。 -->
           <p v-if="testOnlySchemes.length" class="text-sm text-muted">
             {{ testOnlySchemes.join('、') }} 声明为「仅测试」（rule_status=test）：可以选中，但服务端会拒绝用它创建真实转换作业。
-            真实方案随 #189 交付，届时那份规则写 rule_status=production 并给出出处。
+            依据不足的登记保持 decline，不会猜成生产规则。
           </p>
           <p v-if="schemeError" class="alert alert-error" role="alert">{{ schemeError }}</p>
           <p v-if="schemeSuccess" class="alert alert-success" role="status">{{ schemeSuccess }}</p>
@@ -930,7 +934,7 @@ import { clearBlockedReason, getBlockedReason, setBlockedReason } from '@/servic
 import { useAuthStore } from '@/stores/auth'
 import { currentUserId } from '@/services/authService'
 import { commitCsvImport, createCsvInspection, getImportJob, listImportJobErrors, listImportLedger, startOcr } from '@/services/importJobsService'
-import { csvFatalMessage, parseCsvInspection } from '@/lib/csvInspection'
+import { csvFatalMessage, csvImportResultText, csvJobProgressText, parseCsvInspection } from '@/lib/csvInspection'
 import { exportVerification } from '@/services/verificationService'
 import { downloadText } from '@/lib/downloadText'
 import { downloadProjectExport } from '@/services/projectExportService'
@@ -1261,7 +1265,7 @@ const csvJobStatusLabel = computed(() => ({
   queued: '等待后端处理',
   processing: '后端正在导入',
   completed: '导入完成',
-  completed_with_errors: '导入完成，部分条目已跳过',
+  completed_with_errors: '导入完成，部分条目失败未入库',
   failed: '导入失败'
 })[csvJob.value?.status] || '准备导入')
 const csvInspection = computed(() => parseCsvInspection(csvJob.value?.inspection_json))
@@ -1701,7 +1705,7 @@ async function uploadCsv() {
     } else if (job.status === 'validated') {
       const inspection = parseCsvInspection(job.inspection_json)
       csvSuccess.value = inspection
-        ? `后端预检完成：${inspection.validRows} 条可导入，${inspection.invalidRows} 条需跳过。请确认后开始导入。`
+        ? csvImportResultText(job)
         : '后端预检完成，请确认后开始导入。'
       if (job.failed_count > 0) {
         const result = await listImportJobErrors(job.id, 1, 100)
@@ -1740,9 +1744,7 @@ async function confirmCsvImport() {
       await loadLedger()
       return
     }
-    csvSuccess.value = job.failed_count > 0
-      ? `成功导入 ${job.success_count} 条，跳过 ${job.failed_count} 条错误记录。`
-      : `成功导入 ${job.success_count} 条待校对任务！`
+    csvSuccess.value = csvImportResultText(job)
     if (job.failed_count > 0) {
       const result = await listImportJobErrors(job.id, 1, 100)
       csvImportErrors.value = result.items

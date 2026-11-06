@@ -84,6 +84,8 @@ async function download(query = '', token = admin.token, status = 200) {
 const jsonl = await download('format=jsonl')
 const records = jsonl.data.toString('utf8').trim().split('\n').map(JSON.parse)
 const meta = records[0].export_metadata
+assert.equal(meta.schema_version, 'WanyuExport/v2')
+assert.match(meta.normalization, /stored_conversion_only/)
 const entries = records.slice(1)
 assert.equal(records[0].type, 'metadata')
 assert.equal(meta.exported_count, expected.length)
@@ -114,6 +116,8 @@ for (let i = 0; i < entries.length; i++) {
   assert.equal(entry.schema_version, meta.schema_version)
   assert.equal(entry.normalized_reading, '')
   assert.equal(entry.normalization_rule_version, '')
+  assert.equal(entry.source_trace, page.source_system && page.source_id && page.source_version ? 'registered' : 'unknown')
+  assert.equal(entry.proofread_scope, page.status === 'approved' ? 'in_proofread_range' : 'outside_final_proofread')
 }
 assert.ok(entries.some((entry) => entry.consensus === 'unanimous') && entries.some((entry) => entry.consensus === 'arbitrated') && entries.some((entry) => entry.consensus === 'not_final'))
 assert.ok(!jsonl.data.includes(Buffer.from('禁止泄露的半行')))
@@ -132,7 +136,7 @@ assert.equal(csvRows.at(-1).pdf_page, '0')
 for (let i = 0; i < csvRows.length; i++) {
   const row = csvRows[i], entry = entries[i]
   assert.equal(JSON.parse(row.export_metadata).exported_count, csvRows.length)
-  for (const name of ['pdf_page', 'entry_id', 'status', 'source_system', 'source_id', 'source_version', 'source_entry_id', 'import_job', 'quality_state', 'proofread_rounds', 'proofread_count', 'consensus', 'arbitrated_by', 'arbitrated_at', 'schema_version', 'normalized_reading', 'normalization_rule_version']) assert.equal(row[name], String(entry[name]), name)
+  for (const name of ['pdf_page', 'entry_id', 'status', 'source_system', 'source_id', 'source_version', 'source_entry_id', 'import_job', 'quality_state', 'proofread_rounds', 'proofread_count', 'consensus', 'arbitrated_by', 'arbitrated_at', 'schema_version', 'normalized_reading', 'normalization_rule_version', 'source_trace', 'proofread_scope', 'normalization_source', 'normalization_status']) assert.equal(row[name], String(entry[name]), name)
   assert.equal(row.content_basis, expected[i].status === 'approved' ? 'final_proofread' : 'original_not_final')
 }
 const again = (await download('format=jsonl')).data.toString('utf8').trim().split('\n').map(JSON.parse)

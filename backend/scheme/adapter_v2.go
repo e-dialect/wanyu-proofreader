@@ -312,6 +312,9 @@ func (f *adapterV2File) compile(path string, target *Scheme) (*Adapter, error) {
 		if tone.Category == "" && tone.MissingCategoryReason == "" {
 			return nil, ErrInvalidRule{Reason: tone.ID + ": a tone without a category must say why in missing_category_reason"}
 		}
+		if f.RuleStatus == RuleStatusProduction && tone.Category == "" {
+			return nil, ErrInvalidRule{Reason: tone.ID + ": a production rule set cannot leave a tone without a category. Keep rule_status=test and missing_category_reason until the book gives the class; do not guess one."}
+		}
 		toneKey := "tone:" + tone.Notation
 		if seenNotation[toneKey] {
 			return nil, ErrInvalidRule{Reason: "duplicate source tone notation " + tone.Notation}

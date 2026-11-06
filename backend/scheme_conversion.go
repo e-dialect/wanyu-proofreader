@@ -71,10 +71,61 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 		names = append(names, entry.Name())
 	}
 	sort.Strings(names) // 目录迭代无序；同名方案冲突时要报出稳定的那一个
+	type ruleFileHead struct {
+		SchemaVersion     int    `json:"schema_version"`
+		SourceSchemeID    string `json:"source_scheme_id"`
+		CanonicalSchemeID string `json:"canonical_scheme_id"`
+		SchemeID          string `json:"scheme_id"`
+	}
+	heads := make(map[string]ruleFileHead, len(names))
 	for _, name := range names {
-		adapter, err := scheme.LoadAdapter(filepath.Join(registry.dir, name))
-		if err != nil {
-			return nil, fmt.Errorf("规则文件 %s 无法载入: %w", name, err)
+		raw, readErr := os.ReadFile(filepath.Join(registry.dir, name))
+		if readErr != nil {
+			return nil, fmt.Errorf("读取规则文件 %s 失败: %w", name, readErr)
+		}
+		var head ruleFileHead
+		if unmarshalErr := json.Unmarshal(raw, &head); unmarshalErr != nil {
+			return nil, fmt.Errorf("规则文件 %s 无法载入: %w", name, unmarshalErr)
+		}
+		heads[name] = head
+	}
+	targets := map[string]*scheme.Scheme{}
+	for _, name := range names {
+		head := heads[name]
+		if head.SourceSchemeID != "" || head.SchemeID == "" {
+			continue
+		}
+		target, loadErr := scheme.LoadScheme(filepath.Join(registry.dir, name))
+		if loadErr != nil {
+			return nil, fmt.Errorf("目标方案 %s 无法载入: %w", name, loadErr)
+		}
+		if _, dup := targets[target.SchemeID]; dup {
+			return nil, fmt.Errorf("目标方案文件 %s 与已载入的 scheme_id %s 重复", name, target.SchemeID)
+		}
+		targets[target.SchemeID] = target
+	}
+	for _, name := range names {
+		head := heads[name]
+		if head.SourceSchemeID == "" && head.SchemeID != "" {
+			continue
+		}
+		if head.SourceSchemeID == "" {
+			return nil, fmt.Errorf("规则文件 %s 既不是转换规则，也不是目标方案", name)
+		}
+		path := filepath.Join(registry.dir, name)
+		var adapter *scheme.Adapter
+		var loadErr error
+		if head.SchemaVersion >= scheme.RealJobSchemaVersion {
+			target := targets[head.CanonicalSchemeID]
+			if target == nil {
+				return nil, fmt.Errorf("规则文件 %s 是 schema_version %d，需要同目录提供目标方案 %s", name, head.SchemaVersion, head.CanonicalSchemeID)
+			}
+			adapter, loadErr = scheme.LoadAdapterWithScheme(path, target)
+		} else {
+			adapter, loadErr = scheme.LoadAdapter(path)
+		}
+		if loadErr != nil {
+			return nil, fmt.Errorf("规则文件 %s 无法载入: %w", name, loadErr)
 		}
 		if existing, dup := registry.adapters[adapter.SourceScheme]; dup {
 			return nil, fmt.Errorf("规则文件 %s 与已载入的方案 %s（rule_version %s）同名，方案标识必须唯一",
@@ -136,6 +187,12 @@ func (r *schemeRegistry) jobAdapter(sourceScheme string) (*scheme.Adapter, strin
 		return nil, ""
 	}
 	if !adapter.MayDriveRealJobs() {
+		if adapter.SchemaVersion >= scheme.RealJobSchemaVersion {
+			return adapter, fmt.Sprintf(
+				"「%s」声明的是 rule_status=%q（rule_version %s），只能用于测试，不能创建真实转换作业。"+
+					"它已经按 source → IPA → target 登记；依据不足的音节会 decline，不会猜成生产规则。",
+				adapter.SourceScheme, adapter.RuleStatus, adapter.RuleVersion)
+		}
 		return adapter, fmt.Sprintf(
 			"「%s」声明的是 rule_status=%q，只能用于测试，不能创建真实转换作业。"+
 				"真实方案要等 #189 把各书凡例转写成 source 侧清单后交付（届时那份规则写 rule_status=%q 并给出 rule_status_basis）。",

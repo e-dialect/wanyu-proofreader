@@ -382,3 +382,63 @@ func TestReviewBlockedReasonIsFourDifferentSentences(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadSchemeRegistryLoadsV2BesideItsTarget(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		filepath.Join("scheme", "data", "hinghwa_canonical.json"),
+		filepath.Join("scheme", "data", "source", "puxian-dict-preface.json"),
+	} {
+		raw, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(dir, filepath.Base(name)), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv(schemeAdapterDirEnv, dir)
+	registry, err := loadSchemeRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := registry.adapters["puxian-dict"]
+	if adapter == nil {
+		t.Fatal("v2 source rules were not loaded")
+	}
+	if _, ok := registry.adapters["puxian-xiangyin"]; ok {
+		t.Fatal("the target scheme was registered as a source adapter")
+	}
+	if adapter.MayDriveRealJobs() {
+		t.Fatal("partial 凡例 must not drive real jobs")
+	}
+	_, refused := registry.jobAdapter("puxian-dict")
+	for _, want := range []string{"只能用于测试", "不会猜", adapter.RuleVersion} {
+		if !strings.Contains(refused, want) {
+			t.Errorf("refusal %q does not mention %q", refused, want)
+		}
+	}
+	result := scheme.Convert("bɑk4dou453", adapter)
+	if result.Status != scheme.Unsupported || result.CanonicalPronunciation != "" {
+		t.Fatalf("documented syllable was guessed: %+v", result)
+	}
+	if result.RuleVersion != adapter.RuleVersion || len(result.Trace) == 0 {
+		t.Fatalf("conversion is not traceable: %+v", result)
+	}
+}
+
+func TestLoadSchemeRegistryRefusesV2WithoutTarget(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("scheme", "data", "source", "puxian-dict-preface.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err = os.WriteFile(filepath.Join(dir, "puxian-dict-preface.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(schemeAdapterDirEnv, dir)
+	_, err = loadSchemeRegistry()
+	if err == nil || !strings.Contains(err.Error(), "目标方案") {
+		t.Fatalf("v2 without its target scheme loaded: %v", err)
+	}
+}

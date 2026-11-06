@@ -69,6 +69,7 @@
             <strong>{{ eventLabel(event.kind) }} · {{ event.created }}</strong>
             <p>{{ event.payload.reason }} · 操作者 {{ event.actor }} · 核查者 {{ event.payload.reviewer }}</p>
             <p v-if="event.payload.responsible">上游 {{ event.payload.target }} · 责任人 {{ event.payload.responsible }}</p>
+            <p v-if="event.kind === 'receipt'">{{ receiptEventNote(event) }}</p>
             <p v-if="event.payload.evidence">凭据：{{ event.payload.evidence }}</p>
             <p class="text-sm">事件编号：{{ event.id }}</p>
           </div>
@@ -86,6 +87,7 @@
       <form class="settings-form" @submit.prevent="saveEvent">
         <label class="form-group"><span class="form-label">动作</span><select v-model="eventForm.kind" class="form-control"><option v-for="(label, value) in eventLabels" :key="value" :value="value">{{ label }}</option></select></label>
         <template v-if="eventForm.kind === 'receipt'">
+          <p class="text-sm text-muted">对方自动回传尚未接入。这条记录是人工回执，写在当前包标识和第 {{ selected.version }} 版上。失败会记成整体失败，不会改成尚未回执。</p>
           <label class="form-group"><span class="form-label">消费方导入结果</span><select v-model="eventForm.status" class="form-control"><option value="success">全部成功</option><option value="partial_conflict">部分冲突</option><option value="failed_rolled_back">整体失败并回滚</option></select></label>
           <label class="form-group"><span class="form-label">影响条数（冲突时填冲突条数）</span><input v-model.number="eventForm.affected" type="number" min="0" :max="selected.reconciliation.payload_count" class="form-control" required /></label>
         </template>
@@ -140,10 +142,18 @@ const eventForm = reactive({ kind: 'receipt', status: 'success', affected: 0, re
 // unfinished upstream work once a resend is allowed.
 const receiptLabel = (item) => {
   const base = { awaiting_receipt: '对方尚未回执', success: '全部成功', partial_conflict: '部分冲突', failed_rolled_back: '整体失败并回滚' }[item.receipt_state] || item.receipt_state
-  if (item.receipt_state !== 'partial_conflict') return base
-  return item.pending_actions.length ? `${base}，待上游处理` : `${base}，已登记处置`
+  const label = item.receipt_state === 'partial_conflict'
+    ? (item.pending_actions.length ? `${base}，待上游处理` : `${base}，已登记处置`)
+    : base
+  if (item.receipt_channel === 'manual') return `${label}（人工回执，对方自动回传未接入）`
+  return label
 }
 const eventLabel = (value) => eventLabels[value] || value
+const receiptEventNote = (event) => {
+  const payload = event?.payload || {}
+  const channel = payload.channel || 'manual'
+  return `影响 ${payload.affected} 条 · ${channel === 'manual' ? '人工回执' : channel}`
+}
 const purposeLabel = (value) => USAGE_PURPOSE_LABELS[value] || value
 const percent = (value) => `${(value * 100).toFixed(1)}%`
 function invalidatePreview() { preview.value = null; confirmed.value = false }

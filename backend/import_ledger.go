@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
+
+const importLedgerErrorGroupLimit = 50
 
 // registerImportLedger 挂载批次台账只读端点，回答 #317 A1.2 的「行数 / 来源覆盖 / 未知来源计数」。
 func (s *importService) registerImportLedger() {
@@ -146,6 +149,7 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 
 	batchViews := make([]map[string]any, 0, len(batches))
 	for _, b := range batches {
+		label, note := importCountBalance(b.Status, b.Mode, b.TotalCount, b.SuccessCount, b.FailedCount, b.SkippedCount, b.InsertedCount)
 		batchViews = append(batchViews, map[string]any{
 			"id":                b.ID,
 			"created":           b.Created,
@@ -158,14 +162,24 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 			"failed_count":      b.FailedCount,
 			"skipped_count":     b.SkippedCount,
 			"inserted_count":    b.InsertedCount,
+			"counts_label":      label,
+			"counts_note":       note,
 			"source_link":       b.SourceLink,
 			"source_logical_id": b.SourceLogicalID,
 			"source_title":      b.SourceTitle,
+			"source_hint":       importSourceHint(b.SourceLink, b.SourceLogicalID),
 		})
 	}
 
+	errorViews, errorsOmitted, err := s.importLedgerErrors(projectID)
+	if err != nil {
+		return apis.NewBadRequestError("读取导入错误失败。", err)
+	}
+
 	return c.JSON(http.StatusOK, map[string]any{
-		"batches": batchViews,
+		"batches":        batchViews,
+		"errors":         errorViews,
+		"errors_omitted": errorsOmitted,
 		"summary": map[string]any{
 			"total_batches":       totalBatches,
 			"total_rows":          totalRows,
@@ -175,4 +189,121 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 			"sources":             sources,
 		},
 	})
+}
+
+// importCountBalance 只在作业终态对账。成功与失败必须加总等于输入；
+// 跳过是成功处理里的重复自然键，不另算一行输入，也不增加入库条数。
+// 当前留存少于「成功减去跳过」时不叫一致，也不把合法删除改写成导入失败。
+func importCountBalance(status, mode string, total, success, failed, skipped, inserted int) (string, string) {
+	switch status {
+	case "queued", "inspecting", "processing", "":
+		return "进行中", ""
+	case "failed", "error":
+		if mode == "ocr" {
+			return "不适用", "识别作业没有完成，不按导入成功条数对账。"
+		}
+		return "失败", "作业没有完成，不能按成功对账。"
+	}
+	if total != success+failed {
+		return "不一致", "输入条数与成功加失败不一致，不能把对不上的条目当成成功。"
+	}
+	if skipped > success {
+		return "不一致", "跳过条数多于成功处理数。"
+	}
+	// 预检的成功数是还可导入的行，确认前本来就还没有留存。
+	if status == "validated" {
+		if inserted != 0 {
+			return "不一致", "预检尚未确认导入，但库里已经有本批条目。"
+		}
+		if failed > 0 {
+			return "一致", "失败条目没有计入可导入数，也还没有入库。"
+		}
+		return "一致", ""
+	}
+	expected := success - skipped
+	switch {
+	case inserted > expected:
+		return "不一致", "当前留存条数多于成功入库数。"
+	case inserted < expected:
+		return "需核对", fmt.Sprintf(
+			"当前留存比历史成功入库少 %d 条。这不是把删除改写成导入失败；历史成功数仍是 %d，当前留存是 %d。",
+			expected-inserted, success, inserted,
+		)
+	case failed > 0:
+		return "一致", "失败条目没有计入成功，也没有入库。"
+	case skipped > 0:
+		return "一致", "重复条目记为跳过，包含在成功处理数中，但不增加入库条数。"
+	default:
+		return "一致", ""
+	}
+}
+
+func importSourceHint(link, logicalID string) string {
+	if link == "linked" && logicalID != "" {
+		return "已关联登记来源 " + logicalID + "。"
+	}
+	return "未关联已登记来源，已标为 source:unknown。这不是把条目算作成功挂到某个来源上。"
+}
+
+type importLedgerErrorRow struct {
+	Job     string `db:"job"`
+	Row     int    `db:"row_number"`
+	Column  string `db:"column_name"`
+	Code    string `db:"error_code"`
+	Message string `db:"message"`
+}
+
+func (s *importService) importLedgerErrors(projectID string) ([]map[string]any, int, error) {
+	rows := []importLedgerErrorRow{}
+	err := s.app.DB().NewQuery(
+		`SELECT e.job AS job,
+		        e.row_number AS row_number,
+		        COALESCE(e.column_name, '') AS column_name,
+		        COALESCE(e.error_code, '') AS error_code,
+		        COALESCE(e.message, '') AS message
+		 FROM import_job_errors e
+		 INNER JOIN import_jobs j ON j.id = e.job
+		 WHERE j.project = {:project}
+		 ORDER BY e.job, e.row_number, e.id`,
+	).Bind(dbx.Params{"project": projectID}).All(&rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	type group struct {
+		job, code, column, message string
+		count, firstRow            int
+	}
+	order := []string{}
+	groups := map[string]*group{}
+	for _, row := range rows {
+		key := row.Job + "\x00" + row.Code + "\x00" + row.Column
+		item, ok := groups[key]
+		if !ok {
+			item = &group{job: row.Job, code: row.Code, column: row.Column, message: row.Message, firstRow: row.Row}
+			groups[key] = item
+			order = append(order, key)
+		}
+		item.count++
+	}
+	views := make([]map[string]any, 0, len(order))
+	for _, key := range order {
+		item := groups[key]
+		views = append(views, map[string]any{
+			"job":         item.job,
+			"error_code":  item.code,
+			"column_name": item.column,
+			"count":       item.count,
+			"first_row":   item.firstRow,
+			"message":     item.message,
+		})
+	}
+	views, omitted := limitLedgerErrorGroups(views, importLedgerErrorGroupLimit)
+	return views, omitted, nil
+}
+
+func limitLedgerErrorGroups(views []map[string]any, limit int) ([]map[string]any, int) {
+	if limit < 1 || len(views) <= limit {
+		return views, 0
+	}
+	return views[:limit], len(views) - limit
 }

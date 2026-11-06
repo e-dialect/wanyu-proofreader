@@ -19,6 +19,37 @@ export function parseCsvInspection(value) {
   }
 }
 
+export function csvJobProgressText(job) {
+  if (!job) return ''
+  const input = Number(job.total_count || 0)
+  const processed = Number(job.processed_count || 0)
+  const success = Number(job.success_count || 0)
+  const failed = Number(job.failed_count || 0)
+  const skipped = Number(job.skipped_count || 0)
+  const preview = job.status === 'validated' || job.status === 'inspecting'
+  const parts = [
+    `输入 ${input} 条`,
+    `已处理 ${processed} 条`,
+    preview ? `可导入 ${success} 条` : `成功 ${success} 条`,
+    preview ? `错误 ${failed} 条（不会计入成功）` : `失败 ${failed} 条（未计入成功）`
+  ]
+  if (skipped > 0) parts.push(`重复跳过 ${skipped} 条（不新增入库）`)
+  return parts.join('；')
+}
+
+export function csvImportResultText(job) {
+  if (!job) return ''
+  const success = Number(job.success_count || 0)
+  const failed = Number(job.failed_count || 0)
+  if (job.status === 'validated') {
+    return `后端预检完成：${success} 条可导入，${failed} 条错误已定位，不会计入成功。请确认后开始导入。`
+  }
+  if (failed > 0) {
+    return `成功导入 ${success} 条，${failed} 条错误未导入。失败没有计为成功。`
+  }
+  return `成功导入 ${success} 条待校对任务。`
+}
+
 export function csvFatalMessage(job, fallback = 'CSV 后端处理失败') {
   if (!job || job.status !== 'failed') return ''
   const code = job.error_code ? `[${job.error_code}] ` : ''

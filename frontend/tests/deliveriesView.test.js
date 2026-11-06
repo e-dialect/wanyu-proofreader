@@ -15,12 +15,14 @@ function extract(pattern, label) {
 }
 
 const receiptLabelSource = extract(/\nconst receiptLabel = (\(item\) => \{[\s\S]*?\n\})\n/, 'receiptLabel')
+const receiptEventNoteSource = extract(/\nconst receiptEventNote = (\(event\) => \{[\s\S]*?\n\})\n/, 'receiptEventNote')
 const loadBody = extract(/\nasync function load\(\) \{([\s\S]*?)\n\}\n/, 'load()')
 const errorImports = source.match(/import \{([^}]+)\} from '@\/utils\/pbErrors'/)
 assert.ok(errorImports, 'component must declare its error helper imports')
 const helpers = Object.fromEntries(errorImports[1].split(',').map((name) => [name.trim(), pbErrors[name.trim()]]))
 
 const receiptLabel = new Function(`return (${receiptLabelSource})`)()
+const receiptEventNote = new Function(`return (${receiptEventNoteSource})`)()
 
 async function runLoad(listDeliveries, initial = {}) {
   const bindings = {
@@ -41,6 +43,23 @@ async function runLoad(listDeliveries, initial = {}) {
 test('已处置的冲突不再宣称为待上游处理', () => {
   assert.equal(receiptLabel({ receipt_state: 'partial_conflict', pending_actions: ['event-1'] }), '部分冲突，待上游处理')
   assert.equal(receiptLabel({ receipt_state: 'partial_conflict', pending_actions: [] }), '部分冲突，已登记处置')
+})
+
+test('人工回执写明记录方式，失败不叫尚未回执', () => {
+  assert.equal(
+    receiptLabel({ receipt_state: 'failed_rolled_back', pending_actions: [], receipt_channel: 'manual' }),
+    '整体失败并回滚（人工回执，对方自动回传未接入）'
+  )
+  assert.equal(receiptLabel({ receipt_state: 'awaiting_receipt', pending_actions: [], receipt_channel: 'none' }), '对方尚未回执')
+  assert.notEqual(
+    receiptLabel({ receipt_state: 'failed_rolled_back', pending_actions: [], receipt_channel: 'manual' }),
+    receiptLabel({ receipt_state: 'awaiting_receipt', pending_actions: [] })
+  )
+})
+
+test('没有渠道字段的旧回执仍标成人工回执', () => {
+  assert.equal(receiptEventNote({ payload: { affected: 2, status: 'success' } }), '影响 2 条 · 人工回执')
+  assert.equal(receiptEventNote({ payload: { affected: 1, status: 'failed_rolled_back', channel: 'manual' } }), '影响 1 条 · 人工回执')
 })
 
 test('其余回执状态不受待办数量影响', () => {

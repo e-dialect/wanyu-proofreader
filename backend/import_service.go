@@ -1217,6 +1217,7 @@ func (s *importService) processCSV(work importWork) {
 	}
 
 	nextPageNumber := s.nextProjectPageNumber(job.GetString("project"))
+	sourceSystem, sourceID, sourceVersion := s.csvLinkedSource(job)
 	counters := &csvCounters{}
 	batch := make([]csvPage, 0, batchSize)
 
@@ -1254,14 +1255,14 @@ func (s *importService) processCSV(work importWork) {
 		batch = append(batch, page)
 
 		if len(batch) >= batchSize {
-			nextPageNumber = s.flushCSVBatch(job, batch, nextPageNumber, counters)
+			nextPageNumber = s.flushCSVBatch(job, batch, nextPageNumber, counters, sourceSystem, sourceID, sourceVersion)
 			batch = batch[:0]
 			s.updateJobProgress(job, counters, encodingName)
 		}
 	}
 
 	if len(batch) > 0 {
-		nextPageNumber = s.flushCSVBatch(job, batch, nextPageNumber, counters)
+		nextPageNumber = s.flushCSVBatch(job, batch, nextPageNumber, counters, sourceSystem, sourceID, sourceVersion)
 		_ = nextPageNumber
 	}
 
@@ -1648,17 +1649,38 @@ func (s *importService) nextProjectPageNumber(projectID string) int {
 	return records[0].GetInt("page_number") + 1
 }
 
+func (s *importService) csvLinkedSource(job *core.Record) (string, string, string) {
+	if job.GetString("source_link") != "linked" {
+		return "", "", ""
+	}
+	sourceID := strings.TrimSpace(job.GetString("source"))
+	if sourceID == "" {
+		return "", "", ""
+	}
+	record, err := s.app.FindRecordById("sources", sourceID)
+	if err != nil {
+		return "", "", ""
+	}
+	logicalID := strings.TrimSpace(record.GetString("logical_id"))
+	if logicalID == "" {
+		return "", "", ""
+	}
+	// 版本用本批作业号：同一来源可以再进下一批，行号只在这一批里唯一。
+	return "source_registry", logicalID, job.Id
+}
+
 func (s *importService) flushCSVBatch(
 	job *core.Record,
 	rows []csvPage,
 	nextPageNumber int,
 	counters *csvCounters,
+	sourceSystem, sourceID, sourceVersion string,
 ) int {
 	projectID := job.GetString("project")
 	projectFileID := job.GetString("project_file")
 	err := s.app.RunInTransaction(func(txDao core.App) error {
 		for index, row := range rows {
-			if err := savePage(txDao, job.Id, projectID, projectFileID, nextPageNumber+index, row); err != nil {
+			if err := savePage(txDao, job.Id, projectID, projectFileID, nextPageNumber+index, row, sourceSystem, sourceID, sourceVersion); err != nil {
 				return err
 			}
 		}
@@ -1680,7 +1702,7 @@ func (s *importService) flushCSVBatch(
 	// Fall back to individual writes so one unexpected database error doesn't
 	// prevent later valid rows from importing.
 	for _, row := range rows {
-		if err := savePage(s.app, job.Id, projectID, projectFileID, nextPageNumber, row); err != nil {
+		if err := savePage(s.app, job.Id, projectID, projectFileID, nextPageNumber, row, sourceSystem, sourceID, sourceVersion); err != nil {
 			counters.failed++
 			s.addJobError(
 				job.Id,
@@ -1704,7 +1726,7 @@ func (s *importService) flushCSVBatch(
 // 口径与 assist_rules.js 的 PLACEHOLDER 一致（@ + 4~6 位十六进制数字）。
 var glyphPlaceholderRe = regexp.MustCompile(`@[0-9a-fA-F]{4,6}`)
 
-func savePage(dao core.App, jobID, projectID, projectFileID string, pageNumber int, row csvPage) error {
+func savePage(dao core.App, jobID, projectID, projectFileID string, pageNumber int, row csvPage, sourceSystem, sourceID, sourceVersion string) error {
 	collection, err := dao.FindCollectionByNameOrId("pages")
 	if err != nil {
 		return err
@@ -1715,6 +1737,12 @@ func savePage(dao core.App, jobID, projectID, projectFileID string, pageNumber i
 	record.Set("project_file", projectFileID)
 	record.Set("page_number", pageNumber)
 	record.Set("pdf_page", row.pdfPage)
+	if sourceSystem != "" && sourceID != "" && sourceVersion != "" && row.line > 0 {
+		record.Set("source_system", sourceSystem)
+		record.Set("source_id", sourceID)
+		record.Set("source_version", sourceVersion)
+		record.Set("source_entry_id", strconv.Itoa(row.line))
+	}
 	record.Set("ocr_row_json", row.rowJSON)
 	record.Set("row_headers_json", row.headersJSON)
 	record.Set("ocr_text", row.entryText)

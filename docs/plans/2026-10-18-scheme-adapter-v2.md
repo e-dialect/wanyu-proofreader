@@ -96,7 +96,7 @@ v1 的 `Segment{from,to}` 只有一条边，把「源书怎么写」与「目标
 - 文读字汇 adapter：其凡例有 18 声母 / 36 韵母 / 7 调类，但**没有 IPA 栏**，不补写。
 - `kh`（ASCII）与目标 `kʰ`（U+02B0）的静默等同。没有文献依据前不登记 `ipa_correspondences`。
 - 仙游音系、55 调、轻声：目标没有对应调类，`UNSUPPORTED`。
-- #289 的运行时目录注册、UI、迁移与真实作业放行。`backend/scheme_conversion.go` 仍通过 `LoadAdapter` 读 v1；接 v2 时改用 `LoadAdapterWithScheme` 即可。
+- #289 的运行时目录注册、UI、迁移与真实作业放行。`backend/scheme_conversion.go` 现在按目录分层读取：无 `source_scheme_id` 的 JSON 是目标方案，v1 适配器仍走 `LoadAdapter`，v2 适配器在同一层找到目标方案后走 `LoadAdapterWithScheme`。子目录不扫描。缺调类的登记不能标成 `production`。
 
 ## 验证
 

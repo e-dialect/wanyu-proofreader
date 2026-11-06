@@ -393,6 +393,7 @@ func deliveryView(record *core.Record, events []*core.Record) map[string]any {
 	var snap reviewbundle.DeliverySnapshot
 	_ = json.Unmarshal([]byte(record.GetString("snapshot")), &snap)
 	state := "awaiting_receipt"
+	channel := "none"
 	views := []map[string]any{}
 	withdrawn := false
 	noticeRecorded := false
@@ -401,6 +402,11 @@ func deliveryView(record *core.Record, events []*core.Record) map[string]any {
 		_ = json.Unmarshal([]byte(event.GetString("payload")), &payload)
 		if event.GetString("kind") == "receipt" {
 			state, _ = payload["status"].(string)
+			if stamped, _ := payload["channel"].(string); stamped != "" {
+				channel = stamped
+			} else if state != "" && state != "awaiting_receipt" {
+				channel = "manual"
+			}
 		}
 		if event.GetString("kind") == "withdrawal" {
 			withdrawn = true
@@ -425,7 +431,7 @@ func deliveryView(record *core.Record, events []*core.Record) map[string]any {
 			noticeState = "manual_notice_recorded"
 		}
 	}
-	return map[string]any{"id": record.Id, "package_id": record.GetString("package_id"), "version": snap.Version, "previous": snap.Previous, "change_reason": snap.ChangeReason, "purpose": snap.Purpose, "recipient": snap.Recipient, "import_job": snap.ImportJob, "source_ref": snap.RightsRef, "created": record.GetString("created"), "sha256": record.GetString("sha256"), "reconciliation": reviewbundle.Reconcile(snap), "receipt_state": state, "waiting_seconds": waitSeconds, "withdrawn": withdrawn, "notice_state": noticeState, "pending_actions": deliveryPendingActions(events), "events": views, "release_decision": "human_required"}
+	return map[string]any{"id": record.Id, "package_id": record.GetString("package_id"), "version": snap.Version, "previous": snap.Previous, "change_reason": snap.ChangeReason, "purpose": snap.Purpose, "recipient": snap.Recipient, "import_job": snap.ImportJob, "source_ref": snap.RightsRef, "created": record.GetString("created"), "sha256": record.GetString("sha256"), "reconciliation": reviewbundle.Reconcile(snap), "receipt_state": state, "receipt_channel": channel, "waiting_seconds": waitSeconds, "withdrawn": withdrawn, "notice_state": noticeState, "pending_actions": deliveryPendingActions(events), "events": views, "release_decision": "human_required"}
 }
 
 func deliveryPendingActions(events []*core.Record) []string {
@@ -558,6 +564,7 @@ type deliveryEventInput struct {
 	Target      string `json:"target"`
 	Evidence    string `json:"evidence"`
 	Resolves    string `json:"resolves"`
+	Channel     string `json:"channel,omitempty"`
 }
 
 func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
@@ -577,6 +584,10 @@ func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
 	}
 	if strings.TrimSpace(input.Reason) == "" || strings.TrimSpace(input.Reviewer) == "" || len([]rune(input.Reason)) > 1000 || len([]rune(input.Reviewer)) > 200 {
 		return apis.NewBadRequestError("原因与人工核查者必填，原因最多 1000 字、核查者最多 200 字。", nil)
+	}
+	if input.Kind == "receipt" {
+		// 对方自动回传还没有接入。这条接口只记人工回执，并写进凭据，避免事后看成自动结果。
+		input.Channel = "manual"
 	}
 	switch input.Kind {
 	case "receipt":

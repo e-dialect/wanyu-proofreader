@@ -19,7 +19,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const projectExportSchema = "WanyuExport/v1"
+const projectExportSchema = "WanyuExport/v2"
 const maxProjectExportColumns = 2000
 
 type projectExportOptions struct {
@@ -138,10 +138,32 @@ var exportColumns = []projectExportColumn{
 	}},
 	{"arbitrated_by", func(p *core.Record) any { return p.GetString("arbitrated_by") }},
 	{"arbitrated_at", func(p *core.Record) any { return p.GetString("arbitrated_at") }},
-	// #114 fills these through the same projection when it lands. Empty is not a
-	// fabricated normalization or a claim that any rule version has been applied.
-	{"normalized_reading", func(p *core.Record) any { return "" }},
-	{"normalization_rule_version", func(p *core.Record) any { return "" }},
+	// Stored conversion only. An empty reading is "not converted" or "declined",
+	// never a guessed pronunciation. UNSUPPORTED and AMBIGUOUS keep the rule
+	// version so the path is visible, and they do not export a canonical value.
+	{"source_trace", func(p *core.Record) any {
+		if p.GetString("source_system") != "" && p.GetString("source_id") != "" && p.GetString("source_version") != "" {
+			return "registered"
+		}
+		return "unknown"
+	}},
+	{"proofread_scope", func(p *core.Record) any {
+		if p.GetString("status") == "approved" {
+			return "in_proofread_range"
+		}
+		return "outside_final_proofread"
+	}},
+	{"normalization_source", func(p *core.Record) any { return p.GetString("normalization_source_snapshot") }},
+	{"normalization_status", func(p *core.Record) any { return p.GetString("normalization_status") }},
+	{"normalized_reading", func(p *core.Record) any {
+		switch p.GetString("normalization_status") {
+		case "EXACT", "REVIEWED":
+			return p.GetString("canonical_pronunciation")
+		default:
+			return ""
+		}
+	}},
+	{"normalization_rule_version", func(p *core.Record) any { return p.GetString("normalization_rule_version") }},
 }
 
 type projectExportMetadata struct {
@@ -165,7 +187,7 @@ type projectExportMetadata struct {
 }
 
 // These are explicit bounded projections, not SELECT * or a project-sized slice.
-const projectExportSelect = `id,page_number,pdf_page,status,quality_state,source_system,source_id,source_version,source_entry_id,import_job,proofread_round,proofread_count,arbitrated_by,arbitrated_at,row_headers_json,ocr_row_json,proofread_row_json,ocr_text,proofread_text`
+const projectExportSelect = `id,page_number,pdf_page,status,quality_state,source_system,source_id,source_version,source_entry_id,import_job,proofread_round,proofread_count,arbitrated_by,arbitrated_at,row_headers_json,ocr_row_json,proofread_row_json,ocr_text,proofread_text,normalization_source_snapshot,canonical_pronunciation,normalization_status,normalization_rule_version`
 
 func walkProjectExport(ctx context.Context, tx *dbx.Tx, collection *core.Collection, where string, params dbx.Params, visit func(*core.Record) error) error {
 	rows, err := tx.NewQuery("SELECT " + projectExportSelect + " FROM pages WHERE " + where + " ORDER BY page_number,id").WithContext(ctx).Bind(params).Rows()
@@ -192,7 +214,7 @@ func walkProjectExport(ctx context.Context, tx *dbx.Tx, collection *core.Collect
 }
 
 func inspectProjectExport(ctx context.Context, tx *dbx.Tx, collection *core.Collection, project *core.Record, o projectExportOptions, where string, params dbx.Params) (projectExportMetadata, error) {
-	m := projectExportMetadata{SchemaVersion: projectExportSchema, ExportedAt: time.Now().UTC().Format(time.RFC3339Nano), ProjectID: project.Id, Filters: o, SamplingRule: "none; all rows matching the declared filters", FieldOrder: []string{}, Normalization: "not_implemented_pending_114", ColumnRoles: json.RawMessage(`{}`)}
+	m := projectExportMetadata{SchemaVersion: projectExportSchema, ExportedAt: time.Now().UTC().Format(time.RFC3339Nano), ProjectID: project.Id, Filters: o, SamplingRule: "none; all rows matching the declared filters", FieldOrder: []string{}, Normalization: "stored_conversion_only; empty reading means absent or declined, not guessed", ColumnRoles: json.RawMessage(`{}`)}
 	var roles map[string]string
 	if json.Unmarshal([]byte(project.GetString("column_roles_json")), &roles) == nil && roles != nil {
 		m.ColumnRoles, _ = json.Marshal(roles)
