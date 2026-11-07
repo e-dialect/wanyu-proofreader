@@ -5,46 +5,65 @@
         <RouterLink to="/admin" class="back-link">← 返回项目管理</RouterLink>
         <div class="page-eyebrow">权利登记</div>
         <h1>来源登记</h1>
-        <p>一份来源是一份可以单独谈权利的材料。这里只记录人填的结论，不托管授权文件，也不自动放行下游用途。</p>
+        <p>
+          一份来源是一份可以单独谈权利的材料。这里只记录人填的结论，不托管授权文件，也不自动放行下游用途。
+        </p>
       </div>
     </header>
-    <div v-if="loadError" class="alert alert-error" role="alert">
-      {{ loadError }}
-      <button type="button" class="btn btn-secondary btn-sm ml-2" :disabled="loading" @click="load">重新加载</button>
-    </div>
-    <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
+    <AppStatusPanel
+      v-if="loadError"
+      state="error"
+      :message="loadError"
+      retry-label="重新加载"
+      :busy="loading"
+      @retry="load"
+    />
+    <AppStatusPanel v-if="success" state="success" :message="success" />
     <section class="card mb-6">
       <div class="section-heading">
         <div>
           <h2>来源清单</h2>
-          <p>未允许用途指还没登记、结论仍是未知，或已明确禁止的用途。任何未允许的用途都会被下游读成阻断，不会当成允许。</p>
+          <p>
+            未允许用途指还没登记、结论仍是未知，或已明确禁止的用途。任何未允许的用途都会被下游读成阻断，不会当成允许。
+          </p>
         </div>
         <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
       </div>
-      <div v-if="loading" class="text-muted">正在加载来源…</div>
-      <div v-else-if="loadError" class="text-muted">来源清单暂时无法读取，请用上方「重新加载」重试。</div>
-      <div v-else-if="!items.length" class="empty-state">
+      <AppStatusPanel v-if="loading" state="pending" message="正在加载来源…" />
+      <div v-else-if="loadError" class="text-muted">
+        来源清单暂时无法读取，请用上方「重新加载」重试。
+      </div>
+      <AppStatusPanel v-else-if="!items.length" state="empty" reason="none">
         <div class="empty-state-text">还没有登记来源</div>
         <p>导入时可以不填来源。那样作业仍会成功，并标成 source:unknown，不会挡住现有校对。</p>
-      </div>
-      <div v-else class="table-wrapper" role="region" tabindex="0" aria-label="来源清单表">
-        <table>
-          <thead>
-            <tr><th>来源</th><th>权利主体</th><th>状态</th><th>未允许用途</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in items" :key="item.id">
-              <td>
-                <strong>{{ item.title }}</strong>
-                <div class="text-sm text-muted"><code>{{ item.logical_id }}</code> · {{ originLabel(item.original_vs_derived) }} · {{ item.format || '未填格式' }}</div>
-              </td>
-              <td>{{ item.holder || '未填' }}</td>
-              <td><span class="badge" :class="sourceStatusClass(item.status)">{{ statusLabel(item.status) }}</span></td>
-              <td>{{ undecidedLabel(item) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      </AppStatusPanel>
+      <AppDataTable v-else label="来源清单表">
+        <template #head>
+          <tr>
+            <th>来源</th>
+            <th>权利主体</th>
+            <th>状态</th>
+            <th>未允许用途</th>
+          </tr>
+        </template>
+
+        <tr v-for="item in items" :key="item.id">
+          <td>
+            <strong>{{ item.title }}</strong>
+            <div class="text-sm text-muted">
+              <code>{{ item.logical_id }}</code> · {{ originLabel(item.original_vs_derived) }} ·
+              {{ item.format || '未填格式' }}
+            </div>
+          </td>
+          <td>{{ item.holder || '未填' }}</td>
+          <td>
+            <span class="badge" :class="sourceStatusClass(item.status)">{{
+              statusLabel(item.status)
+            }}</span>
+          </td>
+          <td>{{ undecidedLabel(item) }}</td>
+        </tr>
+      </AppDataTable>
     </section>
 
     <section v-if="auth.isPlatformAdmin" class="card">
@@ -56,30 +75,63 @@
       </div>
       <form class="settings-form" @submit.prevent="submitSource">
         <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
-        <label class="form-group"><span class="form-label">标题</span><input v-model.trim="form.title" class="form-control" required maxlength="200" /></label>
-        <label class="form-group"><span class="form-label">权利主体</span><input v-model.trim="form.holder" class="form-control" maxlength="200" /></label>
-        <label class="form-group"><span class="form-label">方言或地区范围</span><input v-model.trim="form.scope" class="form-control" maxlength="200" /></label>
-        <label class="form-group"><span class="form-label">格式</span><input v-model.trim="form.format" class="form-control" maxlength="80" placeholder="例如 csv" /></label>
-        <label class="form-group"><span class="form-label">逻辑 ID</span><input v-model.trim="form.logical_id" class="form-control" maxlength="80" placeholder="留空则自动生成" /></label>
-        <label class="form-group">
-          <span class="form-label">原始或派生</span>
+        <AppField
+          ><template #label>标题</template
+          ><input v-model.trim="form.title" class="form-control" required maxlength="200"
+        /></AppField>
+        <AppField
+          ><template #label>权利主体</template
+          ><input v-model.trim="form.holder" class="form-control" maxlength="200"
+        /></AppField>
+        <AppField
+          ><template #label>方言或地区范围</template
+          ><input v-model.trim="form.scope" class="form-control" maxlength="200"
+        /></AppField>
+        <AppField
+          ><template #label>格式</template
+          ><input
+            v-model.trim="form.format"
+            class="form-control"
+            maxlength="80"
+            placeholder="例如 csv"
+        /></AppField>
+        <AppField
+          ><template #label>逻辑 ID</template
+          ><input
+            v-model.trim="form.logical_id"
+            class="form-control"
+            maxlength="80"
+            placeholder="留空则自动生成"
+        /></AppField>
+        <AppField
+          ><template #label>原始或派生</template>
           <select v-model="form.original_vs_derived" class="form-control">
-            <option v-for="(label, value) in SOURCE_ORIGIN_LABELS" :key="value" :value="value">{{ label }}</option>
+            <option v-for="(label, value) in SOURCE_ORIGIN_LABELS" :key="value" :value="value">
+              {{ label }}
+            </option>
           </select>
-        </label>
-        <label class="form-group">
-          <span class="form-label">处理状态</span>
+        </AppField>
+        <AppField
+          ><template #label>处理状态</template>
           <select v-model="form.status" class="form-control">
-            <option v-for="(label, value) in SOURCE_STATUS_LABELS" :key="value" :value="value">{{ label }}</option>
+            <option v-for="(label, value) in SOURCE_STATUS_LABELS" :key="value" :value="value">
+              {{ label }}
+            </option>
           </select>
-        </label>
-        <button class="btn btn-primary" :disabled="saving">{{ saving ? '正在登记…' : '登记来源' }}</button>
+        </AppField>
+        <button class="btn btn-primary" :disabled="saving">
+          {{ saving ? '正在登记…' : '登记来源' }}
+        </button>
       </form>
     </section>
   </main>
 </template>
 
 <script setup>
+import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import { useAsyncResource } from '@/composables/useAsyncResource'
+import AppDataTable from '@/components/AppDataTable.vue'
+import AppField from '@/components/AppField.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
@@ -94,9 +146,16 @@ import { getPbMessage } from '@/utils/pbErrors'
 
 const auth = useAuthStore()
 const items = ref([])
-const loading = ref(true)
+const {
+  pending: loading,
+  error: loadError,
+  reload
+} = useAsyncResource(({ signal }) => listSources({ signal }), {
+  initialData: { items: [] },
+  isEmpty: (value) => !value.items?.length,
+  formatError: (cause) => getPbMessage(cause, '来源清单加载失败')
+})
 const saving = ref(false)
-const loadError = ref('')
 const operationError = ref('')
 const success = ref('')
 const form = reactive({
@@ -118,22 +177,17 @@ function originLabel(origin) {
 }
 
 function undecidedLabel(item) {
-  const names = (item.undecided_purposes || []).map((purpose) => USAGE_PURPOSE_LABELS[purpose] || purpose)
+  const names = (item.undecided_purposes || []).map(
+    (purpose) => USAGE_PURPOSE_LABELS[purpose] || purpose
+  )
   return names.length ? names.join('、') : '没有未允许用途'
 }
 
 async function load() {
-  loading.value = true
-  loadError.value = ''
   operationError.value = ''
-  try {
-    const result = await listSources()
-    items.value = result.items || []
-  } catch (cause) {
-    loadError.value = getPbMessage(cause, '来源清单加载失败')
-  } finally {
-    loading.value = false
-  }
+  const result = await reload()
+  if (!result.ok) return
+  items.value = result.data.items || []
 }
 
 async function submitSource() {

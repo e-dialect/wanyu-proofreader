@@ -271,6 +271,7 @@ onRecordUpdateRequest((e) => {
     "image",
     "ocr_text",
     "ocr_row_json",
+    "ocr_cells_json",
     "proofread_text",
     "proofread_row_json",
     "reviewer",

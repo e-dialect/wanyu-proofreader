@@ -1,0 +1,28 @@
+{
+  "page": 4,
+  "engine": "poppler_text",
+  "has_images": false,
+  "rows": [
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "",
+          "status": "abstained",
+          "confidence": null,
+          "bbox": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "source": "pdf_text",
+          "reason": "empty_or_decoder_replacement"
+        }
+      ]
+    }
+  ],
+  "raw_text": "",
+  "raw_layout": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n<title>untitled</title>\n<meta name=\"Subject\" content=\"unspecified\"/>\n<meta name=\"Keywords\" content=\"\"/>\n<meta name=\"Author\" content=\"anonymous\"/>\n<meta name=\"Creator\" content=\"anonymous\"/>\n<meta name=\"Producer\" content=\"ReportLab PDF Library - (opensource)\"/>\n<meta name=\"CreationDate\" content=\"2000-01-01T00:00:00Z\"/>\n<meta name=\"ModDate\" content=\"2000-01-01T00:00:00Z\"/>\n</head>\n<body>\n<doc>\n  <page width=\"595.000000\" height=\"842.000000\">\n  </page>\n</doc>\n</body>\n</html>\n",
+  "duration_ms": 21
+}

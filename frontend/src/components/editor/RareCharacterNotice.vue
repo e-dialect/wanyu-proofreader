@@ -1,25 +1,20 @@
 <template>
-  <p v-if="unavailable.length" class="alert alert-error" role="status">
-    生僻字补充字体暂不可用；如显示方框，可按码位核对：
+  <p v-if="state === 'loading'" class="alert" role="status" data-font-state="loading">
+    字形正在加载；字体就绪前请勿据此确认音标、上标或生僻字形。
+  </p>
+  <p v-else-if="state === 'error'" class="alert alert-error" role="alert" data-font-state="error">
+    补充字体暂不可用；当前字形可能来自回退字体，请按码位核对：
     <span v-for="char in unavailable" :key="char">{{ char }}（{{ codePointLabel(char) }}） </span>
-    。原文仍完整保留，可检查网络后刷新页面。
+    。原文仍完整保留。
+    <button type="button" class="btn btn-secondary btn-sm" @click="retry">重试加载字体</button>
   </p>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { rareCharacters, codePointLabel, unavailableRareCharacters } from '@/lib/rareCharacters'
+import { computed } from 'vue'
+import { codePointLabel } from '@/lib/rareCharacters'
+import { useFontAvailability } from '@/composables/useFontAvailability'
 
 const props = defineProps({ texts: { type: Array, default: () => [] } })
-const chars = computed(() => rareCharacters(props.texts))
-const unavailable = ref([])
-// Skip ordinary text entirely. A changed field cancels stale results without
-// changing user input or replacing a stored character with a placeholder.
-watch(chars, async (value, _, onCleanup) => {
-  let active = true
-  onCleanup(() => { active = false })
-  if (!value.length) { unavailable.value = []; return }
-  const result = await unavailableRareCharacters(value, document.fonts)
-  if (active) unavailable.value = result
-}, { immediate: true })
+const { state, unavailable, retry } = useFontAvailability(computed(() => props.texts))
 </script>

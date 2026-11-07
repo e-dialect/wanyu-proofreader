@@ -1,0 +1,2483 @@
+{
+  "widths": [
+    320,
+    360,
+    390,
+    430,
+    768
+  ],
+  "routes": [
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 320,
+      "scroll": 320,
+      "title": "管理员，今天从哪项工作开始？",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 360,
+      "scroll": 360,
+      "title": "管理员，今天从哪项工作开始？",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 390,
+      "scroll": 390,
+      "title": "管理员，今天从哪项工作开始？",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 430,
+      "scroll": 430,
+      "title": "管理员，今天从哪项工作开始？",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 768,
+      "scroll": 768,
+      "title": "管理员，今天从哪项工作开始？",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 320,
+      "scroll": 320,
+      "title": "找到适合参与的方言材料",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 360,
+      "scroll": 360,
+      "title": "找到适合参与的方言材料",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 390,
+      "scroll": 390,
+      "title": "找到适合参与的方言材料",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 430,
+      "scroll": 430,
+      "title": "找到适合参与的方言材料",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 768,
+      "scroll": 768,
+      "title": "找到适合参与的方言材料",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 320,
+      "scroll": 320,
+      "title": "先处理异常，再推进项目",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 360,
+      "scroll": 360,
+      "title": "先处理异常，再推进项目",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 390,
+      "scroll": 390,
+      "title": "先处理异常，再推进项目",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 430,
+      "scroll": 430,
+      "title": "先处理异常，再推进项目",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 768,
+      "scroll": 768,
+      "title": "先处理异常，再推进项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 320,
+      "scroll": 320,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 360,
+      "scroll": 360,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 390,
+      "scroll": 390,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 430,
+      "scroll": 430,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 768,
+      "scroll": 768,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 320,
+      "scroll": 320,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 360,
+      "scroll": 360,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 390,
+      "scroll": 390,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 430,
+      "scroll": 430,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 768,
+      "scroll": 768,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6",
+      "name": "project-detail",
+      "width": 320,
+      "scroll": 320,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 2
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6",
+      "name": "project-detail",
+      "width": 360,
+      "scroll": 360,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 2
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6",
+      "name": "project-detail",
+      "width": 390,
+      "scroll": 390,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 2
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6",
+      "name": "project-detail",
+      "width": 430,
+      "scroll": 430,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 2
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6",
+      "name": "project-detail",
+      "width": 768,
+      "scroll": 768,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/settings",
+      "name": "settings",
+      "width": 320,
+      "scroll": 320,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/settings",
+      "name": "settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/settings",
+      "name": "settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/settings",
+      "name": "settings",
+      "width": 430,
+      "scroll": 430,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/settings",
+      "name": "settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "质量状态截图 1793980017284",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/verification",
+      "name": "verification",
+      "width": 320,
+      "scroll": 320,
+      "title": "来源核验与问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/verification",
+      "name": "verification",
+      "width": 360,
+      "scroll": 360,
+      "title": "来源核验与问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/verification",
+      "name": "verification",
+      "width": 390,
+      "scroll": 390,
+      "title": "来源核验与问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/verification",
+      "name": "verification",
+      "width": 430,
+      "scroll": 430,
+      "title": "来源核验与问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/verification",
+      "name": "verification",
+      "width": 768,
+      "scroll": 768,
+      "title": "来源核验与问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/adoption",
+      "name": "adoption",
+      "width": 320,
+      "scroll": 320,
+      "title": "用途编选（D 工序）",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/adoption",
+      "name": "adoption",
+      "width": 360,
+      "scroll": 360,
+      "title": "用途编选（D 工序）",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/adoption",
+      "name": "adoption",
+      "width": 390,
+      "scroll": 390,
+      "title": "用途编选（D 工序）",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/adoption",
+      "name": "adoption",
+      "width": 430,
+      "scroll": 430,
+      "title": "用途编选（D 工序）",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/adoption",
+      "name": "adoption",
+      "width": 768,
+      "scroll": 768,
+      "title": "用途编选（D 工序）",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/deliveries",
+      "name": "deliveries",
+      "width": 320,
+      "scroll": 320,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/deliveries",
+      "name": "deliveries",
+      "width": 360,
+      "scroll": 360,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/deliveries",
+      "name": "deliveries",
+      "width": 390,
+      "scroll": 390,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/deliveries",
+      "name": "deliveries",
+      "width": 430,
+      "scroll": 430,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/0oph4do2q8bpby6/deliveries",
+      "name": "deliveries",
+      "width": 768,
+      "scroll": 768,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 320,
+      "scroll": 320,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 360,
+      "scroll": 360,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 390,
+      "scroll": 390,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 430,
+      "scroll": 430,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 768,
+      "scroll": 768,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 320,
+      "scroll": 320,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 360,
+      "scroll": 360,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 390,
+      "scroll": 390,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 430,
+      "scroll": 430,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 768,
+      "scroll": 768,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 320,
+      "scroll": 320,
+      "title": "项目创建权限",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 360,
+      "scroll": 360,
+      "title": "项目创建权限",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 390,
+      "scroll": 390,
+      "title": "项目创建权限",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 430,
+      "scroll": 430,
+      "title": "项目创建权限",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 768,
+      "scroll": 768,
+      "title": "项目创建权限",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 320,
+      "scroll": 320,
+      "title": "从最需要你的项目开始",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 360,
+      "scroll": 360,
+      "title": "从最需要你的项目开始",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 390,
+      "scroll": 390,
+      "title": "从最需要你的项目开始",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 430,
+      "scroll": 430,
+      "title": "从最需要你的项目开始",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 768,
+      "scroll": 768,
+      "title": "从最需要你的项目开始",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 320,
+      "scroll": 320,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 360,
+      "scroll": 360,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 390,
+      "scroll": 390,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 430,
+      "scroll": 430,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 768,
+      "scroll": 768,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/login",
+      "width": 320,
+      "scroll": 320,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 360,
+      "scroll": 360,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 390,
+      "scroll": 390,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 430,
+      "scroll": 430,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 768,
+      "scroll": 768,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 320,
+      "scroll": 320,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 360,
+      "scroll": 360,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 390,
+      "scroll": 390,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 430,
+      "scroll": 430,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 768,
+      "scroll": 768,
+      "guest": true
+    }
+  ],
+  "failures": [],
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/pages/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/pages/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-export"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/991rmwzgfpqmrtw/import-ledger"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/import-ledger"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/import-ledger"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/oubezq6ae58tkpa/pages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/project-insights"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/project-insights"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/project-insights"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/project-insights"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/project-insights"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/findings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/import_jobs/records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/member-candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/members"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/member-candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/members"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/member-candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/members"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/member-candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/members"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/member-candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/members"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/keyboards"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/problems"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/problems"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/problems"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/problems"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-policy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/column-roles"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/problems"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/verification-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-batches"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-summary"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-batches"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-summary"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-batches"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-summary"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-batches"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-summary"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-batches"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/adoption-summary"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/deliveries"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/deliveries"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/deliveries"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/deliveries"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/projects/0oph4do2q8bpby6/deliveries"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/sources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/sources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/sources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/sources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/sources"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/gates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/gates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/gates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/gates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/gates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/platform/creator-grants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/platform/creator-grants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/platform/creator-grants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/platform/creator-grants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/platform/creator-grants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreading-queues"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreading-queues"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreading-queues"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreading-queues"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreading-queues"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreader-stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/auth/providers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/research-notice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreader-stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/auth/providers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/research-notice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreader-stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/auth/providers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/research-notice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreader-stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/auth/providers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/research-notice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections/users/auth-refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/proofreader-stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/auth/providers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/research-notice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fangji/access-context"
+    }
+  ],
+  "baseline": {
+    "width": 320,
+    "scroll": 338,
+    "filterHeight": 220,
+    "navigation": [
+      {
+        "text": "条目管理",
+        "width": 32.703125,
+        "height": 166.5
+      },
+      {
+        "text": "文件准备",
+        "width": 32.703125,
+        "height": 166.5
+      },
+      {
+        "text": "批次台账",
+        "width": 32.703125,
+        "height": 166.5
+      },
+      {
+        "text": "导出结果",
+        "width": 32.703125,
+        "height": 166.5
+      },
+      {
+        "text": "机器疑点",
+        "width": 32.703125,
+        "height": 166.5
+      },
+      {
+        "text": "拼音归一",
+        "width": 32.703125,
+        "height": 166.5
+      },
+      {
+        "text": "来源核验与问题处理",
+        "width": 32.703125,
+        "height": 166.5
+      },
+      {
+        "text": "用途编选（D 工序）",
+        "width": 44.390625,
+        "height": 166.5
+      },
+      {
+        "text": "项目设置（资料与成员）",
+        "width": 44.390625,
+        "height": 166.5
+      }
+    ]
+  },
+  "refactor": [
+    {
+      "state": "normal",
+      "captures": [
+        {
+          "name": "before",
+          "file": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-backlog/output/playwright/backlog/refactor-normal-before.png",
+          "sha256": "117b5ef12dbcdcce58583b976a691fd1a56c1734d83705c9a748bffcc7f38500",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/findings",
+              "query": "?page=1&per=50"
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/pages",
+              "query": "?page=1&perPage=25&q=&status=&qualityState=&minPage=&maxPage="
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger",
+              "query": ""
+            }
+          ]
+        },
+        {
+          "name": "extracted",
+          "file": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-backlog/output/playwright/backlog/refactor-normal-extracted.png",
+          "sha256": "117b5ef12dbcdcce58583b976a691fd1a56c1734d83705c9a748bffcc7f38500",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/findings",
+              "query": "?page=1&per=50"
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/dismissals",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/pages",
+              "query": "?page=1&perPage=25&q=&status=&qualityState=&minPage=&maxPage="
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/pages/stats",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/quality-summary",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/pdf-uploads",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/0oph4do2q8bpby6/import-ledger",
+              "query": ""
+            }
+          ]
+        }
+      ],
+      "identical": true
+    },
+    {
+      "state": "empty-disabled",
+      "captures": [
+        {
+          "name": "before",
+          "file": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-backlog/output/playwright/backlog/refactor-empty-disabled-before.png",
+          "sha256": "c01f89af2460744d1582818d022b292a658cadd3d8d6548faacc17a9fd02e5b4",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/findings",
+              "query": "?page=1&per=50"
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/dismissals",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/pages",
+              "query": "?page=1&perPage=25&q=&status=&qualityState=&minPage=&maxPage="
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/pages/stats",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/quality-summary",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/pdf-uploads",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/import-ledger",
+              "query": ""
+            }
+          ]
+        },
+        {
+          "name": "extracted",
+          "file": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-backlog/output/playwright/backlog/refactor-empty-disabled-extracted.png",
+          "sha256": "c01f89af2460744d1582818d022b292a658cadd3d8d6548faacc17a9fd02e5b4",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/findings",
+              "query": "?page=1&per=50"
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/dismissals",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/pages",
+              "query": "?page=1&perPage=25&q=&status=&qualityState=&minPage=&maxPage="
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/pages/stats",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/quality-summary",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/pdf-uploads",
+              "query": ""
+            },
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/991rmwzgfpqmrtw/import-ledger",
+              "query": ""
+            }
+          ]
+        }
+      ],
+      "identical": true
+    },
+    {
+      "state": "error",
+      "captures": [
+        {
+          "name": "before",
+          "file": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-backlog/output/playwright/backlog/refactor-error-before.png",
+          "sha256": "66350c63f8ab30650b20feaed01aa79b23fcce36a2cefa81c26ede4d77249441",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/zzzzzzzzzzzzzzz",
+              "query": ""
+            }
+          ]
+        },
+        {
+          "name": "extracted",
+          "file": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-backlog/output/playwright/backlog/refactor-error-extracted.png",
+          "sha256": "66350c63f8ab30650b20feaed01aa79b23fcce36a2cefa81c26ede4d77249441",
+          "requests": [
+            {
+              "method": "GET",
+              "path": "/api/fangji/projects/zzzzzzzzzzzzzzz",
+              "query": ""
+            }
+          ]
+        }
+      ],
+      "identical": true
+    }
+  ],
+  "search": {
+    "rows": 52,
+    "rareCharacter": "𠮷",
+    "reading": "a̤̍⁵³³",
+    "crossFieldMatches": 2,
+    "passed": [
+      "trim",
+      "cross-field literal Unicode",
+      "combining reading",
+      "later page",
+      "page reset",
+      "status combination",
+      "URL reload",
+      "clear"
+    ]
+  },
+  "pageErrors": []
+}

@@ -1,4 +1,4 @@
-FROM golang:1.27-alpine AS builder
+FROM golang:1.27.3-alpine AS builder
 
 WORKDIR /src
 COPY go.mod go.sum* ./
@@ -13,6 +13,8 @@ RUN go mod download
 # 只有容器构建会。scripts/check_docker_build_context.py 钉住这份清单。
 COPY *.go ./
 COPY reviewbundle/ ./reviewbundle/
+COPY ocrengine/ ./ocrengine/
+COPY cmd/ocrworker/ ./cmd/ocrworker/
 COPY cmd/delivery-replay/ ./cmd/delivery-replay/
 COPY scheme/ ./scheme/
 COPY pb_migrations/ ./pb_migrations/

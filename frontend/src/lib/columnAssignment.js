@@ -46,6 +46,15 @@ export function assignColumns(headers, cells) {
     }
   })
 
+  // An already split row carries stronger evidence than character classes.
+  // In particular, an empty Putian IPA cell must not steal the Xianyou IPA
+  // value to its right. Keep known positions, including empty/merged cells;
+  // merged remains a warning and never rewrites or splits the source text.
+  if (cs.length === hs.length) {
+    for (let index = 0; index < hs.length; index += 1) result[index].assignedHeader = hs[index]
+    return result
+  }
+
   // 精确匹配：对每个「有期望角色」的列，找类别相符且未分配的格。
   const used = new Set()
   const assignedTo = new Array(hs.length).fill(-1) // 列 → 格索引

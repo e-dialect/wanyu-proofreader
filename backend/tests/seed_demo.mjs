@@ -106,8 +106,15 @@ await request(`/api/fangji/projects/${project.id}/members/${staff.id}`, {
   method: 'PUT', token: platformAuth.token, body: { role: 'manager' }
 })
 for (const reader of proofreaders) {
+  // Follow the same known-identifier candidate flow as the manager UI. A raw
+  // arbitrary user ID alone is deliberately no longer sufficient authority.
+  const query = new URLSearchParams({ term: reader.name, limit: '50' })
+  const candidates = await request(`/api/fangji/projects/${project.id}/member-candidates?${query}`, {
+    token: staffAuth.token
+  })
+  assert.ok(candidates.items.some((candidate) => candidate.id === reader.id), 'created demo reader must be an exact known candidate')
   await request(`/api/fangji/projects/${project.id}/members/${reader.id}`, {
-    method: 'PUT', token: staffAuth.token, body: { role: 'proofreader' }
+    method: 'PUT', token: staffAuth.token, body: { role: 'proofreader', candidateTerm: reader.name }
   })
 }
 

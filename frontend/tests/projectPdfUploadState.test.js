@@ -1,29 +1,45 @@
+import { projectDetailSource } from './helpers/projectDetailSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { validatePdfFile } from '../src/lib/chunkedPdfUpload.js'
-import { getPbStatus, getUploadErrorMessage, isRetryablePdfUploadError } from '../src/utils/pbErrors.js'
+import {
+  getPbStatus,
+  getUploadErrorMessage,
+  isRetryablePdfUploadError
+} from '../src/utils/pbErrors.js'
 
-const view = readFileSync(new URL('../src/views/admin/ProjectDetailView.vue', import.meta.url), 'utf8')
-  .replace(/\r\n/g, '\n')
-const selection = view.match(/async function onPdfSelected\(e\) \{[\s\S]*?\n\}\n\nfunction onCsvSelected/)
-const upload = view.match(/async function uploadPdf\(\) \{[\s\S]*?\n\}\n\nasync function uploadCsv/)
+const view = projectDetailSource().replace(/\r\n/g, '\n')
+const selection = view.match(/async function onPdfSelected\(e\) \{[\s\S]*?\n\}/)
+const upload = view.match(/async function uploadPdf\(\) \{[\s\S]*?\n\}/)
 assert.ok(selection)
 assert.ok(upload)
 assert.match(view, /v-if="pdfError && pdfRetryable && pdfFile && !uploadingPdf"/)
 
 function setup(createProjectPdf) {
-  const ref = value => ({ value })
+  const ref = (value) => ({ value })
   const state = {
     pdfInput: ref({ value: '' }),
-    pdfFile: ref(null), pdfSuccess: ref(false), pdfMetadata: ref(null),
-    pdfProcessing: ref(false), pdfError: ref(''), pdfRetryable: ref(false),
-    pdfUploadProgress: ref(0), pdfResume: ref(null), uploadingPdf: ref(false)
+    pdfFile: ref(null),
+    pdfSuccess: ref(false),
+    pdfMetadata: ref(null),
+    pdfProcessing: ref(false),
+    pdfError: ref(''),
+    pdfRetryable: ref(false),
+    pdfUploadProgress: ref(0),
+    pdfResume: ref(null),
+    uploadingPdf: ref(false)
   }
   const deps = {
-    ...state, validatePdfFile, createProjectPdf, getPbStatus, getUploadErrorMessage,
-    isRetryablePdfUploadError, projectId: 'project-1', currentUserId: () => 'user-1',
-    pollDelay: async () => {}, getProjectFile: async () => assert.fail('unexpected poll'),
+    ...state,
+    validatePdfFile,
+    createProjectPdf,
+    getPbStatus,
+    getUploadErrorMessage,
+    isRetryablePdfUploadError,
+    projectId: 'project-1',
+    currentUserId: () => 'user-1',
+    pollDelay: async () => {},
+    getProjectFile: async () => assert.fail('unexpected poll'),
     loadPdfResume: async () => {}
   }
   const names = Object.keys(deps)
@@ -74,7 +90,9 @@ test('transient failure offers retry and the retry starts only one upload', asyn
 })
 
 test('validation responses do not offer retry even when upload throws', async () => {
-  const ui = setup(async () => { throw { status: 400, response: { message: 'PDF 结构损坏' } } })
+  const ui = setup(async () => {
+    throw { status: 400, response: { message: 'PDF 结构损坏' } }
+  })
   await ui.onPdfSelected(event())
   assert.equal(ui.pdfRetryable.value, false)
   assert.equal(ui.pdfFile.value, null)
@@ -82,7 +100,9 @@ test('validation responses do not offer retry even when upload throws', async ()
 })
 
 test('400 without a server message gives one consistent reselect instruction', async () => {
-  const ui = setup(async () => { throw { status: 400, response: {} } })
+  const ui = setup(async () => {
+    throw { status: 400, response: {} }
+  })
   await ui.onPdfSelected(event())
   assert.equal(ui.pdfRetryable.value, false)
   assert.match(ui.pdfError.value, /重新选择/)
@@ -90,10 +110,25 @@ test('400 without a server message gives one consistent reselect instruction', a
 })
 
 test('only network, timeout, busy, and server errors can retry', () => {
-  for (const error of [{ status: 0 }, { status: 408 }, { status: 429 }, { status: 500 }, { status: 503 }]) {
+  for (const error of [
+    { status: 0 },
+    { status: 408 },
+    { status: 429 },
+    { status: 500 },
+    { status: 503 }
+  ]) {
     assert.equal(isRetryablePdfUploadError(error), true)
   }
-  for (const error of [new Error('local validation'), new TypeError("Cannot read properties of undefined (reading 'digest')"), { status: 400 }, { status: 401 }, { status: 409 }, { status: 410 }, { status: 413 }, { status: 0, isAbort: true }]) {
+  for (const error of [
+    new Error('local validation'),
+    new TypeError("Cannot read properties of undefined (reading 'digest')"),
+    { status: 400 },
+    { status: 401 },
+    { status: 409 },
+    { status: 410 },
+    { status: 413 },
+    { status: 0, isAbort: true }
+  ]) {
     assert.equal(isRetryablePdfUploadError(error), false)
   }
 })

@@ -1,7 +1,7 @@
-<html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">
-import {createApp,h} from 'vue'; import {createRouter,createMemoryHistory,RouterView} from 'vue-router';
+<html lang="zh-CN"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">
+import {createApp,h} from 'vue'; import {createPinia} from 'pinia'; import {createRouter,createMemoryHistory,RouterView} from 'vue-router';
 import Proof from '../../src/views/proofreader/ProofreadEditorView.vue'; import Arb from '../../src/views/admin/ArbitrationView.vue'; import pb from '../../src/lib/pocketbase'; import '../../src/style.css';
 pb.authStore.save('fixture', {id:'fixture-user'});
 const admin=location.search.includes('admin'); const router=createRouter({history:createMemoryHistory(),routes:[{path:'/tasks/:id/edit',component:Proof},{path:'/admin/:projectId/:pageId',component:Arb}]});
-await router.push(admin?'/admin/project1/page1':'/tasks/page1/edit');createApp({render:()=>h(RouterView)}).use(router).mount('#app');
+await router.push(admin?'/admin/project1/page1':'/tasks/page1/edit');createApp({render:()=>h(RouterView)}).use(createPinia()).use(router).mount('#app');
 </script></html>

@@ -2,9 +2,9 @@ const fs = require('node:fs')
 const http = require('node:http')
 const path = require('node:path')
 
-exports.startHost = async function (base) {
+exports.startHost = async function (base, options = {}) {
   const root = path.resolve(__dirname, '../..')
-  const dist = path.join(root, 'frontend/dist')
+  const dist = options.dist || process.env.BROWSER_DIST || path.join(root, 'frontend/dist')
   const sources = {
     '/projectExport.js': path.join(root, 'frontend/src/lib/projectExport.js'),
     '/legacy_csv_oracle.mjs': path.join(__dirname, 'legacy_csv_oracle.mjs'),

@@ -12,17 +12,23 @@
       </div>
     </header>
 
-    <div v-if="loadError" class="alert alert-error" role="alert">
-      {{ loadError }}
-      <button type="button" class="btn btn-secondary btn-sm ml-2" :disabled="loading" @click="load">重新加载</button>
-    </div>
-    <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
+    <AppStatusPanel
+      v-if="loadError"
+      state="error"
+      :message="loadError"
+      retry-label="重新加载"
+      :busy="loading"
+      @retry="load"
+    />
+    <AppStatusPanel v-if="success" state="success" :message="success" />
 
     <div v-if="!auth.isPlatformAdmin && !loadError" class="card">
-      <div class="empty-state">
+      <AppStatusPanel state="empty" reason="not_authorized">
         <div class="empty-state-text">只有平台管理员能调整规则门控</div>
-        <p>档位是跨项目共用的状态：项目管理员可以重算本项目的疑点，但不能决定某条规则全网放不放行。</p>
-      </div>
+        <p>
+          档位是跨项目共用的状态：项目管理员可以重算本项目的疑点，但不能决定某条规则全网放不放行。
+        </p>
+      </AppStatusPanel>
     </div>
 
     <template v-else-if="auth.isPlatformAdmin">
@@ -30,45 +36,75 @@
         <div class="section-heading">
           <div>
             <h2>登记表</h2>
-            <p>共 {{ items.length }} 条登记规则。<code>off</code> 不等于不计算：规则照常跑、照常写库，只在管理端统计里可见。</p>
+            <p>
+              共 {{ items.length }} 条登记规则。<code>off</code>
+              不等于不计算：规则照常跑、照常写库，只在管理端统计里可见。
+            </p>
           </div>
           <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
         </div>
-        <div v-if="loading" class="text-muted">正在加载门控登记表…</div>
-        <div v-else-if="loadError" class="text-muted">登记表暂时无法读取，请用上方「重新加载」重试。</div>
-        <div v-else-if="!items.length" class="empty-state">
+        <AppStatusPanel v-if="loading" state="pending" message="正在加载门控登记表…" />
+        <div v-else-if="loadError" class="text-muted">
+          登记表暂时无法读取，请用上方「重新加载」重试。
+        </div>
+        <AppStatusPanel v-else-if="!items.length" state="empty" reason="none">
           <div class="empty-state-text">登记表还是空的</div>
-          <p>这意味着所有规则都在 <code>off</code>：校对端看不到任何机器疑点。用下面的变更集入口把已批准的一批写进来。</p>
-        </div>
-        <div v-else class="table-wrapper" role="region" tabindex="0" aria-label="规则门控登记表">
-          <table>
-            <thead>
-              <tr><th>规则</th><th>档位</th><th>打分通道</th><th>证据</th><th>批准 / 变更集</th><th>操作</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in items" :key="ruleKey(item)">
-                <td>
-                  <code>{{ item.kind }} / {{ item.message_key }}</code>
-                  <div class="text-sm text-muted">{{ item.producer }} · {{ item.producer_version }}</div>
-                </td>
-                <td><span :class="gateBadgeClass(item.gate)">{{ gateLabel(item.gate) }}</span>
-                  <div v-if="item.revoked_at" class="text-sm text-muted">已撤销 {{ item.revoked_at }}</div>
-                </td>
-                <td><span :class="channelBadgeClass(item.scoring_channel)">{{ channelLabel(item.scoring_channel) }}</span></td>
-                <td>{{ evidenceText(item) }}<div class="text-sm text-muted">{{ item.evaluated_at || '未记评估时间' }}</div></td>
-                <td>
-                  <div class="text-sm">{{ item.approved_by || '未记批准人' }}</div>
-                  <div class="text-sm text-muted"><code>{{ item.changeset || '—' }}</code></div>
-                </td>
-                <td>
-                  <button class="btn btn-quiet btn-sm" :disabled="busyRule === ruleKey(item)" @click="openRevoke(item)">
-                    撤销降档
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          <p>
+            这意味着所有规则都在
+            <code>off</code>：校对端看不到任何机器疑点。用下面的变更集入口把已批准的一批写进来。
+          </p>
+        </AppStatusPanel>
+        <AppDataTable v-else label="规则门控登记表">
+          <template #head>
+            <tr>
+              <th>规则</th>
+              <th>档位</th>
+              <th>打分通道</th>
+              <th>证据</th>
+              <th>批准 / 变更集</th>
+              <th>操作</th>
+            </tr>
+          </template>
+
+          <tr v-for="item in items" :key="ruleKey(item)">
+            <td>
+              <code>{{ item.kind }} / {{ item.message_key }}</code>
+              <div class="text-sm text-muted">
+                {{ item.producer }} · {{ item.producer_version }}
+              </div>
+            </td>
+            <td>
+              <span :class="gateBadgeClass(item.gate)">{{ gateLabel(item.gate) }}</span>
+              <div v-if="item.revoked_at" class="text-sm text-muted">
+                已撤销 {{ item.revoked_at }}
+              </div>
+            </td>
+            <td>
+              <span :class="channelBadgeClass(item.scoring_channel)">{{
+                channelLabel(item.scoring_channel)
+              }}</span>
+            </td>
+            <td>
+              {{ evidenceText(item) }}
+              <div class="text-sm text-muted">{{ item.evaluated_at || '未记评估时间' }}</div>
+            </td>
+            <td>
+              <div class="text-sm">{{ item.approved_by || '未记批准人' }}</div>
+              <div class="text-sm text-muted">
+                <code>{{ item.changeset || '—' }}</code>
+              </div>
+            </td>
+            <td>
+              <button
+                class="btn btn-quiet btn-sm"
+                :disabled="busyRule === ruleKey(item)"
+                @click="openRevoke(item)"
+              >
+                撤销降档
+              </button>
+            </td>
+          </tr>
+        </AppDataTable>
         <p v-if="truncated && !loadError" class="text-sm text-muted">
           登记表超过单次读取上限，这里只显示前 {{ items.length }} 条；请缩小范围后再操作。
         </p>
@@ -78,18 +114,34 @@
         <div class="section-heading">
           <div>
             <h2>撤销：把 {{ revokeTarget.kind }} / {{ revokeTarget.message_key }} 关回 off</h2>
-            <p>撤销是 kill switch，不受证据门槛约束。撤销后这条规则会被标记为人工降档，后续变更集不能把它悄悄抬回去，除非显式恢复。</p>
+            <p>
+              撤销是 kill
+              switch，不受证据门槛约束。撤销后这条规则会被标记为人工降档，后续变更集不能把它悄悄抬回去，除非显式恢复。
+            </p>
           </div>
         </div>
-        <label class="form-group">
-          <span class="form-label">理由（会留在登记行上）</span>
-          <input v-model.trim="revokeNote" class="form-control" maxlength="500" placeholder="例如：抽检发现误报率高于门槛" />
-        </label>
+        <AppField
+          ><template #label>理由（会留在登记行上）</template>
+          <input
+            v-model.trim="revokeNote"
+            class="form-control"
+            maxlength="500"
+            placeholder="例如：抽检发现误报率高于门槛"
+          />
+        </AppField>
         <div class="d-flex gap-2">
-          <button class="btn btn-primary" :disabled="busy" @click="submitRevoke">{{ busy ? '正在撤销…' : '确认撤销' }}</button>
+          <button class="btn btn-primary" :disabled="busy" @click="submitRevoke">
+            {{ busy ? '正在撤销…' : '确认撤销' }}
+          </button>
           <button class="btn btn-quiet" :disabled="busy" @click="revokeTarget = null">取消</button>
         </div>
-        <div v-if="operationError && operationErrorTarget === 'revoke'" class="alert alert-error mt-3" role="alert">{{ operationError }}</div>
+        <div
+          v-if="operationError && operationErrorTarget === 'revoke'"
+          class="alert alert-error mt-3"
+          role="alert"
+        >
+          {{ operationError }}
+        </div>
       </section>
 
       <section class="card">
@@ -97,43 +149,76 @@
           <div>
             <h2>应用已批准的变更集</h2>
             <p>
-              变更集由 <code>node scripts/assist/gate_changeset.mjs --score … --approved-by …</code> 产出，
+              变更集由
+              <code>node scripts/assist/gate_changeset.mjs --score … --approved-by …</code> 产出，
               评审通过后把 JSON 贴进来或选文件。判据不满足的升档会被逐条拒绝，其余条目照常应用。
             </p>
           </div>
         </div>
-        <input type="file" accept="application/json,.json" class="form-control mb-4" @change="pickFile" />
-        <label class="form-group">
-          <span class="form-label">变更集 JSON</span>
-          <textarea v-model="changesetText" class="form-control" rows="8" spellcheck="false"
-            placeholder='{"changeset":"cs-2026-09-30-a","entries":[…]}'></textarea>
-        </label>
+        <input
+          type="file"
+          accept="application/json,.json"
+          class="form-control mb-4"
+          @change="pickFile"
+        />
+        <AppField
+          ><template #label>变更集 JSON</template>
+          <textarea
+            v-model="changesetText"
+            class="form-control"
+            rows="8"
+            spellcheck="false"
+            placeholder='{"changeset":"cs-2026-09-30-a","entries":[…]}'
+          ></textarea>
+        </AppField>
         <div v-if="problem" class="alert alert-error" role="alert">{{ problem }}</div>
         <div v-if="preview" class="mb-4">
           <p class="text-sm">
-            变更集 <code>{{ preview.changeset }}</code>：共 {{ preview.total }} 条 ·
-            <span v-for="(count, gate) in preview.by_gate" :key="gate">{{ gateLabel(gate) }} {{ count }} 条，</span>
+            变更集 <code>{{ preview.changeset }}</code
+            >：共 {{ preview.total }} 条 ·
+            <span v-for="(count, gate) in preview.by_gate" :key="gate"
+              >{{ gateLabel(gate) }} {{ count }} 条，</span
+            >
           </p>
-          <p v-if="preview.approvers.length" class="text-sm text-muted">批准人：{{ preview.approvers.join('、') }}</p>
-          <p v-else class="text-sm text-muted">条目里没有批准人，提交后会被逐条拒（每条都必须署名）。</p>
+          <p v-if="preview.approvers.length" class="text-sm text-muted">
+            批准人：{{ preview.approvers.join('、') }}
+          </p>
+          <p v-else class="text-sm text-muted">
+            条目里没有批准人，提交后会被逐条拒（每条都必须署名）。
+          </p>
         </div>
         <button class="btn btn-primary" :disabled="busy || !parsed" @click="submitChangeset">
           {{ busy ? '正在应用…' : '应用变更集' }}
         </button>
-        <div v-if="operationError && operationErrorTarget === 'changeset'" class="alert alert-error mt-3" role="alert">{{ operationError }}</div>
+        <div
+          v-if="operationError && operationErrorTarget === 'changeset'"
+          class="alert alert-error mt-3"
+          role="alert"
+        >
+          {{ operationError }}
+        </div>
         <div v-if="summary" class="mt-4">
           <p class="text-sm">{{ summary.counts }}</p>
           <p v-if="summary.inert" class="alert alert-warning" role="status">
             这一批没有任何档位被写入：要么全部被拒，要么库里本来就是这个状态。校对端不会因此看到新标记。
           </p>
           <ul v-if="summary.refused.length">
-            <li v-for="entry in summary.refused" :key="`${entry.kind}/${entry.message_key}`" class="text-sm">
+            <li
+              v-for="entry in summary.refused"
+              :key="`${entry.kind}/${entry.message_key}`"
+              class="text-sm"
+            >
               <code>{{ entry.kind }} / {{ entry.message_key }}</code> 被拒：{{ entry.reason }}
             </li>
           </ul>
           <ul v-if="summary.locked.length">
-            <li v-for="entry in summary.locked" :key="`${entry.kind}/${entry.message_key}`" class="text-sm text-muted">
-              <code>{{ entry.kind }} / {{ entry.message_key }}</code> 保持人工降档，变更集不覆盖撤销标记
+            <li
+              v-for="entry in summary.locked"
+              :key="`${entry.kind}/${entry.message_key}`"
+              class="text-sm text-muted"
+            >
+              <code>{{ entry.kind }} / {{ entry.message_key }}</code>
+              保持人工降档，变更集不覆盖撤销标记
             </li>
           </ul>
         </div>
@@ -143,6 +228,10 @@
 </template>
 
 <script setup>
+import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import { useAsyncResource } from '@/composables/useAsyncResource'
+import AppDataTable from '@/components/AppDataTable.vue'
+import AppField from '@/components/AppField.vue'
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
@@ -161,10 +250,17 @@ import { getPbMessage } from '@/utils/pbErrors'
 const auth = useAuthStore()
 const items = ref([])
 const truncated = ref(false)
-const loading = ref(true)
+const {
+  pending: loading,
+  error: loadError,
+  reload
+} = useAsyncResource(({ signal }) => listGates({ limit: 500, signal }), {
+  initialData: { items: [] },
+  isEmpty: (value) => !value.items?.length,
+  formatError: (cause) => getPbMessage(cause, '门控登记表加载失败')
+})
 const busy = ref(false)
 const busyRule = ref('')
-const loadError = ref('')
 const operationError = ref('')
 const operationErrorTarget = ref('')
 const success = ref('')
@@ -182,19 +278,12 @@ function ruleKey(item) {
 }
 
 async function load() {
-  loading.value = true
-  loadError.value = ''
   operationError.value = ''
   operationErrorTarget.value = ''
-  try {
-    const result = await listGates({ limit: 500 })
-    items.value = result.items || []
-    truncated.value = Boolean(result.truncated)
-  } catch (cause) {
-    loadError.value = getPbMessage(cause, '门控登记表加载失败')
-  } finally {
-    loading.value = false
-  }
+  const result = await reload()
+  if (!result.ok) return
+  items.value = result.data.items || []
+  truncated.value = Boolean(result.data.truncated)
 }
 
 async function pickFile(event) {

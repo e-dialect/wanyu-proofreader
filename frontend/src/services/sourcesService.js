@@ -1,7 +1,7 @@
 import pb from '@/lib/pocketbase'
 
-export function listSources() {
-  return pb.send('/api/fangji/sources', { method: 'GET', requestKey: null })
+export function listSources({ signal } = {}) {
+  return pb.send('/api/fangji/sources', { method: 'GET', requestKey: null, signal })
 }
 
 export function createSource(body) {
@@ -9,9 +9,12 @@ export function createSource(body) {
 }
 
 export function saveSourceUsage(sourceId, purpose, body) {
-  return pb.send(`/api/fangji/sources/${encodeURIComponent(sourceId)}/usages/${encodeURIComponent(purpose)}`, {
-    method: 'PUT',
-    body,
-    requestKey: null
-  })
+  return pb.send(
+    `/api/fangji/sources/${encodeURIComponent(sourceId)}/usages/${encodeURIComponent(purpose)}`,
+    {
+      method: 'PUT',
+      body,
+      requestKey: null
+    }
+  )
 }

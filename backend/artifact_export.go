@@ -348,7 +348,11 @@ func (s *importService) downloadArtifact(c *core.RequestEvent) error {
 	c.Response.Header().Set("Cache-Control", "private, no-store")
 	c.Response.Header().Set("X-Content-Type-Options", "nosniff")
 	c.Response.Header().Set("Content-Disposition", `attachment; filename="`+fileName+`"`)
-	return c.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
+	contentType := "text/csv; charset=utf-8"
+	if artifact.GetString("kind") == "ocr_json" {
+		contentType = "application/json; charset=utf-8"
+	}
+	return c.Blob(http.StatusOK, contentType, data)
 }
 
 func containsStr(list []string, target string) bool {

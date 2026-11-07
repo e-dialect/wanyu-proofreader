@@ -1,3 +1,4 @@
+import { proofreadSource } from './helpers/proofreadSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -21,9 +22,15 @@ function memoryStorage() {
 
 function throwingStorage() {
   return {
-    getItem() { throw new Error('denied') },
-    setItem() { throw new Error('denied') },
-    removeItem() { throw new Error('denied') }
+    getItem() {
+      throw new Error('denied')
+    },
+    setItem() {
+      throw new Error('denied')
+    },
+    removeItem() {
+      throw new Error('denied')
+    }
   }
 }
 
@@ -60,18 +67,23 @@ test('treats missing storage and privacy-mode errors as unseen without throwing'
 
 test('desktop onboarding names the four-screen path and editor docks', () => {
   const steps = onboardingSteps(false)
-  const text = steps.map((step) => `${step.id} ${step.title} ${step.target} ${step.body}`).join('\n')
-  assert.deepEqual(steps.map((step) => step.id), [
-    'workspace',
-    'claim',
-    'pdf',
-    'fields',
-    'correction-paths',
-    'keyboard',
-    'draft-lease',
-    'research-notice',
-    'submit'
-  ])
+  const text = steps
+    .map((step) => `${step.id} ${step.title} ${step.target} ${step.body}`)
+    .join('\n')
+  assert.deepEqual(
+    steps.map((step) => step.id),
+    [
+      'workspace',
+      'claim',
+      'pdf',
+      'fields',
+      'correction-paths',
+      'keyboard',
+      'draft-lease',
+      'research-notice',
+      'submit'
+    ]
+  )
   assert.match(text, /工作台/)
   assert.match(text, /发现项目/)
   assert.match(text, /领取任务/)
@@ -108,10 +120,19 @@ test('mobile onboarding uses field-by-field copy and omits desktop shortcuts', (
 })
 
 test('profile offers a way to replay the tour and the editor starts it after load', () => {
-  const profile = readFileSync(new URL('../src/views/proofreader/ProfileView.vue', import.meta.url), 'utf8')
-  const editor = readFileSync(new URL('../src/views/proofreader/ProofreadEditorView.vue', import.meta.url), 'utf8')
-  const layout = readFileSync(new URL('../src/views/proofreader/ProofreaderLayout.vue', import.meta.url), 'utf8')
-  const onboarding = readFileSync(new URL('../src/components/ProofreaderOnboarding.vue', import.meta.url), 'utf8')
+  const profile = readFileSync(
+    new URL('../src/views/proofreader/ProfileView.vue', import.meta.url),
+    'utf8'
+  )
+  const editor = proofreadSource()
+  const layout = readFileSync(
+    new URL('../src/views/proofreader/ProofreaderLayout.vue', import.meta.url),
+    'utf8'
+  )
+  const onboarding = readFileSync(
+    new URL('../src/components/ProofreaderOnboarding.vue', import.meta.url),
+    'utf8'
+  )
   assert.match(profile, /重看新手引导/)
   assert.match(editor, /startIfUnseen/)
   assert.match(editor, /correction-paths/)
@@ -131,7 +152,10 @@ test('editor shortcuts yield while the onboarding tour is open', () => {
 })
 
 test('PDF reuse browser fixture opts out of the first-run tour', () => {
-  const script = readFileSync(new URL('../../backend/tests/pdf_reuse_browser.cjs', import.meta.url), 'utf8')
+  const script = readFileSync(
+    new URL('../../backend/tests/pdf_reuse_browser.cjs', import.meta.url),
+    'utf8'
+  )
   assert.match(script, /fangji:onboarding:v1:\$\{auth\.record\.id\}/)
 })
 

@@ -145,9 +145,9 @@ class UiDebtTests(unittest.TestCase):
         baseline = json.loads((guard.ROOT / 'scripts' / 'ui_debt_baseline.json').read_text(encoding='utf-8'))
         for kind in ('hardcoded_colors', 'border_radius_literals', 'z_index_literals',
                      'alerts_without_role', 'custom_modals', 'undefined_variables',
-                     'font_family_stacks', 'inline_styles'):
+                     'font_family_stacks', 'inline_styles', 'bare_tables'):
             self.assertEqual(baseline['kinds'][kind]['mode'], 'fail', kind)
-        self.assertEqual(baseline['kinds']['inline_styles']['limit'], 27)
+        self.assertEqual(baseline['kinds']['inline_styles']['limit'], 9)
 
     def test_bound_alert_class_and_empty_role_are_detected(self):
         self.write('View.vue', '''<template>

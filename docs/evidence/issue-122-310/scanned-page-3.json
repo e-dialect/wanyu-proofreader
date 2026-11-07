@@ -1,0 +1,64 @@
+{
+  "page": 3,
+  "engine": "tesseract_single_column",
+  "has_images": true,
+  "rows": [
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "IPA ag",
+          "status": "needs_review",
+          "confidence": 89.48151,
+          "bbox": [
+            233,
+            272,
+            282,
+            91
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "COMBINING &",
+          "status": "needs_review",
+          "confidence": 80.524921,
+          "bbox": [
+            229,
+            483,
+            654,
+            75
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "RARE &",
+          "status": "needs_review",
+          "confidence": 93.331692,
+          "bbox": [
+            232,
+            687,
+            390,
+            93
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    }
+  ],
+  "raw_text": "IPA ag\nCOMBINING &\nRARE &\n",
+  "raw_layout": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t2474\t3500\t-1\t\n2\t1\t1\t0\t0\t0\t229\t272\t654\t508\t-1\t\n3\t1\t1\t1\t0\t0\t229\t272\t654\t508\t-1\t\n4\t1\t1\t1\t1\t0\t233\t272\t282\t91\t-1\t\n5\t1\t1\t1\t1\t1\t233\t272\t151\t68\t89.689148\tIPA\n5\t1\t1\t1\t1\t2\t415\t291\t100\t72\t89.273872\tag\n4\t1\t1\t1\t2\t0\t229\t483\t654\t75\t-1\t\n5\t1\t1\t1\t2\t1\t229\t487\t563\t71\t91.906654\tCOMBINING\n5\t1\t1\t1\t2\t2\t831\t483\t52\t75\t69.143188\t&\n4\t1\t1\t1\t3\t0\t232\t687\t390\t93\t-1\t\n5\t1\t1\t1\t3\t1\t232\t703\t264\t69\t92.702370\tRARE\n5\t1\t1\t1\t3\t2\t533\t687\t89\t93\t93.961014\t&\n",
+  "duration_ms": 2006
+}

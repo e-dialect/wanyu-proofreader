@@ -22,3 +22,27 @@ They are unmodified external command-line programs; their package licenses and
 corresponding sources remain available through the Alpine package repositories.
 Generated page images retain the rights and access restrictions of their source
 documents, as described in `ASSET_BOUNDARIES.md`.
+
+
+## Optional local OCR worker
+
+`backend/ocr-worker.Dockerfile` adds the following feature-specific components
+through signed Alpine 3.24 packages. Exact package versions and model SHA256s
+are recorded for the tested image in `docs/evidence/issue-122-310`; a later image
+build must retain its own package manifest. These are unmodified command-line
+programs/models; the application only orchestrates them.
+
+| Component / distributed path | Source and version | Copyright | License / retained notice |
+|---|---|---|---|
+| Tesseract (`/usr/bin/tesseract`, `libtesseract`) | [Tesseract 5.5.2](https://github.com/tesseract-ocr/tesseract/tree/5.5.2), Alpine `tesseract-ocr` 5.5.2-r0 at verification | Tesseract contributors; see upstream source notices | Apache-2.0; `backend/ocrengine/licenses/TESSERACT-LICENSE.txt` copied to `/usr/share/licenses/wanyu-ocr/` |
+| eng and chi_sim `.traineddata` | [tessdata 4.1.0](https://github.com/tesseract-ocr/tessdata/tree/4.1.0), packaged by Alpine as `tesseract-ocr-data-eng` / `tesseract-ocr-data-chi_sim`; model source is identified independently of the engine package version | Tesseract tessdata contributors; upstream repository notices | [Apache-2.0 model license](https://github.com/tesseract-ocr/tessdata/blob/4.1.0/LICENSE); `backend/ocrengine/licenses/TESSDATA-LICENSE.txt` copied beside the engine notice |
+| Poppler / `poppler-utils` | [Poppler](https://poppler.freedesktop.org/), Alpine 3.24 package, exact build version in the image manifest | Poppler contributors | GPL-2.0-or-later; same external executable/source distribution boundary as the existing backend Poppler entry above |
+
+The official [Alpine APKBUILD](https://github.com/alpinelinux/aports/blob/3.24-stable/community/tesseract-ocr/APKBUILD)
+explicitly selects Tesseract 5.5.2 and tessdata 4.1.0. This model registration is
+based on the model repository license, rather than inferred from the engine
+license. Preserve both the corresponding upstream sources and applicable
+notices when redistributing an image; Alpine package metadata does not replace
+release-time fulfillment of source/notice obligations. No external recognition
+service is used, and neither the software license nor model license grants
+rights to an uploaded document or its extracted text.

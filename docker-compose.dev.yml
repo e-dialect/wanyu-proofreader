@@ -1,5 +1,7 @@
 services:
   backend:
+    networks:
+      default: {}
     build:
       context: ./backend
       args:

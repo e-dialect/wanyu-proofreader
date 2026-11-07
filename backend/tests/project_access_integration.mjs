@@ -67,7 +67,7 @@ async function createUser(label, displayName = label) {
     method: 'POST',
     body: { identity: email, password }
   })
-  return { id: record.id, email, token: auth.token }
+  return { id: record.id, email, name: displayName, token: auth.token }
 }
 
 function accessUnitRecord(id, fields = {}) {
@@ -82,14 +82,16 @@ function testManagedProjectIdsBeyondLegacyLimit() {
     { project: `managed-${index}`, role: 'manager' }
   ))
   const dao = {
-    findRecordsByFilter(collection, filter, sort, limit, offset) {
+    findRecordsByFilter(collection, filter, sort, limit, offset, params) {
       assert.equal(offset, 0)
       if (collection === 'projects') {
-        assert.equal(filter, 'admin = "unit-user"')
+        assert.equal(filter, 'admin = {:user}')
+        assert.deepEqual(params, { user: 'unit-user' })
         return owned.slice(offset, offset + limit)
       }
       assert.equal(collection, 'project_memberships')
-      assert.equal(filter, 'user = "unit-user" && role = "manager"')
+      assert.equal(filter, 'user = {:user} && role = "manager"')
+      assert.deepEqual(params, { user: 'unit-user' })
       return managerMemberships.slice(offset, offset + limit)
     }
   }
@@ -195,12 +197,12 @@ try {
   await request(`/api/fangji/projects/${privateProject.id}/members/${manager.id}`, {
     method: 'PUT',
     token: creator.token,
-    body: { role: 'manager' }
+    body: { role: 'manager', candidateTerm: 'manager' }
   })
   await request(`/api/fangji/projects/${privateProject.id}/members/${proofreader.id}`, {
     method: 'PUT',
     token: manager.token,
-    body: { role: 'proofreader' }
+    body: { role: 'proofreader', candidateTerm: 'proofreader' }
   })
   await request(`/api/fangji/projects/${privateProject.id}/members/${manager.id}`, {
     method: 'PUT',
@@ -368,7 +370,7 @@ try {
   const swept = await request(`${candidatesPath}?term=${encodeURIComponent('users')}`, { token: creator.token })
   assert.ok(swept.length < 5, `a generic prefix must not fan out across the platform, got ${swept.length}`)
 
-  // A term is interpolated into a filter, so anything able to break out is refused.
+  // Defense in depth: literal identifier syntax is constrained as well as SQL-bound.
   for (const bad of ['a', 'x'.repeat(65), '" OR id != ""', 'a" || "1"="1', '50%', 'bo\\bs', '张三;drop']) {
     const rejected = await rawRequest(`${candidatesPath}?term=${encodeURIComponent(bad)}`, { token: creator.token })
     assert.equal(rejected.status, 400, `term ${JSON.stringify(bad)} must be rejected`)
@@ -384,6 +386,39 @@ try {
   }
   const unauthenticated = await rawRequest(candidatesPath)
   assert.equal(unauthenticated.status, 401, 'candidate enumeration must not be public')
+
+  // Cursor pagination must preserve the exact scoped set, with no overlap.
+  const collected = []
+  let cursor = ''
+  do {
+    const result = await request(`${candidatesPath}?limit=1&cursor=${encodeURIComponent(cursor)}`, { token: manager.token })
+    collected.push(...result.items.map(item => item.id))
+    cursor = result.nextCursor
+  } while (cursor)
+  assert.deepEqual(collected, candidates.map(item => item.id))
+  assert.equal(new Set(collected).size, collected.length)
+  const firstPage = await request(`${candidatesPath}?limit=1`, { token: manager.token })
+  await request(`${candidatesPath}?limit=1&cursor=${encodeURIComponent(firstPage.nextCursor)}`, { token: creator.token, expected: 400 })
+  await request(`${candidatesPath}?limit=201`, { token: manager.token, expected: 400 })
+  await request(`${candidatesPath}?limit=1&cursor=${encodeURIComponent('" OR 1=1')}`, { token: manager.token, expected: 400 })
+  // Opaque IDs alone cannot bypass the picker; exact known identifiers can.
+  await request(`/api/fangji/projects/${privateProject.id}/members/${outsider.id}`, { method: 'PUT', token: manager.token, body: { role: 'proofreader' }, expected: 403 })
+  await request(`/api/fangji/projects/${privateProject.id}/members/${outsider.id}`, { method: 'PUT', token: manager.token, body: { role: 'proofreader', candidateTerm: 'wrong-identifier' }, expected: 403 })
+  await request(`/api/fangji/projects/${privateProject.id}/members/${outsider.id}`, { method: 'PUT', token: manager.token, body: { role: 'proofreader', candidateTerm: 'outsider' } })
+  await request(`/api/fangji/projects/${privateProject.id}/members/${outsider.id}`, { method: 'DELETE', token: manager.token, expected: 204 })
+  // Hidden email never leaks to a manager, while one's own email remains usable.
+  const privateMembers = await request(`/api/fangji/projects/${privateProject.id}/members`, { token: manager.token })
+  assert.equal(privateMembers.find(item => item.user === creator.id).email, '')
+  assert.equal(privateMembers.find(item => item.user === manager.id).email, manager.email)
+  assert.equal(privateMembers.find(item => item.user === proofreader.id).email, '')
+  const lookupAttempts = await Promise.all(Array.from({ length: 24 }, () => rawRequest(`${candidatesPath}?term=outsider`, { token: creator.token })))
+  assert.ok(lookupAttempts.some(result => result.status === 200))
+  assert.ok(lookupAttempts.some(result => result.status === 429))
+  assert.ok(lookupAttempts.every(result => [200, 429].includes(result.status)), 'concurrent rate requests must never fail open or return server errors')
+  await request(`${candidatesPath}?term=outsider`, { token: creator.token, expected: 429 })
+  await request(`/api/fangji/projects/${privateProject.id}/members/${outsider.id}`, { method: 'PUT', token: creator.token, body: { role: 'proofreader', candidateTerm: 'outsider' }, expected: 429 })
+  // Exhausting exact lookup does not disable related-member browsing.
+  await request(candidatesPath, { token: creator.token })
 
   const detailsPath = `/api/fangji/projects/${privateProject.id}`
   const rareName = '项目𠮷𰻞𱁬'

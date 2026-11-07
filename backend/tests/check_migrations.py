@@ -19,6 +19,17 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1793926800_ocr_runtime.js': {
+        'indexes': ['idx_import_jobs_ocr_request'],
+        'collection_indexes': ('import_jobs', 'idx_import_jobs_ocr_request'),
+        'plans': [('import_jobs', "SELECT id FROM import_jobs WHERE project=? AND created_by=? AND ocr_request_id=? AND ocr_request_id != ''", ('p','u','request'), 'idx_import_jobs_ocr_request')],
+        'fields': ('pages', {'ocr_cells_json': {'required': False, 'max': 1048576}}),
+    },
+    '1793923200_member_lookup_limits.js': {
+        'indexes': ['idx_member_lookup_actor'],
+        'fields': ('member_lookup_limits', {'actor': {'required': True}, 'attempts': {'required': False}}),
+        'plans': [('member_lookup_limits', 'SELECT id FROM member_lookup_limits WHERE actor=?', ('u',), 'idx_member_lookup_actor')],
+    },
     '1792281600_release_deliveries.js': {
         'indexes': ['idx_delivery_package', 'idx_delivery_version', 'idx_delivery_source', 'idx_delivery_project', 'idx_release_events_delivery', 'idx_release_event_sequence'],
         'collection_indexes': ('release_deliveries', 'idx_delivery_version'),

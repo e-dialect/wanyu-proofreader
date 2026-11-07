@@ -1,0 +1,64 @@
+{
+  "page": 2,
+  "engine": "tesseract_single_column",
+  "has_images": true,
+  "rows": [
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "ONE TWO THREE",
+          "status": "needs_review",
+          "confidence": 91.11153933333333,
+          "bbox": [
+            229,
+            270,
+            832,
+            71
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "FOUR FIVE SIX",
+          "status": "needs_review",
+          "confidence": 90.66430166666667,
+          "bbox": [
+            232,
+            487,
+            710,
+            71
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    },
+    {
+      "cells": [
+        {
+          "field": "原文",
+          "text": "SEVEN EIGHT NINE",
+          "status": "needs_review",
+          "confidence": 91.031522,
+          "bbox": [
+            229,
+            702,
+            928,
+            71
+          ],
+          "source": "tesseract",
+          "reason": "machine_ocr_requires_confirmation"
+        }
+      ]
+    }
+  ],
+  "raw_text": "ONE TWO THREE\nFOUR FIVE SIX\nSEVEN EIGHT NINE\n",
+  "raw_layout": "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n1\t1\t0\t0\t0\t0\t0\t0\t2474\t3500\t-1\t\n2\t1\t1\t0\t0\t0\t229\t270\t928\t503\t-1\t\n3\t1\t1\t1\t0\t0\t229\t270\t928\t503\t-1\t\n4\t1\t1\t1\t1\t0\t229\t270\t832\t71\t-1\t\n5\t1\t1\t1\t1\t1\t229\t270\t207\t71\t91.899048\tONE\n5\t1\t1\t1\t1\t2\t470\t270\t225\t71\t91.190956\tTWO\n5\t1\t1\t1\t1\t3\t730\t272\t331\t68\t90.244614\tTHREE\n4\t1\t1\t1\t2\t0\t232\t487\t710\t71\t-1\t\n5\t1\t1\t1\t2\t1\t232\t487\t269\t71\t91.806061\tFOUR\n5\t1\t1\t1\t2\t2\t542\t488\t209\t69\t91.059654\tFIVE\n5\t1\t1\t1\t2\t3\t787\t487\t155\t71\t89.127190\tSIX\n4\t1\t1\t1\t3\t0\t229\t702\t928\t71\t-1\t\n5\t1\t1\t1\t3\t1\t229\t702\t325\t71\t92.879341\tSEVEN\n5\t1\t1\t1\t3\t2\t598\t702\t294\t71\t87.225082\tEIGHT\n5\t1\t1\t1\t3\t3\t930\t703\t227\t69\t92.990143\tNINE\n",
+  "duration_ms": 2321
+}

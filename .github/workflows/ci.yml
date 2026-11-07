@@ -71,8 +71,6 @@ jobs:
         run: |
           test -z "$(gofmt -l .)" || { echo 'not gofmt-clean:'; gofmt -l .; exit 1; }
           go vet ./...
-      - name: Frontend lint
-        run: npm --prefix frontend ci && npm --prefix frontend run lint
       - name: Runtime version and documentation agreement
         run: python3 backend/tests/check_runtime_versions.py
       - name: Integration suite inventory
@@ -158,6 +156,7 @@ jobs:
         with:
           node-version: "24"
       - name: Go unit tests with the race detector
+        if: matrix.suite == 'upload_jobs'
         working-directory: backend
         run: go test -race ./...
       - name: Integration suite with a race-detected server
@@ -388,7 +387,7 @@ jobs:
       - name: Capture the quality state summary, filter and dialog paths
         env:
           NODE_PATH: ${{ runner.temp }}/quality-browser/node_modules
-          QUALITY_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/quality_state_browser.cjs
+          QUALITY_BROWSER_SCRIPT: ${{ github.workspace }}/backend/tests/backlog_browser.cjs
           QUALITY_BROWSER_FIXTURE: ${{ runner.temp }}/quality-browser-fixture.json
         run: python3 backend/tests/run_integration.py quality_state_browser_integration.mjs
       - name: Verify every screenshot exists and is non-trivial
@@ -481,6 +480,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python for UI debt ratchet
         uses: actions/setup-python@v7
@@ -505,8 +506,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run frontend tests
-        run: npm test --if-present
+      - name: Lint and audit frontend dependencies
+        run: npm run lint && npm audit --audit-level=high
+
+      - name: Check formatting of touched frontend sources
+        working-directory: .
+        env:
+          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/check_prettier.py --base "${FORMAT_BASE:-origin/main}"
+
+      - name: Scan repository history for secrets
+        working-directory: .
+        run: |
+          sh scripts/install_security_tool.sh gitleaks "$RUNNER_TEMP/security-tools"
+          "$RUNNER_TEMP/security-tools/gitleaks" git . --redact --log-opts=--all
 
       - name: Frontend coverage (reports on every file the suites load)
         run: npm run --silent test:coverage
@@ -537,7 +550,7 @@ jobs:
   backend-unicode:
     name: Backend Unicode workflow
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -552,9 +565,6 @@ jobs:
           python-version: "3.12"
       - name: Install Python dependencies for the repository guards
         run: python3 -m pip install --quiet -r requirements-dev.txt
-      - name: Run backend tests
-        working-directory: backend
-        run: go test ./...
       - name: Verify every migration up, down and up again
         run: python3 backend/tests/check_migrations.py
       - name: Backend guard and tooling unit tests
@@ -565,6 +575,32 @@ jobs:
         run: python3 backend/tests/run_rare_characters_integration.py
       - name: Verify Review Bundle import idempotency and restart recovery
         run: python3 backend/tests/run_bundle_import_integration.py
+      - name: Verify OCR worker failures and restart recovery without external data
+        run: python3 backend/tests/run_ocr_runtime_integration.py
+      - name: Install frontend and mounted component browser
+        run: |
+          npm --prefix frontend ci
+          npm install --prefix "$RUNNER_TEMP/quality-components" playwright@1.62.1
+          "$RUNNER_TEMP/quality-components/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify mounted review and formerly orphaned frontend scripts
+        env:
+          NODE_PATH: ${{ runner.temp }}/quality-components/node_modules
+        run: python3 backend/tests/run_frontend_quality_browser.py
+      - name: Attach mounted frontend synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-quality-browser
+          path: output/playwright/frontend-quality/
+          if-no-files-found: ignore
+      - name: Audit reachable Go vulnerabilities
+        working-directory: backend
+        run: |
+          # v1.1.4 embeds x/tools v0.29.0, whose SSA builder panics on Go 1.27.
+          # Keep source/symbol analysis; v1.9.0 embeds compatible x/tools v0.52.0.
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck -version
+          govulncheck ./...
       - name: Publish Go coverage summary
         working-directory: backend
         run: |
@@ -579,7 +615,7 @@ jobs:
   containers:
     name: Containers
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -676,8 +712,80 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
+      - name: Build isolated OCR worker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          file: ./backend/ocr-worker.Dockerfile
+          push: false
+          load: true
+          tags: fangji-ocr:ci
+          cache-from: type=gha,scope=ocr-worker
+          cache-to: type=gha,mode=max,scope=ocr-worker
+
       - name: Verify trusted proxy rate limiting
         run: sh frontend/tests/proxyRateLimit.e2e.sh
+
+      - name: Verify production font HTTP cache and headers
+        run: |
+          container=$(docker run -d --add-host backend:127.0.0.1 -p 127.0.0.1:18080:8080 fangji-frontend:ci)
+          trap 'docker rm -f "$container"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/ >/dev/null; then break; fi
+            sleep 1
+          done
+          FRONTEND_URL=http://127.0.0.1:18080 node frontend/scripts/test-font-cache.mjs
+
+      - name: Scan built images and generate CycloneDX SBOMs
+        run: |
+          sh scripts/install_security_tool.sh trivy "$RUNNER_TEMP/security-tools"
+          mkdir -p output/security
+          result=0
+          for image in fangji-backend fangji-frontend fangji-ocr; do
+            "$RUNNER_TEMP/security-tools/trivy" image --timeout 5m \
+              --format cyclonedx --output "output/security/$image.cdx.json" "$image:ci" || result=1
+            "$RUNNER_TEMP/security-tools/trivy" image --scanners vuln --timeout 5m \
+              --severity HIGH,CRITICAL --exit-code 1 --format json \
+              --output "output/security/$image.vulnerabilities.json" "$image:ci" || result=1
+          done
+          exit "$result"
+      - name: Upload SBOMs and image vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-security
+          path: output/security/
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Extract the actual frontend image for OCR browser verification
+        run: |
+          container=$(docker create fangji-frontend:ci)
+          trap 'docker rm "$container"' EXIT
+          rm -rf frontend/dist
+          mkdir -p frontend/dist
+          docker cp "$container:/usr/share/nginx/html/." frontend/dist/
+          npm install --prefix "$RUNNER_TEMP/ocr-browser" playwright@1.62.1
+          "$RUNNER_TEMP/ocr-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify real OCR job, original metadata and protected artifacts in Chrome
+        env:
+          NODE_PATH: ${{ runner.temp }}/ocr-browser/node_modules
+          OCR_BROWSER_IMAGE: fangji-ocr:ci
+        run: python3 backend/tests/run_ocr_browser.py
+      - name: Attach real OCR browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ocr-runtime-browser
+          path: output/playwright/ocr/
+          if-no-files-found: ignore
 
   profile-stats:
     name: profile-stats integration
@@ -722,8 +830,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - run: go test ./...
-        working-directory: backend
       - run: python3 backend/tests/run_integration.py column_order_integration.mjs
 
   pdf-access:
@@ -741,8 +847,6 @@ jobs:
           node-version: "24"
       - name: Install page image renderers
         run: sudo apt-get update && sudo apt-get install -y poppler-utils webp
-      - run: go test ./...
-        working-directory: backend
       - run: python3 backend/tests/run_integration.py pdf_access_integration.mjs --env REQUIRE_PAGE_IMAGES=1
       - name: Install PDF rendering test browser
         run: |

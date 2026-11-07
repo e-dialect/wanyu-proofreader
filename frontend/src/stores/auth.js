@@ -2,7 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import pb from '@/lib/pocketbase'
 import { isPlatformAdmin as platformAdmin, projectRoles } from '../lib/access.js'
-import { clearAuth, loginWithExternalProvider, loginWithPassword, registerProofreader } from '@/services/authService'
+import {
+  clearAuth,
+  loginWithExternalProvider,
+  loginWithPassword,
+  registerProofreader
+} from '@/services/authService'
 import { getAccessContext } from '@/services/projectsService'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -10,6 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(pb.authStore.token)
   const accessContext = ref(null)
   let accessRequest = null
+  let accessGeneration = 0
 
   pb.authStore.onChange((newToken, newModel) => {
     token.value = newToken
@@ -28,22 +34,32 @@ export const useAuthStore = defineStore('auth', () => {
   const hasProofreadingProjects = computed(() => capabilities.value.hasProofreadingProjects)
   const mustChangePassword = computed(() => Boolean(user.value?.must_change_password))
 
-  async function loadAccessContext({ force = false } = {}) {
+  async function loadAccessContext({ force = false, signal } = {}) {
     if (!pb.authStore.isValid) {
+      ++accessGeneration
       accessContext.value = null
       return null
     }
     if (accessContext.value && !force) return accessContext.value
-    if (accessRequest && !force) return accessRequest
-    accessRequest = getAccessContext()
+    if (accessRequest && !force && !signal) return accessRequest
+    const generation = ++accessGeneration
+    const requestToken = pb.authStore.token
+    const request = getAccessContext({ signal })
       .then((context) => {
-        accessContext.value = context
+        if (
+          !signal?.aborted &&
+          generation === accessGeneration &&
+          requestToken === pb.authStore.token
+        )
+          accessContext.value = context
         return context
       })
       .finally(() => {
-        accessRequest = null
+        if (accessRequest === request) accessRequest = null
       })
-    return accessRequest
+    // Component-owned cancellation must not cancel a request shared by guards.
+    if (!signal) accessRequest = request
+    return request
   }
 
   async function login(email, password) {

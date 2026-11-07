@@ -1,0 +1,22 @@
+<html>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <div id="app"></div>
+  <script type="module">
+    import { createApp, h } from 'vue'
+    import AppFieldValue from '../../src/components/AppFieldValue.vue'
+    import '../../src/style.css'
+    const value = '𢶀ɡ⁵á\n  乙'
+    const segments = [
+      { text: '𢶀', hit: false },
+      { text: 'ɡ⁵á', hit: true },
+      { text: '\n  乙', hit: false }
+    ]
+    createApp({
+      render: () =>
+        h('main', { style: { padding: '32px' } }, [
+          h('h1', 'Synthetic field rendering'),
+          h(AppFieldValue, { id: 'font-value', as: 'p', value, segments, lang: 'und-fonipa' })
+        ])
+    }).mount('#app')
+  </script>
+</html>

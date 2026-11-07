@@ -90,6 +90,26 @@ def pocketbase_claims(go_mod):
     return problems, declared
 
 
+def version_tuple(version):
+    return tuple(int(part) for part in version.split('.')) + (0,) * (3 - len(version.split('.')))
+
+
+def go_builder_problems(go_mod):
+    match = re.search(r'^go (\d+\.\d+(?:\.\d+)?)', go_mod, re.MULTILINE)
+    if not match:
+        return ['backend/go.mod declares no go directive']
+    minimum = version_tuple(match.group(1))
+    problems = []
+    for source in ('backend/Dockerfile', 'backend/ocr-worker.Dockerfile'):
+        images = re.findall(r'FROM\s+golang:(\d+(?:\.\d+){0,2})', read(source))
+        if not images:
+            problems.append(source + ' pins no golang image version to compare against go.mod')
+        for version in images:
+            if version_tuple(version) < minimum:
+                problems.append(f'{source} builds with golang {version} but go.mod needs {match.group(1)}')
+    return problems
+
+
 def main():
     problems = []
     go_mod = read('backend/go.mod')
@@ -114,17 +134,7 @@ def main():
         if image_major and image_major not in tested:
             problems.append(f'frontend/Dockerfile builds on Node {image_major} but the jobs that run npm use {sorted(tested)}')
 
-    go_version = re.search(r'^go (\d+)\.(\d+)', go_mod, re.MULTILINE)
-    image = re.search(r'FROM\s+golang:(\d+)(?:\.(\d+))?', read('backend/Dockerfile'))
-    if not go_version:
-        problems.append('backend/go.mod declares no go directive')
-    if not image:
-        problems.append('backend/Dockerfile pins no golang image version to compare against go.mod')
-    if go_version and image:
-        minor = int(image.group(2) or 0)
-        if (int(image.group(1)), minor) < (int(go_version.group(1)), int(go_version.group(2))):
-            problems.append(f'backend/Dockerfile builds with golang {image.group(1)}.{image.group(2) or 0} '
-                            f'but go.mod needs {go_version.group(1)}.{go_version.group(2)}')
+    problems += go_builder_problems(go_mod)
 
     version_problems, pocketbase = pocketbase_claims(go_mod)
     problems += version_problems

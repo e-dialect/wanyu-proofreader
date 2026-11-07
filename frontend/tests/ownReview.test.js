@@ -1,3 +1,4 @@
+import { proofreadSource } from './helpers/proofreadSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -18,7 +19,10 @@ const leakTerms = [
 
 test('own task order follows page number and keeps an active row editable', () => {
   const merged = mergeOwnTasks(
-    [{ id: 'active', page_number: 2 }, { id: 'only-active', page_number: 4 }],
+    [
+      { id: 'active', page_number: 2 },
+      { id: 'only-active', page_number: 4 }
+    ],
     [
       { id: 'reviewed-first', page_number: 2 },
       { id: 'active', page_number: 9 },
@@ -26,20 +30,18 @@ test('own task order follows page number and keeps an active row editable', () =
       { id: '', page_number: 1 }
     ]
   )
-  assert.deepEqual(merged.map((item) => `${item.kind}:${item.id}`), [
-    'active:active',
-    'reviewed:reviewed-first',
-    'reviewed:reviewed-last',
-    'active:only-active'
-  ])
+  assert.deepEqual(
+    merged.map((item) => `${item.kind}:${item.id}`),
+    ['active:active', 'reviewed:reviewed-first', 'reviewed:reviewed-last', 'active:only-active']
+  )
 })
 
 test('equal page numbers stay ordered by id and empty lists stay empty', () => {
-  const merged = mergeOwnTasks(
-    [{ id: 'b', page_number: 1 }],
-    [{ id: 'a', page_number: 1 }]
+  const merged = mergeOwnTasks([{ id: 'b', page_number: 1 }], [{ id: 'a', page_number: 1 }])
+  assert.deepEqual(
+    merged.map((item) => item.id),
+    ['a', 'b']
   )
-  assert.deepEqual(merged.map((item) => item.id), ['a', 'b'])
   assert.deepEqual(mergeOwnTasks(), [])
 })
 
@@ -53,8 +55,11 @@ test('review copy names both correction paths and does not leak workflow state',
 })
 
 test('the editor opts into read-only review without drafting, leasing, or submitting', () => {
-  const editor = readFileSync(new URL('../src/views/proofreader/ProofreadEditorView.vue', import.meta.url), 'utf8')
-  const hall = readFileSync(new URL('../src/views/proofreader/TaskHallView.vue', import.meta.url), 'utf8')
+  const editor = proofreadSource()
+  const hall = readFileSync(
+    new URL('../src/views/proofreader/TaskHallView.vue', import.meta.url),
+    'utf8'
+  )
   assert.match(editor, /OWN_REVIEW_NOTICE/)
   assert.match(editor, /hydrateForReview\(page\.value\)/)
   assert.match(editor, /getProofreaderTask\(pageId, \{ review: true \}\)/)
@@ -67,7 +72,10 @@ test('the editor opts into read-only review without drafting, leasing, or submit
   const reviewBranch = editor.slice(start, editor.indexOf('} else {', start))
   assert.notEqual(start, -1)
   assert.match(reviewBranch, /loadNeighbors/)
-  assert.doesNotMatch(reviewBranch, /restoreOrAcquireLease|restoreDraft|loadFindings|submitTwoPassProofread/)
+  assert.doesNotMatch(
+    reviewBranch,
+    /restoreOrAcquireLease|restoreDraft|loadFindings|submitTwoPassProofread/
+  )
   for (const term of leakTerms) {
     assert.equal(editor.includes(term), false, `editor leaked ${term}`)
     assert.equal(hall.includes(term), false, `hall leaked ${term}`)

@@ -1,171 +1,112 @@
 # 界面契约
 
-本文件是 `frontend/src` 的可核对界面真源。只记录已经落在代码里的决定；还没做的事指向对应 issue，不在这里讨论。
+本文件记录已经落在 `frontend/src` 的行为。源码指针使用文件路径与选择器/导出名，避免格式化后行号漂移；未完成的真实人员或语料验收仍以对应 issue 为准。
 
-`frontend/src/style.css` 的行号按当前 `:root`（`:6-156`）计算。只改 Vue 模板的引用仍指向组件文件里的那一行。
+## 基调与令牌
 
-核对方式：下面每一条都能用文中给出的 `file:line` 或 `grep` 复现。没有「适当美化」这类无法判定的句子。
+产品名为「万语校坊」。纸色底、墨色字、朱砂点缀来自 `style.css` 的 `:root`：`--paper`、`--ink`、`--accent`。颜色、圆角、层级、字体栈只在令牌定义处写字面值，调用点使用变量，不重新定义一套配色。
 
-## 基调
+`--space-1` 至 `--space-6`、`--text-xs` 至 `--text-2xl`、`--radius-*`、`--z-*`、`--badge-*` 与状态色也定义在同一 `:root`。新组件使用这些刻度；原组件从内联样式迁移时保留原来的尺寸。
 
-活跃界面的产品名是「万语校坊」。`grep -rn 方辑 frontend/src` 为 0 命中。字体族名仍是拉丁写法 `Fangji Phonetic` / `Fangji Rare Han`（`frontend/src/style.css:56` 的 `--font-rare`，以及 `frontend/src/rare-fonts.css:3`），那是历史资源名，不是界面句子。`grep -c "Fangji Phonetic" frontend/src/style.css` 为 1。
+字体约定：
 
-视觉基调是档案校勘工作台：纸色底、墨色字、朱砂点缀。对应令牌是 `--paper`、`--ink`、`--accent`（`frontend/src/style.css:14-17`）。本文件不重新定义配色。
+- `--font-rare` 同时包含 `Fangji Phonetic` 与 `Fangji Rare Han`，不能遗漏任一家族。
+- 普通界面使用 `--font-ui`，标题与码位说明使用对应 `--font-display` / `--font-mono`。
+- 字段值、`.proofread-textarea.form-control`、`.final-value textarea`、`.ipa-key` 优先使用 `var(--font-rare), var(--font-ui)`；记音与缺字先由随附字体呈现，普通字符仍有系统回退。
+- `AppFieldValue` 统一承载 `white-space: pre-wrap` 与 `overflow-wrap: anywhere`。调用方只负责间距、字号和布局，不再自行复制文本保真规则。
+- 已明确的 IPA 字段使用 `lang="und-fonipa"`。未知方言转写不猜成英语或其他语言；来源明确时可显式传入语言。
 
-校对员界面不出现「一校」「二校」。`grep -rn "一校\|二校" frontend/src` 为 0 命中。轮次只出现在管理员仲裁台（`frontend/src/views/admin/ArbitrationView.vue:16`）。
+字体覆盖集合由 `lib/fontCoverage.json` 给出，测试与原始字体 manifest/Unicode 范围精确比较。`useFontAvailability` 区分加载、失败与重试，并丢弃旧请求。含受保护字符时，加载完成前必须有提示；失败时保留原字符串与码位提示，不能用形近字替换。多个字段可以共用 `RareCharacterNotice`，并关闭子项重复提示。
 
-## 令牌
-
-定义位置只有 `frontend/src/style.css` 的 `:root`（`:6-156`）。下面两张表按用途归纳调色板、字体、间距、圆角、层级和状态色，不是 `:root` 的逐条清单。其余名字列在表后，行号就是定义处。用途按引用处归纳，不是新设计。
-
-| 名称 | 值 | 用途 | 定义 |
-| --- | --- | --- | --- |
-| `--primary` | `#315f68` | 主操作、链接、进度 | `:7` |
-| `--primary-dark` | `#234850` | 主按钮悬停 | `:8` |
-| `--primary-light` | `#e5eff0` | 选中底、浅强调 | `:9` |
-| `--secondary` | `#648b7d` | 校对入口顶边 | `:10`，引用见 `.capability-card--proofread` `:283` |
-| `--danger` | `#b7433f` | 危险按钮与强疑点边 | `:11` |
-| `--warn` | `#b86432` | 警告按钮、草稿点 | `:12` |
-| `--success` | `#3f7b5b` | 成功按钮 | `:13` |
-| `--paper` | `#f6f3ec` | 页面底 | `:14`；`:root` 背景 `:155`，`body` 渐变 `:162` |
-| `--paper-deep` | `#eee8dc` | 印章、头像底 | `:15` |
-| `--ink` | `#24343a` | 标题字色 | `:16`，`h1-h4`（`:165`） |
-| `--accent` | `#ad4f32` | 朱砂：印章、已改字段 | `:17`，`.field-change-label` `:651` |
-| `--gray-50` … `--gray-900` | `#f9fafb` … `#111827` | 中性色阶，一步一档 | `:18-27` |
-| `--radius` | `10px` | 卡片、按钮、输入框的默认圆角 | `:28` |
-| `--shadow` | 见 `:29` | 卡片阴影 | `:29` |
-| `--shadow-lg` | 见 `:30` | 悬停与登录卡片 | `:30` |
-
-`:root` 把 `font-family` 设成 `var(--font-ui)`（`:152`），`font-size: 15px`（`:153`），`color: var(--gray-800)`（`:154`），`background: var(--paper)`（`:155`）。
-
-### 语义、刻度与焦点
-
-这些名字都定义在同一个 `:root` 里。视图里的颜色、圆角、层级和字体栈引用它们，不再写字面值。`python3 scripts/check_ui_debt.py --only hardcoded_colors --only border_radius_literals --only z_index_literals --only font_family_stacks` 这四类的 `now` 为 0。
-
-| 名称 | 值 | 用途 | 定义 |
-| --- | --- | --- | --- |
-| `--surface` | `#fff` | 卡片、输入、键盘键的实色底。源码注释标明白名单 | `:31` |
-| `--on-fill` | `#fff` | 铺色按钮上的反白字。与 `--surface` 同值，注释写明语义分开 | `:32` |
-| `--surface-raised` | `#fcfbf8` | 校对字段区 | `:33` |
-| `--ink-muted` | `#475569` | 调色板外的石板灰，不并进 `--gray-500` | `:38` |
-| `--line` | `var(--gray-200)` | 边线别名 | `:39` |
-| `--overlay` | `rgba(20, 31, 34, .58)` | 模态遮罩 | `:43` |
-| `--focus-ring` | `var(--primary)` | 键盘焦点环 | `:55` |
-| `--font-rare` / `--font-ui` / `--font-display` / `--font-mono` | 见 `:56-59` | 唯一含 `Fangji Phonetic` 的地方是 `--font-rare`。界面用三个别名 | `:56-59` |
-| `--space-1` … `--space-6` | `4px` 到 `32px`，每档 ×2 或按 4px 网格 | 间距刻度。现有 `padding`/`margin` 仍是字面值，新代码用这组名字 | `:60-65` |
-| `--text-xs` … `--text-2xl` | `.75rem` 到 `2rem` | 字号刻度。现有 `font-size` 仍是字面值，新代码用这组名字 | `:66-71` |
-| `--radius-sm` / `--radius-md` / `--radius-lg` / `--radius-pill` | `6px` / `var(--radius)` / `14px` / `999px` | 圆角主刻度 | `:75`、`:80`、`:82`、`:84` |
-| `--radius-none` `--radius-hairline` `--radius-key` `--radius-nav` `--radius-tight` `--radius-panel` `--radius-mark` `--radius-card` `--radius-auth` `--radius-circle` `--radius-inset` | 见 `:72-86` | 已经出现过的其余圆角，保留原像素，避免把 16px 登录卡收成 14px | `:72-86` |
-| `--z-mask` `--z-local` `--z-float` `--z-raised` `--z-sticky-bar` `--z-dropdown` `--z-sticky` `--z-overlay` `--z-modal` | `1` `2` `5` `8` `9` `10` `100` `400` `500` | 层级。遮罩是 `--z-overlay`（`.modal-backdrop` `:683`）。对话框卡片是 `position: relative` 且 `z-index: var(--z-modal)`（`.confirmation-dialog` `:691`），这个 500 只在遮罩自己的层叠上下文里排序，页面上的高度仍是遮罩的 400 | `:87-95` |
-| `--danger-bg` `--warn-bg` `--success-bg` `--info-bg` 及同组边框/文字 | 见 `:96-120` | `.alert-*`（`:235-238`） | `:96-120` |
-| `--badge-*` | 见 `:121-131` | 条目状态徽章（`:313` 起） | `:121-131` |
-
-上表用省略号和「同组」覆盖中间档，不是漏记：`--gray-100` 到 `--gray-800`、`--space-2` 到 `--space-5`、`--text-sm` 到 `--text-xl`、`:96-120` 里未点名的边框与文字色、以及 `:121-131` 的每一个 `--badge-*`，都在对应行的行号范围内。上表没有逐条展开、也不在那些范围内的，仍在同一个 `:root` 里：半透明表面 `--surface-nav` `--surface-float` `--surface-bar` `--surface-chip`（`:34-37`）；弱边线 `--line-faint` `--line-nav` `--line-card`（`:40-42`）；辉光 `--ink-glow` `--ink-glow-hover` `--ink-glow-tight` `--primary-glow` `--primary-glow-soft` `--primary-line` `--accent-glow`（`:44-50`）；石板阴影 `--slate-shadow` `--slate-shadow-soft`（`:51-52`）；PDF 底 `--pdf-grid` `--pdf-mask`（`:53-54`）；`:96-120` 里的热警告与其余状态边/字色已算在「同组」行；差异与纸色 `--diff-del-bg` `--diff-del-ink` `--source-wash` `--paper-bright` `--paper-quiet`（`:132-136`）；登录 `--auth-shade` `--auth-sand`（`:137-138`）；工作状态 `--work-active-bg` `--work-active-ink` `--work-complete-bg` `--work-complete-ink` `--work-complete-edge`（`:139-143`）；`--selection-border` `--arbitration-border`（`:144-145`）；石板填充与 PDF 工具条 `--slate-fill` `--slate-fill-strong` `--pdf-track` `--pdf-track-strong` `--pdf-toolbar` `--pdf-ink`（`:146-151`）。
-
-`#fff` 在棘轮口径（不计 `--token` 定义，也不把 `#fff7ed` 算成 `#fff`）下为 0 次。源码里剩下的两处 `#fff` 都在 `:31` 和 `:32`，各有一行白名单注释。
-
-焦点环对比度（WCAG 相对亮度，sRGB）：
-
-- 旧环：`--primary-light` `#e5eff0` 对 `.form-control` 的白底。相对亮度比约 **1.17:1**。
-- 现环：`--primary` `#315f68`。对 `#fff` 为 **7.08:1**，对 `--paper` `#f6f3ec` 为 **6.39:1**。都高于 3:1。
-- 规则：`.form-control:focus`（`:218`）与 `:focus-visible`（`:221-223`）都是 `3px solid var(--focus-ring)`。没有 `outline: none`。
-
-键盘键、校对输入框和仲裁终值输入框原先各有一套缺字的字体栈。三处现在都用 `--font-ui`（`.ipa-key` `:412`，`.proofread-textarea` `:675`，`.final-value textarea` `:919`）。`--font-ui` 把 `-apple-system`、`BlinkMacSystemFont`、`Segoe UI` 排在 `Fangji Rare Han` 之前；同一码位若系统界面字体也覆盖，会先用系统字形。哪一层该赢归 #270。
-
-债务计数的口径写在 `CONTRIBUTING.md` 的「UI 债务棘轮」。
+UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_baseline.json` 执行。所有类别都为 fail 棘轮：静态内联样式为0，保留9处运行时进度/尺寸绑定；原生表格只有 `AppDataTable` 内1处；颜色、圆角、层级、缺角色提示、自制模态框、未定义变量和字体栈字面值债务均为0。上限只能下降。
 
 ## 共享组件
 
-第二次需要同一块界面时用下表的组件，不在视图里再抄一份。组件本体都在 `frontend/src/components/`。
-
-| 组件 | 做什么 | 调用点 | 允许再内联 |
-| --- | --- | --- | --- |
-| `AppErrorBoundary` | 渲染异常时整页 `role="alert"`（`components/AppErrorBoundary.vue:3`） | `App.vue:2` | 否 |
-| `AppNavbar` | 顶栏、身份、出口 | `AdminLayout.vue:3`、`ProofreaderLayout.vue:3`、`WorkspaceHomeView.vue:3`、`ProjectDiscoveryView.vue:3` | 否 |
-| `UserAvatar` | 用户头像 | `AppNavbar.vue:13`、`ProfileView.vue:15` | 否 |
-| `AppModal` | 确认层：`role="dialog"`、`aria-modal`、Esc、焦点环绕（`components/AppModal.vue:3-16`，焦点算法 `lib/modalFocus.js`） | `ProofreadEditorView.vue:190`、`ArbitrationView.vue:181`、`ProjectDetailView.vue:596`、`ProofreaderOnboarding.vue:2` | 否。`.vue` 里的 `class="modal-backdrop"` 只允许出现在 `AppModal.vue`。`grep -rn modal-backdrop frontend/src` 还会命中 `style.css` 里的规则本体（`:680`）；判据是 `grep -rn "class=\"modal-backdrop" frontend/src --include="*.vue"` 只命中 `AppModal.vue:5`。棘轮 `custom_modals` 数的也是开始标签，不是 CSS 规则 |
-| `ProofreaderOnboarding` | 可跳过的校对引导 | `ProofreaderLayout.vue:13` | 否 |
-| `DocumentReviewWorkspace` | PDF 与字段的对照壳。遮罩用已定义的 `var(--surface)`（`DocumentReviewWorkspace.vue:205`） | `ProofreadEditorView.vue:2`、`ArbitrationView.vue:2` | 否 |
-| `PdfSinglePageViewer` | 单页 PDF | `DocumentReviewWorkspace.vue:48` | 否 |
-| `FieldNavigation` | 字段进度与跳转 | `ProofreadEditorView.vue:184`、`ArbitrationView.vue:175` | 否 |
-| `ProjectKeyboard` | 项目字符键盘。旧名 `IpaKeyboard.vue` 已不存在 | `ProofreadEditorView.vue:187`、`ArbitrationView.vue:178` | 否 |
-| `RareCharacterNotice` | 缺字提示 | `ProofreadEditorView.vue:94`、`ArbitrationView.vue:51` | 否。字符层的进一步约定归 #270 |
-
-还没有、本文件不预命名的组件：`AppField`、`AppDataTable`、`AppPagination`、`ConfirmDialog`、`AppStatusPanel`、`useAsyncResource`。它们分别归 #268 与 #267。在那些 issue 合入之前，表格仍是原生 `<table>`（棘轮 `bare_tables`），异步状态仍写在各个视图里。
-
-## 四态
-
-四态指一块区域在「还没跑完 / 跑完但没有 / 失败 / 不可逆」时怎么标记。统一组件归 #267。在那之前，沿用下面已经出现的结构，不要另起一套类名。
-
-| 态 | 现有标记 | 文案例子 | 位置 |
-| --- | --- | --- | --- |
-| pending | 骨架：`skeleton-card` 且 `aria-hidden="true"`，容器 `aria-label="正在加载项目"` | 按钮文案用「正在…」 | `TaskHallView.vue:47-48`；字段区 `panel-loading` + `aria-live="polite"`（`ProofreadEditorView.vue:53`，样式 `style.css:602`） |
-| empty | `empty-state` + `empty-state-text`，标记 `aria-hidden="true"` | 「当前没有需要你处理的项目」；来源页「还没有登记来源」 | `TaskHallView.vue:55-58`；`SourcesView.vue:23`；样式 `style.css:435-437` |
-| error | `alert alert-error` 且 `role="alert"` | 视图各自的失败句 | 类在 `style.css:235`。`python3 scripts/check_ui_debt.py --only alerts_without_role` 的 `now` 为 0，基线上限 0 |
-| danger | `btn-danger`（`style.css:201`）；设置里的 `.danger-zone`（`:309`）；提交确认里的不可逆句用 `role="alert"` | 「提交后将完成条目…」一类永久保留的说明 | `ArbitrationView.vue:163`；校对确认框 `ProofreadEditorView.vue:204` |
-
-成功与进行中的提示用 `alert alert-success` 或无修饰 `alert`，角色是 `role="status"`。一直显示、文案不随操作改写的说明用 `role="note"`（`NewProjectView.vue:8`）。错误是 `role="alert"`。长期收口仍归 #267 的 `AppStatusPanel`，避免以后靠 grep 维持。
-
-加载失败与操作失败分开：加载错误可以替换数据区，但必须保留重试入口；校验、保存、加入等项目操作错误写进独立的 operation error，显示在仍然可见的编辑区旁，不得把表格、输入框或操作按钮一起隐藏。GateRules、CreatorGrants、ProjectDiscovery、TaskHall、Sources 已按此拆分。
-
-状态不单独靠颜色。机器疑点芯片始终带文字，规则写在 `style.css:657-658`，芯片结构在 `:662`。
-
-## 措辞
-
-界面用词就用代码里已经出现的这些，不在文案里换同义词。
-
-| 说法 | 用在 | 不要写成 | 证据 |
-| --- | --- | --- | --- |
-| 导入文本 / 采用导入值 | 校对栏里的待核对字段及仲裁选值 | 导入原文、采用原文 | `ProofreadEditorView.vue`、`ArbitrationView.vue`；实际来源区写「来源 PDF」 |
-| 领取任务 / 重新领取任务 | 校对员拿到一条材料 | 抢单、接单 | `ProofreadEditorView.vue:72` |
-| 仲裁 | 管理员处理不一致结果 | 审核、审批（那是条目状态名，不是这个动作） | `ArbitrationView.vue:16`、`DashboardView.vue:37` |
-| 万语校坊 | 产品名 | 方辑 | 见上文「基调」的 grep |
-| 校对员 | 做独立校对的人 | 一校、二校 | `grep -rn "一校\|二校" frontend/src` 为 0 |
-
-条目状态的中文标签以 `frontend/src/constants/pageStatus.js` 为准，不在本文件复制第二份。
-
-## 断点
-
-宽度查询只有下面六档。语义按该档里实际改动的布局写，不按设备名称。
-
-| 最大宽度 | 语义 | 位置 |
+| 组件/资源 | 职责与接口 | 调用范围 |
 | --- | --- | --- |
-| 1100px | 校对对照从左右两栏改成上下单栏；原文工具收进摘要 | `style.css:373`、`:1005`、`:1053` |
-| 900px | 管理列表筛选与个人页统计改为单列 | `style.css:724`、`:951`；`ProfileView.vue:331` |
-| 768px | `.grid-2`/`.grid-3` 单列；导航变窄；字段导航出现；编辑器控件至少 44px 高 | `style.css:350`、`:1022`、`:1035`、`:1046`、`:1064` |
-| 700px | PDF 工具条改为横向滚动，不换页 | `PdfSinglePageViewer.vue:406` |
-| 640px | 页边距收紧；确认框改为单列；快捷键提示隐藏 | `style.css:749`、`:972`；`ArbitrationView.vue:458` |
-| 560px | 批量生成志愿者账号的表单改为单列 | `style.css:744` |
+| `AppErrorBoundary` | 渲染异常时给可见错误与恢复入口 | `App.vue` |
+| `AppNavbar` / `UserAvatar` | 顶栏、身份与退出；领域布局提供导航槽 | 管理/校对布局、工作台、发现项目 |
+| `AppField` | 真实 label 包控件；`label` / `#label`，`layout=plain` 可保留原 label 几何 | 项目创建/导入/设置、资料、来源/门控/授权 |
+| `AppDataTable` | 唯一原生表格壳；具名、可聚焦、区域内横滚；`#head` / 默认行槽 | 管理列表、CSV 预检/错误、批次台账 |
+| `AppPagination` | `page/totalPages/hasNext/busy` 与 `change`；未知总数时不猜最后一页 | 项目/条目/候选成员/归一复核/用途编选 |
+| `AppModal` | dialog/aria-modal、Esc、Tab 环绕、关闭后焦点返回 | 确认层与引导；焦点算法见 `lib/modalFocus.js` |
+| `ConfirmDialog` | 薄封装 AppModal，透传内容/操作槽，不另写焦点算法 | 质量状态、导入值修正及来源等确认 |
+| `AppStatusPanel` | pending/error/empty/danger/success/note 与重试 | 共享资源页面、OCR、任务大厅 |
+| `useAsyncResource` | 每次读取专属 AbortController、代际保护、失败保留成功值、卸载取消 | 任务大厅、项目条目/统计、工作台、来源/门控/授权、用途编选 |
+| `AppFieldValue` | 原值/空白/组合符精确渲染、显式 lang、字体反馈与精确高亮 | 校对、仲裁、导入预览和 OCR 原始文本 |
+| `DocumentReviewWorkspace` / `PdfSinglePageViewer` | 来源与字段对照壳、单页 PDF、稳定尺寸与恢复 | 校对与仲裁 |
+| `FieldNavigation` / `ProjectKeyboard` | 字段进度、明确项目字符集、保留选区插入、帮助入口 | 校对与仲裁 |
+| `ProofreaderOnboarding` | 可跳过、可重放的新手引导 | 校对布局与个人中心 |
 
-1100px 以下不是「所有页面都变单栏」。登录卡、来源表单没有自己的 1100px 规则。管理表格包在 `.table-wrapper { overflow-x: auto }`（`style.css:327`）里，窄屏横滑，不截断操作列。
+## 领域编排与大视图
 
-动效：`prefers-reduced-motion: reduce` 时全局 `*` 把滚动、动画、过渡压到近乎零（`style.css:761-762`）。
+`ProjectDetailView` 与 `ProofreadEditorView` 都小于300行，只负责获取、编排和布局，不新增全局业务 store。
+
+`components/admin/project/` 中条目、PDF 上传、CSV 预检/提交、OCR、台账、导出、机器疑点与拼音归一分别拥有生命周期；`composables/project/useProjectEntries` 处理列表、选择、顺序与质量状态。跨模块使用明确刷新属性、`changed` / `jump-entry` 事件和局部 ref 方法。项目 ID 变化时管理布局只重建 ProjectDetail 作用域；同项目 query 改变仍由列表观察器处理。
+
+校对视图按任务头、字段卡、整条疑点、反馈及三个确认层拆分；`composables/proofread/` 分别持有草稿、租约、字段、提交和退回逻辑。单活跃任务、独立盲校与本人只读回看仍由原服务端裁决。前端不得展示他人的校对结果或轮次。
+
+纯拆分阶段的项目详情正常/空与禁用/错误三种状态，与原版整页 PNG 字节及管理请求顺序完全相同，见 `docs/evidence/backlog-20261106/`。最终界面另含本轮共享组件、字体、移动端和 OCR 的明确行为改动，不把阶段对照冒充最终界面零差异。
+
+## 四态与读取生命周期
+
+| 状态 | 语义 | 必须保留 |
+| --- | --- | --- |
+| pending | 请求未完成；骨架装饰节点 aria-hidden | 明确加载提示；已有成功结果可继续查看 |
+| empty / none | 成功返回但没有记录或匹配 | 当前条件与清除/恢复入口 |
+| empty / not_computed | 尚未运行计算 | 不能说成没有问题 |
+| empty / not_authorized | 当前无查看权限 | 不能说成没有记录 |
+| error | 本次读取失败 | role=alert、重试、已有成功值和用户输入 |
+| danger | 不可逆或需认真确认的操作 | 明确文字、可见焦点、确认入口 |
+
+成功/进行中的动态反馈使用 role=status；错误使用 role=alert；静态说明使用 role=note。状态不得只靠颜色表达。加载错误与操作错误分开：保存/校验失败显示在原编辑区，不得把输入和按钮一起隐藏。统计没取到时显示未知，不伪装成零。
+
+读取资源的取消和代际保护由公共 helper 实现。查询切换、项目切换、卸载与迟到响应均不得复写当前数据。分页失败保留最后成功页与详情，重试针对原失败目标；成员候选游标同时绑定项目、操作者与查找词。
+
+## 措辞与入口
+
+| 功能/术语 | 约定 | 真源 |
+| --- | --- | --- |
+| 产品名 | 万语校坊 | AppNavbar |
+| 顶级入口 | 工作台、项目管理、材料校对、发现项目、创建项目、个人中心 | 管理/校对布局与工作台 |
+| 导入内容 | 导入文本 / 采用导入值；实际来源称来源 PDF | 校对、仲裁、管理修正 |
+| 任务 | 领取任务 / 重新领取任务；不向校对员暴露轮次 | 校对编辑器 |
+| 不一致结果处理 | 仲裁 | 管理工作区 |
+| 条目状态标签 | 统一读取常量，不在视图复制新词表 | `constants/pageStatus.js` |
+
+项目内部条目、文件、台账与导出为同页分区；资料与成员在项目设置内。入口整理只统一命名和呈现，不扩大权限。搜索仍为原值的字面子串查找，不做未经约定的拼音或模糊召回；trim、过滤、分页与URL状态保持一致。
+
+## 断点与移动端
+
+| 最大宽度 | 实际用途 |
+| --- | --- |
+| 1100px | 校对来源与字段由左右改上下，来源工具收进摘要 |
+| 900px | 管理筛选与统计收为单列；筛选字段 flex-basis:auto，不能把桌面宽度当高度 |
+| 768px | 通用多列网格收为单列，字段导航出现，编辑器控件维持可点区域 |
+| 700px | PDF 工具条在自身区域横向滚动 |
+| 640px | 页边距收紧、确认框单列；项目链接允许换行、文字完整；顶栏导航自身横滚 |
+| 560px | 批量账号表单单列 |
+
+表格只在具名 `.table-wrapper` 区域横向滚动，整页不得溢出。320/360/390/430/768 的85组普通页面实际几何与编辑器专项证据分别记录；自动化真浏览器不称为真机验收。
+
+全局 `prefers-reduced-motion: reduce` 降低滚动、动画与过渡。既有正确行为保留，不重复实现。
 
 ## 可及性核销清单
 
-这张表只记录「怎么判定通过」。没通过的项不在本文件里标成完成。执行与证据归 #265。
+| 项 | 通过条件与当前证据 |
+| --- | --- |
+| 可见焦点 | `.form-control:focus` / `:focus-visible` 使用3px `--focus-ring`；对比度对白底7.08:1、纸底6.39:1 |
+| 模态键盘 | Tab/ShiftTab环绕、Esc关闭、关闭后回触发器；提交/退回失败重新启用后恢复确认按钮焦点 |
+| 动态反馈 | 状态/错误角色明确；失败保留输入，允许键盘重试；不单靠色彩 |
+| 核心键盘路径 | 1280/1440/390实际执行字符插入、字段导航、确认与退回；单活跃任务规则不变 |
+| 本人已提交回看 | 不产生 claim/lease/draft/submit/return 写请求 |
+| 字符保真与 lang | IPA明确标注；三引擎字体正常/加载/阻断、码位/剪贴板与系统实际字形证据 |
+| 真实使用反馈 | 新志愿者停顿/找错入口、真实读屏体验仍需真人，不用自动化代替 |
 
-| 项 | 通过条件 | 当前 |
-| --- | --- | --- |
-| 键盘焦点可见 | 焦点环相对相邻背景对比度 ≥ 3:1。PR 里写出前后色值与计算式 | 通过。`--focus-ring` 对白底 7.08:1、对纸色 6.39:1，见上文「语义、刻度与焦点」。键盘走查仍归 #265 |
-| 动态消息有角色 | `grep -rn "class=\"alert" frontend/src` 的每一行都含 `role=` | 通过。错误用 `role="alert"`，成功与进度用 `role="status"`。棘轮 `alerts_without_role` 上限 0 |
-| 状态不只靠颜色 | 疑点标记带「疑」或等价文字 | 通过。`style.css:657-658` |
-| 动效可关 | `prefers-reduced-motion` 规则仍在 | 通过。`style.css:761-762` |
-| 模态不丢焦点 | Tab 留在对话框内，Esc 关闭，关闭后焦点回到触发控件 | 算法在 `lib/modalFocus.js`，测试在 `frontend/tests/modalFocus.test.js`。调用点都走 `AppModal` |
-| 表单控件有名称 | 每个 input/select/textarea 有 `label[for]`、包裹 label 或 `aria-label` | 本轮抽查的认证、新建项目、个人中心与项目设置已补；全量归 #265 |
-| 切换状态可读出 | 视觉选中态同时有 `aria-pressed` | 登录方式、仲裁字段范围与 ProjectDetail 项目状态按钮已补 |
-| 进度条有名称 | `role="progressbar"` 同时有 `aria-label` | TaskHall、Dashboard、Arbitration 已补；ProjectDetail 待 #331/#333 |
-| 路由切换可感知 | 每个路由设置 `document.title`；只有页面路径变化时聚焦主地标，同页 query/hash 更新不抢焦点 | 通过。`frontend/src/main.js`、`lib/pageTitle.js`、`lib/routeFocus.js`、`lib/mainLandmark.js` |
-| 跳过重复导航 | Tab 第一下出现「跳到主要内容」；错误边界替换内容时错误页的 `<main>` 也是目标，恢复后重新准备 | 通过。`frontend/src/App.vue`、`style.css`、`components/AppErrorBoundary.vue` |
-| 横滚区域可键盘到达 | 宽表格与 PDF 滚动区可聚焦并有 region 名称 | 已补未迁移视图，包括 ProjectDetail 条目表 |
-| 记音的 `lang` | 不在本清单里实施 | 归 #270。`grep -rn "lang=" frontend` 目前主要是 `frontend/index.html` 的页面语言 |
+键盘说明由 `lib/keyboardGuide.js` 同时生成界面和文档。192键插入值精确覆盖；只有有资料依据的读法/例词才展示为已核定，其余明确待资料核定，不能拿 Unicode 名称伪造方言读法。
 
-## 改动时要引用的小节
+## OCR 界面边界
 
-改 `frontend/src` 里跨视图的令牌、共享组件、焦点、断点或四态标记时，PR 描述点名本文件的对应小节（「令牌」「共享组件」「四态」「断点」「可及性核销清单」之一）。只改一个领域内部的文案或流程时，用那个领域的 scope，并在 PR 里写「不涉及界面契约」。scope 的取舍写在 `CONTRIBUTING.md` 的 `ui` 条目。
+正式链只接收不含图像且可映射的单栏纯文字层页面。扫描引擎的离线实测发现难字静默替换，默认拒绝扫描，backend也独立拒绝实验worker的扫描输出发布。失败保留原 PDF，提示改用人工转录或CSV，不把错误猜测变成正式条目。
 
-## 原文身份水印
-
-`PdfSinglePageViewer.vue` 在页图与 PDF canvas 上共用重复身份覆盖层，内容为万语校坊、UID、项目 ID 与 UTC 访问时间。
-颜色使用 `--pdf-grid`，字号使用 `--text-xs`，层级使用 `--z-mask`；覆盖层限制在页面尺寸内，跟随缩放、旋转和全屏。
-`pointer-events: none` 保留原文交互，`aria-hidden` 避免读屏重复朗读，不添加焦点目标。身份信息用文字表达。
+当前单栏输出不推断领域分列。原字符串、空格、坐标与识别时「确定/待确认/弃权」分别保留；确定不表示来源核验正确。管理修正不改原始识别记录。单作业最多200个物理页，超出明确要求分段。原始JSON通过管理权限接口下载，认证token不写入链接。

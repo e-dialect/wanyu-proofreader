@@ -1,11 +1,9 @@
+import { proofreadSource } from './helpers/proofreadSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const editorSource = readFileSync(
-  new URL('../src/views/proofreader/ProofreadEditorView.vue', import.meta.url),
-  'utf8'
-)
+const editorSource = proofreadSource()
 const arbitrationSource = readFileSync(
   new URL('../src/views/admin/ArbitrationView.vue', import.meta.url),
   'utf8'

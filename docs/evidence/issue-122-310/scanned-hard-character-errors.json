@@ -1,0 +1,38 @@
+[
+  {
+    "row": 8,
+    "expected": "ɑ",
+    "expectedCodePoint": "U+0251",
+    "actual": "a",
+    "actualCodePoint": "U+0061",
+    "gold": "IPA ɑɡ",
+    "output": "IPA ag"
+  },
+  {
+    "row": 8,
+    "expected": "ɡ",
+    "expectedCodePoint": "U+0261",
+    "actual": "g",
+    "actualCodePoint": "U+0067",
+    "gold": "IPA ɑɡ",
+    "output": "IPA ag"
+  },
+  {
+    "row": 9,
+    "expected": "́",
+    "expectedCodePoint": "U+0301",
+    "actual": "&",
+    "actualCodePoint": "U+0026",
+    "gold": "COMBINING á",
+    "output": "COMBINING &"
+  },
+  {
+    "row": 10,
+    "expected": "𠮷",
+    "expectedCodePoint": "U+20BB7",
+    "actual": "&",
+    "actualCodePoint": "U+0026",
+    "gold": "RARE 𠮷",
+    "output": "RARE &"
+  }
+]
