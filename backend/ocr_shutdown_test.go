@@ -257,3 +257,129 @@ func TestOCRWorkerFailureRemainsTerminalAndCleansStaging(t *testing.T) {
 		t.Fatalf("real failure left unpublished rows: count=%d err=%v", count, err)
 	}
 }
+
+func TestOCRShutdownAfterFailureProgressResetsReplay(t *testing.T) {
+	for _, failure := range []string{"worker_502", "scanned_result"} {
+		for _, replayFails := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/replay_fails=%t", failure, replayFails), func(t *testing.T) {
+				s, jobs, file := ocrShutdownService(t)
+				job := ocrShutdownJob(t, s, jobs, file, "shutdown-failure-progress-0001", 2)
+				var replaying atomic.Bool
+				ocrShutdownWorker(t, func(w http.ResponseWriter, _ *http.Request, page int) bool {
+					if replaying.Load() {
+						if replayFails && page == 1 {
+							http.Error(w, "synthetic replay failure", http.StatusBadGateway)
+							return true
+						}
+						return false
+					}
+					if page != 2 {
+						return false
+					}
+					if failure == "worker_502" {
+						http.Error(w, "synthetic worker failure", http.StatusBadGateway)
+					} else {
+						w.Header().Set("Content-Type", "application/json")
+						_ = json.NewEncoder(w).Encode(ocrengine.Result{
+							Page: page, Engine: "poppler_text", HasImages: true,
+							Rows: []ocrengine.Row{{Cells: []ocrengine.Cell{{Field: "原文", Text: "synthetic scanned page", Status: "certain", Source: "pdf_text"}}}},
+						})
+					}
+					return true
+				})
+
+				// Stop only after the failed-page checkpoint is durable, before
+				// fail can write a terminal state. No timing sleeps are needed.
+				failureSaved := false
+				hookID := s.app.OnRecordAfterUpdateSuccess("import_jobs").BindFunc(func(e *core.RecordEvent) error {
+					if err := e.Next(); err != nil {
+						return err
+					}
+					if e.Record.Id == job.Id && e.Record.GetString("status") == "processing" && e.Record.GetInt("failed_count") == 1 {
+						failureSaved = true
+						s.imageCancel()
+					}
+					return nil
+				})
+				s.processOCR(importWork{kind: "ocr", id: job.Id})
+				s.app.OnRecordAfterUpdateSuccess("import_jobs").Unbind(hookID)
+				checkpoint, err := s.app.FindRecordById("import_jobs", job.Id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !failureSaved || checkpoint.GetString("status") != "processing" || checkpoint.GetString("error_code") != "" || !checkpoint.GetDateTime("finished_at").IsZero() || checkpoint.GetInt("processed_count") != 2 || checkpoint.GetInt("success_count") != 1 || checkpoint.GetInt("failed_count") != 1 {
+					t.Fatalf("failure-progress shutdown was not preserved: %v", checkpoint)
+				}
+				staged, err := s.app.FindFirstRecordByFilter("pages", "import_job={:job}", dbx.Params{"job": job.Id})
+				if err != nil || staged.GetString("status") != "importing" {
+					t.Fatalf("shutdown lost staged evidence: page=%v err=%v", staged, err)
+				}
+				artifact, err := s.app.FindFirstRecordByFilter("project_artifacts", "ocr_import_job={:job}", dbx.Params{"job": job.Id})
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				replaying.Store(true)
+				restarted := newImportService(s.app)
+				t.Cleanup(restarted.imageCancel)
+				restarted.recoverPendingWork()
+				select {
+				case work := <-restarted.ocrQueue:
+					if work.id != job.Id {
+						t.Fatalf("restart changed operation identity: %v", work)
+					}
+					restarted.processOCR(work)
+					restarted.finishWork(work)
+				default:
+					t.Fatal("restart did not recover interrupted failure checkpoint")
+				}
+				stored, err := s.app.FindRecordById("import_jobs", job.Id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if stored.GetString("ocr_request_id") != job.GetString("ocr_request_id") || stored.GetString("file_hash") != job.GetString("file_hash") || stored.GetString("project_file") != file.Id {
+					t.Fatalf("replay changed operation/source identity: %v", stored)
+				}
+				rows, err := s.app.FindRecordsByFilter("pages", "import_job={:job}", "page_number", 10, 0, dbx.Params{"job": job.Id})
+				if err != nil {
+					t.Fatal(err)
+				}
+				artifacts, err := s.app.FindRecordsByFilter("project_artifacts", "ocr_import_job={:job}", "", 10, 0, dbx.Params{"job": job.Id})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var result struct {
+					Rows      int              `json:"rows"`
+					Certain   int              `json:"certain"`
+					Artifacts []map[string]any `json:"artifacts"`
+				}
+				if err := json.Unmarshal([]byte(stored.GetString("ocr_result_json")), &result); err != nil {
+					t.Fatal(err)
+				}
+				if replayFails {
+					if stored.GetString("status") != "failed" || stored.GetString("error_code") != "OCR_WORKER_FAILED" || stored.GetInt("processed_count") != 1 || stored.GetInt("success_count") != 0 || stored.GetInt("failed_count") != 1 || len(rows) != 0 || len(artifacts) != 0 || result.Rows != 0 || result.Certain != 0 || len(result.Artifacts) != 0 {
+						t.Fatalf("replay failure retained old progress/results: job=%v rows=%d artifacts=%d result=%+v", stored, len(rows), len(artifacts), result)
+					}
+					return
+				}
+				if stored.GetString("status") != "completed" || stored.GetInt("total_count") != 2 || stored.GetInt("processed_count") != 2 || stored.GetInt("success_count") != 2 || stored.GetInt("failed_count") != 0 || len(rows) != 2 || len(artifacts) != 2 || result.Rows != 2 || result.Certain != 2 || len(result.Artifacts) != 2 {
+					t.Fatalf("replay did not rebuild counts/results: job=%v rows=%d artifacts=%d result=%+v", stored, len(rows), len(artifacts), result)
+				}
+				for _, row := range rows {
+					if row.GetString("status") != "pending" || row.Id == staged.Id {
+						t.Fatalf("replay duplicated or failed to publish staging: %v", row)
+					}
+				}
+				for _, current := range artifacts {
+					if current.Id == artifact.Id {
+						t.Fatal("replay retained previous attempt's artifact")
+					}
+				}
+				balance, note := ocrImportCountBalance(stored.GetString("status"), stored.GetInt("total_count"), stored.GetInt("success_count"), stored.GetInt("failed_count"), len(rows), stored.GetString("ocr_result_json"))
+				if balance != "一致" {
+					t.Fatalf("replayed ledger is not balanced: %s: %s", balance, note)
+				}
+			})
+		}
+	}
+}

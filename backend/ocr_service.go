@@ -283,6 +283,19 @@ func (s *importService) processOCR(work importWork) {
 		return
 	}
 	resultSummary := map[string]any{"rows": 0, "certain": 0, "needs_review": 0, "abstained": 0, "artifacts": []map[string]any{}, "engine": "local_poppler_text", "layout": "single_column"}
+	// Replay starts at the first page after discarding the previous attempt's
+	// staging. Reset its progress and artifact references too: shutdown may
+	// have interrupted the save of a failed page before its terminal state.
+	encodedSummary, _ := json.Marshal(resultSummary)
+	job.Set("ocr_result_json", string(encodedSummary))
+	job.Set("processed_count", 0)
+	job.Set("success_count", 0)
+	job.Set("failed_count", 0)
+	job.Set("total_count", options.EndPage-options.StartPage+1)
+	if err := s.app.Save(job); err != nil {
+		fail("OCR_PROGRESS_FAILED", "初始化识别进度失败。", err)
+		return
+	}
 	rowsCount := 0
 	for page := options.StartPage; page <= options.EndPage; page++ {
 		if ctx.Err() != nil {
