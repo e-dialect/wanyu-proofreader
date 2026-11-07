@@ -48,7 +48,8 @@
     "backlogViewportCombinations": 85,
     "qualityStateBrowser": true,
     "makeCheck": true,
-    "prettier": true
+    "prettier": true,
+    "mergedSourceRegression": true
   },
   "buildSize": {
     "measurement": "all route JS/CSS assets, not initial-page transfer",
@@ -72,7 +73,8 @@
         "bytes": 215853,
         "gzipBytes": 47497
       }
-    }
+    },
+    "sampleCommit": "c8f7cf32ebe67726e648a002c3cf9d9da32c6ca7"
   },
   "receipts": {
     "controls": {
@@ -2092,5 +2094,7 @@
     "mobile-editor.png": "output/playwright/workbench/mobile-editor-with-shell.png",
     "shortscreen-character-tray.png": "output/playwright/editor-experience/reflow-640x400-character-tray.png"
   },
-  "productionDeployed": false
+  "productionDeployed": false,
+  "sampleImplementationCommit": "c8f7cf32ebe67726e648a002c3cf9d9da32c6ca7",
+  "retainedRemoteCommit": "0a261dd065d774715ea52ee36f2715dcdcb8dbdb"
 }
