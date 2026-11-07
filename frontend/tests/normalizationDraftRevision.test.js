@@ -40,6 +40,7 @@ function fixture(request, decide = async () => {}) {
     computed,
     defineProps: () => ({ projectId: 'project' }),
     defineExpose: () => {},
+    onMounted: () => {},
     onBeforeUnmount: (fn) => cleanup.push(fn),
     getPbMessage: (error) => error.message,
     listNormalizations: request,

@@ -1,99 +1,19 @@
 <template>
-  <!-- Project summary -->
-  <section
-    class="card project-overview mb-6"
-    aria-labelledby="project-overview-title"
-    :aria-busy="loadingPageStats"
-  >
-    <div class="project-overview__lead">
-      <div>
-        <div class="page-eyebrow">实时管线</div>
-        <h2 id="project-overview-title">
-          {{
-            hasLoadedPageStats
-              ? `${approvedPct}% 已完成`
-              : pageStatsError
-                ? '状态统计暂不可用'
-                : '正在汇总状态'
-          }}
-        </h2>
-        <p v-if="hasLoadedPageStats">
-          {{ pageStats.approved }} / {{ pageStats.total }} 条已形成最终结果
-        </p>
-        <p v-else-if="pageStatsError">当前无法判断项目总体完成情况。</p>
-        <p v-else>条目列表会先显示，统计随后更新。</p>
-      </div>
-      <div
-        class="project-completion-ring"
-        :style="{ '--completion': approvedPct }"
-        aria-hidden="true"
-      >
-        <span>{{ hasLoadedPageStats ? `${approvedPct}%` : '—' }}</span>
-      </div>
-    </div>
-    <div class="project-status-actions">
-      <button
-        type="button"
-        :aria-pressed="selectedStatus === PAGE_STATUS.PENDING"
-        :class="{ 'is-selected': selectedStatus === PAGE_STATUS.PENDING }"
-        @click="filterByStatus(PAGE_STATUS.PENDING)"
-      >
-        <span>待开始</span><strong>{{ hasLoadedPageStats ? pageStats.unstarted : '—' }}</strong
-        ><small>尚无校对结果</small>
-      </button>
-      <button
-        type="button"
-        :aria-pressed="selectedStatus === ACTIVE_STATUS_FILTER"
-        :class="{ 'is-selected': selectedStatus === ACTIVE_STATUS_FILTER }"
-        @click="filterActivePages"
-      >
-        <span>处理中</span><strong>{{ hasLoadedPageStats ? pageStats.active : '—' }}</strong
-        ><small>校对员已领取</small>
-      </button>
-      <button
-        type="button"
-        :aria-pressed="selectedStatus === PAGE_STATUS.PROOFREAD"
-        :class="{ 'is-selected': selectedStatus === PAGE_STATUS.PROOFREAD }"
-        @click="filterByStatus(PAGE_STATUS.PROOFREAD)"
-      >
-        <span>收集中</span><strong>{{ hasLoadedPageStats ? pageStats.collecting : '—' }}</strong
-        ><small>等待更多独立结果</small>
-      </button>
-      <button
-        type="button"
-        class="project-status-action--urgent"
-        :aria-pressed="selectedStatus === PAGE_STATUS.ARBITRATION"
-        :class="{
-          'is-empty': hasLoadedPageStats && pageStats.arbitration === 0,
-          'is-selected': selectedStatus === PAGE_STATUS.ARBITRATION
-        }"
-        @click="filterByStatus(PAGE_STATUS.ARBITRATION)"
-      >
-        <span>待仲裁</span><strong>{{ hasLoadedPageStats ? pageStats.arbitration : '—' }}</strong
-        ><small>{{
-          hasLoadedPageStats
-            ? pageStats.arbitration
-              ? '需要管理员处理'
-              : '当前无异常'
-            : '统计数据尚未加载'
-        }}</small>
-      </button>
-      <button
-        type="button"
-        :aria-pressed="selectedStatus === PAGE_STATUS.APPROVED"
-        :class="{ 'is-selected': selectedStatus === PAGE_STATUS.APPROVED }"
-        @click="filterByStatus(PAGE_STATUS.APPROVED)"
-      >
-        <span>已完成</span><strong>{{ hasLoadedPageStats ? pageStats.approved : '—' }}</strong
-        ><small>可导出结果</small>
-      </button>
-    </div>
-  </section>
-  <div v-if="pageStatsError" class="alert alert-error" role="alert">
-    {{ pageStatsError }}
-    <button type="button" class="btn btn-secondary btn-sm ml-2" @click="loadPageStats">
-      重新加载统计
-    </button>
+  <div class="project-entry-summary" :aria-busy="loadingPageStats">
+    <span
+      >全部条目 <strong>{{ hasLoadedPageStats ? pageStats.total : '—' }}</strong></span
+    >
+    <span
+      >校对完成 <strong>{{ hasLoadedPageStats ? pageStats.approved : '—' }}</strong
+      ><template v-if="hasLoadedPageStats"> · {{ approvedPct }}%</template></span
+    >
+    <span
+      >待仲裁 <strong>{{ hasLoadedPageStats ? pageStats.arbitration : '—' }}</strong></span
+    >
+    <span v-if="pageStatsError" role="alert"
+      >{{ pageStatsError }}
+      <button class="btn btn-quiet btn-sm" @click="loadPageStats">重试统计</button></span
+    >
   </div>
 
   <!-- Pages list -->
@@ -134,22 +54,12 @@
         重新加载
       </button>
     </div>
-    <div v-else-if="qualitySummary" class="mb-2 flex gap-2 items-center">
-      <span class="text-sm text-muted">质量状态：</span>
-      <span
-        v-for="row in qualitySummaryRows"
-        :key="row.state"
-        :class="qualityStateBadgeClass(row.state)"
-        :title="QUALITY_STATE_HINTS[row.state] || '取值表外的状态，见迁移与代码的差异'"
-        >{{ row.label }} · {{ row.count }}</span
-      >
-      <span class="text-sm text-muted">共 {{ qualitySummary.total }} 条</span>
-    </div>
+
     <div
       v-if="pageStats.total || totalFilteredItems || hasActiveListFilter"
-      class="admin-list-filters mb-4"
+      class="project-entry-filterbar"
     >
-      <AppField class="admin-filter-field"
+      <AppField class="project-entry-search"
         ><template #label>搜索条目</template>
         <input
           v-model="searchQuery"
@@ -169,51 +79,107 @@
           </option>
         </select>
       </AppField>
-      <AppField class="admin-filter-field"
-        ><template #label>质量状态</template>
-        <select v-model="selectedQualityState" class="form-control" @change="queueListQuery">
-          <option value="">全部质量状态</option>
-          <option v-for="option in qualityStateOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-      </AppField>
-      <AppField class="admin-filter-field"
-        ><template #label>PDF 起始页</template
-        ><input
-          v-model="minPdfPage"
-          type="number"
-          min="1"
-          class="form-control"
-          @input="queueListQuery"
-      /></AppField>
-      <AppField class="admin-filter-field"
-        ><template #label>PDF 结束页</template
-        ><input
-          v-model="maxPdfPage"
-          type="number"
-          min="1"
-          class="form-control"
-          @input="queueListQuery"
-      /></AppField>
-      <AppField class="admin-filter-field admin-filter-size"
-        ><template #label>每页显示</template>
-        <select v-model.number="listPageSize" class="form-control" @change="queueListQuery">
-          <option :value="10">10 条</option>
-          <option :value="25">25 条</option>
-          <option :value="50">50 条</option>
-          <option :value="100">100 条</option>
-        </select>
-      </AppField>
       <button
         v-if="hasActiveListFilter"
         type="button"
-        class="btn btn-secondary btn-sm"
+        class="btn btn-quiet"
         @click="resetListFilters"
       >
         清除筛选
       </button>
     </div>
+    <details
+      class="project-entry-advanced"
+      :open="Boolean(selectedQualityState || minPdfPage || maxPdfPage)"
+    >
+      <summary>更多筛选与批量选择</summary>
+      <div v-if="qualitySummary" class="mb-4">
+        <div class="flex flex-wrap gap-2 items-center">
+          <span class="text-sm text-muted">质量状态：</span>
+          <span
+            v-for="row in qualitySummaryRows"
+            :key="row.state"
+            :class="qualityStateBadgeClass(row.state)"
+            :title="QUALITY_STATE_HINTS[row.state] || '取值表外的状态，见迁移与代码的差异'"
+            >{{ row.label }} · {{ row.count }}</span
+          >
+          <span class="text-sm text-muted">共 {{ qualitySummary.total }} 条</span>
+        </div>
+      </div>
+      <div class="admin-list-filters">
+        <AppField class="admin-filter-field"
+          ><template #label>质量状态</template>
+          <select v-model="selectedQualityState" class="form-control" @change="queueListQuery">
+            <option value="">全部质量状态</option>
+            <option v-for="option in qualityStateOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </AppField>
+        <AppField class="admin-filter-field"
+          ><template #label>PDF 起始页</template
+          ><input
+            v-model="minPdfPage"
+            type="number"
+            min="1"
+            class="form-control"
+            @input="queueListQuery"
+        /></AppField>
+        <AppField class="admin-filter-field"
+          ><template #label>PDF 结束页</template
+          ><input
+            v-model="maxPdfPage"
+            type="number"
+            min="1"
+            class="form-control"
+            @input="queueListQuery"
+        /></AppField>
+        <AppField class="admin-filter-field admin-filter-size"
+          ><template #label>每页显示</template>
+          <select v-model.number="listPageSize" class="form-control" @change="queueListQuery">
+            <option :value="10">10 条</option>
+            <option :value="25">25 条</option>
+            <option :value="50">50 条</option>
+            <option :value="100">100 条</option>
+          </select>
+        </AppField>
+        <button
+          v-if="hasActiveListFilter"
+          type="button"
+          class="btn btn-secondary btn-sm"
+          @click="resetListFilters"
+        >
+          清除筛选
+        </button>
+      </div>
+      <div class="mt-4">
+        <h3 class="text-sm">按范围选择待校对条目</h3>
+        <div class="project-entry-selection">
+          <input
+            v-model.trim="rangeSelectInput"
+            class="form-control"
+            placeholder="如 1-33 或 1,3,5-8"
+            aria-label="按完整列表范围选择条目"
+            :disabled="mutatingRows"
+          />
+          <button
+            class="btn btn-secondary btn-sm"
+            :disabled="mutatingRows || !rangeSelectInput"
+            @click="selectByRange"
+          >
+            范围选中
+          </button>
+          <button
+            class="btn btn-quiet btn-sm"
+            :disabled="mutatingRows || !hasLoadedPageStats || pageStats.unstarted === 0"
+            @click="toggleSelectAllPending"
+          >
+            {{ allPendingSelected ? '取消全选待校对' : '全选待校对' }}
+          </button>
+          <span class="text-sm text-muted">范围按完整列表条号计算。</span>
+        </div>
+      </div>
+    </details>
     <div v-if="loadingPages && hasLoadedPages" class="admin-entry-updating" role="status">
       正在更新条目，当前内容仍可查看。
     </div>
@@ -251,6 +217,7 @@
     </div>
     <div v-else-if="hasLoadedPages" :class="{ 'admin-entry-results--updating': loadingPages }">
       <div
+        v-if="selectedPendingIds.length"
         class="admin-table-actions mb-3"
         :class="{ 'admin-table-actions--selected': selectedPendingIds.length > 0 }"
       >
@@ -259,27 +226,8 @@
           <span>条待校对条目已选择<br /><small>范围始终按完整列表条号计算</small></span>
         </div>
         <div class="admin-bulk-actions">
-          <input
-            v-model.trim="rangeSelectInput"
-            type="text"
-            class="form-control"
-            placeholder="输入范围，如 1-33 或 1,3,5-8"
-            aria-label="按完整列表范围选择条目"
-            :disabled="mutatingRows"
-          />
-          <button
-            class="btn btn-secondary btn-sm"
-            @click="selectByRange"
-            :disabled="mutatingRows || !rangeSelectInput"
-          >
-            范围选中
-          </button>
-          <button
-            class="btn btn-secondary btn-sm"
-            @click="toggleSelectAllPending"
-            :disabled="mutatingRows || !hasLoadedPageStats || pageStats.unstarted === 0"
-          >
-            {{ allPendingSelected ? '取消全选待校对' : '全选待校对' }}
+          <button class="btn btn-quiet btn-sm" :disabled="mutatingRows" @click="clearSelection">
+            取消选择
           </button>
           <button
             class="btn btn-secondary btn-sm"
@@ -297,21 +245,17 @@
           </button>
         </div>
       </div>
-      <AppDataTable label="项目条目表" class="table-wrapper" :aria-busy="loadingPages"
-        ><template #head>
-          <tr>
+      <AppDataTable label="项目条目表" table-class="project-entry-table" :aria-busy="loadingPages">
+        <template #head
+          ><tr>
             <th class="entry-column-select">选择</th>
-            <th>条号</th>
-            <th>状态</th>
+            <th>条目</th>
+            <th>导入文本</th>
             <th>校对进度</th>
-            <th>当前校对员</th>
-            <th>不一致次数</th>
             <th>质量状态</th>
-            <th>OCR文本预览</th>
-            <th class="entry-column-actions">操作</th>
-            <th class="entry-column-order">顺序</th>
-          </tr>
-        </template>
+            <th>操作</th>
+          </tr></template
+        >
         <tr v-for="(pg, idx) in displayedPages" :key="pg.id">
           <td>
             <input
@@ -322,85 +266,95 @@
               @change="toggleRowSelection(pg.id, $event.target.checked)"
             />
           </td>
-          <td>第 {{ formatItemNo(pg.page_number, displayedPageOffset + idx) }} 条</td>
-          <td>
-            <span :class="statusBadgeClass(pg.status)" class="badge">{{
-              statusLabel(pg.status)
-            }}</span>
+          <td class="project-entry-identity">
+            <strong>第 {{ formatItemNo(pg.page_number, displayedPageOffset + idx) }} 条</strong
+            ><small v-if="pg.pdf_page">PDF 第 {{ pg.pdf_page }} 页</small>
           </td>
-          <td class="text-sm text-muted">
-            <strong>{{ pg.proofread_count || 0 }} / {{ project?.required_proofreads || 2 }}</strong>
-          </td>
-          <td class="text-sm text-muted">
-            {{ pg.expand?.proofreader?.name || pg.expand?.proofreader?.email || '—' }}
-          </td>
-          <td class="text-sm text-muted">{{ pg.mismatch_count || 0 }}</td>
-          <td>
-            <span :class="qualityStateBadgeClass(pg.quality_state)">{{
-              qualityStateLabel(pg.quality_state)
-            }}</span>
-            <button
-              type="button"
-              class="btn btn-quiet btn-sm ml-2"
-              :disabled="mutatingRows"
-              :aria-label="`设置第 ${pg.page_number} 条的质量状态`"
-              @click="openQualityDialog(pg)"
-            >
-              标注
-            </button>
-          </td>
-          <td class="text-sm text-muted entry-preview">
+          <td class="entry-preview">
             <AppFieldValue
               :value="
                 Array.from(pg.ocr_text || '')
-                  .slice(0, 80)
+                  .slice(0, 120)
                   .join('')
               "
               empty-label="—"
               :font-notice="false"
-            />
-            <small v-if="pg.ocr_cells_json" class="ocr-cell-summary"
+            /><small v-if="pg.ocr_cells_json" class="ocr-cell-summary"
               >识别时：<span v-for="state in ocrCellSummary(pg.ocr_cells_json)" :key="state.status"
                 >{{ state.label }} {{ state.count }} 格
               </span></small
             >
           </td>
-          <td>
-            <div class="flex gap-2">
-              <RouterLink
-                v-if="pg.status === PAGE_STATUS.ARBITRATION"
-                :to="`/admin/projects/${projectId}/arbitration/${pg.id}`"
-                class="btn btn-warn btn-sm"
-              >
-                仲裁
-              </RouterLink>
-              <button
-                type="button"
-                class="btn btn-quiet btn-sm"
-                :disabled="mutatingRows"
-                @click="openContentEdit(pg)"
-              >
-                修正
-              </button>
-            </div>
+          <td class="project-entry-progress">
+            <span :class="statusBadgeClass(pg.status)" class="badge">{{
+              statusLabel(pg.status)
+            }}</span
+            ><small
+              >{{ pg.proofread_count || 0 }} /
+              {{ project?.required_proofreads || 2 }} 份独立结果</small
+            ><small v-if="pg.expand?.proofreader">{{
+              pg.expand.proofreader.name || pg.expand.proofreader.email
+            }}</small
+            ><small v-if="pg.mismatch_count">不一致 {{ pg.mismatch_count }} 次</small>
           </td>
           <td>
-            <div class="flex gap-2">
-              <button
-                class="btn btn-secondary btn-sm"
-                :disabled="!canMoveUp(pg.id) || mutatingRows"
-                @click="movePendingRow(pg.id, -1)"
-              >
-                上移
-              </button>
-              <button
-                class="btn btn-secondary btn-sm"
-                :disabled="!canMoveDown(pg.id) || mutatingRows"
-                @click="movePendingRow(pg.id, 1)"
-              >
-                下移
-              </button>
-            </div>
+            <span :class="qualityStateBadgeClass(pg.quality_state)">{{
+              qualityStateLabel(pg.quality_state)
+            }}</span>
+          </td>
+          <td class="project-entry-operations">
+            <RouterLink
+              v-if="pg.status === PAGE_STATUS.ARBITRATION"
+              :to="`/admin/projects/${projectId}/arbitration/${pg.id}`"
+              class="btn btn-warn btn-sm"
+              >仲裁</RouterLink
+            >
+            <button
+              v-else
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="mutatingRows"
+              @click="openContentEdit(pg)"
+            >
+              修正
+            </button>
+            <details class="project-entry-actions">
+              <summary :aria-label="`第 ${pg.page_number} 条的更多操作`">更多</summary>
+              <div>
+                <button
+                  v-if="pg.status === PAGE_STATUS.ARBITRATION"
+                  type="button"
+                  class="btn btn-quiet btn-sm"
+                  :disabled="mutatingRows"
+                  @click="openContentEdit(pg)"
+                >
+                  修正导入值
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-quiet btn-sm"
+                  :disabled="mutatingRows"
+                  :aria-label="`设置第 ${pg.page_number} 条的质量状态`"
+                  @click="openQualityDialog(pg)"
+                >
+                  标注质量
+                </button>
+                <button
+                  class="btn btn-quiet btn-sm"
+                  :disabled="!canMoveUp(pg.id) || mutatingRows"
+                  @click="movePendingRow(pg.id, -1)"
+                >
+                  上移
+                </button>
+                <button
+                  class="btn btn-quiet btn-sm"
+                  :disabled="!canMoveDown(pg.id) || mutatingRows"
+                  @click="movePendingRow(pg.id, 1)"
+                >
+                  下移
+                </button>
+              </div>
+            </details>
           </td>
         </tr>
       </AppDataTable>
@@ -516,8 +470,6 @@ const {
   displayedPageOffset,
   displayedPages,
   entriesSection,
-  filterActivePages,
-  filterByStatus,
   filteredPages,
   formatItemNo,
   hasActiveListFilter,
@@ -576,6 +528,9 @@ function clearSelection() {
 }
 defineExpose({
   clearSelection,
+  pageStats,
+  hasLoadedPageStats,
+  hasLoadedPages,
   loadPages,
   loadPageStats,
   loadQualitySummary,

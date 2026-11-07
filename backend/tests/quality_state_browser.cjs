@@ -77,6 +77,7 @@ async function session (browser, auth) {
   })
   // 直接把已登录态写进 localStorage：绕开登录表单，但不绕开任何权限判定。
   await page.addInitScript((a) => {
+    globalThis.__FANGJI_BACKEND_URL__ = window.location.origin
     if (a && a.token) localStorage.setItem('pocketbase_auth', JSON.stringify({ token: a.token, record: a.record, model: a.record }))
   }, auth)
   page.__errors = errors
@@ -86,6 +87,10 @@ async function session (browser, auth) {
 const entriesSection = (page) => page.locator('section', { has: page.locator('h2', { hasText: '条目管理' }) }).first()
 const rowButton = (page, index = 0) =>
   page.locator('section:has(h2:text("条目管理")) tbody tr').nth(index).getByRole('button', { name: /设置第 \d+ 条的质量状态/ })
+async function expandAdvanced(page) {
+  const details = page.locator('#project-entries .project-entry-advanced')
+  if (!await details.evaluate(element => element.open)) await details.locator('summary').click()
+}
 // 必须限定在筛选条里：每行的「标注」按钮 aria-label 也含「质量状态」四个字，
 // 不限定作用域时 getByLabel('质量状态') 会同时命中那 4 个按钮。
 // 按选项定位而不是按可见文案：筛选条里有两个 select，而「质量状态」这四个字还出现在
@@ -99,6 +104,7 @@ const basisInput = (dialog) => dialog.locator('textarea')
 async function openProject (page, projectId) {
   await page.goto(`http://localhost/admin/projects/${projectId}`)
   await entriesSection(page).waitFor({ timeout: 60000 })
+  await expandAdvanced(page)
   // 等汇总芯片出现：它是本套件的主要证据，没有它这张图不成立。
   await page.locator('.badge', { hasText: /·\s*\d+/ }).first().waitFor({ timeout: 60000 })
   await page.waitForTimeout(500)
@@ -132,6 +138,7 @@ async function openProject (page, projectId) {
 
     // ---------- 3. 依据必填：目标为「已确认」而依据为空时保存被禁用 ----------
     // 第一行是夹具里已经标成「已确认」的那条，所以同值写入会在下一步被服务端拒绝。
+    await manager.locator('#project-entries tbody tr').first().locator('.project-entry-actions > summary').click()
     await rowButton(manager).click()
     const dialog = manager.locator('[role="dialog"]')
     await dialog.waitFor({ timeout: 20000 })
@@ -154,13 +161,14 @@ async function openProject (page, projectId) {
     await dialog.getByRole('button', { name: '保存' }).click()
     await dialog.waitFor({ state: 'hidden', timeout: 20000 })
     await manager.waitForTimeout(1500)
+    await expandAdvanced(manager)
     const afterText = await entriesSection(manager).innerText()
     assert.match(afterText, /暂缓外发 · 2/, `改动后汇总没有跟着变：${afterText.slice(0, 300)}`)
     await shoot(manager, 'quality-state-after-change')
 
     // ---------- 6. 空态：还没有条目的项目 ----------
     const empty = await session(browser, fixture.manager)
-    await empty.goto(`http://localhost/admin/projects/${fixture.emptyProject.id}`)
+    await empty.goto(`http://localhost/admin/projects/${fixture.emptyProject.id}?section=work&view=entries`)
     await empty.getByText('暂无条目，请上传 CSV 文件').waitFor({ timeout: 60000 })
     await shoot(empty, 'quality-state-empty-project')
 

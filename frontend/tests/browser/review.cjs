@@ -3,6 +3,11 @@ const { installReviewRoutes } = require('./reviewFixture.cjs')
 const preset = require('../../../backend/keyboards/hinghwa-dialect.json')
 const base = process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5173'
 let realPreset = false
+async function openTray(page) {
+  const toggle = page.getByRole('button', { name: '字符键盘', exact: true })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+}
+
 ;(async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -25,19 +30,24 @@ let realPreset = false
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto(base + '/tests/fixtures/review.html' + (admin ? '?admin' : ''))
     await page.waitForTimeout(1000)
-    await page.locator('.ipa-key').first().waitFor({ timeout: 3000 })
+    await page.locator('.ipa-key').first().waitFor({ state: 'attached', timeout: 3000 })
+    await openTray(page)
+    if (admin) await page.getByRole('button', { name: '全部字段 3', exact: true }).click()
     await page.locator('.panel-loading').waitFor({ state: 'hidden' })
     if ((await page.locator('.pdf-page-label').innerText()) !== '第 5 / 10 页')
       throw Error('Restricted PDF source page mapping')
     const source = await page.locator('.source-panel').boundingBox(),
       key = await page.locator('.keyboard-panel').boundingBox(),
       fields = await page.locator('.fields-panel').boundingBox()
-    if (!(key.x < fields.x && key.y > source.y)) throw Error('Desktop placement')
+    if (!(source.x < fields.x && key.x >= fields.x - 1 && key.y > fields.y))
+      throw Error('Desktop source/editor and character tray placement')
     await page.screenshot({ path: `/tmp/review-${admin ? 'arb' : 'proof'}-desktop.png` })
     await page.setViewportSize({ width: 390, height: 844 })
     await page.waitForTimeout(150)
+    await page.getByRole('button', { name: '系统输入 / 收起', exact: true }).click()
+    await page.getByRole('button', { name: '查看原文', exact: true }).click()
     await page.screenshot({ path: `/tmp/review-${admin ? 'arb' : 'proof'}-mobile-pdf.png` })
-    await page.getByRole('button', { name: '字符键盘', exact: true }).click()
+    await openTray(page)
     await page.getByRole('button', { name: '钉住', exact: true }).click()
     await page.getByRole('button', { name: '声调 1', exact: true }).click()
     if (!(await page.getByRole('button', { name: '插入字符 ˥', exact: true }).isVisible()))
@@ -69,7 +79,8 @@ let realPreset = false
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.evaluate(() => localStorage.clear())
     await page.goto(base + '/tests/fixtures/review.html' + (admin ? '?admin' : ''))
-    await page.locator('.ipa-key').first().waitFor()
+    await page.locator('.ipa-key').first().waitFor({ state: 'attached' })
+    await openTray(page)
     if (!admin) {
       // #161 非空 hints 的真渲染覆盖：4 条疑点、行级上限 3——字段级可点 chip 1 个 +
       // 整条级 2 个（「声调」是列名不在本行的孤儿 hint，并入整条级）；第 4 条「释义」
@@ -114,7 +125,7 @@ let realPreset = false
     )
     if (!(await fieldCards.nth(2).isVisible()))
       throw Error(`${admin ? 'Arbitration' : 'Proofreading'}: desktop target hidden after resize`)
-    await page.getByRole('button', { name: '字符键盘', exact: true }).click()
+    await openTray(page)
     await page.getByRole('button', { name: '钉住', exact: true }).click()
     await page.getByRole('button', { name: '插入字符 ɑ', exact: true }).click()
     if ((await inputs.nth(2).inputValue()) !== '演ɑ料')
@@ -138,7 +149,7 @@ let realPreset = false
       el.dispatchEvent(new Event('select'))
     })
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.getByRole('button', { name: '字符键盘', exact: true }).click()
+    await openTray(page)
     await page.getByRole('button', { name: '插入字符 ɑ', exact: true }).click()
     if (!(await fieldCards.nth(1).isVisible()) || (await inputs.nth(1).inputValue()) !== 'ɑtɛ')
       throw Error('Repeated resize uses stale target')
@@ -155,8 +166,9 @@ let realPreset = false
       await page.goto(base + '/tests/fixtures/review.html' + (admin ? '?admin' : ''))
       await page.locator('.ipa-key').first().waitFor({ state: 'attached' })
       await page.locator('.panel-loading').waitFor({ state: 'hidden' })
+      await openTray(page)
       if (mobile) {
-        await page.getByRole('button', { name: '字符键盘', exact: true }).click()
+        await openTray(page)
         await page.getByRole('button', { name: '钉住', exact: true }).click()
         if (
           (await page

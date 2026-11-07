@@ -1,5 +1,26 @@
 import pb from '@/lib/pocketbase'
 
+export async function validateReviewBundle({ file, signal }) {
+  const body = new FormData()
+  body.append('bundle', file)
+  return pb.send('/api/fangji/bundles/validate', {
+    method: 'POST',
+    body,
+    signal,
+    requestKey: null
+  })
+}
+
+export async function createBundleImport({ projectId, file }) {
+  const body = new FormData()
+  body.append('bundle', file)
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/imports/bundle`, {
+    method: 'POST',
+    body,
+    requestKey: null
+  })
+}
+
 export async function createCsvImport({ projectId, file, sourceId = '' }) {
   const formData = new FormData()
   formData.append('file', file)

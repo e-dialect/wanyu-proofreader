@@ -1,12 +1,47 @@
 <template>
-  <main class="container page">
-    <RouterLink :to="`/admin/projects/${projectId}`" class="back-link">← 返回项目</RouterLink>
-    <h1>用途编选（D 工序）</h1>
-    <p>
-      按这一批交付的用途圈定范围：先选接收方与筛选规则、看数量，人工只处理少数例外，再确认本批范围。
-      这里的「编选」是整批交付取舍，不是仲裁台里选哪一份校对结果的「采用」；B
-      的校对成果与状态不会因为编选而改变。
-    </p>
+  <main class="container page adoption-workspace">
+    <ProjectWorkspaceNav :project-id="projectId" active="delivery" />
+    <header class="page-heading adoption-heading">
+      <div>
+        <div class="page-eyebrow">项目交付</div>
+        <h1>
+          {{
+            screen === 'create'
+              ? '新建编选批次'
+              : screen === 'detail'
+                ? '核对本批交付范围'
+                : '用途编选'
+          }}
+        </h1>
+        <p>按用途与接收方整理交付范围，处理例外后明确确认。</p>
+      </div>
+      <div class="adoption-actions">
+        <button
+          v-if="screen !== 'list'"
+          type="button"
+          class="btn btn-secondary"
+          :disabled="busy"
+          @click="screen = 'list'"
+        >
+          返回批次列表
+        </button>
+        <button
+          v-else
+          type="button"
+          class="btn btn-primary"
+          :disabled="loading || busy"
+          @click="openCreate"
+        >
+          新建编选批次
+        </button>
+      </div>
+    </header>
+    <details class="adoption-explanation mb-4">
+      <summary>编选与校对、用途许可的关系</summary>
+      <p>
+        这里的「编选」是整批交付取舍，不是仲裁台里选哪一份校对结果的「采用」；校对成果与状态保持原样。用途尚未允许的来源继续由服务端阻断。
+      </p>
+    </details>
     <AppStatusPanel v-if="loading && !loaded" state="pending" message="正在加载编选批次…" />
     <AppStatusPanel
       v-if="loadError && !loaded"
@@ -18,16 +53,28 @@
     />
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
+    <AppStatusPanel
+      v-if="loadError && loaded && screen !== 'list'"
+      state="error"
+      :message="loadError"
+      retry-label="重试批次详情"
+      :busy="loading"
+      @retry="selectBatch(currentId)"
+    />
 
     <template v-if="loaded">
-      <section class="card mb-4">
-        <h2>新建编选批次</h2>
+      <section v-if="screen === 'create'" class="card mb-4">
+        <nav class="adoption-steps" aria-label="创建编选步骤">
+          <span :aria-current="createStep === 1 ? 'step' : undefined">1 用途与接收方</span
+          ><span :aria-current="createStep === 2 ? 'step' : undefined">2 条目范围</span
+          ><span>3 数量与确认</span>
+        </nav>
         <p>
           规则会在创建时固定下来，之后只能新开一批。用途结论不是「允许」的来源不会被任何规则放行——
           权利是硬边界，未知按未决定处理。
         </p>
-        <form @submit.prevent="create">
-          <div class="adoption-form-grid">
+        <form @submit.prevent="createStep === 1 ? nextCreateStep() : create()">
+          <div v-show="createStep === 1" class="adoption-form-grid">
             <AppField layout="plain"
               ><template #label>用途 </template
               ><select v-model="createForm.purpose" class="form-control" required>
@@ -47,160 +94,267 @@
               />
             </AppField>
           </div>
-          <fieldset class="adoption-fieldset">
-            <legend>校对状态</legend>
-            <label v-for="code in pageStatuses" :key="code" class="adoption-check">
-              <input v-model="createForm.statuses" type="checkbox" :value="code" />
-              {{ statusLabel(code) }}
-            </label>
-          </fieldset>
-          <fieldset class="adoption-fieldset">
-            <legend>质量状态（不勾＝不看这一维）</legend>
-            <label v-for="code in qualityStates" :key="code" class="adoption-check">
-              <input v-model="createForm.qualityStates" type="checkbox" :value="code" />
-              {{ qualityStateLabel(code) }}
-            </label>
-          </fieldset>
-          <label class="adoption-check">
-            <input v-model="createForm.requirePinyin" type="checkbox" /> 要求拼音已定稿（EXACT /
-            REVIEWED）
-          </label>
-          <AppField layout="plain"
-            ><template #label>只在这些导入批次里选（可选） </template
-            ><input
+          <div v-show="createStep === 2">
+            <AppField
+              ><template #label>校对范围</template
+              ><select v-model="scopePreset" class="form-control" @change="applyScopePreset">
+                <option value="ready">已校对或已通过的条目</option>
+                <option value="custom">自定义校对状态</option>
+              </select></AppField
+            >
+            <fieldset v-if="scopePreset === 'custom'" class="adoption-fieldset">
+              <legend>选择校对状态</legend>
+              <label v-for="code in pageStatuses" :key="code" class="adoption-check"
+                ><input v-model="createForm.statuses" type="checkbox" :value="code" />{{
+                  statusLabel(code)
+                }}</label
+              >
+            </fieldset>
+            <details class="adoption-optional mb-3">
+              <summary>质量与记音要求（可选）</summary>
+              <fieldset class="adoption-fieldset">
+                <legend>质量状态（不勾选表示不限）</legend>
+                <label v-for="code in qualityStates" :key="code" class="adoption-check"
+                  ><input v-model="createForm.qualityStates" type="checkbox" :value="code" />{{
+                    qualityStateLabel(code)
+                  }}</label
+                >
+              </fieldset>
+              <label class="adoption-check"
+                ><input
+                  v-model="createForm.requirePinyin"
+                  type="checkbox"
+                />要求记音归一已定稿</label
+              >
+            </details>
+            <ImportBatchPicker
               v-model="createForm.importJobsText"
-              class="form-control"
-              placeholder="15 位批次 id，逗号分隔；留空表示整个项目"
+              :project-id="projectId"
+              :disabled="busy"
             />
-          </AppField>
-          <AppField layout="plain"
-            ><template #label>说明（可选） </template
-            ><textarea
-              v-model="createForm.note"
-              class="form-control"
-              maxlength="500"
-              rows="2"
-            ></textarea>
-          </AppField>
-          <button class="btn btn-primary mt-3" :disabled="busy || loading">创建并预览数量</button>
+            <AppField layout="plain"
+              ><template #label>说明（可选） </template
+              ><textarea
+                v-model="createForm.note"
+                class="form-control"
+                maxlength="500"
+                rows="2"
+              ></textarea>
+            </AppField>
+          </div>
+          <div class="adoption-actions">
+            <button
+              v-if="createStep === 2"
+              type="button"
+              class="btn btn-secondary"
+              :disabled="busy || loading"
+              @click="createStep = 1"
+            >
+              上一步</button
+            ><button class="btn btn-primary" :disabled="busy || loading">
+              {{ createStep === 1 ? '下一步：选择范围' : '创建并预览数量' }}
+            </button>
+          </div>
         </form>
       </section>
 
-      <section v-if="current" class="card mb-4">
+      <nav v-if="screen === 'detail' && current" class="adoption-tabs" aria-label="编选批次步骤">
+        <button
+          type="button"
+          :class="detailTab === 'overview' ? 'is-active' : ''"
+          :aria-current="detailTab === 'overview' ? 'page' : undefined"
+          @click="detailTab = 'overview'"
+        >
+          范围与确认
+        </button>
+        <button
+          type="button"
+          :class="detailTab === 'exceptions' ? 'is-active' : ''"
+          :aria-current="detailTab === 'exceptions' ? 'page' : undefined"
+          @click="detailTab = 'exceptions'"
+        >
+          处理例外 <span v-if="exceptions.pendingTotal">{{ exceptions.pendingTotal }}</span>
+        </button>
+        <button
+          type="button"
+          :class="detailTab === 'history' ? 'is-active' : ''"
+          :aria-current="detailTab === 'history' ? 'page' : undefined"
+          @click="detailTab = 'history'"
+        >
+          判断与历史
+        </button>
+      </nav>
+      <section v-if="screen === 'detail' && current" class="card mb-4">
         <header class="adoption-batch-head">
-          <h2>当前批次</h2>
+          <h2>{{ current.recipient }}</h2>
           <span class="badge">{{ batchStatusLabel(current.status) }}</span>
         </header>
-        <p>
-          {{ purposeLabel(current.purpose) }} · 交给 {{ current.recipient }} · 规则：{{
-            ruleSummary(current.rule)
-          }}
-        </p>
+        <p>{{ purposeLabel(current.purpose) }} · 规则：{{ ruleSummary(current.rule) }}</p>
         <p v-if="current.note">{{ current.note }}</p>
 
-        <div class="adoption-counts">
-          <div class="adoption-count">
-            <span class="adoption-count-value">{{ counts.total }}</span
-            ><span>本批条目</span>
+        <template v-if="detailTab === 'overview'">
+          <div class="adoption-counts">
+            <div class="adoption-count">
+              <span class="adoption-count-value">{{ counts.total }}</span
+              ><span>本批条目</span>
+            </div>
+            <div class="adoption-count">
+              <span class="adoption-count-value">{{ counts.selected }}</span
+              ><span>进入本批</span>
+            </div>
+            <div class="adoption-count">
+              <span class="adoption-count-value">{{ counts.excluded }}</span
+              ><span>已定不进入</span>
+            </div>
+            <div class="adoption-count">
+              <span class="adoption-count-value">{{ counts.pending }}</span
+              ><span title="待处理（规则判不了）">待处理</span>
+            </div>
           </div>
-          <div class="adoption-count">
-            <span class="adoption-count-value">{{ counts.selected }}</span
-            ><span>进入本批</span>
+          <p v-if="!consistent" class="alert alert-warning" role="alert">
+            三个数之和对不上总数，界面不照抄：请重新预览；若仍不一致，说明数据被绕过接口改过。
+          </p>
+          <div v-else-if="counts.pending > 0" class="alert alert-warning" role="alert">
+            <p>
+              还有
+              {{ counts.pending }} 条待处理。确认当前范围后，本批资料仍会明确标记为尚未完整处理。
+            </p>
+            <details class="mt-2">
+              <summary>查看清单标记</summary>
+              <p>确认后导出的清单会写明 <code>complete: false</code>，不会把部分结果冒充全量。</p>
+            </details>
           </div>
-          <div class="adoption-count">
-            <span class="adoption-count-value">{{ counts.excluded }}</span
-            ><span>已定不进入</span>
-          </div>
-          <div class="adoption-count">
-            <span class="adoption-count-value">{{ counts.pending }}</span
-            ><span>待处理（规则判不了）</span>
-          </div>
-        </div>
-        <p v-if="!consistent" class="alert alert-warning" role="alert">
-          三个数之和对不上总数，界面不照抄：请重新预览；若仍不一致，说明数据被绕过接口改过。
-        </p>
-        <p v-else-if="counts.pending > 0" class="alert alert-warning" role="alert">
-          还有 {{ counts.pending }} 条待处理。确认后导出的清单会写明
-          <code>complete: false</code>，不会把部分结果冒充全量。
-        </p>
-        <p v-if="batchEvents.stale" class="alert alert-warning" role="alert">
-          这一批确认之后，来源的用途权利变过。采用范围可能需要重评——重评只会追加一条记录，
-          不会改写确认时的数字。
-        </p>
+          <p v-if="batchEvents.stale" class="alert alert-warning" role="alert">
+            这一批确认之后，来源的用途权利变过。采用范围可能需要重评——重评只会追加一条记录，
+            不会改写确认时的数字。
+          </p>
 
-        <div v-if="current.reasons.length" class="mt-3">
-          <h3 class="adoption-subhead">未进入本批的理由分布</h3>
-          <ul class="adoption-reasons">
-            <li v-for="item in current.reasons" :key="item.code">
-              {{ reasonLabel(item.code) }} · {{ item.count }} 条
-            </li>
-          </ul>
-        </div>
+          <details v-if="current.reasons.length" class="mt-3">
+            <summary>查看范围外与待定理由</summary>
+            <ul class="adoption-reasons">
+              <li v-for="item in current.reasons" :key="item.code">
+                {{ reasonLabel(item.code) }} · {{ item.count }} 条
+              </li>
+            </ul>
+          </details>
 
-        <div class="adoption-actions">
-          <button
-            class="btn btn-secondary"
-            :disabled="busy || loading || current.status === 'confirmed'"
-            @click="preview"
-          >
-            重新预览数量
-          </button>
-          <button
-            class="btn btn-primary"
-            :disabled="busy || loading || current.status !== 'previewed'"
-            @click="confirm"
-          >
-            确认本批采用范围
-          </button>
-          <button class="btn btn-secondary" :disabled="busy || loading" @click="reevaluate">
-            按当前数据重新评估
-          </button>
-          <button
-            class="btn btn-secondary"
-            :disabled="busy || loading"
-            @click="exportManifest('select')"
-          >
-            导出本批清单
-          </button>
-          <button class="btn btn-quiet" :disabled="busy || loading" @click="exportManifest('all')">
-            导出全部条目（需平台管理员）
-          </button>
-          <button
-            v-if="current.status !== 'confirmed'"
-            class="btn btn-quiet"
-            :disabled="busy || loading"
-            @click="remove"
-          >
-            删除这一批
-          </button>
-        </div>
-        <p class="adoption-hint">
-          导出默认只含进入本批的条目；未采用与待处理的数量写在清单的 <code>omitted</code> 里。
-        </p>
-        <details v-if="batchEvents.events.length" class="mt-3">
-          <summary>这一批的事件（{{ batchEvents.events.length }}）</summary>
-          <ul class="adoption-reasons">
-            <li v-for="item in batchEvents.events" :key="item.id">
-              {{ eventKindLabel(item.kind) }} · {{ item.created }}
-              <span v-if="item.affected"> · 涉及 {{ item.affected }} 条</span>
-              <div>{{ item.note }}</div>
-              <div v-if="item.stored" class="adoption-hint">
-                确认时 {{ item.stored.selected }}/{{ item.stored.total }} → 重评时
-                {{ item.current.selected }}/{{ item.current.total }}
+          <div class="adoption-actions">
+            <button
+              v-if="current.status === 'confirmed'"
+              class="btn btn-primary"
+              :disabled="busy || loading"
+              @click="exportManifest('select')"
+            >
+              导出本批清单
+            </button>
+            <button
+              v-else-if="counts.pending > 0 && current.status === 'previewed'"
+              class="btn btn-primary"
+              :disabled="busy || loading"
+              @click="detailTab = 'exceptions'"
+            >
+              处理 {{ counts.pending }} 条待定条目
+            </button>
+            <button
+              v-else-if="current.status === 'previewed'"
+              class="btn btn-primary"
+              :disabled="busy || loading || !consistent"
+              @click="openConfirmation"
+            >
+              确认本批采用范围
+            </button>
+            <button v-else class="btn btn-primary" :disabled="busy || loading" @click="preview">
+              预览并核对数量
+            </button>
+            <details class="adoption-more">
+              <summary>更多操作</summary>
+              <div class="adoption-actions">
+                <button
+                  class="btn btn-secondary"
+                  :disabled="busy || loading || current.status === 'confirmed'"
+                  @click="preview"
+                >
+                  重新预览数量
+                </button>
+                <button
+                  v-if="current.status !== 'confirmed' && counts.pending > 0"
+                  class="btn btn-secondary"
+                  :disabled="busy || loading || !consistent || current.status !== 'previewed'"
+                  @click="openConfirmation"
+                >
+                  确认当前范围（保留待处理记录）
+                </button>
+                <button class="btn btn-secondary" :disabled="busy || loading" @click="reevaluate">
+                  按当前数据重新评估
+                </button>
+                <button
+                  v-if="current.status !== 'confirmed'"
+                  class="btn btn-secondary"
+                  :disabled="busy || loading"
+                  @click="exportManifest('select')"
+                >
+                  导出本批清单
+                </button>
+                <button
+                  class="btn btn-quiet"
+                  :disabled="busy || loading"
+                  @click="exportManifest('all')"
+                >
+                  导出全部条目（需平台管理员）
+                </button>
+                <button
+                  v-if="current.status !== 'confirmed'"
+                  class="btn btn-quiet"
+                  :disabled="busy || loading"
+                  @click="openRemoval"
+                >
+                  删除这一批
+                </button>
               </div>
-            </li>
-          </ul>
-        </details>
+            </details>
+          </div>
+          <p class="adoption-hint">导出默认只含进入本批的条目；清单另附未采用与待处理的数量。</p>
+        </template>
+        <template v-if="detailTab === 'history'">
+          <p v-if="!batchEvents.events.length" class="text-muted">
+            这一批还没有重评或权利变更记录。
+          </p>
+          <details v-if="batchEvents.events.length" class="mt-3" open>
+            <summary>这一批的事件（{{ batchEvents.events.length }}）</summary>
+            <ul class="adoption-reasons">
+              <li v-for="item in batchEvents.events" :key="item.id">
+                {{ eventKindLabel(item.kind) }} · {{ item.created }}
+                <span v-if="item.affected"> · 涉及 {{ item.affected }} 条</span>
+                <div>{{ item.note }}</div>
+                <div v-if="item.stored" class="adoption-hint">
+                  确认时 {{ item.stored.selected }}/{{ item.stored.total }} → 重评时
+                  {{ item.current.selected }}/{{ item.current.total }}
+                </div>
+              </li>
+            </ul>
+          </details>
+        </template>
       </section>
 
-      <section v-if="current" class="card mb-4">
-        <h2>例外（人工只处理规则判不了的那些）</h2>
+      <section
+        v-if="screen === 'detail' && current && detailTab === 'exceptions'"
+        class="card mb-4"
+      >
+        <h2>处理例外</h2>
         <p v-if="exceptions.pendingTotal">
           {{ exceptions.pendingTotal }} 条待处理。下面是其中前 {{ exceptions.pending.length }} 条：
           给结论、选理由、写依据，三样都留痕。改动例外会把批次退回草稿，需要重新预览再确认。
         </p>
         <p v-else class="empty-state-text">没有待处理的例外。</p>
-        <article v-for="item in exceptions.pending" :key="item.page" class="adoption-pending">
+        <AppField v-if="exceptions.pending.length"
+          ><template #label>选择待处理条目</template
+          ><select v-model="activeExceptionId" class="form-control">
+            <option v-for="item in exceptions.pending" :key="item.page" :value="item.page">
+              第 {{ item.pageNumber }} 条 · {{ reasonLabel(item.reason) }}
+            </option>
+          </select></AppField
+        >
+        <article v-for="item in visibleExceptions" :key="item.page" class="adoption-pending">
           <h3>第 {{ item.pageNumber }} 条 · {{ reasonLabel(item.reason) }}</h3>
           <div class="adoption-form-grid">
             <AppField layout="plain"
@@ -250,55 +404,8 @@
         </details>
       </section>
 
-      <section v-if="summary" class="card mb-4">
-        <h2>度量</h2>
-        <p>
-          数字取各批确认时的值（那是交付依据）；「需重评」只表示确认之后用途权利变过，
-          不等于已经改过范围。
-        </p>
-        <dl class="adoption-metrics">
-          <div class="adoption-metric">
-            <dt>批次</dt>
-            <dd>{{ summary.batches.total }}</dd>
-            <small
-              >草稿 {{ summary.batches.byStatus.draft || 0 }} · 已预览
-              {{ summary.batches.byStatus.previewed || 0 }} · 已确认
-              {{ summary.batches.byStatus.confirmed || 0 }}</small
-            >
-          </div>
-          <div class="adoption-metric">
-            <dt>已确认范围</dt>
-            <dd>{{ summary.confirmed.selected }}/{{ summary.confirmed.total }}</dd>
-            <small>条进入本批；待处理 {{ summary.confirmed.pending }} 条</small>
-          </div>
-          <div class="adoption-metric">
-            <dt>例外</dt>
-            <dd>{{ summary.exceptions.decided }}</dd>
-            <small>条已处理</small>
-          </div>
-          <div class="adoption-metric">
-            <dt>需重评</dt>
-            <dd>{{ summary.events.staleBatches }}</dd>
-            <small
-              >批在确认后遇到权利变更（另有 {{ summary.events.reevaluated }} 次重评记录）</small
-            >
-          </div>
-        </dl>
-        <p v-if="!summary.confirmed.complete" class="adoption-hint">
-          有已确认批次仍带待处理条目：它们导出的清单里 <code>complete</code> 是 <code>false</code>。
-        </p>
-        <div v-if="summary.reasons.length" class="mt-3">
-          <h3 class="adoption-subhead">已确认批次的排除理由分布</h3>
-          <ul class="adoption-reasons">
-            <li v-for="item in summary.reasons" :key="item.code">
-              {{ reasonLabel(item.code) }} · {{ item.count }} 条
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <section class="card" :aria-busy="loading">
-        <h2>历史批次</h2>
+      <section v-if="screen === 'list'" class="card mb-4" :aria-busy="loading">
+        <h2>编选批次</h2>
         <AppStatusPanel v-if="loading" state="pending" message="正在加载历史批次…" />
         <div v-if="loadError" class="alert alert-error" role="alert">
           {{ loadError }}
@@ -317,17 +424,21 @@
             :class="{ 'adoption-history-current': item.id === currentId }"
           >
             <button
-              class="btn btn-quiet btn-sm"
+              class="btn btn-quiet adoption-history-trigger"
               :disabled="busy || loading"
               @click="selectBatch(item.id)"
             >
-              {{ purposeLabel(item.purpose) }} · {{ batchStatusLabel(item.status) }} ·
-              {{ item.counts.selected }}/{{ item.counts.total }} 条进入本批
+              <strong>{{ item.recipient }}</strong
+              ><span class="adoption-hint"
+                >{{ purposeLabel(item.purpose) }} · {{ batchStatusLabel(item.status) }} ·
+                {{ item.counts.selected }}/{{ item.counts.total }} 条进入本批</span
+              >
             </button>
-            <span class="adoption-hint">交给 {{ item.recipient }} · {{ item.created }}</span>
+            <span class="adoption-hint">{{ new Date(item.created).toLocaleString('zh-CN') }}</span>
           </li>
         </ul>
         <AppPagination
+          v-if="historyTotalItems"
           :page="historyPage"
           :total-pages="historyTotalPages"
           :busy="busy || loading"
@@ -341,17 +452,131 @@
           >
         </AppPagination>
       </section>
+      <section v-if="screen === 'list' && summary?.batches?.total" class="card mb-4">
+        <details>
+          <summary>已确认批次统计与排除理由</summary>
+          <p>
+            数字取各批确认时的值（那是交付依据）；「需重评」只表示确认之后用途权利变过，
+            不等于已经改过范围。
+          </p>
+          <dl class="adoption-metrics">
+            <div class="adoption-metric">
+              <dt>批次</dt>
+              <dd>{{ summary.batches.total }}</dd>
+              <small
+                >草稿 {{ summary.batches.byStatus.draft || 0 }} · 已预览
+                {{ summary.batches.byStatus.previewed || 0 }} · 已确认
+                {{ summary.batches.byStatus.confirmed || 0 }}</small
+              >
+            </div>
+            <div class="adoption-metric">
+              <dt>已确认范围</dt>
+              <dd>{{ summary.confirmed.selected }}/{{ summary.confirmed.total }}</dd>
+              <small>条进入本批；待处理 {{ summary.confirmed.pending }} 条</small>
+            </div>
+            <div class="adoption-metric">
+              <dt>例外</dt>
+              <dd>{{ summary.exceptions.decided }}</dd>
+              <small>条已处理</small>
+            </div>
+            <div class="adoption-metric">
+              <dt>需重评</dt>
+              <dd>{{ summary.events.staleBatches }}</dd>
+              <small
+                >批在确认后遇到权利变更（另有 {{ summary.events.reevaluated }} 次重评记录）</small
+              >
+            </div>
+          </dl>
+          <p v-if="!summary.confirmed.complete" class="adoption-hint">
+            有已确认批次仍带待处理条目：它们导出的清单里 <code>complete</code> 是
+            <code>false</code>。
+          </p>
+          <div v-if="summary.reasons.length" class="mt-3">
+            <h3 class="adoption-subhead">已确认批次的排除理由分布</h3>
+            <ul class="adoption-reasons">
+              <li v-for="item in summary.reasons" :key="item.code">
+                {{ reasonLabel(item.code) }} · {{ item.count }} 条
+              </li>
+            </ul>
+          </div>
+        </details>
+      </section>
     </template>
+    <ConfirmDialog
+      :open="confirmOpen && Boolean(current)"
+      title-id="adoption-confirm-title"
+      :busy="busy"
+      :close-on-backdrop="!busy"
+      :close-on-esc="!busy"
+      @close="confirmOpen = false"
+    >
+      <h2 id="adoption-confirm-title">确认本批采用范围</h2>
+      <p v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</p>
+      <p>交给 {{ current?.recipient }} · {{ purposeLabel(current?.purpose) }}。</p>
+      <p>
+        进入 {{ counts.selected }} 条，范围外 {{ counts.excluded }} 条，待处理
+        {{ counts.pending }} 条。确认后保留这一次的规则、数量与凭据。
+      </p>
+      <p v-if="counts.pending" class="alert alert-warning" role="alert">
+        仍有待处理条目；清单会明确标为未完整处理，且不会放宽来源用途许可。
+      </p>
+      <template #actions
+        ><button
+          type="button"
+          class="btn btn-secondary"
+          :disabled="busy"
+          @click="confirmOpen = false"
+        >
+          继续核对</button
+        ><button
+          type="button"
+          class="btn btn-primary"
+          :disabled="busy || !consistent"
+          @click="confirm"
+        >
+          {{ busy ? '正在确认…' : '确认并保留本批范围' }}
+        </button></template
+      >
+    </ConfirmDialog>
+    <ConfirmDialog
+      :open="removeOpen && Boolean(current)"
+      title-id="adoption-remove-title"
+      :busy="busy"
+      :close-on-backdrop="!busy"
+      :close-on-esc="!busy"
+      @close="removeOpen = false"
+    >
+      <h2 id="adoption-remove-title">删除这份编选草稿？</h2>
+      <p v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</p>
+      <p>
+        将删除交给 {{ current?.recipient }} 的本批草稿及其例外记录；项目条目和校对结果保持原样。
+      </p>
+      <template #actions
+        ><button
+          type="button"
+          class="btn btn-secondary"
+          :disabled="busy"
+          @click="removeOpen = false"
+        >
+          保留草稿</button
+        ><button type="button" class="btn btn-danger" :disabled="busy" @click="remove">
+          {{ busy ? '正在删除…' : '删除本批草稿' }}
+        </button></template
+      >
+    </ConfirmDialog>
   </main>
 </template>
 
 <script setup>
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
+import ImportBatchPicker from '@/components/admin/project/ImportBatchPicker.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import AppField from '@/components/AppField.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import {
   DECISION_LABELS,
   DEFAULT_STATUSES,
@@ -388,6 +613,21 @@ import { getPbMessage } from '@/utils/pbErrors'
 
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
+const screen = ref('list')
+const createStep = ref(1)
+const scopePreset = ref('ready')
+const detailTab = ref('overview')
+const activeExceptionId = ref('')
+const confirmOpen = ref(false)
+const removeOpen = ref(false)
+function openConfirmation() {
+  operationError.value = ''
+  confirmOpen.value = true
+}
+function openRemoval() {
+  operationError.value = ''
+  removeOpen.value = true
+}
 const pageStatuses = Object.keys(PAGE_STATUS_LABELS)
 const qualityStates = Object.keys(QUALITY_STATE_LABELS)
 
@@ -400,9 +640,7 @@ const {
   async ({ signal }, id, page, selectedId) => {
     const data = await listAdoptionBatches(id, { page, perPage: 25, signal })
     const nextBatches = data.batches || []
-    const nextId = nextBatches.some((item) => item.id === selectedId)
-      ? selectedId
-      : nextBatches[0]?.id || ''
+    const nextId = nextBatches.some((item) => item.id === selectedId) ? selectedId : ''
     const [details, nextSummary] = await Promise.all([
       loadBatchDetails(nextId, signal),
       getAdoptionSummary(id, { signal })
@@ -449,6 +687,24 @@ const createForm = reactive({
   importJobsText: ''
 })
 
+const visibleExceptions = computed(() => {
+  const active =
+    exceptions.value.pending.find((item) => item.page === activeExceptionId.value) ||
+    exceptions.value.pending[0]
+  return active ? [active] : []
+})
+
+function openCreate() {
+  screen.value = 'create'
+  createStep.value = 1
+}
+function nextCreateStep() {
+  createStep.value = 2
+}
+function applyScopePreset() {
+  if (scopePreset.value === 'ready') createForm.statuses = [...DEFAULT_STATUSES]
+}
+
 const current = computed(() => batches.value.find((item) => item.id === currentId.value) || null)
 const counts = computed(() => normalizeCounts(current.value?.counts))
 const consistent = computed(() => countsConsistent(current.value?.counts))
@@ -469,6 +725,12 @@ function resetProject() {
   ++batchLoadGeneration
   ++projectGeneration
   loaded.value = false
+  screen.value = 'list'
+  createStep.value = 1
+  scopePreset.value = 'ready'
+  detailTab.value = 'overview'
+  activeExceptionId.value = ''
+  confirmOpen.value = removeOpen.value = false
   busy.value = false
   batches.value = []
   currentId.value = ''
@@ -502,6 +764,7 @@ async function load(page = requestedHistoryPage.value) {
   // Commit history and details together; failed reload keeps drafts and the last page.
   batches.value = nextBatches
   currentId.value = nextId
+  if (screen.value === 'detail' && !nextId) screen.value = 'list'
   historyPage.value = requestedHistoryPage.value = data.page
   historyTotalPages.value = data.totalPages
   historyTotalItems.value = data.totalItems
@@ -525,13 +788,16 @@ function applyBatchDetails(details) {
   exceptions.value = details.exceptions || { ...EMPTY_EXCEPTIONS }
   batchEvents.value = details.events || { ...EMPTY_EVENTS }
   for (const item of exceptions.value.pending) draftFor(item.page)
+  if (!exceptions.value.pending.some((item) => item.page === activeExceptionId.value))
+    activeExceptionId.value = exceptions.value.pending[0]?.page || ''
 }
 
 function draftFor(pageId) {
-  if (!decisionDrafts[pageId]) {
-    decisionDrafts[pageId] = { decision: 'select', reason: '', note: '' }
+  const key = `${currentId.value}:${pageId}`
+  if (!decisionDrafts[key]) {
+    decisionDrafts[key] = { decision: 'select', reason: '', note: '' }
   }
-  return decisionDrafts[pageId]
+  return decisionDrafts[key]
 }
 
 async function act(fn, success) {
@@ -555,6 +821,8 @@ async function act(fn, success) {
 }
 
 async function create() {
+  if (busy.value) return
+  const submittedNote = createForm.note
   const built = ruleFromForm(createForm)
   if (built.error) {
     operationError.value = built.error
@@ -567,12 +835,21 @@ async function create() {
       note: createForm.note.trim(),
       rule: built.rule
     })
-    await previewAdoptionBatch(batch.id)
     if (!isCurrent()) return
+    // Retain a successfully created draft before previewing: a failed preview
+    // must retry this batch instead of silently creating another one.
+    batches.value = [batch, ...batches.value.filter((item) => item.id !== batch.id)]
     currentId.value = batch.id
     requestedHistoryPage.value = 1
+    screen.value = 'detail'
+    detailTab.value = 'overview'
+    applyBatchDetails({ exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } })
+    await previewAdoptionBatch(batch.id)
+    if (!isCurrent()) return
     // 接收方保留：同一批交付常常要按不同用途连续开几条；说明是一次性的。
-    createForm.note = ''
+    if (createForm.note === submittedNote) createForm.note = ''
+    screen.value = 'detail'
+    detailTab.value = 'overview'
   }, '批次已创建并完成预览；核对数量后再确认。')
 }
 
@@ -581,10 +858,12 @@ async function preview() {
 }
 
 async function confirm() {
+  if (!current.value || !consistent.value || current.value.status !== 'previewed') return
   await act(
     () => confirmAdoptionBatch(current.value.id),
     '已确认本批采用范围；导出与下游都以这份清单为准。'
   )
+  if (!operationError.value) confirmOpen.value = false
 }
 
 // 重评只追加一条事件，不改写确认时的数字：D5.3 的红线是「追加，不改历史」。
@@ -603,8 +882,12 @@ async function remove() {
   const batchId = current.value.id
   await act(async (_id, isCurrent) => {
     await deleteAdoptionBatch(batchId)
-    if (isCurrent()) currentId.value = ''
+    if (isCurrent()) {
+      currentId.value = ''
+      screen.value = 'list'
+    }
   }, '草稿已删除。')
+  if (!operationError.value) removeOpen.value = false
 }
 
 async function exportManifest(include) {
@@ -630,6 +913,8 @@ async function exportManifest(include) {
 }
 
 async function decide(pageId) {
+  const batchId = currentId.value
+  const draftKey = `${batchId}:${pageId}`
   const draft = draftFor(pageId)
   const note = draft.note.trim()
   if (!note) {
@@ -640,18 +925,20 @@ async function decide(pageId) {
     operationError.value = '判为不进入本批时必须选一个理由。'
     return
   }
-  await act(async () => {
-    await decideAdoptionException(current.value.id, {
+  await act(async (_id, isCurrent) => {
+    await decideAdoptionException(batchId, {
       page: pageId,
       decision: draft.decision,
       reason: draft.decision === 'exclude' ? draft.reason : '',
       note
     })
-    delete decisionDrafts[pageId]
+    if (isCurrent()) delete decisionDrafts[draftKey]
   }, '例外已记录；批次退回草稿，请重新预览再确认。')
 }
 
 async function selectBatch(id) {
+  screen.value = 'detail'
+  detailTab.value = 'overview'
   requestedHistoryPage.value = historyPage.value
   currentId.value = id
   const generation = ++batchLoadGeneration
@@ -665,6 +952,93 @@ async function selectBatch(id) {
 </script>
 
 <style scoped>
+.adoption-more {
+  padding: var(--space-2) 0;
+}
+.adoption-more summary,
+.adoption-optional summary {
+  cursor: pointer;
+  color: var(--gray-600);
+  font-size: var(--text-sm);
+}
+.adoption-more[open] {
+  flex-basis: 100%;
+}
+.adoption-optional {
+  padding: var(--space-2) 0;
+}
+.adoption-heading {
+  margin-bottom: var(--space-3);
+}
+.adoption-heading h1 {
+  font-size: var(--text-2xl);
+}
+.adoption-explanation {
+  color: var(--gray-600);
+  font-size: var(--text-sm);
+}
+.adoption-explanation p {
+  padding-top: var(--space-2);
+}
+.adoption-steps,
+.adoption-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.adoption-steps span {
+  padding: var(--space-2) var(--space-3);
+  color: var(--gray-600);
+  border-bottom: 2px solid var(--line);
+}
+.adoption-steps [aria-current='step'] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.adoption-tabs button {
+  padding: var(--space-2) var(--space-3);
+  min-height: 44px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--gray-600);
+  cursor: pointer;
+  font: inherit;
+}
+.adoption-tabs .is-active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.adoption-history li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.adoption-history button {
+  text-align: left;
+  white-space: normal;
+}
+.adoption-history-trigger {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding-inline: 0;
+}
+.adoption-history-trigger strong {
+  font-size: var(--text-md);
+}
+@media (max-width: 640px) {
+  .adoption-history li {
+    align-items: start;
+    flex-direction: column;
+  }
+}
 .back-link {
   display: inline-block;
   margin-bottom: var(--space-3);
@@ -686,8 +1060,17 @@ async function selectBatch(id) {
 }
 .adoption-batch-head {
   display: flex;
-  align-items: center;
+  align-items: start;
+  justify-content: space-between;
   gap: var(--space-2);
+}
+.adoption-batch-head h2 {
+  min-width: 0;
+  font-size: var(--text-xl);
+}
+.adoption-batch-head .badge {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .adoption-counts {
   display: grid;

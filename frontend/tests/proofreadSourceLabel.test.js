@@ -10,8 +10,9 @@ const arbitrationSource = readFileSync(
 )
 
 test('proofreader distinguishes imported text from the source PDF', () => {
-  assert.match(editorSource, /<span>导入文本（提示定位对象）<\/span>/)
+  assert.match(editorSource, /<span>导入文本<\/span>/)
   assert.doesNotMatch(editorSource, /<span>导入原文<\/span>/)
+  assert.match(editorSource, /PDF/)
 })
 
 test('arbitration distinguishes adopting an import from judging source correctness', () => {

@@ -10,7 +10,7 @@ const path = require('node:path')
 const { chromium } = require('playwright')
 
 const fixture = JSON.parse(fs.readFileSync(process.env.SCHEME_BROWSER_FIXTURE))
-const dist = path.resolve(__dirname, '../../frontend/dist')
+const dist = path.resolve(process.env.FRONTEND_DIST || path.join(__dirname, '../../frontend/dist'))
 const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf'), 'utf8')
   .match(/add_header Content-Security-Policy "([^"]+)"/)[1]
 const out = process.env.SCHEME_BROWSER_OUTPUT || path.resolve(__dirname, '../../output/playwright/scheme-conversion')
@@ -87,7 +87,7 @@ async function session (browser, auth) {
 const schemeSection = (page) => page.locator('section', { has: page.locator('h2', { hasText: '拼音归一' }) }).first()
 
 async function openProject (page, projectId) {
-  await page.goto(`http://localhost/admin/projects/${projectId}`)
+  await page.goto(`http://localhost/admin/projects/${projectId}?section=work&view=normalization&schemeView=review`)
   await schemeSection(page).waitFor({ timeout: 60000 })
   await schemeSection(page).scrollIntoViewIfNeeded()
   await page.waitForTimeout(1500)
@@ -106,6 +106,7 @@ async function openProject (page, projectId) {
     // ---------- 2. 跑完的汇总 + 复核队列 ----------
     const manager = await session(browser, fixture.manager)
     await openProject(manager, fixture.project.id)
+    await schemeSection(manager).getByRole('button', { name: '转换作业', exact: true }).click()
     const text = await schemeSection(manager).innerText()
     // 汇总是「最近一次转换」那一刻的结论，**不**随复核队列变短。这里按徽章文本取，
     // 不按整段文字取：队列的筛选按钮上也有「需人工确认」「暂未支持」四个字，
@@ -116,13 +117,6 @@ async function openProject (page, projectId) {
         `汇总缺「${label}」这一行：${JSON.stringify(summaryBadges)}`)
     }
     assert.ok(summaryBadges.includes('需人工确认 · 12'), `汇总数字与夹具不符：${JSON.stringify(summaryBadges)}`)
-    // 队列默认合并两种状态（AMBIGUOUS + UNSUPPORTED）：12 + 1。只列 AMBIGUOUS 的话，
-    // 那 1 条「暂未支持」没有任何人工入口——机器判不出来，人也就永远给不了结论。
-    assert.match(text, /共 13 条待复核/, `队列要合并两种待复核状态，并说清一共有多少条：${text.slice(0, 2000)}`)
-    // 「原值（转换时）」而不是「原值」：快照下来的那个值才是结论针对的对象，
-    // 校对后来改过那一格也不该悄悄改变它。
-    assert.match(text, /原值（转换时）/, '复核队列要显示转换时的原值')
-    assert.match(text, /候选/, '复核队列要显示候选解释')
     // 规则文件自己声明能不能跑真实作业，界面必须在按钮之前把这句话画出来。临时规则
     // 目录里两份文件都在（见 harness.write_scheme_adapters）：可运行副本 + 仓库夹具，
     // 所以这一屏上「仅测试」和「能用」两种选项同时在场——只截到其中一种的话，
@@ -131,17 +125,27 @@ async function openProject (page, projectId) {
     assert.match(text, /拒绝用它创建真实转换作业/, '要说明标了「仅测试」意味着什么，而不是只贴一个标签')
     const optionTexts = await schemeSection(manager).locator('select option').allInnerTexts()
     assert.ok(optionTexts.some((one) => !/仅测试/.test(one)), `不能所有方案都被标成仅测试：${JSON.stringify(optionTexts)}`)
+    await schemeSection(manager).getByRole('button', { name: /^人工复核/ }).click()
+    await schemeSection(manager).getByRole('navigation', { name: '选择复核条目' }).getByRole('button', { name: /需人工确认/ }).first().click()
+    const reviewText = await schemeSection(manager).innerText()
+    // 队列默认合并两种状态（AMBIGUOUS + UNSUPPORTED）：12 + 1。只列 AMBIGUOUS 的话，
+    // 那 1 条「暂未支持」没有任何人工入口——机器判不出来，人也就永远给不了结论。
+    assert.match(reviewText, /共 13 条待复核/, `队列要合并两种待复核状态，并说清一共有多少条：${text.slice(0, 2000)}`)
+    // 「原值（转换时）」而不是「原值」：快照下来的那个值才是结论针对的对象，
+    // 校对后来改过那一格也不该悄悄改变它。
+    assert.match(reviewText, /原值（转换时）/, '复核队列要显示转换时的原值')
+    assert.match(reviewText, /候选/, '复核队列要显示候选解释')
     const pager = schemeSection(manager).getByRole('navigation', { name: '复核队列分页' })
     assert.match(await pager.innerText(), /第 1 \/ 2 页/, '13 条待复核、每页 10 条，翻页控件必须出现')
     await shoot(manager, 'scheme-summary-and-queue')
 
     // ---------- 2b. 队列翻页：第二页是真的另一批条目，不是同一页换个页码 ----------
-    const firstPageRows = await schemeSection(manager).locator('.assist-row strong').allInnerTexts()
+    const firstPageRows = await schemeSection(manager).locator('.scheme-queue button strong').allInnerTexts()
     assert.equal(firstPageRows.length, 10, `一页 10 条：${JSON.stringify(firstPageRows)}`)
     await pager.getByRole('button', { name: '下一页' }).click()
     await manager.waitForTimeout(1500)
     assert.match(await pager.innerText(), /第 2 \/ 2 页/, '翻到第二页后页码要跟着走')
-    const secondPageRows = await schemeSection(manager).locator('.assist-row strong').allInnerTexts()
+    const secondPageRows = await schemeSection(manager).locator('.scheme-queue button strong').allInnerTexts()
     assert.equal(secondPageRows.length, 3, `第二页是剩下的 3 条：${JSON.stringify(secondPageRows)}`)
     for (const label of secondPageRows) {
       assert.ok(!firstPageRows.includes(label), `第二页不得重复第一页的条目：${label}`)
@@ -154,6 +158,7 @@ async function openProject (page, projectId) {
     // ---------- 3. 人工结论：填完依据才可提交 ----------
     // 挑一条「需人工确认」的：队列按页码排序，第一条恰好是那条「暂未支持」（第 3 条），
     // 拿它做这一步会让「候选解释」的断言落空，也把两种状态的界面路径混成一条。
+    await schemeSection(manager).getByRole('navigation', { name: '选择复核条目' }).getByRole('button', { name: /需人工确认/ }).first().click()
     const row = schemeSection(manager).locator('.assist-row', { hasText: '需人工确认' }).first()
     const decidedLabel = await row.locator('strong').innerText()
     const confirm = row.getByRole('button', { name: '确认结论' })
@@ -168,7 +173,7 @@ async function openProject (page, projectId) {
     assert.match(after, /已复核/, `提交后应回显结论：${after.slice(0, 300)}`)
     // 复核一条、队列短一条：这条断言同时挡住「界面显示成功但队列没变」和反过来。
     assert.match(after, /共 12 条待复核/, `提交后总数要跟着少一条：${after.slice(0, 400)}`)
-    const remaining = await schemeSection(manager).locator('.assist-row strong').allInnerTexts()
+    const remaining = await schemeSection(manager).locator('.scheme-queue button strong').allInnerTexts()
     assert.ok(!remaining.includes(decidedLabel), `已复核的条目不该再留在队列里：${decidedLabel}`)
     await shoot(manager, 'scheme-review-done')
 

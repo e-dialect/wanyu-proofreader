@@ -74,17 +74,26 @@ async function main() {
         }
       } finally { await baseline.close(); await extracted.close() }
     }
+    const expandAdvanced = async () => {
+      const details = page.locator('#project-entries .project-entry-advanced')
+      if (!await details.evaluate(element => element.open)) await details.locator('summary').click()
+    }
     await open(projectRoute)
     await page.locator('#project-entries table tbody tr').first().waitFor()
     assert.equal(await page.locator('#project-entries table tbody tr').count(), 4)
+    await expandAdvanced()
     await page.getByRole('button', { name: '全选待校对', exact: true }).click()
     await page.waitForFunction(() => document.querySelectorAll('#project-entries input[type=checkbox]:checked').length === 4)
     await page.getByRole('button', { name: '取消全选待校对', exact: true }).click()
     assert.equal(await page.locator('#project-entries input[type=checkbox]:checked').count(), 0)
     const first = page.locator('#project-entries table tbody tr').first()
     const last = page.locator('#project-entries table tbody tr').last()
+    await first.locator('.project-entry-actions > summary').click()
     assert.equal(await first.getByRole('button', { name: '上移', exact: true }).isDisabled(), true)
+    await first.locator('.project-entry-actions > summary').click()
+    await last.locator('.project-entry-actions > summary').click()
     assert.equal(await last.getByRole('button', { name: '下移', exact: true }).isDisabled(), true)
+    await last.locator('.project-entry-actions > summary').click()
     await page.getByLabel('按完整列表范围选择条目').fill('1,3-4')
     await page.getByRole('button', { name: '范围选中', exact: true }).click()
     await page.waitForFunction(() => document.querySelectorAll('#project-entries input[type=checkbox]:checked').length === 3)
@@ -108,12 +117,13 @@ async function main() {
     await search.fill('')
     await page.waitForFunction(() => document.querySelectorAll('#project-entries tbody tr').length === 4)
     // Existing verification download remains a real service operation.
+    await page.getByRole('navigation', { name: '项目工作区' }).getByRole('link', { name: '交付', exact: true }).click()
     const downloading = page.waitForEvent('download')
     await page.getByRole('button', { name: '全量 CSV（含状态）', exact: true }).click()
     assert.equal(await (await downloading).failure(), null)
     // Reuse the same routed component with another project ID; query changes
     // alone retain its state, while a different project must remount its scope.
-    await page.evaluate(id => document.querySelector('#app').__vue_app__.config.globalProperties.$router.push(`/admin/projects/${id}`), fixture.emptyProject.id)
+    await page.evaluate(id => document.querySelector('#app').__vue_app__.config.globalProperties.$router.push(`/admin/projects/${id}?section=work&view=entries`), fixture.emptyProject.id)
     await page.getByText('暂无条目，请上传 CSV 文件', { exact: true }).waitFor()
     assert.equal(await page.locator('#project-entries tbody tr').count(), 0)
     await page.evaluate(id => document.querySelector('#app').__vue_app__.config.globalProperties.$router.push(`/admin/projects/${id}`), fixture.project.id)
@@ -146,6 +156,7 @@ async function main() {
       }
       await open(`/admin/projects/${searchProject.id}`)
       await page.locator('#project-entries table tbody tr').first().waitFor()
+      await expandAdvanced()
       await page.getByLabel('每页显示').selectOption('10')
       await page.waitForFunction(() => document.querySelectorAll('#project-entries tbody tr').length === 10)
       await page.route(`**/api/fangji/projects/${searchProject.id}/pages?*`, route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: '合成翻页故障' }) }), { times: 1 })

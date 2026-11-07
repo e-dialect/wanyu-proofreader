@@ -1,0 +1,18 @@
+{
+  "fullApp": true,
+  "realApi": true,
+  "disposableData": true,
+  "homeStartOneClick": true,
+  "homeResumeOneClick": true,
+  "originalQueueQueryAndHash": true,
+  "ownReviewNoWrites": true,
+  "projectJoining": true,
+  "managementOnlyHome": true,
+  "mobileNavigation": true,
+  "accountReplacement": true,
+  "shellEditorHeight": true,
+  "mobileInputVisible": true,
+  "reviewedTabCancellation": true,
+  "guidanceDoesNotCoverControls": true,
+  "nativeKeyboardVerified": false
+}

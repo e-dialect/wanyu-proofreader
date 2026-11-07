@@ -14,6 +14,8 @@
     <template #panel-header>
       <ProofreadTaskHeader
         v-bind="taskHeaderProps"
+        :overview="overview"
+        :lease-status="leaseStatus"
         @previous="gotoPrevTask"
         @next="gotoNextTask"
         @retry-position="loadNeighbors"
@@ -82,9 +84,12 @@
           :findings-truncated="findingsTruncated"
           :gated-notice-text="gatedNoticeText"
         />
-        <p v-if="!ownReview" class="correction-paths text-sm text-muted" role="note">
-          字写错了，改对应的文字字段。记音或说法不对，改读音字段，特殊字符用下方字符键盘。还没提交时，用这一栏的「恢复导入值」。提交之后不能撤回，系统会尝试打开下一条，不会停在这一条上再改。
-        </p>
+        <details v-if="!ownReview" class="editor-correction-help">
+          <summary>校对与提交说明</summary>
+          <p class="correction-paths text-sm text-muted" role="note">
+            字写错了，改对应的文字字段。记音或说法不对，改读音字段，特殊字符用下方字符键盘。还没提交时，用这一栏的「恢复导入值」。提交之后不能撤回，系统会尝试打开下一条，不会停在这一条上再改。
+          </p>
+        </details>
         <div class="proofread-fields">
           <ProofreadFieldCard
             v-for="(header, index) in rowHeaders"

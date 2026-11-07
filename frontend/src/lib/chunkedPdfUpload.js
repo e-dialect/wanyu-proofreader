@@ -1,6 +1,7 @@
 const MAX_PDF_BYTES = 100 * 1024 * 1024
 const CHUNK_BYTES = 1024 * 1024
 export const PDF_UPLOAD_PREFIX = 'fangji:pdf-upload:v1'
+export const PDF_UPLOAD_PAUSED = 'fangji:pdf-upload:pause-for-navigation'
 
 export function validatePdfFile(file) {
   if (!file || file.size <= 0 || file.size > MAX_PDF_BYTES || !/\.pdf$/i.test(file.name)) {
@@ -30,7 +31,12 @@ export function loadPdfUploadResume(storage, userId, projectId) {
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-    if (parsed.version !== 1 || parsed.projectId !== String(projectId) || parsed.userId !== String(userId)) return null
+    if (
+      parsed.version !== 1 ||
+      parsed.projectId !== String(projectId) ||
+      parsed.userId !== String(userId)
+    )
+      return null
     if (!parsed.sessionId || !parsed.contentHash || !parsed.name) return null
     return parsed
   } catch {
@@ -41,19 +47,22 @@ export function loadPdfUploadResume(storage, userId, projectId) {
 export function savePdfUploadResume(storage, payload) {
   if (!storage || !payload?.userId || !payload?.projectId || !payload?.sessionId) return false
   try {
-    storage.setItem(pdfUploadKey(payload.userId, payload.projectId), JSON.stringify({
-      version: 1,
-      userId: String(payload.userId),
-      projectId: String(payload.projectId),
-      sessionId: payload.sessionId,
-      requestId: payload.requestId || '',
-      name: payload.name,
-      size: payload.size,
-      contentHash: payload.contentHash,
-      received: Array.isArray(payload.received) ? payload.received : [],
-      expiresAt: payload.expiresAt || '',
-      savedAt: new Date().toISOString()
-    }))
+    storage.setItem(
+      pdfUploadKey(payload.userId, payload.projectId),
+      JSON.stringify({
+        version: 1,
+        userId: String(payload.userId),
+        projectId: String(payload.projectId),
+        sessionId: payload.sessionId,
+        requestId: payload.requestId || '',
+        name: payload.name,
+        size: payload.size,
+        contentHash: payload.contentHash,
+        received: Array.isArray(payload.received) ? payload.received : [],
+        expiresAt: payload.expiresAt || '',
+        savedAt: new Date().toISOString()
+      })
+    )
     return true
   } catch {
     return false
@@ -79,13 +88,19 @@ function shouldCancelFailedUpload(error) {
   return true
 }
 
-export async function retryUploadRequest(operation, { signal, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+export async function retryUploadRequest(
+  operation,
+  { signal, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}
+) {
   for (let attempt = 0; ; attempt++) {
     signal?.throwIfAborted()
-    try { return await operation() } catch (error) {
+    try {
+      return await operation()
+    } catch (error) {
       if (signal?.aborted || error?.name === 'AbortError' || error?.isAbort) throw error
       const status = errorStatus(error)
-      if (attempt >= 3 || (status !== 0 && status !== 408 && status !== 429 && status < 500)) throw error
+      if (attempt >= 3 || (status !== 0 && status !== 408 && status !== 429 && status < 500))
+        throw error
       await sleep(1000 * 2 ** attempt)
     }
   }
@@ -103,7 +118,7 @@ export async function uploadPdfInChunks({
   contentHash: knownHash
 }) {
   validatePdfFile(file)
-  const contentHash = knownHash || await hashPdfFile(file)
+  const contentHash = knownHash || (await hashPdfFile(file))
   const stored = loadPdfUploadResume(storage, userId, projectId)
   if (stored?.contentHash && stored.contentHash !== contentHash) {
     throw new Error(`这不是原来的文件，请选择「${stored.name}」`)
@@ -112,8 +127,9 @@ export async function uploadPdfInChunks({
   const requestId = stored?.requestId || crypto.randomUUID()
   const creation = { name: file.name, size: file.size, requestId, contentHash }
   let session
-  const retry = operation => retryUploadRequest(operation, { signal, sleep })
-  const create = requestSignal => send(base, { method: 'POST', body: creation, signal: requestSignal, requestKey: null })
+  const retry = (operation) => retryUploadRequest(operation, { signal, sleep })
+  const create = (requestSignal) =>
+    send(base, { method: 'POST', body: creation, signal: requestSignal, requestKey: null })
   const persist = (next) => {
     session = next
     savePdfUploadResume(storage, {
@@ -136,26 +152,44 @@ export async function uploadPdfInChunks({
     for (let offset = 0, index = 0; offset < file.size; offset += CHUNK_BYTES, index++) {
       if (!received.has(index)) {
         const body = file.slice(offset, Math.min(offset + CHUNK_BYTES, file.size))
-        await retry(() => send(`${base}/${session.id}/chunks/${index}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body, signal, requestKey: null
-        }))
+        await retry(() =>
+          send(`${base}/${session.id}/chunks/${index}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body,
+            signal,
+            requestKey: null
+          })
+        )
         received.add(index)
       }
       persist({ ...session, received: [...received] })
-      onProgress(Math.floor(Math.min(offset + CHUNK_BYTES, file.size) / file.size * 100))
+      onProgress(Math.floor((Math.min(offset + CHUNK_BYTES, file.size) / file.size) * 100))
     }
-    const completed = await retry(() => send(`${base}/${session.id}/complete`, { method: 'POST', signal, requestKey: null }))
+    const completed = await retry(() =>
+      send(`${base}/${session.id}/complete`, { method: 'POST', signal, requestKey: null })
+    )
     clearPdfUploadResume(storage, userId, projectId)
     return completed
   } catch (error) {
+    // Leaving a workspace pauses the transfer. Explicit cancellation keeps
+    // the existing cleanup path; navigation must retain received chunks and
+    // the scoped resume key for re-selecting this same hashed file later.
+    if (signal?.aborted && signal.reason === PDF_UPLOAD_PAUSED) throw error
     if (error?.message?.includes('不是原来的文件')) throw error
     if (session && !shouldCancelFailedUpload(error)) throw error
     const cleanupSignal = AbortSignal.timeout(5000)
     try {
       session ||= await create(cleanupSignal)
-      await send(`${base}/${session.id}`, { method: 'DELETE', signal: cleanupSignal, requestKey: null })
+      await send(`${base}/${session.id}`, {
+        method: 'DELETE',
+        signal: cleanupSignal,
+        requestKey: null
+      })
       clearPdfUploadResume(storage, userId, projectId)
-    } catch { /* Expiring server sessions are the fallback for disconnected clients. */ }
+    } catch {
+      /* Expiring server sessions are the fallback for disconnected clients. */
+    }
     throw error
   }
 }

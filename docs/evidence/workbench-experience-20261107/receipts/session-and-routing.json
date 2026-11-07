@@ -1,0 +1,164 @@
+{
+  "synthetic": true,
+  "routes": [
+    {
+      "pathname": "/api/fangji/projects/project-a/verification-policy",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project-a/column-roles",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/access-context",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project-b/verification-policy",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project-b/column-roles",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page1/task",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/research-notice",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/claim",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/keyboards",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/tasks/mine",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/tasks/reviewed",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page1/findings",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page1/pdf/descriptor",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page1/verification",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page1/images/5/descriptor",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page1/pdf",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/task",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/claim",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/keyboards",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/tasks/mine",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/tasks/reviewed",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/findings",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/pdf/descriptor",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/verification",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/images/5/descriptor",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/task",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/research-notice",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/access-context",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/claim",
+      "method": "POST"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/keyboards",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/tasks/mine",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/projects/project1/tasks/reviewed",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/findings",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/pdf/descriptor",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/verification",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/images/5/descriptor",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/pages/page2/pdf",
+      "method": "GET"
+    },
+    {
+      "pathname": "/api/fangji/auth/providers",
+      "method": "GET"
+    }
+  ],
+  "checks": {
+    "projectSwitch": true,
+    "fastTaskDraft": true,
+    "accountRemount": true,
+    "logoutClearsPrivateView": true,
+    "loginRedirectPreserved": true
+  }
+}

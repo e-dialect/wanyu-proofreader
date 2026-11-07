@@ -1,0 +1,547 @@
+{
+  "baselineCommit": "80cd5bf",
+  "after": "wanyu-experience working tree",
+  "backend": "loopback disposable UX preview",
+  "projectId": "gw1vy6wnbs65qj7",
+  "taskId": "59jqzodgki9kqod",
+  "readerId": "14ramt7r2mmgeq6",
+  "source": {
+    "id": "4f45343be50ddc9",
+    "name": "UX-synthetic-field-notes.pdf",
+    "sha256": "55271eb31d39bfcfa8d1aa7d4232dc318b0ea2b1cb19fc7ba0dc0677a3e422d1",
+    "physicalPage": 3,
+    "totalPages": 13
+  },
+  "createdAt": "2026-11-07T09:04:44.850Z",
+  "dataPolicy": "Read-only except reissuing/renewing the same existing task lease. No content, source, project, judgment or draft updates.",
+  "screens": [
+    {
+      "phase": "before",
+      "screen": "desktop-editor",
+      "file": "before-desktop-editor.png",
+      "route": "/tasks/59jqzodgki9kqod/edit",
+      "errors": [],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "width": 1440,
+        "height": 1399,
+        "scrollY": 0
+      },
+      "horizontalOverflow": false,
+      "workspace": {
+        "x": 0,
+        "y": 56,
+        "width": 1440,
+        "height": 844,
+        "top": 56,
+        "right": 1440,
+        "bottom": 900,
+        "left": 0
+      },
+      "source": {
+        "x": 15,
+        "y": 71,
+        "width": 627.8,
+        "height": 399.5,
+        "top": 71,
+        "right": 642.8,
+        "bottom": 470.5,
+        "left": 15
+      },
+      "fields": {
+        "x": 657.8,
+        "y": 71,
+        "width": 767.3,
+        "height": 814,
+        "top": 71,
+        "right": 1425,
+        "bottom": 885,
+        "left": 657.8
+      },
+      "firstInput": {
+        "x": 673.8,
+        "y": 706.3,
+        "width": 735.3,
+        "height": 104,
+        "top": 706.3,
+        "right": 1409,
+        "bottom": 810.3,
+        "left": 673.8
+      },
+      "firstInputFullyVisible": true,
+      "firstInputCenterUncovered": true,
+      "keyboardKeysVisible": 24,
+      "sourceToolbarSurfaces": 2,
+      "fieldsText": [
+        "食",
+        "ia̍h",
+        "吃",
+        ""
+      ],
+      "sourceHeading": "第 3 / 13 页",
+      "projectTable": null,
+      "projectRowCount": 0,
+      "projectRows": []
+    },
+    {
+      "phase": "before",
+      "screen": "mobile-editor",
+      "file": "before-mobile-editor.png",
+      "route": "/tasks/59jqzodgki9kqod/edit",
+      "errors": [],
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "width": 390,
+        "height": 937,
+        "scrollY": 0
+      },
+      "horizontalOverflow": false,
+      "workspace": {
+        "x": 0,
+        "y": 56,
+        "width": 390,
+        "height": 788,
+        "top": 56,
+        "right": 390,
+        "bottom": 844,
+        "left": 0
+      },
+      "source": {
+        "x": 7.5,
+        "y": 63.5,
+        "width": 375,
+        "height": 211,
+        "top": 63.5,
+        "right": 382.5,
+        "bottom": 274.5,
+        "left": 7.5
+      },
+      "fields": {
+        "x": 7.5,
+        "y": 282,
+        "width": 375,
+        "height": 373.5,
+        "top": 282,
+        "right": 382.5,
+        "bottom": 655.5,
+        "left": 7.5
+      },
+      "firstInput": {
+        "x": 16,
+        "y": 936.5,
+        "width": 358,
+        "height": 72,
+        "top": 936.5,
+        "right": 374,
+        "bottom": 1008.5,
+        "left": 16
+      },
+      "firstInputFullyVisible": false,
+      "firstInputCenterUncovered": false,
+      "keyboardKeysVisible": 0,
+      "sourceToolbarSurfaces": 2,
+      "fieldsText": [
+        "食",
+        "ia̍h",
+        "吃",
+        ""
+      ],
+      "sourceHeading": "第 3 / 13 页",
+      "projectTable": null,
+      "projectRowCount": 0,
+      "projectRows": []
+    },
+    {
+      "phase": "before",
+      "screen": "desktop-project",
+      "file": "before-desktop-project.png",
+      "route": "/admin/projects/gw1vy6wnbs65qj7?status=pending&page=1#project-entries",
+      "errors": [],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "width": 1440,
+        "height": 3620,
+        "scrollY": 417
+      },
+      "horizontalOverflow": false,
+      "workspace": null,
+      "source": null,
+      "fields": null,
+      "firstInput": null,
+      "firstInputFullyVisible": false,
+      "firstInputCenterUncovered": false,
+      "keyboardKeysVisible": 0,
+      "sourceToolbarSurfaces": 0,
+      "fieldsText": [],
+      "sourceHeading": null,
+      "projectTable": {
+        "x": 80,
+        "y": 19,
+        "width": 1280,
+        "height": 867.5,
+        "top": 19,
+        "right": 1360,
+        "bottom": 886.5,
+        "left": 80
+      },
+      "projectRowCount": 10,
+      "projectRows": [
+        {
+          "entry": "选择第 4 条",
+          "preview": "啜 toh 抿、小口饮",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 5 条",
+          "preview": "囝 kiâ 孩子",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 6 条",
+          "preview": "爹 tia 父亲 与普通话义不同",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 7 条",
+          "preview": "妈 má 母亲",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 8 条",
+          "preview": "祖 choó 祖父",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 9 条",
+          "preview": "身 sin 身体",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 10 条",
+          "preview": "目 ba̍k 眼睛",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 11 条",
+          "preview": "齿 khiú 牙齿",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 12 条",
+          "preview": "手 chiú 手臂",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 13 条",
+          "preview": "心 sim 心脏 引申为心思",
+          "status": "待校对"
+        }
+      ]
+    },
+    {
+      "phase": "after",
+      "screen": "desktop-editor",
+      "file": "after-desktop-editor.png",
+      "route": "/tasks/59jqzodgki9kqod/edit",
+      "errors": [],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "width": 1440,
+        "height": 1121,
+        "scrollY": 0
+      },
+      "horizontalOverflow": false,
+      "workspace": {
+        "x": 0,
+        "y": 56,
+        "width": 1440,
+        "height": 844,
+        "top": 56,
+        "right": 1440,
+        "bottom": 900,
+        "left": 0
+      },
+      "source": {
+        "x": 12,
+        "y": 68,
+        "width": 631.8,
+        "height": 820,
+        "top": 68,
+        "right": 643.8,
+        "bottom": 888,
+        "left": 12
+      },
+      "fields": {
+        "x": 655.8,
+        "y": 68,
+        "width": 772.2,
+        "height": 730,
+        "top": 68,
+        "right": 1428,
+        "bottom": 798,
+        "left": 655.8
+      },
+      "firstInput": {
+        "x": 685.8,
+        "y": 425.5,
+        "width": 712.2,
+        "height": 72.6,
+        "top": 425.5,
+        "right": 1398,
+        "bottom": 498.1,
+        "left": 685.8
+      },
+      "firstInputFullyVisible": true,
+      "firstInputCenterUncovered": true,
+      "keyboardKeysVisible": 0,
+      "sourceToolbarSurfaces": 1,
+      "fieldsText": [
+        "食",
+        "ia̍h",
+        "吃",
+        ""
+      ],
+      "sourceHeading": "第 3 / 13 页",
+      "projectTable": null,
+      "projectRowCount": 0,
+      "projectRows": []
+    },
+    {
+      "phase": "after",
+      "screen": "mobile-editor",
+      "file": "after-mobile-editor.png",
+      "route": "/tasks/59jqzodgki9kqod/edit",
+      "errors": [],
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "document": {
+        "width": 390,
+        "height": 844,
+        "scrollY": 0
+      },
+      "horizontalOverflow": false,
+      "workspace": {
+        "x": 0,
+        "y": 56,
+        "width": 390,
+        "height": 788,
+        "top": 56,
+        "right": 390,
+        "bottom": 844,
+        "left": 0
+      },
+      "source": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      },
+      "fields": {
+        "x": 8,
+        "y": 112,
+        "width": 374,
+        "height": 610.5,
+        "top": 112,
+        "right": 382,
+        "bottom": 722.5,
+        "left": 8
+      },
+      "firstInput": {
+        "x": 30,
+        "y": 486.3,
+        "width": 330,
+        "height": 72.6,
+        "top": 486.3,
+        "right": 360,
+        "bottom": 558.9,
+        "left": 30
+      },
+      "firstInputFullyVisible": true,
+      "firstInputCenterUncovered": true,
+      "keyboardKeysVisible": 0,
+      "sourceToolbarSurfaces": 0,
+      "fieldsText": [
+        "食",
+        "ia̍h",
+        "吃",
+        ""
+      ],
+      "sourceHeading": "第 3 / 13 页",
+      "projectTable": null,
+      "projectRowCount": 0,
+      "projectRows": []
+    },
+    {
+      "phase": "after",
+      "screen": "desktop-project",
+      "file": "after-desktop-project.png",
+      "route": "/admin/projects/gw1vy6wnbs65qj7?status=pending&page=1#project-entries",
+      "errors": [],
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "width": 1440,
+        "height": 1380,
+        "scrollY": 322
+      },
+      "horizontalOverflow": false,
+      "workspace": null,
+      "source": null,
+      "fields": null,
+      "firstInput": null,
+      "firstInputFullyVisible": false,
+      "firstInputCenterUncovered": false,
+      "keyboardKeysVisible": 0,
+      "sourceToolbarSurfaces": 0,
+      "fieldsText": [],
+      "sourceHeading": null,
+      "projectTable": {
+        "x": 248,
+        "y": 71.9,
+        "width": 1160,
+        "height": 953.8,
+        "top": 71.9,
+        "right": 1408,
+        "bottom": 1025.6,
+        "left": 248
+      },
+      "projectRowCount": 10,
+      "projectRows": [
+        {
+          "entry": "选择第 4 条",
+          "preview": "啜 toh 抿、小口饮",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 5 条",
+          "preview": "囝 kiâ 孩子",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 6 条",
+          "preview": "爹 tia 父亲 与普通话义不同",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 7 条",
+          "preview": "妈 má 母亲",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 8 条",
+          "preview": "祖 choó 祖父",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 9 条",
+          "preview": "身 sin 身体",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 10 条",
+          "preview": "目 ba̍k 眼睛",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 11 条",
+          "preview": "齿 khiú 牙齿",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 12 条",
+          "preview": "手 chiú 手臂",
+          "status": "待校对"
+        },
+        {
+          "entry": "选择第 13 条",
+          "preview": "心 sim 心脏 引申为心思",
+          "status": "待校对"
+        }
+      ]
+    }
+  ],
+  "forbiddenWrites": [],
+  "beforeCapturedAt": "2026-11-07T09:01:26.018Z",
+  "comparisons": [
+    {
+      "screen": "desktop-editor",
+      "sameViewport": true,
+      "sameFieldContent": true,
+      "sameProjectContent": true,
+      "beforeFirstInputVisible": true,
+      "afterFirstInputVisible": true,
+      "beforeInputTop": 706.3,
+      "afterInputTop": 425.5,
+      "beforeKeyboardKeys": 24,
+      "afterKeyboardKeys": 0,
+      "beforeSourceToolbars": 2,
+      "afterSourceToolbars": 1,
+      "beforeOverflow": false,
+      "afterOverflow": false,
+      "beforeProjectRows": 0,
+      "afterProjectRows": 0
+    },
+    {
+      "screen": "mobile-editor",
+      "sameViewport": true,
+      "sameFieldContent": true,
+      "sameProjectContent": true,
+      "beforeFirstInputVisible": false,
+      "afterFirstInputVisible": true,
+      "beforeInputTop": 936.5,
+      "afterInputTop": 486.3,
+      "beforeKeyboardKeys": 0,
+      "afterKeyboardKeys": 0,
+      "beforeSourceToolbars": 2,
+      "afterSourceToolbars": 0,
+      "beforeOverflow": false,
+      "afterOverflow": false,
+      "beforeProjectRows": 0,
+      "afterProjectRows": 0
+    },
+    {
+      "screen": "desktop-project",
+      "sameViewport": true,
+      "sameFieldContent": true,
+      "sameProjectContent": true,
+      "beforeFirstInputVisible": false,
+      "afterFirstInputVisible": false,
+      "beforeKeyboardKeys": 0,
+      "afterKeyboardKeys": 0,
+      "beforeSourceToolbars": 0,
+      "afterSourceToolbars": 0,
+      "beforeOverflow": false,
+      "afterOverflow": false,
+      "beforeProjectRows": 10,
+      "afterProjectRows": 10
+    }
+  ],
+  "checks": {
+    "sameContent": true,
+    "sameProjectRows": true,
+    "sameViewports": true,
+    "noBusinessWrites": true,
+    "noRuntimeErrors": true
+  },
+  "fieldContentHash": "ff18c0944d05561897790a7bbf6e7089d40369ec437adb33a7345b407219365a"
+}

@@ -128,7 +128,7 @@ const output =
     await more.click()
     await page.waitForTimeout(50)
     assert.equal(typeof releaseOld, 'function')
-    await page.evaluate(() => globalThis.fixtureRouter.push('/projects/project2'))
+    await page.evaluate(() => globalThis.fixtureRouter.push('/projects/project2?view=members'))
     await picker.waitFor()
     releaseOld()
     await page.waitForTimeout(100)

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import pb from '@/lib/pocketbase'
 import { authState, homePath, resolveNavigation } from '../lib/access.js'
+import { browserSessionStorage, rememberQueueTransition } from '@/lib/queueReturn'
 
 function getAuthState() {
   return authState({ isValid: pb.authStore.isValid, model: pb.authStore.model })
@@ -148,10 +149,23 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.path === from.path) return false
+    return { left: 0, top: 0 }
+  }
 })
 
 // ✅ 修复核心：直接用 pb.authStore 判断（不是 store）
-router.beforeEach((to) => resolveNavigation(to, getAuthState()))
+router.beforeEach((to, from) => {
+  const destination = resolveNavigation(to, getAuthState())
+  if (destination) return destination
+  rememberQueueTransition(browserSessionStorage(), pb.authStore.model?.id, to, from, {
+    left: window.scrollX,
+    top: window.scrollY
+  })
+  return null
+})
 
 export default router

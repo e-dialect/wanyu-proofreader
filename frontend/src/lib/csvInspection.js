@@ -19,6 +19,11 @@ export function parseCsvInspection(value) {
   }
 }
 
+export function csvFixedSource(job, sources = []) {
+  if (!job?.source) return { id: '', logical_id: '', title: '未关联来源' }
+  return sources.find((source) => source.id === job.source) || null
+}
+
 export function csvJobProgressText(job) {
   if (!job) return ''
   const input = Number(job.total_count || 0)
@@ -42,7 +47,7 @@ export function csvImportResultText(job) {
   const success = Number(job.success_count || 0)
   const failed = Number(job.failed_count || 0)
   if (job.status === 'validated') {
-    return `后端预检完成：${success} 条可导入，${failed} 条错误已定位，不会计入成功。请确认后开始导入。`
+    return `CSV 检查完成：${success} 条可导入，${failed} 条错误已定位，不会计入成功。请确认后开始导入。`
   }
   if (failed > 0) {
     return `成功导入 ${success} 条，${failed} 条错误未导入。失败没有计为成功。`
@@ -50,7 +55,7 @@ export function csvImportResultText(job) {
   return `成功导入 ${success} 条待校对任务。`
 }
 
-export function csvFatalMessage(job, fallback = 'CSV 后端处理失败') {
+export function csvFatalMessage(job, fallback = 'CSV 处理失败') {
   if (!job || job.status !== 'failed') return ''
   const code = job.error_code ? `[${job.error_code}] ` : ''
   return `${code}${job.error_message || fallback}`

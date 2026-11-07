@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 export function projectDetailSource() {
   return [
     'views/admin/ProjectDetailView.vue',
+    'components/admin/project/projectPanels.js',
     'components/admin/project/ProjectEntriesPanel.vue',
     'composables/project/useProjectEntries.js',
     'components/admin/project/ProjectPdfUpload.vue',

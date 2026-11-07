@@ -1,161 +1,298 @@
 <template>
-  <main class="container page workspace-page">
+  <main class="container page workspace-page project-workspace-page">
     <header class="page-heading project-detail-heading">
       <div>
-        <RouterLink to="/admin" class="back-link">← 返回项目总览</RouterLink>
-        <div class="page-eyebrow">项目工作区</div>
-        <h1>{{ project?.name || '项目详情' }}</h1>
+        <RouterLink to="/admin" class="back-link">← 所有项目</RouterLink>
+        <h1>{{ project?.name || '项目工作区' }}</h1>
         <p v-if="project?.description">{{ project.description }}</p>
-        <RouterLink
-          v-if="project?.capabilities?.canManage"
-          :to="`/admin/projects/${projectId}/settings#project-details`"
-          class="btn btn-secondary btn-sm mt-3"
-          >编辑项目资料</RouterLink
-        >
       </div>
-      <nav v-if="project" class="project-section-nav" aria-label="项目页面分区">
-        <a href="#project-entries">条目管理</a>
-        <a href="#project-files">文件准备</a>
-        <a href="#project-ledger">批次台账</a>
-        <a href="#project-export">导出结果</a>
-        <a v-if="project?.capabilities?.canManage" href="#project-assist">机器疑点</a>
-        <a v-if="project?.capabilities?.canManage" href="#project-scheme">拼音归一</a>
-        <RouterLink :to="`/admin/projects/${projectId}/verification`"
-          >来源核验与问题处理</RouterLink
-        >
-        <RouterLink :to="`/admin/projects/${projectId}/adoption`">用途编选（D 工序）</RouterLink>
-        <RouterLink :to="`/admin/projects/${projectId}/settings`"
-          >项目设置（资料与成员）</RouterLink
+      <RouterLink
+        v-if="project"
+        :to="`/admin/projects/${projectId}/settings`"
+        class="btn btn-quiet btn-sm"
+        >项目设置</RouterLink
+      >
+    </header>
+    <ProjectWorkspaceNav v-if="project" :project-id="projectId" :active="location.section" />
+    <AppStatusPanel v-if="loadingProject" state="pending" message="正在打开项目…" />
+    <AppStatusPanel
+      v-else-if="projectError"
+      state="error"
+      :message="projectError"
+      retry-label="重新加载"
+      @retry="loadProject"
+    />
+    <template v-else-if="project">
+      <ProjectOverview
+        v-if="location.section === 'overview'"
+        ref="overviewPanel"
+        :project-id="projectId"
+        :query="route.query"
+      />
+      <nav v-if="subviews.length" class="project-subnav" :aria-label="`${sectionLabel}功能`">
+        <RouterLink
+          v-for="item in subviews"
+          :key="item.key"
+          :to="item.to || link(location.section, item.key)"
+          :class="{ 'is-active': location.view === item.key }"
+          :aria-current="location.view === item.key ? 'page' : undefined"
+          >{{ item.label }}</RouterLink
         >
       </nav>
-    </header>
-
-    <div v-if="loadingProject" class="project-detail-skeleton" aria-label="正在加载项目">
-      <div class="skeleton-card project-detail-skeleton__heading" aria-hidden="true">
-        <span class="skeleton-line skeleton-line--short"></span>
-        <span class="skeleton-line"></span>
+      <div
+        v-if="visited.has('entries')"
+        v-show="location.section === 'work' && location.view === 'entries'"
+      >
+        <ProjectEntriesPanel
+          ref="entries"
+          :project-id="projectId"
+          :project="project"
+          :refresh-ledger="loadLedger"
+        />
       </div>
-      <div class="skeleton-card project-detail-skeleton__summary" aria-hidden="true">
-        <span class="skeleton-line"></span>
-        <span class="skeleton-line"></span>
-      </div>
-    </div>
-    <div v-else-if="projectError" class="alert alert-error" role="alert">{{ projectError }}</div>
-    <template v-else>
-      <ProjectEntriesPanel
-        ref="entries"
+      <ProjectWorkQueue
+        v-if="location.section === 'work' && location.view === 'queue'"
+        :project-id="projectId"
+        :query="route.query"
+      />
+      <ProjectImportChoice
+        v-if="location.section === 'materials' && location.view === 'import'"
+        :method="importMethod"
+        @select="selectImport"
+      />
+      <section
+        v-if="visited.has('pdf')"
+        v-show="showImport('pdf')"
+        id="project-files"
+        class="card project-section mt-4"
+      >
+        <ProjectPanels.ProjectPdfUpload ref="pdfUpload" :project-id="projectId" />
+      </section>
+      <section
+        v-if="visited.has('csv')"
+        v-show="showImport('csv')"
+        class="card project-section mt-4"
+      >
+        <ProjectPanels.ProjectCsvImport
+          ref="csvImport"
+          :project-id="projectId"
+          :refresh-pages="loadPages"
+          :refresh-stats="loadPageStats"
+          :refresh-quality="loadQualitySummary"
+          :refresh-ledger="loadLedger"
+          :clear-selection="clearSelection"
+        />
+      </section>
+      <section
+        v-if="visited.has('ocr')"
+        v-show="showImport('ocr')"
+        class="card project-section mt-4"
+      >
+        <ProjectPanels.ProjectOcrImport :project-id="projectId" @changed="refreshAfterImport" />
+      </section>
+      <section
+        v-if="visited.has('bundle')"
+        v-show="showImport('bundle')"
+        class="card project-section mt-4"
+      >
+        <ProjectPanels.ProjectBundleImport
+          ref="bundleImport"
+          :project-id="projectId"
+          @changed="refreshAfterImport"
+        />
+      </section>
+      <ProjectPanels.ProjectImportLedger
+        v-if="visited.has('batches')"
+        v-show="location.section === 'materials' && location.view === 'batches'"
+        ref="ledgerPanel"
+        :project-id="projectId"
+      />
+      <ProjectPanels.ProjectExportPanel
+        v-if="visited.has('exports')"
+        v-show="location.section === 'delivery' && location.view === 'exports'"
         :project-id="projectId"
         :project="project"
-        :refresh-ledger="loadLedger"
       />
-      <section id="project-files" class="card project-section mb-6">
-        <div class="card-title">上传文件</div>
-        <div class="grid-2">
-          <ProjectPdfUpload ref="pdfUpload" :project-id="projectId" />
-          <ProjectCsvImport
-            :project-id="projectId"
-            :refresh-pages="loadPages"
-            :refresh-stats="loadPageStats"
-            :refresh-quality="loadQualitySummary"
-            :refresh-ledger="loadLedger"
-            :clear-selection="clearSelection"
-          />
-          <ProjectOcrImport :project-id="projectId" @changed="refreshAfterImport" />
-        </div>
-      </section>
-      <ProjectImportLedger ref="ledgerPanel" :project-id="projectId" />
-      <ProjectExportPanel :project-id="projectId" :project="project" />
-      <ProjectAssistPanel
-        v-if="project?.capabilities?.canManage"
+      <ProjectPanels.ProjectProcessExport
+        v-if="visited.has('process')"
+        v-show="location.section === 'delivery' && location.view === 'process'"
+        :project-id="projectId"
+      />
+      <ProjectPanels.ProjectAssistPanel
+        v-if="visited.has('checks')"
+        v-show="location.section === 'work' && location.view === 'checks'"
         :project-id="projectId"
         :displayed-pages="entries?.displayedPages"
         :displayed-page-offset="entries?.displayedPageOffset"
         :refresh-pages="loadPages"
-        @jump-entry="entries?.jumpToPdfPage($event)"
+        @jump-entry="jumpToEntry"
       />
-      <ProjectSchemePanel
-        v-if="project?.capabilities?.canManage"
+      <ProjectPanels.ProjectSchemePanel
+        v-if="visited.has('normalization')"
+        v-show="location.section === 'work' && location.view === 'normalization'"
         ref="schemePanel"
         :project-id="projectId"
+        :initial-view="route.query.schemeView === 'review' ? 'review' : 'jobs'"
       />
     </template>
+    <WorkspaceLeaveGuard
+      :dirty="
+        !!pdfUpload?.uploadingPdf || !!csvImport?.hasPendingWork || !!bundleImport?.hasPendingWork
+      "
+      message="材料仍在上传、检查或等待确认。离开会暂停 PDF 上传并保留已有分片，返回后重新选择同一文件可继续；已发送的导入作业可能继续，请返回核对批次。"
+    />
   </main>
 </template>
-
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, RouterLink } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { getProject } from '@/services/projectsService'
+import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
+import {
+  projectWorkspaceLocation,
+  projectWorkspaceSubviews,
+  projectWorkspaceTarget
+} from '@/lib/projectWorkspace'
 import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
+import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
+import ProjectImportChoice from '@/components/admin/project/ProjectImportChoice.vue'
+import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
+import ProjectOverview from '@/components/admin/project/ProjectOverview.vue'
+import ProjectWorkQueue from '@/components/admin/project/ProjectWorkQueue.vue'
 import ProjectEntriesPanel from '@/components/admin/project/ProjectEntriesPanel.vue'
-import ProjectPdfUpload from '@/components/admin/project/ProjectPdfUpload.vue'
-import ProjectCsvImport from '@/components/admin/project/ProjectCsvImport.vue'
-import ProjectOcrImport from '@/components/admin/project/ProjectOcrImport.vue'
-import ProjectImportLedger from '@/components/admin/project/ProjectImportLedger.vue'
-import ProjectExportPanel from '@/components/admin/project/ProjectExportPanel.vue'
-import ProjectAssistPanel from '@/components/admin/project/ProjectAssistPanel.vue'
-import ProjectSchemePanel from '@/components/admin/project/ProjectSchemePanel.vue'
+import * as ProjectPanels from '@/components/admin/project/projectPanels'
 const route = useRoute()
-const projectId = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
+const router = useRouter()
+const projectId = String(Array.isArray(route.params.id) ? route.params.id[0] : route.params.id)
 const project = ref(null)
 const projectError = ref('')
 const loadingProject = ref(true)
 const entries = ref(null)
 const pdfUpload = ref(null)
+const csvImport = ref(null)
+const bundleImport = ref(null)
 const ledgerPanel = ref(null)
 const schemePanel = ref(null)
-let pdfResumeIdleId
-let pdfResumeTimer
+const visited = reactive(new Set())
+const initialized = new Set()
+const location = computed(() => projectWorkspaceLocation(route.query, route.hash))
+const sectionLabel = computed(
+  () => ({ materials: '材料', work: '校勘', delivery: '交付' })[location.value.section]
+)
+const subviews = computed(() => projectWorkspaceSubviews(projectId, location.value.section))
+const importMethod = ref(
+  ['pdf', 'csv', 'ocr', 'bundle'].includes(route.query.method) ? route.query.method : 'pdf'
+)
+const overviewPanel = ref(null)
+let disposed = false
+let projectLoadGeneration = 0
+const link = (section, view) => projectWorkspaceTarget(projectId, section, view, route.query)
+const showImport = (method) =>
+  location.value.section === 'materials' &&
+  location.value.view === 'import' &&
+  importMethod.value === method
 const loadPages = () => entries.value?.loadPages()
 const loadPageStats = () => entries.value?.loadPageStats()
 const loadQualitySummary = () => entries.value?.loadQualitySummary()
 const loadLedger = () => ledgerPanel.value?.loadLedger()
-const scrollToEntries = () => entries.value?.scrollToEntries()
-const setupSchemeObserver = () => schemePanel.value?.setupSchemeObserver()
 const clearSelection = () => entries.value?.clearSelection()
 const refreshAfterImport = () =>
-  Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
-function scheduleSecondaryLoads() {
-  const load = () => Promise.all([pdfUpload.value?.loadPdfResume(), loadLedger()])
-  if (typeof window.requestIdleCallback === 'function')
-    pdfResumeIdleId = window.requestIdleCallback(load, { timeout: 1500 })
-  else pdfResumeTimer = setTimeout(load, 0)
+  Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger(), loadOverview()])
+const loadOverview = () => overviewPanel.value?.reload()
+async function selectImport(method) {
+  importMethod.value = method
+  await activate()
+  await router.replace({
+    ...link('materials', 'import'),
+    query: { ...link('materials', 'import').query, method }
+  })
 }
-onMounted(async () => {
-  try {
-    project.value = await getProject(projectId)
-    if (!project.value.capabilities?.canManage) {
-      projectError.value = '无权限管理该项目。'
-      loadingProject.value = false
-      return
-    }
-  } catch (e) {
-    const status = getPbStatus(e)
-    if (status === 401) {
-      projectError.value = '登录状态已失效，请重新登录。'
-    } else if (status === 403) {
-      projectError.value = '无权限查看该项目。'
-    } else if (status === 404) {
-      projectError.value = '项目不存在。'
-    } else {
-      projectError.value = getPbMessage(e, '加载项目失败，请稍后重试。')
-    }
-    loadingProject.value = false
-    return
-  }
-  loadingProject.value = false
-  entries.value?.applyListQuery(route.query)
+async function jumpToEntry(page) {
+  await router.push(link('work', 'entries'))
   await nextTick()
-  setupSchemeObserver()
-  await Promise.all([loadPages(), loadPageStats(), loadQualitySummary()])
-  scheduleSecondaryLoads()
-  if (entries.value?.hasActiveListFilter) {
-    await nextTick()
-    scrollToEntries()
+  await entries.value?.jumpToPdfPage(page)
+}
+async function activate() {
+  if (!project.value) return
+  const view = location.value.view === 'import' ? importMethod.value : location.value.view
+  visited.add(view)
+  if (view === 'checks') visited.add('entries')
+  await nextTick()
+  if (disposed) return
+  if (['entries', 'checks'].includes(view) && !initialized.has('entries')) {
+    initialized.add('entries')
+    entries.value?.applyListQuery(route.query)
+    await Promise.all([loadPages(), loadPageStats(), loadQualitySummary()])
+    if (
+      !route.query.section &&
+      !route.hash &&
+      !entries.value?.hasActiveListFilter &&
+      entries.value?.hasLoadedPageStats &&
+      entries.value?.pageStats?.total === 0
+    ) {
+      await router.replace(link('materials', 'import'))
+    }
   }
-})
+  if (!initialized.has(view)) {
+    initialized.add(view)
+  }
+  if (route.hash) {
+    const target = document.getElementById(route.hash.slice(1))
+    target?.scrollIntoView({ block: 'start' })
+  }
+}
+async function loadProject() {
+  const generation = ++projectLoadGeneration
+  loadingProject.value = true
+  projectError.value = ''
+  try {
+    const data = await getProject(projectId)
+    if (disposed || generation !== projectLoadGeneration) return
+    if (!data.capabilities?.canManage)
+      throw Object.assign(new Error('无权限管理该项目。'), { status: 403 })
+    project.value = data
+  } catch (error) {
+    if (disposed || generation !== projectLoadGeneration) return
+    const status = getPbStatus(error)
+    projectError.value =
+      status === 401
+        ? '登录状态已失效，请重新登录。'
+        : status === 403
+          ? '无权限查看该项目。'
+          : status === 404
+            ? '项目不存在。'
+            : getPbMessage(error, '加载项目失败，请稍后重试。')
+  } finally {
+    if (!disposed && generation === projectLoadGeneration) loadingProject.value = false
+  }
+  if (project.value) await activate()
+}
+watch([() => location.value.section, () => location.value.view], activate)
+watch(
+  () => route.query.method,
+  (value) => {
+    if (['pdf', 'csv', 'ocr', 'bundle'].includes(value)) {
+      importMethod.value = value
+      activate()
+    }
+  }
+)
+watch(
+  () => route.query.schemeView,
+  (value) => schemePanel.value?.setView(value === 'review' ? 'review' : 'jobs')
+)
+useQueueReturnPosition(
+  () =>
+    !loadingProject.value &&
+    Boolean(project.value) &&
+    (location.value.section === 'work' && location.value.view === 'entries'
+      ? Boolean(entries.value?.hasLoadedPages)
+      : true)
+)
+onMounted(loadProject)
 onBeforeUnmount(() => {
-  if (pdfResumeIdleId) window.cancelIdleCallback?.(pdfResumeIdleId)
-  clearTimeout(pdfResumeTimer)
+  disposed = true
+  projectLoadGeneration++
 })
 </script>

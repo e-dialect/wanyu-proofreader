@@ -14,7 +14,7 @@ import time
 import harness
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor', 'repository'])
+parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor', 'repository', 'workbench'])
 selected = parser.parse_args().only
 ROOT = harness.BACKEND.parent
 FRONTEND = ROOT / 'frontend'
@@ -31,7 +31,7 @@ with harness.temporary_root() as temporary:
         output.mkdir(parents=True, exist_ok=True)
         env = {**backend_env, 'FRONTEND_URL': origin, 'REVIEW_BASE_URL': origin,
                'VITE_DEV_SERVER_PORT': str(port), 'VITE_PB_URL': origin,
-               'FANGJI_TEST_DATA_DIR': str(temporary / 'data'),
+               'FANGJI_TEST_DATA_DIR': str(temporary / 'data'), 'FANGJI_DEMO_SUFFIX': 'workbench-browser',
                'SCREENSHOT_DIR': str(output), 'SCREENSHOT_PATH': str(output / 'profile-session.png'),
                'RARE_BROWSER_FIXTURE': str(temporary / 'rare.json'), 'FONT_ENGINES': 'chromium', 'REPOSITORY_REVIEW_OUTPUT': str(output / 'repository-review')}
         with (temporary / 'vite.log').open('w') as log:
@@ -52,11 +52,12 @@ with harness.temporary_root() as temporary:
                     'review': ['frontend/tests/browser/review.cjs'],
                     'modal': ['frontend/tests/browser/modal.cjs'],
                     'members': ['frontend/tests/browser/member-candidates.cjs'],
-                    'editor': ['frontend/tests/browser/font-feedback.cjs', 'frontend/tests/browser/editor-keyboard-flow.cjs', 'frontend/tests/browser/editor-states.cjs'],
+                    'editor': ['frontend/tests/browser/font-feedback.cjs', 'frontend/tests/browser/editor-keyboard-flow.cjs', 'frontend/tests/browser/editor-states.cjs', 'frontend/tests/browser/editor-experience.cjs'],
                     'fonts': ['frontend/scripts/test-rare-fonts.cjs'],
                     'profile': ['frontend/scripts/test-profile-session.cjs'],
                     'pagination': ['frontend/scripts/test-pagination.cjs'],
                     'unicode': ['backend/tests/rare_characters_integration.mjs', 'frontend/scripts/test-rare-workflow.cjs'],
+                    'workbench': ['frontend/tests/browser/auth-navigation.cjs', 'frontend/tests/browser/discovery.cjs', 'backend/tests/seed_demo.mjs', 'frontend/tests/browser/workbench.cjs', 'frontend/tests/browser/review-bundle.cjs'],
                 }
                 for name, scripts in checks.items():
                     if selected and name not in selected:

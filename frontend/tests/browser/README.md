@@ -25,7 +25,7 @@ The default browser is installed Chrome; set `BROWSER_CHANNEL` to choose another
 
 The fixture mounts the real proofreading and arbitration views with a memory router.
 All API requests are intercepted and answered with synthetic records and an embedded
-sample PDF; no backend data is read or written. Checks cover desktop keyboard placement,
+sample PDF; no backend data is read or written. Checks cover the desktop source/editor split and collapsible character tray,
 mobile character insertion, pinned keyboard, mobile group switching, field navigation and overview.
 Regression scenarios focus the third field on desktop, switch to mobile, replace its selection,
 restore another field's remembered caret, ignore delayed events from hidden fields, and repeat
@@ -72,3 +72,31 @@ lockout and visible old drafts, explicit fresh input, a GET-to-save 409, and
 read-only access after a row leaves the queue. Screenshots cover 1280 and 390px.
 It runs with the unified runner's `repository` group; set `REVIEW_BASE_URL` and
 `NORMALIZATION_DRAFT_OUTPUT` to override its default local server/output.
+
+`editor-experience.cjs` checks the focused work surface with the same synthetic
+API fixture: the character tray starts closed, pointer and keyboard resizing
+respect bounds, user/project preferences survive reload, codepoint search and
+recent keys insert exact values at the remembered caret, and the mobile source
+pane leaves the input visible. It also verifies that a source blocker expands
+the agreement panel and that difference-first arbitration leaves source
+judgments unrecorded. Screenshots are saved to `output/playwright/editor-experience`.
+The unified runner includes this check in its `editor` group. These viewport
+checks do not establish native iOS/Android keyboard or IME acceptance.
+
+The unified runner's `workbench` group runs `auth-navigation.cjs`, `discovery.cjs`,
+`seed_demo.mjs`, `workbench.cjs`, and `review-bundle.cjs` in that order. The last
+two use the real App and disposable backend: workbench journeys cover task and
+queue restoration, while bundle import covers read-only validation, malformed
+packages, unknown rights references, human confirmation, exact original values,
+and idempotent replay. Use `--only workbench` to run this group locally.
+
+CI's existing `backend-unicode` job invokes the unified runner without `--only`,
+so both `editor` and `workbench` execute. It explicitly selects the installed
+Chromium browser and requires their screenshots and final JSON receipts before
+passing. The `frontend-quality-browser` artifact contains all of
+`output/playwright/`, including `workbench/`, `editor-experience/`, and
+`frontend-quality/review-bundle/`. It also preserves the reviewed, checked-in
+`docs/evidence/workbench-experience-20261107/before-after/` comparison. CI checks
+these comparison files exist; it does not recreate the historical baseline
+screenshots or turn them into a new comparison run. Partial runtime evidence is
+uploaded even if a browser regression fails.
