@@ -24,10 +24,15 @@ export function useProjectPdf(page) {
     if (!record || record.id !== currentUser) resetPdf()
     currentUser = record?.id || ''
   })
-  onBeforeUnmount(() => { unsubscribe(); resetPdf() })
+  onBeforeUnmount(() => {
+    unsubscribe()
+    resetPdf()
+  })
   let generation = 0
   let controller = null
-  const basePdfPage = computed(() => Number(page.value?.pdf_page) || Number(page.value?.page_number) || 1)
+  const basePdfPage = computed(
+    () => Number(page.value?.pdf_page) || Number(page.value?.page_number) || 1
+  )
   const pdfPageWarning = computed(() => missingPdfPageNotice(page.value))
   const allowedPdfPages = computed(() => [firstPage.value, lastPage.value])
   const localPdfPage = computed(() => currentPdfPage.value - firstPage.value + 1)
@@ -79,7 +84,10 @@ export function useProjectPdf(page) {
       firstPage.value = descriptor.start
       lastPage.value = descriptor.end
       totalPdfPages.value = descriptor.total
-      currentPdfPage.value = samePreview || forcePdf || preservePage ? clampPdfPage(currentPdfPage.value) : descriptor.start
+      currentPdfPage.value =
+        samePreview || forcePdf || preservePage
+          ? clampPdfPage(currentPdfPage.value)
+          : descriptor.start
       if (!forcePdf) {
         const shown = currentPdfPage.value
         try {
@@ -112,12 +120,14 @@ export function useProjectPdf(page) {
         if (request !== generation) return
         // The five-minute window or primary source can change between requests.
         descriptor = {
-          key: response.headers.get('X-PDF-Preview-Key'), expiresAt: response.headers.get('X-PDF-Expires-At'),
+          key: response.headers.get('X-PDF-Preview-Key'),
+          expiresAt: response.headers.get('X-PDF-Expires-At'),
           start: Number(response.headers.get('X-PDF-Start-Page')),
           end: Number(response.headers.get('X-PDF-End-Page')),
           total: Number(response.headers.get('X-PDF-Total-Pages'))
         }
-        if (!descriptor.key || !Number.isFinite(Date.parse(descriptor.expiresAt))) throw new Error('PDF 预览信息无效，请刷新后重试')
+        if (!descriptor.key || !Number.isFinite(Date.parse(descriptor.expiresAt)))
+          throw new Error('PDF 预览信息无效，请刷新后重试')
         entry = cache.put(userId, descriptor, blob)
         currentPdfPage.value = clampPdfPage(currentPdfPage.value)
       }
@@ -125,11 +135,14 @@ export function useProjectPdf(page) {
       lastPage.value = descriptor.end
       totalPdfPages.value = descriptor.total
       pdfUrl.value = entry.url
+      armExpiry(entry)
       currentPdfPage.value = clampPdfPage(currentPdfPage.value)
     } catch (error) {
       if (request === generation && error.name !== 'AbortError') {
-        cache.clear(); pdfUrl.value = null
-        imageCache.clear(); pageImage.value = null
+        cache.clear()
+        pdfUrl.value = null
+        imageCache.clear()
+        pageImage.value = null
         pdfError.value = error.message || '加载任务 PDF 失败'
       }
     } finally {
@@ -142,10 +155,17 @@ export function useProjectPdf(page) {
   function switchPdfPage(delta) {
     currentPdfPage.value = clampPdfPage(currentPdfPage.value + delta)
   }
-  function imageBase() { return pb.buildURL(`/api/fangji/pages/${encodeURIComponent(page.value.id)}`) }
+  function imageBase() {
+    return pb.buildURL(`/api/fangji/pages/${encodeURIComponent(page.value.id)}`)
+  }
   function armExpiry(entry) {
     clearTimeout(expiryTimer)
-    expiryTimer = setTimeout(() => { resolveProjectPdf(false, true) }, Math.max(0, entry.expires - Date.now()))
+    expiryTimer = setTimeout(
+      () => {
+        resolveProjectPdf(false, true)
+      },
+      Math.max(0, entry.expires - Date.now())
+    )
   }
   function preloadNeighbors(number, options) {
     for (const adjacent of [number - 1, number + 1]) {
@@ -161,7 +181,11 @@ export function useProjectPdf(page) {
     pdfLoading.value = true
     pageImage.value = null
     pdfUrl.value = null
-    const options = { headers: { Authorization: pb.authStore.token }, signal: controller.signal, cache: 'no-store' }
+    const options = {
+      headers: { Authorization: pb.authStore.token },
+      signal: controller.signal,
+      cache: 'no-store'
+    }
     try {
       const entry = await imageCache.load(imageBase(), number, options)
       if (request !== generation || imageRequest !== imageGeneration) return
@@ -170,15 +194,30 @@ export function useProjectPdf(page) {
       armExpiry(entry)
       preloadNeighbors(number, options)
     } catch (error) {
-      if (request === generation && imageRequest === imageGeneration && error.name !== 'AbortError') await resolveProjectPdf(true)
+      if (request === generation && imageRequest === imageGeneration && error.name !== 'AbortError')
+        await resolveProjectPdf(true)
     } finally {
       if (request === generation && imageRequest === imageGeneration) pdfLoading.value = false
     }
   })
-  function fallbackToPdf() { return resolveProjectPdf(true) }
+  function fallbackToPdf() {
+    return resolveProjectPdf(true)
+  }
   return {
-    pdfLoading, pdfError, currentPdfPage, basePdfPage, pdfPageWarning,
-    allowedPdfPages, pdfUrl, localPdfPage, totalPdfPages,
-    pageImage, fallbackToPdf, resetPdf, resolveProjectPdf, clampPdfPage, switchPdfPage
+    pdfLoading,
+    pdfError,
+    currentPdfPage,
+    basePdfPage,
+    pdfPageWarning,
+    allowedPdfPages,
+    pdfUrl,
+    localPdfPage,
+    totalPdfPages,
+    pageImage,
+    fallbackToPdf,
+    resetPdf,
+    resolveProjectPdf,
+    clampPdfPage,
+    switchPdfPage
   }
 }

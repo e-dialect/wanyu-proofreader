@@ -1,0 +1,16 @@
+{
+  "fixture": "20000 synthetic files in 100 directories",
+  "rounds": 3,
+  "metrics": {
+    "before": {
+      "median_seconds": 4.5466,
+      "peak_python_bytes": 7301891,
+      "total_bytes": 320400
+    },
+    "after": {
+      "median_seconds": 0.6,
+      "peak_python_bytes": 7958,
+      "total_bytes": 320400
+    }
+  }
+}

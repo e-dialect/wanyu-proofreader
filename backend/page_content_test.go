@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -154,6 +157,45 @@ func TestSetPageContentAuthorization(t *testing.T) {
 	// 管理员正确请求 → 200
 	if code := post(adminToken, validBody); code != http.StatusOK {
 		t.Fatalf("管理员正确请求应 200，got %d", code)
+	}
+
+	// Hold the first save after its optimistic check. A second request with
+	// that exact version must never overwrite it, even while both are in flight.
+	current, _ := app.FindRecordById("pages", page.Id)
+	version := current.GetString("updated")
+	raceBody := `{"rowJson":"{\"词头\":\"徛\",\"释义\":\"并发修正\"}","headersJson":"[\"词头\",\"释义\"]","expectedUpdated":"` + version + `"}`
+	ready := make(chan struct{})
+	release := make(chan struct{})
+	secondValidated := make(chan struct{})
+	var once sync.Once
+	var saves atomic.Int32
+	app.OnRecordUpdateExecute("pages").BindFunc(func(e *core.RecordEvent) error {
+		if e.Record.Id == page.Id {
+			if saves.Add(1) == 1 {
+				once.Do(func() { close(ready) })
+				<-release
+			} else {
+				close(secondValidated)
+			}
+		}
+		return e.Next()
+	})
+	results := make(chan int, 2)
+	go func() { results <- post(adminToken, raceBody) }()
+	<-ready
+	go func() { results <- post(adminToken, raceBody) }()
+	select {
+	case <-secondValidated:
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(release)
+	codes := []int{<-results, <-results}
+	if !((codes[0] == 200 && codes[1] == 409) || (codes[0] == 409 && codes[1] == 200)) {
+		t.Fatalf("same-version concurrent edits must yield 200 and 409, got %v", codes)
+	}
+	changed, _ := app.FindRecordById("pages", page.Id)
+	if changed.GetString("updated") == version {
+		t.Fatal("content edit did not advance optimistic version")
 	}
 
 	// 跨项目 page → 404（构造一个属于别的项目的 page）

@@ -45,7 +45,7 @@
       </template>
     </AppNavbar>
     <div data-main-landmark>
-      <RouterView :key="route.name === 'ProjectDetail' ? route.params.id : undefined" />
+      <RouterView :key="adminRouteKey(route)" />
     </div>
   </div>
 </template>
@@ -54,6 +54,7 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, RouterView, RouterLink } from 'vue-router'
 import AppNavbar from '@/components/AppNavbar.vue'
+import { adminRouteKey } from '@/lib/adminRouteKey'
 import { useAuthStore } from '@/stores/auth'
 const route = useRoute()
 const auth = useAuthStore()

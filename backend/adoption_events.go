@@ -27,29 +27,33 @@ const (
 	adoptionEventReevaluated   = "reevaluated"
 
 	adoptionEventNoteMax = 500
-	// adoptionRightsEventLimit 挡住「一次权利变更扫全库」：正常情况下一个用途结论只影响
-	// 少数批次；撞到这个上限时事件里会写明只记了前 N 批，而不是假装扫完了。
-	adoptionRightsEventLimit = 100
 )
 
 func (s *importService) registerAdoptionEvents() {
 	// 权利结论落在 source_usages 上（#92 的六类 gate）。新建与更新都要看：新建一行
 	// 等于「这个用途从此有了结论」，更新一行可能把 allow 改成 deny 或反过来。
+	persistRights := func(e *core.RecordEvent, previous string) error {
+		return e.App.RunInTransaction(func(tx core.App) error {
+			original := e.App
+			e.App = tx
+			defer func() { e.App = original }()
+			// Validation/persistence may fail. Audit events must commit only with the
+			// actual rights change, and a failed audit must roll the rights write back.
+			if err := e.Next(); err != nil {
+				return err
+			}
+			return s.recordRightsImpact(e, previous)
+		})
+	}
 	s.app.OnRecordCreate("source_usages").BindFunc(func(e *core.RecordEvent) error {
-		if err := s.recordRightsImpact(e, ""); err != nil {
-			return err
-		}
-		return e.Next()
+		return persistRights(e, "")
 	})
 	s.app.OnRecordUpdate("source_usages").BindFunc(func(e *core.RecordEvent) error {
 		previous := e.Record.Original().GetString("decision")
 		if previous == e.Record.GetString("decision") {
 			return e.Next()
 		}
-		if err := s.recordRightsImpact(e, previous); err != nil {
-			return err
-		}
-		return e.Next()
+		return persistRights(e, previous)
 	})
 
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
@@ -90,15 +94,15 @@ WHERE b.purpose = {:purpose}
   AND b.status = 'confirmed'
   AND COALESCE(NULLIF(ij.source, ''), pr.source) = {:source}
 GROUP BY b.id
-ORDER BY b.id
-LIMIT {:limit}`).
-		Bind(dbx.Params{"purpose": purpose, "source": sourceID, "limit": adoptionRightsEventLimit}).
+ORDER BY b.id`).
+		Bind(dbx.Params{"purpose": purpose, "source": sourceID}).
 		All(&rows); err != nil {
 		return fmt.Errorf("查找受影响批次失败: %w", err)
 	}
 	for _, row := range rows {
 		if err := s.appendAdoptionEvent(e.App, adoptionEventRecord{
 			BatchID:  row.BatchID,
+			ActorID:  e.Record.GetString("decided_by"),
 			Kind:     adoptionEventRightsChanged,
 			SourceID: sourceID,
 			Note:     note,
@@ -355,25 +359,23 @@ func (s *importService) adoptionSummary(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("读取已确认批次汇总失败。", err)
 	}
 
-	batches, err := s.app.FindRecordsByFilter(
-		"adoption_batches", "project = {:project}", "-created", 200, 0, params,
-	)
-	if err != nil {
-		return apis.NewBadRequestError("读取编选批次失败。", err)
+	reasons := []adoptionReasonCount{}
+	// Aggregate every confirmed batch. The former newest-200 record fetch silently
+	// omitted older reasons (and drafts could displace confirmed batches entirely).
+	if err := s.app.DB().NewQuery(`
+  SELECT json_extract(r.value, '$.code') AS code,
+         SUM(json_extract(r.value, '$.count')) AS count
+  FROM adoption_batches b,
+       json_each(CASE WHEN json_valid(b.reasons_json) THEN
+         CASE WHEN json_type(b.reasons_json) = 'array' THEN b.reasons_json ELSE '[]' END ELSE '[]' END) r
+  WHERE b.project = {:project} AND b.status = 'confirmed' AND r.type = 'object'
+    AND json_type(r.value, '$.code') = 'text' AND json_extract(r.value, '$.code') != ''
+    AND json_type(r.value, '$.count') = 'integer'
+  GROUP BY 1
+ `).Bind(params).All(&reasons); err != nil {
+		return apis.NewBadRequestError("读取编选理由汇总失败。", err)
 	}
-	reasonTotals := map[string]int{}
-	for _, record := range batches {
-		if record.GetString("status") != adoptionBatchConfirmed {
-			continue
-		}
-		for code, count := range adoptionReasonsFromJSON(record.GetString("reasons_json")) {
-			reasonTotals[code] += count
-		}
-	}
-	reasons := make([]adoptionReasonCount, 0, len(reasonTotals))
-	for code, count := range reasonTotals {
-		reasons = append(reasons, adoptionReasonCount{Code: code, Count: count})
-	}
+
 	sort.Slice(reasons, func(i, j int) bool {
 		if reasons[i].Count != reasons[j].Count {
 			return reasons[i].Count > reasons[j].Count

@@ -52,6 +52,9 @@ python3 backend/ops/backup.py restore /secure-backups/fangji-20260909 ./pb_data-
 始终由人决定。生产 `pb_data` 不在 CI runner 上，公共 `schedule:` workflow 看不到它，
 所以这条接线落在部署侧，由下面的 cron 或 systemd timer 二选一驱动。
 
+巡检使用单遍流式遍历和最多十个文件的堆计算最大项，不跟随子目录或文件符号链接；
+权限或 I/O 错误会明确报错并非零退出，避免把无法读取的目录算成健康的零字节。
+
 把下面脚本存为 `/usr/local/bin/fangji-storage-audit.sh`（`chmod 0755`），按部署实际改
 开头的几个变量；它负责留档、按退出码告警，并保留只读语义：
 

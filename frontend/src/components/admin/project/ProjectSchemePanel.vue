@@ -113,6 +113,23 @@
           暂未支持
         </button>
       </div>
+      <details v-if="offPageDrafts.length" class="mb-3">
+        <summary>查看暂不在本页的工作区草稿（{{ offPageDrafts.length }}）</summary>
+        <div v-for="old in offPageDrafts" :key="old.id">
+          <p>
+            原值：{{ old.context?.source }} · {{ old.context?.sourceScheme }} →
+            {{ old.context?.targetScheme }} · 规则 {{ old.context?.ruleVersion }} / schema
+            {{ old.context?.schemaVersion }}
+          </p>
+          <p>旧写法：{{ old.canonical }}；旧依据：{{ old.basis }}</p>
+          <p v-for="(entry, index) in old.history" :key="index">
+            此前草稿 {{ entry.context?.source }}：{{ entry.canonical }}；{{ entry.basis }}
+          </p>
+          <p>
+            草稿只供查看；返回对应条目并核对当前依据后才能提交。关闭此工作区前请自行保留需要的文字。
+          </p>
+        </div>
+      </details>
       <p v-if="!reviewRows.length" class="text-muted">{{ reviewEmptyMessage }}</p>
       <template v-else>
         <p class="text-sm text-muted">共 {{ reviewTotalItems }} 条待复核。</p>
@@ -132,22 +149,63 @@
               <p v-if="row.candidates.length" class="text-sm text-muted">
                 候选：{{ row.candidates.join(' / ') }}
               </p>
+              <div v-if="reviewDraft[row.id].stale" class="alert alert-warning" role="alert">
+                <strong>复核依据已变化，旧草稿不能直接提交。</strong>
+                <p>
+                  来源、方案或规则版本变化后，须重新核对并填写当前结论与依据；旧稿只供查看，不会自动套用。
+                </p>
+                <p v-if="row.source_changed">
+                  当前来源读音或记音列已变化，请先重跑转换，再刷新本队列。
+                </p>
+                <p v-if="reviewDraft[row.id].requiresReload">
+                  当前依据尚未重新加载成功，请先刷新队列；旧稿保留，只供查看。
+                </p>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  :disabled="
+                    reviewBusy ||
+                    reviewDraft[row.id].requiresReload ||
+                    row.source_changed ||
+                    !row.expected_basis
+                  "
+                  @click="restartReview(row)"
+                >
+                  按当前依据重新填写
+                </button>
+              </div>
+              <details v-if="reviewDraft[row.id].history.length" class="mb-3">
+                <summary>查看旧草稿（{{ reviewDraft[row.id].history.length }}）</summary>
+                <div v-for="(old, index) in reviewDraft[row.id].history" :key="index">
+                  <p>
+                    原值：{{ old.context?.source }} · {{ old.context?.sourceScheme }} →
+                    {{ old.context?.targetScheme }} · 规则 {{ old.context?.ruleVersion }} / schema
+                    {{ old.context?.schemaVersion }}
+                  </p>
+                  <p>旧写法：{{ old.canonical }}；旧依据：{{ old.basis }}</p>
+                </div>
+              </details>
               <AppField class="admin-filter-field"
                 ><template #label>统一方案的写法</template>
-                <input v-model="reviewDraft[row.id].canonical" class="form-control" />
+                <input
+                  v-model="reviewDraft[row.id].canonical"
+                  class="form-control"
+                  :disabled="reviewBusy || reviewDraft[row.id].stale"
+                />
               </AppField>
               <AppField class="admin-filter-field"
                 ><template #label>依据（必填）</template>
-                <input v-model="reviewDraft[row.id].basis" class="form-control" maxlength="500" />
+                <input
+                  v-model="reviewDraft[row.id].basis"
+                  class="form-control"
+                  maxlength="500"
+                  :disabled="reviewBusy || reviewDraft[row.id].stale"
+                />
               </AppField>
               <button
                 type="button"
                 class="btn btn-primary btn-sm"
-                :disabled="
-                  reviewBusy ||
-                  !reviewDraft[row.id].canonical.trim() ||
-                  !reviewDraft[row.id].basis.trim()
-                "
+                :disabled="reviewBusy || !canSubmitNormalizationDraft(reviewDraft[row.id], row)"
                 @click="saveReview(row)"
               >
                 确认结论
@@ -191,6 +249,11 @@ import {
   testOnlySchemeIds
 } from '@/lib/schemeConversion'
 import { getPbMessage } from '@/utils/pbErrors'
+import {
+  reconcileNormalizationDraft,
+  canSubmitNormalizationDraft,
+  restartNormalizationDraft
+} from '@/lib/normalizationDraft'
 const props = defineProps({ projectId: { type: String, required: true } })
 const projectId = props.projectId
 const schemeSection = ref(null)
@@ -219,6 +282,15 @@ const reviewRows = ref([])
 
 const reviewDraft = ref({})
 
+const offPageDrafts = computed(() =>
+  Object.entries(reviewDraft.value)
+    .filter(
+      ([id, draft]) =>
+        !reviewRows.value.some((row) => row.id === id) &&
+        (draft.canonical || draft.basis || draft.history?.length)
+    )
+    .map(([id, draft]) => ({ id, ...draft }))
+)
 const reviewBusy = ref(false)
 
 const reviewPage = ref(1)
@@ -236,15 +308,19 @@ const reviewEmptyMessage = computed(() => {
 })
 
 let schemePollGeneration = 0
+let reviewGeneration = 0
+let disposed = false
 
 const schemeSummary = computed(() => conversionSummaryLines(schemeJob.value))
 
 const testOnlySchemes = computed(() => testOnlySchemeIds(schemeOptions.value))
 
 async function loadReviews() {
+  const generation = ++reviewGeneration
   const status =
     reviewStatusFilter.value === 'all' ? 'AMBIGUOUS,UNSUPPORTED' : reviewStatusFilter.value
   const queue = await listNormalizations(projectId, { status, perPage: 10, page: reviewPage.value })
+  if (disposed || generation !== reviewGeneration) return
   reviewRows.value = queue.items || []
   reviewTotalItems.value = queue.totalItems || 0
   reviewTotalPages.value = queue.totalPages || 1
@@ -252,9 +328,8 @@ async function loadReviews() {
   // 「第 3 / 2 页」而列表是第 2 页的内容——复核一条少一条时很容易走到这里。
   reviewPage.value = queue.page || 1
   // 草稿按条目 id 存：刷新后原来的输入不该串到别的条目上。
-  reviewDraft.value = Object.fromEntries(
-    reviewRows.value.map((row) => [row.id, { canonical: '', basis: '' }])
-  )
+  for (const row of reviewRows.value)
+    reviewDraft.value[row.id] = reconcileNormalizationDraft(reviewDraft.value[row.id], row)
 }
 
 async function setReviewFilter(value) {
@@ -342,6 +417,7 @@ function pollConversion() {
     if (generation !== schemePollGeneration) return
     try {
       const conversions = await listConversions(projectId)
+      if (disposed || generation !== schemePollGeneration) return
       const latest = (conversions.items || [])[0]
       if (latest) schemeJob.value = latest
       if (latest && ['queued', 'processing'].includes(latest.status)) {
@@ -356,26 +432,55 @@ function pollConversion() {
   setTimeout(tick, 1500)
 }
 
+let reviewSaveGeneration = 0
+function restartReview(row) {
+  restartNormalizationDraft(reviewDraft.value[row.id], row)
+}
 async function saveReview(row) {
   const draft = reviewDraft.value[row.id]
-  if (!draft) return
+  if (reviewBusy.value || !canSubmitNormalizationDraft(draft, row)) return
+  const generation = ++reviewSaveGeneration
+  const expectedBasis = draft.expectedBasis
+  const isCurrent = () =>
+    !disposed &&
+    generation === reviewSaveGeneration &&
+    reviewDraft.value[row.id] === draft &&
+    draft.expectedBasis === expectedBasis &&
+    reviewRows.value.some((item) => item.id === row.id && item.expected_basis === expectedBasis)
   reviewBusy.value = true
   schemeError.value = ''
   schemeSuccess.value = ''
   try {
     await decideNormalization(row.id, {
       canonical: draft.canonical.trim(),
-      basis: draft.basis.trim()
+      basis: draft.basis.trim(),
+      expectedBasis
     })
+    if (!isCurrent()) return
     schemeSuccess.value = `第 ${row.page_number} 条已记为「已复核」，重跑时不会被推回机器判断。`
     await loadReviews()
   } catch (e) {
+    if (!isCurrent()) return
     schemeError.value = getPbMessage(e, '保存人工结论失败。')
+    if (Number(e?.status || e?.response?.status) === 409) {
+      draft.stale = true
+      draft.requiresReload = true
+      // Keep the draft visible in history even if the server's new context
+      // cannot currently be fetched. A failed refresh never makes it writable.
+      try {
+        await loadReviews()
+      } catch {
+        /* explicit refresh remains available */
+      }
+    }
   } finally {
-    reviewBusy.value = false
+    if (!disposed && generation === reviewSaveGeneration) reviewBusy.value = false
   }
 }
+
 onBeforeUnmount(() => {
+  disposed = true
+  reviewGeneration += 1
   schemeObserver?.disconnect()
   schemePollGeneration += 1
 })

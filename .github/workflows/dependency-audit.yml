@@ -27,7 +27,8 @@ jobs:
         id: go
         continue-on-error: true
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck -version
           cd backend
           govulncheck -json ./... > ../audit-results/go.json
       - name: Record outdated dependencies

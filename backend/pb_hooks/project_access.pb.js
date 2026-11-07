@@ -395,27 +395,10 @@ routerAdd("DELETE", "/api/fangji/projects/{projectId}/members/{userId}", (c) => 
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/platform/creator-grants", (c) => {
-  const { auth: fangjiAuth, isPlatformAdmin: fangjiIsPlatformAdmin, creatorGrant: fangjiCreatorGrant, nullableLimit: fangjiNullableLimit, ownedProjectCount: fangjiOwnedProjectCount } = require(`${__hooks}/lib/project_access.js`)
-  const auth = fangjiAuth(c)
-  if (!fangjiIsPlatformAdmin(auth)) throw new ForbiddenError("只有平台管理员可以管理项目创建权限")
-  const dao = $app
-  const result = []
-  for (const user of dao.findRecordsByFilter("users", 'id != ""', "name,email", 1000000, 0)) {
-    const grant = fangjiCreatorGrant(dao, user.id)
-    result.push({
-      user: user.id,
-      name: user.getString("name"),
-      username: user.getString("username"),
-      email: user.getString("email"),
-      globalRole: user.getString("role"),
-      enabled: fangjiIsPlatformAdmin(user) || Boolean(grant && grant.getBool("enabled")),
-      projectLimit: fangjiIsPlatformAdmin(user) ? null : fangjiNullableLimit(grant),
-      ownedProjectCount: fangjiOwnedProjectCount(dao, user.id),
-      grantedAt: grant ? String(grant.get("granted_at") || "") : "",
-      revokedAt: grant ? String(grant.get("revoked_at") || "") : ""
-    })
-  }
-  return c.json(200, result)
+  const { auth, isPlatformAdmin, creatorGrantList } = require(`${__hooks}/lib/project_access.js`)
+  const actor = auth(c)
+  if (!isPlatformAdmin(actor)) throw new ForbiddenError("只有平台管理员可以管理项目创建权限")
+  return c.json(200, creatorGrantList($app))
 }, $apis.requireAuth("users"))
 
 routerAdd("PUT", "/api/fangji/platform/creator-grants/{userId}", (c) => {

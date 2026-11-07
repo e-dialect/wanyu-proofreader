@@ -56,6 +56,7 @@ export function useProofreadLease({
   }
 
   async function restoreOrAcquireLease() {
+    const scope = captureCase()
     const stored = loadTaskLease(window.sessionStorage, {
       userId: currentUserId.value,
       pageId: page.value?.id
@@ -64,6 +65,7 @@ export function useProofreadLease({
       leaseToken.value = stored.token
       leaseExpiresAt.value = stored.expiresAt
       await renewCurrentLease({ force: true })
+      if (!isCurrentCase(scope)) return
       if (!leaseLost.value) startLeaseRenewal()
       return
     }

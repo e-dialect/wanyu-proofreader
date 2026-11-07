@@ -134,16 +134,6 @@ func (s *importService) setPageQualityState(c *core.RequestEvent) error {
 		return err
 	}
 
-	page, err := s.app.FindRecordById("pages", c.Request.PathValue("pageId"))
-	if err != nil || page == nil {
-		return apis.NewNotFoundError("条目不存在。", err)
-	}
-	// 条目存在但属于别的项目：报 404 而不是 403。用 403 会承认「这个 id 在别处存在」，
-	// 而对调用方来说，本路由的作用域里它就是不存在的。
-	if page.GetString("project") != projectID {
-		return apis.NewNotFoundError("条目不存在。", nil)
-	}
-
 	payload := struct {
 		State string `json:"state"`
 		Basis string `json:"basis"`
@@ -151,22 +141,40 @@ func (s *importService) setPageQualityState(c *core.RequestEvent) error {
 	if err := c.BindBody(&payload); err != nil {
 		return apis.NewBadRequestError("请求内容无法解析。", err)
 	}
-	basis := strings.TrimSpace(payload.Basis)
-	if err := validateQualityStateChange(page.GetString("quality_state"), strings.TrimSpace(payload.State), basis); err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
-	}
+	var page *core.Record
+	err = s.app.RunInTransaction(func(app core.App) error {
+		current, err := app.FindRecordById("pages", c.Request.PathValue("pageId"))
+		if err != nil || current == nil {
+			return apis.NewNotFoundError("条目不存在。", err)
+		}
+		// 条目存在但属于别的项目：报 404 而不是 403。用 403 会承认「这个 id 在别处存在」，
+		// 而对调用方来说，本路由的作用域里它就是不存在的。
+		if current.GetString("project") != projectID {
+			return apis.NewNotFoundError("条目不存在。", nil)
+		}
 
-	page.Set("quality_state", strings.TrimSpace(payload.State))
-	page.Set("quality_state_by", auth.Id)
-	page.Set("quality_state_at", time.Now().UTC())
-	page.Set("quality_state_basis", basis)
-	if err := s.app.Save(page); err != nil {
-		return apis.NewBadRequestError("保存质量状态失败。", err)
+		page = current
+		basis := strings.TrimSpace(payload.Basis)
+		if err := validateQualityStateChange(page.GetString("quality_state"), strings.TrimSpace(payload.State), basis); err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+
+		page.Set("quality_state", strings.TrimSpace(payload.State))
+		page.Set("quality_state_by", auth.Id)
+		page.Set("quality_state_at", time.Now().UTC())
+		page.Set("quality_state_basis", basis)
+		if err := app.Save(page); err != nil {
+			return apis.NewBadRequestError("保存质量状态失败。", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	return c.JSON(http.StatusOK, qualityStateView(page))
 }
 
-// projectQualitySummary 用三条聚合查询回答「还有多少未收口」。
+// projectQualitySummary 用一个一致快照的聚合语句回答「还有多少未收口」。
 //
 // 刻意走 COUNT(*) ... GROUP BY 而不是把记录读进内存计数：#172 的验收要求「汇总接口
 // 与直接 SQL 对账一致，覆盖大项目」，而大项目按条读取会让「汇总」本身成为一次全表传输。
@@ -182,34 +190,38 @@ func (s *importService) projectQualitySummary(c *core.RequestEvent) error {
 	}
 	params := dbx.Params{"project": projectID}
 
-	// 空串按 candidate 归并：正常写入不会留空值，但存量、手工 SQL 与属性规则落地前
-	// 检出的库可能带着空值进来，而汇总若把它们与 candidate 分成两行，管理端会看到
-	// 一个不存在的第四种状态。
-	states := []qualityCount{}
-	if err := s.app.DB().NewQuery(
-		`SELECT COALESCE(NULLIF(quality_state, ''), 'candidate') AS key, COUNT(*) AS count
-		 FROM pages WHERE project = {:project} GROUP BY 1 ORDER BY 1`,
-	).Bind(params).All(&states); err != nil {
+	// One SQLite statement gives all three groupings the same snapshot while
+	// CSV/OCR workers publish rows. Separate queries can disagree about total.
+	var counts []struct {
+		Kind  string `db:"kind"`
+		Key   string `db:"key"`
+		Count int    `db:"count"`
+	}
+	if err := s.app.DB().NewQuery(`
+  SELECT 'state' AS kind, COALESCE(NULLIF(quality_state, ''), 'candidate') AS key, COUNT(*) AS count
+  FROM pages WHERE project = {:project} GROUP BY 2
+  UNION ALL
+  SELECT 'source', COALESCE(j.source, ''), COUNT(*)
+  FROM pages p LEFT JOIN import_jobs j ON j.id = p.import_job
+  WHERE p.project = {:project} GROUP BY 2
+  UNION ALL
+  SELECT 'batch', COALESCE(import_job, ''), COUNT(*)
+  FROM pages WHERE project = {:project} GROUP BY 2
+  ORDER BY 1, 3 DESC, 2
+ `).Bind(params).All(&counts); err != nil {
 		return apis.NewBadRequestError("读取质量状态汇总失败。", err)
 	}
-
-	// 来源经 import_job 指到 #169 的 sources 登记：条目本身还没有来源键（那是 #183
-	// 的范围），所以这里按「这一批是从哪份登记来的」统计，而不是按条目的来源方案。
-	sources := []qualityCount{}
-	if err := s.app.DB().NewQuery(
-		`SELECT COALESCE(j.source, '') AS key, COUNT(*) AS count
-		 FROM pages p LEFT JOIN import_jobs j ON j.id = p.import_job
-		 WHERE p.project = {:project} GROUP BY 1 ORDER BY 2 DESC, 1`,
-	).Bind(params).All(&sources); err != nil {
-		return apis.NewBadRequestError("读取来源汇总失败。", err)
-	}
-
-	batches := []qualityCount{}
-	if err := s.app.DB().NewQuery(
-		`SELECT COALESCE(import_job, '') AS key, COUNT(*) AS count
-		 FROM pages WHERE project = {:project} GROUP BY 1 ORDER BY 2 DESC, 1`,
-	).Bind(params).All(&batches); err != nil {
-		return apis.NewBadRequestError("读取导入批次汇总失败。", err)
+	states, sources, batches := []qualityCount{}, []qualityCount{}, []qualityCount{}
+	for _, row := range counts {
+		count := qualityCount{Key: row.Key, Count: row.Count}
+		switch row.Kind {
+		case "state":
+			states = append(states, count)
+		case "source":
+			sources = append(sources, count)
+		case "batch":
+			batches = append(batches, count)
+		}
 	}
 
 	byState := map[string]int{qualityStateCandidate: 0, qualityStateValidated: 0, qualityStateWithheld: 0}

@@ -4,6 +4,7 @@ package ocrengine
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -87,6 +89,13 @@ func ParseNative(layout, raw string) ([]Row, error) {
 	decoder := xml.NewDecoder(strings.NewReader(layout))
 	rows := []Row{}
 	rawLines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	// Index once: unmatched layout lines previously rescanned and normalized
+	// every remaining raw line, giving quadratic work on ambiguous layouts.
+	rawMatches := make(map[string][]int, len(rawLines))
+	for i, line := range rawLines {
+		compact := strings.Join(strings.Fields(line), "")
+		rawMatches[compact] = append(rawMatches[compact], i)
+	}
 	rawIndex := 0
 	for {
 		token, err := decoder.Token()
@@ -110,23 +119,25 @@ func ParseNative(layout, raw string) ([]Row, error) {
 		if len(line.Words) == 0 {
 			continue
 		}
-		first, last := line.Words[0], line.Words[len(line.Words)-1]
+		first := line.Words[0]
+		left, top, right, bottom := first.X1, first.Y1, first.X2, first.Y2
 		words := make([]string, len(line.Words))
 		for i, w := range line.Words {
 			words[i] = w.Text
+			left, top = min(left, w.X1), min(top, w.Y1)
+			right, bottom = max(right, w.X2), max(bottom, w.Y2)
 		}
 		text := strings.Join(words, " ")
 		// Prefer the matching physical line from -layout. Keep leading/inter-word
 		// spaces verbatim; bbox XML remains available even when matching is ambiguous.
 		compact := strings.Join(strings.Fields(text), "")
-		for i := rawIndex; i < len(rawLines); i++ {
-			if strings.Join(strings.Fields(rawLines[i]), "") == compact {
-				text = rawLines[i]
-				rawIndex = i + 1
-				break
-			}
+		matches := rawMatches[compact]
+		if n := sort.SearchInts(matches, rawIndex); n < len(matches) {
+			i := matches[n]
+			text = rawLines[i]
+			rawIndex = i + 1
 		}
-		rows = append(rows, Row{Cells: []Cell{cell(text, "pdf_text", [4]float64{first.X1, first.Y1, last.X2 - first.X1, last.Y2 - first.Y1}, nil)}})
+		rows = append(rows, Row{Cells: []Cell{cell(text, "pdf_text", [4]float64{left, top, right - left, bottom - top}, nil)}})
 	}
 	return rows, nil
 }
@@ -200,28 +211,66 @@ func boundedRead(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	return string(data), err
 }
-func commandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	// Never inherit credentials, proxy URLs or model/search paths.
-	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/tmp", "TMPDIR=/tmp", "OMP_THREAD_LIMIT=1", "LC_ALL=C.UTF-8"}
-	output, err := cmd.CombinedOutput()
+
+// CommandOutput runs a local parser with a sanitized environment and enforces
+// the output budget while it runs. The PDF image worker shares this boundary.
+func CommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
+	// Never inherit credentials, proxy URLs or model/search paths in OCR.
+	environment := []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/tmp", "TMPDIR=/tmp", "OMP_THREAD_LIMIT=1", "LC_ALL=C.UTF-8"}
+	return CommandOutputWithEnv(ctx, name, environment, args...)
+}
+
+// CommandOutputWithEnv shares the output/cancellation boundary with callers
+// whose established tool contract needs a different environment. The image
+// worker retains its previous inherited environment; OCR uses the allowlist.
+func CommandOutputWithEnv(ctx context.Context, name string, environment []string, args ...string) ([]byte, error) {
+	childContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	cmd := exec.CommandContext(childContext, name, args...)
+	cmd.Env = environment
+	output := &commandBudget{cancel: cancel}
+	cmd.Stdout, cmd.Stderr = output, output
+	// Bound inherited pipes too: an orphaned descendant must not hold Wait
+	// indefinitely after cancellation of the parser itself.
+	cmd.WaitDelay = time.Second
+	err := cmd.Run()
+	if output.exceeded {
+		return nil, fmt.Errorf("command output exceeds budget")
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		return nil, fmt.Errorf("%s failed: %w", name, err)
 	}
-	if len(output) > MaxOutputBytes {
-		return nil, fmt.Errorf("command output exceeds budget")
+	return output.buffer.Bytes(), nil
+}
+
+// os/exec serializes writes when stdout and stderr share the same writer.
+// Cancel at the first excess byte rather than buffering an unbounded output
+// and checking its length only after the subprocess exits.
+type commandBudget struct {
+	buffer   bytes.Buffer
+	cancel   context.CancelFunc
+	exceeded bool
+}
+
+func (b *commandBudget) Write(data []byte) (int, error) {
+	remaining := MaxOutputBytes - b.buffer.Len()
+	if len(data) <= remaining {
+		return b.buffer.Write(data)
 	}
-	return output, nil
+	n, _ := b.buffer.Write(data[:remaining])
+	b.exceeded = true
+	b.cancel()
+	return n, fmt.Errorf("command output exceeds budget")
 }
 func command(ctx context.Context, name string, args ...string) error {
-	_, err := commandOutput(ctx, name, args...)
+	_, err := CommandOutput(ctx, name, args...)
 	return err
 }
 func pageHasImages(ctx context.Context, path, page string) (bool, error) {
-	output, err := commandOutput(ctx, "pdfimages", "-f", page, "-l", page, "-list", path)
+	output, err := CommandOutput(ctx, "pdfimages", "-f", page, "-l", page, "-list", path)
 	if err != nil {
 		return false, err
 	}

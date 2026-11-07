@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"time"
 
+	"fangji/backend/ocrengine"
+
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -120,12 +122,21 @@ func (s *importService) preparePDFImages(file *core.Record) error {
 			return err
 		}
 	}
+	// Rendering runs outside the cache mutex. Pin the immutable inputs first,
+	// otherwise a preview's normal LRU cleanup can unlink a later page mid-book
+	// and turn successful rendering into a 24-hour failure backoff. Keep the
+	// input in the cache budget rather than making a second whole-book copy.
 	pdfCacheMu.Lock()
 	source, err := s.preparePDFPages(file)
+	var release func()
+	if err == nil {
+		release = pinPDFCache(source)
+	}
 	pdfCacheMu.Unlock()
 	if err != nil {
 		return err
 	}
+	defer release()
 	root := s.pdfCacheDir()
 	// Outside the cache root: cleanup cannot delete work in progress.
 	staging, err := os.MkdirTemp(s.app.DataDir(), "pdf-images-")
@@ -254,7 +265,7 @@ func (s *importService) taskPageImage(c *core.RequestEvent) error {
 func runImageCommand(parent context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+	return ocrengine.CommandOutputWithEnv(ctx, name, os.Environ(), args...)
 }
 
 var imageStagingName = regexp.MustCompile(`^pdf-images-[0-9]+$`)

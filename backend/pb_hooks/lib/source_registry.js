@@ -100,8 +100,8 @@ function usageJson(record) {
   }
 }
 
-function sourceJson(dao, record) {
-  const usages = usagesOf(dao, record.id).map(usageJson)
+function sourceJson(dao, record, prefetchedUsages) {
+  const usages = (prefetchedUsages === undefined ? usagesOf(dao, record.id) : prefetchedUsages).map(usageJson)
   return {
     id: record.id,
     logical_id: record.getString("logical_id"),
@@ -117,9 +117,20 @@ function sourceJson(dao, record) {
   }
 }
 
+// Keep the existing full-list response, with an explicit resource boundary.
+// Beyond this size a paginated registry UI is needed; never silently call a
+// partial newest-200 subset the complete registry.
+const MAX_SOURCE_LIST = 10000
 function listSources(dao) {
-  const records = dao.findRecordsByFilter("sources", 'id != ""', "-created", 200, 0)
-  return { items: records.map((record) => sourceJson(dao, record)), total: records.length }
+  const records = dao.findRecordsByFilter("sources", 'id != ""', "-created", MAX_SOURCE_LIST + 1, 0)
+  if (records.length > MAX_SOURCE_LIST) throw new BadRequestError("来源登记过多，无法一次加载（上限 10000），请联系项目管理员")
+  const bySource = new Map(records.map(record => [record.id, []]))
+  // At most six purpose records per source, enforced by schema vocabulary and
+  // its unique(source,purpose) index. Fetch once rather than N queries.
+  const usages = dao.findRecordsByFilter("source_usages", "", "purpose", MAX_SOURCE_LIST * PURPOSES.length + 1, 0)
+  if (usages.length > MAX_SOURCE_LIST * PURPOSES.length) throw new BadRequestError("来源用途登记过多，无法一次加载，请联系项目管理员")
+  for (const usage of usages) bySource.get(usage.getString("source"))?.push(usage)
+  return { items: records.map(record => sourceJson(dao, record, bySource.get(record.id))), total: records.length }
 }
 
 function createSource(dao, auth, body) {

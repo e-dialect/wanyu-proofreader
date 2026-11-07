@@ -796,6 +796,7 @@ async function saveProgress(defer) {
     version === caseVersion &&
     requestedPageId === pageId.value &&
     requestedProjectId === projectId.value
+  const submittedNote = note.value
   submitting.value = true
   submitError.value = ''
   progressMessage.value = ''
@@ -804,7 +805,7 @@ async function saveProgress(defer) {
       basis: verificationData.value.context.basis,
       row: { ...finalRow },
       judgments: judgmentPayload(),
-      note: note.value,
+      note: submittedNote,
       selections: { ...resolutionSource },
       defer
     })
@@ -824,7 +825,7 @@ async function saveProgress(defer) {
     if (!isCurrent()) return
     verificationData.value = verification
     touchedHeaders.clear()
-    lastSavedNote.value = note.value
+    lastSavedNote.value = submittedNote
     progressMessage.value = defer
       ? '进度已保存，本条暂缓完成；不会混入业务已完成结果。'
       : '已保存实际判断及进度；未核实字段仍保持未记录。'

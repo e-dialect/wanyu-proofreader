@@ -25,6 +25,9 @@ func TestPageImagesWarmRotatedPagesAndInvalidateSource(t *testing.T) {
 	if err := s.preparePDFImages(file); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(filepath.Join(imageDir(s.pdfCacheDir(), file), "sources")); !os.IsNotExist(err) {
+		t.Fatalf("temporary PDF inputs published in image cache: %v", err)
+	}
 	for n := 1; n <= 3; n++ {
 		path, meta, ok := lookupPageImage(s.pdfCacheDir(), file, n, time.Now())
 		if !ok {
@@ -54,6 +57,39 @@ func TestPageImagesWarmRotatedPagesAndInvalidateSource(t *testing.T) {
 	file.Set("file_hash", "replacement")
 	if _, _, ok := lookupPageImage(s.pdfCacheDir(), file, 1, time.Now()); ok {
 		t.Fatal("old image survived source replacement")
+	}
+}
+
+func TestPinnedImageInputsSurviveCacheEviction(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "pages-synthetic")
+	if err := os.Mkdir(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"1.pdf", "2.pdf"} {
+		if err := os.WriteFile(filepath.Join(source, name), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pdfCacheMu.Lock()
+	release := pinPDFCache(source)
+	// Another preview needs the entire cache budget while rendering is between
+	// pages. It must leave the worker's inputs available for the next page.
+	cleanupPDFCache(root, time.Now(), pdfCacheBudget)
+	pdfCacheMu.Unlock()
+	for _, name := range []string{"1.pdf", "2.pdf"} {
+		data, err := os.ReadFile(filepath.Join(source, name))
+		if err != nil || string(data) != name {
+			release()
+			t.Fatalf("pinned page %s lost during rendering: %q %v", name, data, err)
+		}
+	}
+	release()
+	pdfCacheMu.Lock()
+	cleanupPDFCache(root, time.Now(), pdfCacheBudget)
+	pdfCacheMu.Unlock()
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		t.Fatalf("released source did not become evictable: %v", err)
 	}
 }
 

@@ -622,8 +622,15 @@ export function useProofreadEditor() {
   function confirmDiscardChanges() {
     if (saving.value || releasing.value || reclaiming.value || returning.value) return false
     if (ownReview.value) return true
-    if (!hasUnsavedChanges.value) return true
-    return window.confirm('当前校对内容尚未提交，确定要离开吗？本地草稿会保留。')
+    if (
+      hasUnsavedChanges.value &&
+      !window.confirm('当前校对内容尚未提交，确定要离开吗？本地草稿会保留。')
+    )
+      return false
+    // Route updates reuse this component; flush before loadPage cancels the
+    // debounce timer and replaces the old page/row refs.
+    flushDraft()
+    return true
   }
 
   function handleBeforeUnload(event) {

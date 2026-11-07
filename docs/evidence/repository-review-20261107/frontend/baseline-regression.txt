@@ -1,0 +1,18 @@
+✖ project workspaces remount on identity changes and keep query-only pagination mounted (130.69816ms)
+✖ auth getters react to logout and cross-tab identity changes invalidate capability cache and pending requests (127.084651ms)
+✖ settings late saves cannot overwrite a different project or reload its member list (132.527351ms)
+✖ verification report from a previous task cannot attach to the new task and old draft failure cannot replace its error (127.170318ms)
+✖ unmount invalidates a verification request and prevents queued old drafts being sent (129.280764ms)
+✖ stale local draft survives unchanged navigation and repeated context reads preserve newly typed values (127.801702ms)
+✖ late external binding and login responses cannot resurrect a cleared or replaced session (124.90382ms)
+✖ late refresh rejection cannot log out a newer account and current refresh still updates credentials (127.236521ms)
+✖ profile update does not roll a newer token for the same account backwards (128.653273ms)
+✖ confirmed same-component task navigation flushes the debounce draft before the task changes (123.532731ms)
+✖ a lease response after disposing its case cannot restart the renewal interval (125.916804ms)
+✖ normalization filtering drops out-of-order responses and refresh preserves manual text for the same item (128.123683ms)
+✖ PDF fallback arms expiration to recheck the authorization window (149.98947ms)
+✖ arbitration progress only marks the submitted note as saved when the note changes during the request (125.730845ms)
+ℹ tests 14
+ℹ pass 0
+ℹ fail 14
+ℹ cancelled 0

@@ -180,12 +180,15 @@ async function openProject (page, projectId) {
       `/api/fangji/projects/${fixture.project.id}/normalizations?status=AMBIGUOUS&perPage=100`)
     assert.equal(leftover.items.length, 11, `界面复核掉一条后应剩 11 条 AMBIGUOUS：${leftover.items.length}`)
     for (const item of leftover.items) {
+      assert.ok(typeof item.expected_basis === 'string' && item.expected_basis,
+        `真实复核队列必须提供当前依据凭据：${item.id}`)
       const tone = (item.source_pronunciation.match(/\d+/) || ['533'])[0]
       await api(`/api/fangji/pages/${item.id}/normalization`, {
         method: 'POST',
         body: {
           canonical_pronunciation: `gu${tone}`,
-          basis: '清空复核队列，用于验证只剩「暂未支持」时仍有界面入口'
+          basis: '清空复核队列，用于验证只剩「暂未支持」时仍有界面入口',
+          expected_basis: item.expected_basis
         }
       })
     }

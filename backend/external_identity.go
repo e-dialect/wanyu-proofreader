@@ -241,7 +241,10 @@ func (s *externalIdentityService) resolveOrCreateUserWithName(provider, subject,
 			return err
 		}
 
-		username := availableExternalUsername(txDao, users.Id, provider, subject)
+		username, err := availableExternalUsername(txDao, provider, subject)
+		if err != nil {
+			return err
+		}
 		if users.Fields.GetByName("name").(*core.TextField).Required {
 			name, err = availableNickname(txDao, name, username, "")
 			if err != nil {
@@ -363,17 +366,21 @@ func findUserProviderMapping(dao core.App, userID, provider string) (*core.Recor
 	)
 }
 
-func availableExternalUsername(dao core.App, usersCollectionID, provider, subject string) string {
+func availableExternalUsername(dao core.App, provider, subject string) (string, error) {
 	hash := sha256.Sum256([]byte(provider + "\x00" + subject))
 	base := fmt.Sprintf("ext_%s_%s", provider, hex.EncodeToString(hash[:12]))
-	if usernameAvailable(dao, usersCollectionID, base) {
-		return base
-	}
+	candidate := base
 	for {
-		candidate := base + "_" + strings.ToLower(security.RandomString(8))
-		if usernameAvailable(dao, usersCollectionID, candidate) {
-			return candidate
+		available, err := nicknameAvailable(dao, candidate, "")
+		if err != nil {
+			return "", err
 		}
+		if available {
+			return candidate, nil
+		}
+		// A collision is retryable. A database error is not a collision; previously
+		// it was swallowed and this loop consumed CPU forever on failed storage.
+		candidate = base + "_" + strings.ToLower(security.RandomString(8))
 	}
 }
 
@@ -441,9 +448,4 @@ func (l *externalAttemptLimiter) Allow(key string) bool {
 func externalLimitKey(provider, ip string) string {
 	hash := sha256.Sum256([]byte(provider + "\x00" + ip))
 	return hex.EncodeToString(hash[:])
-}
-
-func usernameAvailable(app core.App, _ string, username string) bool {
-	available, err := nicknameAvailable(app, username, "")
-	return err == nil && available
 }

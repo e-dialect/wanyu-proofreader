@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -47,13 +49,14 @@ const canonicalPronunciationMaxLength = 200
 // schemeRegistry 是启动时载入的规则表。载入即校验：一个文件坏掉就整实例起不来
 // （#189 明确要求「非法即启动报错，不要静默半生效」），而不是半套规则在跑。
 type schemeRegistry struct {
-	dir      string
-	adapters map[string]*scheme.Adapter
-	notice   string
+	dir         string
+	adapters    map[string]*scheme.Adapter
+	notice      string
+	ruleDigests map[string]string
 }
 
 func loadSchemeRegistry() (*schemeRegistry, error) {
-	registry := &schemeRegistry{adapters: map[string]*scheme.Adapter{}}
+	registry := &schemeRegistry{adapters: map[string]*scheme.Adapter{}, ruleDigests: map[string]string{}}
 	registry.dir = strings.TrimSpace(os.Getenv(schemeAdapterDirEnv))
 	if registry.dir == "" {
 		registry.notice = fmt.Sprintf("本实例没有配置规则目录（环境变量 %s），因此还没有任何可用的转换方案。", schemeAdapterDirEnv)
@@ -78,6 +81,7 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 		SchemeID          string `json:"scheme_id"`
 	}
 	heads := make(map[string]ruleFileHead, len(names))
+	snapshots := make(map[string][]byte, len(names))
 	for _, name := range names {
 		raw, readErr := os.ReadFile(filepath.Join(registry.dir, name))
 		if readErr != nil {
@@ -88,6 +92,7 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 			return nil, fmt.Errorf("规则文件 %s 无法载入: %w", name, unmarshalErr)
 		}
 		heads[name] = head
+		snapshots[name] = raw
 	}
 	targets := map[string]*scheme.Scheme{}
 	for _, name := range names {
@@ -95,7 +100,7 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 		if head.SourceSchemeID != "" || head.SchemeID == "" {
 			continue
 		}
-		target, loadErr := scheme.LoadScheme(filepath.Join(registry.dir, name))
+		target, loadErr := scheme.LoadSchemeData(snapshots[name], filepath.Join(registry.dir, name))
 		if loadErr != nil {
 			return nil, fmt.Errorf("目标方案 %s 无法载入: %w", name, loadErr)
 		}
@@ -120,9 +125,9 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 			if target == nil {
 				return nil, fmt.Errorf("规则文件 %s 是 schema_version %d，需要同目录提供目标方案 %s", name, head.SchemaVersion, head.CanonicalSchemeID)
 			}
-			adapter, loadErr = scheme.LoadAdapterWithScheme(path, target)
+			adapter, loadErr = scheme.LoadAdapterData(snapshots[name], path, target)
 		} else {
-			adapter, loadErr = scheme.LoadAdapter(path)
+			adapter, loadErr = scheme.LoadAdapterData(snapshots[name], path, nil)
 		}
 		if loadErr != nil {
 			return nil, fmt.Errorf("规则文件 %s 无法载入: %w", name, loadErr)
@@ -132,6 +137,19 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 				name, adapter.SourceScheme, existing.RuleVersion)
 		}
 		registry.adapters[adapter.SourceScheme] = adapter
+		rawRule := snapshots[name]
+		// Bind v2's separate target inventory too, including its schema and IPA.
+		target, _ := json.Marshal(targets[adapter.CanonicalScheme])
+		var document any
+		if err := json.Unmarshal(rawRule, &document); err != nil {
+			return nil, err
+		}
+		normalizedRule, err := json.Marshal(document)
+		if err != nil {
+			return nil, err
+		}
+		digest := sha256.Sum256(append(append(normalizedRule, 0), target...))
+		registry.ruleDigests[adapter.SourceScheme] = hex.EncodeToString(digest[:])
 	}
 	if len(registry.adapters) == 0 {
 		registry.notice = fmt.Sprintf("规则目录 %s 里没有可用的规则文件，因此还没有任何可用的转换方案。", registry.dir)
@@ -260,9 +278,9 @@ func pageReadingValue(page *core.Record, column string) string {
 		if !ok {
 			continue
 		}
-		if trimmed := strings.TrimSpace(text); trimmed != "" {
-			return trimmed
-		}
+		// A deliberately blank proofread field is still the current value;
+		// it must not revive the old OCR pronunciation.
+		return strings.TrimSpace(text)
 	}
 	return ""
 }
@@ -397,7 +415,8 @@ func (s *importService) listConversions(c *core.RequestEvent) error {
 
 func (s *importService) listNormalizations(c *core.RequestEvent) error {
 	projectID := c.Request.PathValue("projectId")
-	if _, _, err := s.requireProjectManager(c, projectID); err != nil {
+	_, project, err := s.requireProjectManager(c, projectID)
+	if err != nil {
 		return err
 	}
 	query := c.Request.URL.Query()
@@ -413,7 +432,7 @@ func (s *importService) listNormalizations(c *core.RequestEvent) error {
 	params := dbx.Params{"project": projectID}
 	filter := `project = {:project} && ` + normalizationStatusFilter(statuses)
 	var result map[string]any
-	err := s.app.RunInTransaction(func(app core.App) error {
+	err = s.app.RunInTransaction(func(app core.App) error {
 		total, err := countPagesWithFilter(app, filter, params)
 		if err != nil {
 			return err
@@ -424,9 +443,13 @@ func (s *importService) listNormalizations(c *core.RequestEvent) error {
 		if err != nil {
 			return err
 		}
+		files, err := normalizationSourceFiles(app, projectID, records)
+		if err != nil {
+			return err
+		}
 		items := make([]map[string]any, 0, len(records))
 		for _, record := range records {
-			items = append(items, normalizationView(record))
+			items = append(items, s.normalizationReviewView(record, project, files))
 		}
 		result = map[string]any{"items": items, "page": page, "perPage": size, "totalItems": total, "totalPages": totalPages}
 		return nil
@@ -561,97 +584,214 @@ func normalizationView(page *core.Record) map[string]any {
 	}
 }
 
-// decideNormalization 是人工结论的唯一入口。写了 basis 才收：这条记录会被
-// exportNormalizationExceptions 变成规则草案，没有理由的结论没人能复核。
+// At most two queries per queue page, regardless of the number of rows. An
+// absent PDF is a stable business state; lookup errors must not masquerade as it.
+func normalizationSourceFiles(app core.App, projectID string, pages []*core.Record) (map[string]string, error) {
+	result := map[string]string{"": "absent"}
+	ids := map[string]bool{}
+	for _, page := range pages {
+		if id := page.GetString("project_file"); id != "" {
+			ids[id] = true
+			result[id] = "missing:" + id
+		}
+	}
+	encode := func(file *core.Record) string {
+		raw, _ := json.Marshal([]any{file.Id, file.GetString("file"), file.GetString("file_hash"), file.GetInt("page_count"), file.GetString("status")})
+		return string(raw)
+	}
+	primary, err := app.FindRecordsByFilter("project_files", "project={:project} && status='ready' && is_primary=true", "-created,id", 1, 0, dbx.Params{"project": projectID})
+	if err != nil {
+		return nil, err
+	}
+	if len(primary) > 0 {
+		result[""] = encode(primary[0])
+	}
+	if len(ids) > 0 {
+		names := make([]string, 0, len(ids))
+		for id := range ids {
+			names = append(names, id)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		params := dbx.Params{"project": projectID}
+		for index, id := range names {
+			key := fmt.Sprintf("file%d", index)
+			parts = append(parts, "id={:"+key+"}")
+			params[key] = id
+		}
+		records, err := app.FindRecordsByFilter("project_files", "project={:project} && ("+strings.Join(parts, " || ")+")", "id", len(ids), 0, params)
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range records {
+			result[file.Id] = encode(file)
+		}
+	}
+	return result, nil
+}
+
+// normalizationReviewBasis hashes only the decision's business inputs. Lease,
+// quality, timestamps and other unrelated changes do not invalidate a draft.
+func (s *importService) normalizationReviewBasis(page, project *core.Record, files map[string]string) string {
+	source := page.GetString("source_scheme_id")
+	columns, _ := projectReadingColumns(project)
+	adapter := s.schemes.adapters[source]
+	var adapterIdentity any
+	if adapter != nil {
+		adapterIdentity = []any{adapter.SchemaVersion, adapter.SourceScheme, adapter.CanonicalScheme, adapter.RuleVersion, adapter.RuleStatus}
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"version": 1, "page": page.Id, "project": page.GetString("project"),
+		"reading_columns": columns, "source_column": page.GetString("normalization_source_column"),
+		"source_snapshot": normalizationSourceValue(page),
+		"source_current":  pageReadingValue(page, page.GetString("normalization_source_column")),
+		"source_scheme":   source, "target_scheme": page.GetString("canonical_scheme_id"),
+		"rule_version": page.GetString("normalization_rule_version"),
+		"status":       page.GetString("normalization_status"),
+		"trace":        page.GetString("normalization_trace_json"), "candidates": page.GetString("normalization_candidates_json"),
+		"canonical": page.GetString("canonical_pronunciation"), "reviewed_by": page.GetString("normalization_reviewed_by"),
+		"source_system": page.GetString("source_system"), "source_id": page.GetString("source_id"),
+		"source_version": page.GetString("source_version"), "source_entry": page.GetString("source_entry_id"),
+		"project_file": page.GetString("project_file"), "pdf_page": page.GetInt("pdf_page"),
+		"source_file_snapshot": files[page.GetString("project_file")],
+		"adapter":              adapterIdentity, "rule_digest": s.schemes.ruleDigests[source],
+	})
+	digest := sha256.Sum256(raw)
+	return "normalization-v1:" + hex.EncodeToString(digest[:])
+}
+
+func normalizationSourceIsCurrent(page, project *core.Record) bool {
+	columns, problem := projectReadingColumns(project)
+	column := page.GetString("normalization_source_column")
+	current := pageReadingValue(page, column)
+	return problem == "" && len(columns) == 1 && columns[0] == column && current != "" && current == normalizationSourceValue(page)
+}
+
+func (s *importService) normalizationReviewView(page, project *core.Record, files map[string]string) map[string]any {
+	view := normalizationView(page)
+	view["expected_basis"] = s.normalizationReviewBasis(page, project, files)
+	view["normalization_source_column"] = page.GetString("normalization_source_column")
+	view["current_source_pronunciation"] = pageReadingValue(page, page.GetString("normalization_source_column"))
+	view["source_changed"] = !normalizationSourceIsCurrent(page, project)
+	if adapter := s.schemes.adapters[page.GetString("source_scheme_id")]; adapter != nil {
+		view["normalization_schema_version"] = adapter.SchemaVersion
+	}
+	return view
+}
+
+type normalizationDecision struct {
+	Canonical     string `json:"canonical_pronunciation"`
+	Basis         string `json:"basis"`
+	ExpectedBasis string `json:"expected_basis"`
+}
+
+// The initial lookup only establishes the authorized project. Every decision
+// input and the compare-and-save are re-read inside the same write transaction.
 func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	pageID := c.Request.PathValue("pageId")
-	page, err := s.app.FindRecordById("pages", pageID)
-	if err != nil || page == nil {
+	original, err := s.app.FindRecordById("pages", pageID)
+	if err != nil || original == nil {
 		return apis.NewNotFoundError("条目不存在。", err)
 	}
-	projectID := page.GetString("project")
-	auth, project, err := s.requireProjectManager(c, projectID)
-	if err != nil {
+	projectID := original.GetString("project")
+	if _, _, err := s.requireProjectManager(c, projectID); err != nil {
 		return err
 	}
-	if _, problem := projectReadingColumns(project); problem != "" {
-		return apis.NewBadRequestError(problem, nil)
-	}
-	// 第 1 道闸：只有机器判不出来的条目才需要人。见 reviewBlockedReason。
-	if problem := reviewBlockedReason(page.GetString("normalization_status")); problem != "" {
-		return apis.NewBadRequestError(problem, nil)
-	}
-
-	payload := struct {
-		Canonical string `json:"canonical_pronunciation"`
-		Basis     string `json:"basis"`
-	}{}
+	payload := normalizationDecision{}
 	if err := c.BindBody(&payload); err != nil {
 		return apis.NewBadRequestError("请求内容无法解析。", nil)
 	}
-	canonical := strings.TrimSpace(payload.Canonical)
-	basis := strings.TrimSpace(payload.Basis)
-	if canonical == "" {
+	payload.Canonical, payload.Basis = strings.TrimSpace(payload.Canonical), strings.TrimSpace(payload.Basis)
+	if payload.Canonical == "" {
 		return apis.NewBadRequestError("人工结论必须给出统一方案的写法；只标「看过了」不构成结论。", nil)
 	}
-	if basis == "" {
+	if payload.Basis == "" {
 		return apis.NewBadRequestError("人工结论必须写明依据。", nil)
 	}
-	if utf8Len(basis) > 500 {
+	if utf8Len(payload.Basis) > 500 {
 		return apis.NewBadRequestError("依据最多 500 个字符。", nil)
 	}
-	if utf8Len(canonical) > canonicalPronunciationMaxLength {
+	if utf8Len(payload.Canonical) > canonicalPronunciationMaxLength {
 		return apis.NewBadRequestError(fmt.Sprintf("统一方案的写法最多 %d 个字符。", canonicalPronunciationMaxLength), nil)
 	}
-	// 下面两道闸的判据都取自这一条记录的 source_scheme_id 在规则目录里的那一套——它自带
-	// 目标侧清单（adapter.Canonical）与版本号。#189 把目标端改成共享的 puxian-xiangyin
-	// 之后，这两条判据会跟着一起升级，不需要在这里改。
+	var result map[string]any
+	err = s.app.RunInTransaction(func(tx core.App) error {
+		page, err := tx.FindRecordById("pages", pageID)
+		if err != nil {
+			return apis.NewNotFoundError("条目不存在。", err)
+		}
+		if page.GetString("project") != projectID {
+			return apis.NewApiError(http.StatusConflict, "条目所属项目已变化，请刷新复核队列。", nil)
+		}
+		project, err := tx.FindRecordById("projects", projectID)
+		if err != nil {
+			return apis.NewNotFoundError("项目不存在或已被删除。", err)
+		}
+		auth := c.Auth
+		if auth.GetString("role") != "platform_admin" && project.GetString("admin") != auth.Id {
+			memberships, err := tx.FindRecordsByFilter("project_memberships", "project={:project} && user={:user} && role='manager'", "", 1, 0, dbx.Params{"project": projectID, "user": auth.Id})
+			if err != nil || len(memberships) == 0 {
+				return apis.NewForbiddenError("当前已没有管理本项目的权限。", err)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		updated, err := s.applyNormalizationDecision(tx, page, project, auth.Id, payload)
+		if err != nil {
+			return err
+		}
+		result = normalizationView(updated)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (s *importService) applyNormalizationDecision(tx core.App, page, project *core.Record, actor string, payload normalizationDecision) (*core.Record, error) {
+	if _, problem := projectReadingColumns(project); problem != "" {
+		return nil, apis.NewBadRequestError(problem, nil)
+	}
+	if problem := reviewBlockedReason(page.GetString("normalization_status")); problem != "" {
+		return nil, apis.NewBadRequestError(problem, nil)
+	}
 	adapter, ok := s.schemes.adapters[page.GetString("source_scheme_id")]
 	if !ok {
-		return apis.NewBadRequestError(fmt.Sprintf(
-			"这一条记的是「%s」这套方案，但它已经不在规则目录里了，无法核对统一方案的写法是否合法。请先把规则放回目录再复核。",
-			page.GetString("source_scheme_id")), nil)
+		return nil, apis.NewBadRequestError("这一条使用的方案不在规则目录，请恢复规则后重新加载复核队列。", nil)
 	}
-	// 第 2 道闸：这一条的待复核状态必须是**当前**规则跑出来的。规则升版之后、重跑之前，
-	// 条目上留着的是旧版规则产生的 status / trace / candidates；这时让人写结论，写下去的
-	// 是「旧 trace + 新 rule_version」——一行两版规则，与续跑校验
-	// （CONVERSION_RULE_VERSION_CHANGED）挡的是同一件事，只是入口不同。
-	//
-	// 代价要知道：重跑**不会**处理的条目（记音那一格被清空 ⇒ convertPage 走 skipped，
-	// 状态留在原地）会一直停在旧版本上，因此一直收不了人工结论。这类条目的结论本来就没有
-	// 对象，挡住是对的；但话里要给出可走的路，不能只说一句「不允许」。
-	if page.GetString("normalization_rule_version") != adapter.RuleVersion {
-		return apis.NewBadRequestError(fmt.Sprintf(
-			"这一条是规则版本「%s」跑出来的，当前在用的是「%s」；请先用当前规则重跑一次转换再复核，"+
-				"否则这一行会同时带着两版规则的结论。若重跑之后它仍然停在这个状态，"+
-				"说明这一条的记音已经不在页面上了，它没有可复核的对象。",
-			page.GetString("normalization_rule_version"), adapter.RuleVersion), nil)
+	if page.GetString("normalization_rule_version") != adapter.RuleVersion || page.GetString("canonical_scheme_id") != adapter.CanonicalScheme {
+		return nil, apis.NewBadRequestError(fmt.Sprintf("这一条是规则版本「%s」跑出来的，当前是「%s」；请先用当前规则重跑一次转换再复核。", page.GetString("normalization_rule_version"), adapter.RuleVersion), nil)
 	}
-
-	// 第 3 道闸：写法必须是目标方案拼得出来的音节（adapter.Canonical 那份清单）。
-	normalized, problem := adapter.NormalizeCanonical(canonical)
+	files, err := normalizationSourceFiles(tx, project.Id, []*core.Record{page})
+	if err != nil {
+		return nil, apis.NewApiError(http.StatusServiceUnavailable, "暂时无法读取来源快照，请稍后刷新队列。", nil)
+	}
+	if payload.ExpectedBasis == "" {
+		return nil, apis.NewApiError(http.StatusConflict, "当前页面缺少复核依据，请先自行保留尚未提交的草稿，刷新整个页面或更新客户端后再重新核对。", nil)
+	}
+	if payload.ExpectedBasis != s.normalizationReviewBasis(page, project, files) {
+		return nil, apis.NewApiError(http.StatusConflict, "复核依据已变化，请刷新队列；旧草稿保留，需按当前来源重新填写。", nil)
+	}
+	if !normalizationSourceIsCurrent(page, project) {
+		return nil, apis.NewApiError(http.StatusConflict, "来源读音或记音列已变化，请先重跑转换，再按当前来源重新复核。", nil)
+	}
+	normalized, problem := adapter.NormalizeCanonical(payload.Canonical)
 	if problem != nil {
-		return apis.NewBadRequestError(problem.Error(), nil)
+		return nil, apis.NewBadRequestError(problem.Error(), nil)
 	}
-
 	page.Set("canonical_pronunciation", normalized)
 	page.Set("normalization_status", string(scheme.Reviewed))
-	page.Set("normalization_basis", basis)
-	page.Set("normalization_reviewed_by", auth.Id)
+	page.Set("normalization_basis", payload.Basis)
+	page.Set("normalization_reviewed_by", actor)
 	page.Set("normalization_reviewed_at", time.Now().UTC())
-	// 把「在哪个规则版本下判的」写下来。convertPage 写的是产出当前结论的那一版；
-	// 人工结论覆盖它之后，这一列就表示「当前值是在这一版规则下定的」——上面第 2 道闸
-	// 已经保证写之前它与在用的那一版是同一个，所以这里不会写出一个混合体。
-	// 升版时靠它找出需要重新过目的人工结论——没有它，一条三年前按旧规则拍的结论
-	// 与今天拍的看起来一模一样。
 	page.Set("normalization_rule_version", adapter.RuleVersion)
-	// 与 convertPage 同一口径：这里「读一条 → 写一条」，窗口只有一次请求，风险远低于批处理，
-	// 但统一只写改动过的字段，避免同一个仓里出现两种 Save 语义（整行快照 vs 只写改动）。
 	page.IgnoreUnchangedFields(true)
-	if err := s.app.Save(page); err != nil {
-		return apis.NewBadRequestError("保存人工结论失败。", err)
+	if err := tx.Save(page); err != nil {
+		return nil, apis.NewBadRequestError("保存人工结论失败。", err)
 	}
-	return c.JSON(http.StatusOK, normalizationView(page))
+	return page, nil
 }
 
 // reviewedConclusion 是一条已经有人给过结论的条目在导出时需要的全部字段。
@@ -1024,78 +1164,92 @@ func (s *importService) processConversion(work importWork) {
 // 三件事刻意不做：不覆盖已经人工复核过的结论（REVIEWED 是有人看过的，机器不该把它推回去）、
 // 不给没有值的条目硬造一个结论、不把失败吞掉当作已处理。
 func (s *importService) convertPage(page *core.Record, adapter *scheme.Adapter, column string, counters *conversionCounters) {
-	// 只保护**人工**结论。判据是 normalization_reviewed_by 非空——decideNormalization
-	// 是唯一写它的地方，所以它精确表示「有人看过并留了依据」。
-	//
-	// 不能按 status == REVIEWED 一刀切：例外表给出的 REVIEWED 也是 REVIEWED，但它只是
-	// 一条规则的结果，重跑时照常重算才对。切在一起会让重跑的汇总越跑越少
-	// （上一次的结论被当成"已复核"跳过），管理员没法对账。
-	if page.GetString("normalization_reviewed_by") != "" {
-		// 只计 skipped，不再计 reviewed：五个计数必须互不重叠，否则
-		// 「共处理」与四行之和永远对不上，而那个差额没有第三种解释方式。
-		// 已经人工复核过的条目不再被这一次转换处理，它就是被跳过的。
-		counters.skipped++
-		counters.total++
-		return
-	}
-	value := pageReadingValue(page, column)
-	if value == "" {
-		counters.skipped++
-		counters.total++
-		return
-	}
+	local := conversionCounters{}
+	err := s.app.RunInTransaction(func(tx core.App) error {
+		latest, err := tx.FindRecordById("pages", page.Id)
+		if err != nil {
+			return err
+		}
+		page = latest
+		// 只保护**人工**结论。判据是 normalization_reviewed_by 非空——decideNormalization
+		// 是唯一写它的地方，所以它精确表示「有人看过并留了依据」。
+		//
+		// 不能按 status == REVIEWED 一刀切：例外表给出的 REVIEWED 也是 REVIEWED，但它只是
+		// 一条规则的结果，重跑时照常重算才对。切在一起会让重跑的汇总越跑越少
+		// （上一次的结论被当成"已复核"跳过），管理员没法对账。
+		if page.GetString("normalization_reviewed_by") != "" {
+			// 只计 skipped，不再计 reviewed：五个计数必须互不重叠，否则
+			// 「共处理」与四行之和永远对不上，而那个差额没有第三种解释方式。
+			// 已经人工复核过的条目不再被这一次转换处理，它就是被跳过的。
+			local.skipped++
+			local.total++
+			return nil
+		}
+		value := pageReadingValue(page, column)
+		if value == "" {
+			local.skipped++
+			local.total++
+			return nil
+		}
 
-	result := scheme.Convert(value, adapter)
-	page.Set("source_scheme_id", result.SourceScheme)
-	page.Set("normalization_source_column", column)
-	// 抄下这一刻读到的源值。之后复核队列、例外草案读的都是这一份，而不是现读校对行：
-	// 一条 AMBIGUOUS 是「针对某个原值」判的，如果原值随校对改动而变，那条结论针对的
-	// 对象就被悄悄换掉了，而结论本身看不出来。每个走到这里的条目都写，不论结论是什么——
-	// 只给 AMBIGUOUS 写会让「为什么这一条没有快照」需要靠状态去猜。
-	page.Set("normalization_source_snapshot", value)
-	page.Set("canonical_scheme_id", result.CanonicalScheme)
-	page.Set("canonical_pronunciation", result.CanonicalPronunciation)
-	page.Set("normalization_status", string(result.Status))
-	page.Set("normalization_rule_version", result.RuleVersion)
-	trace, err := json.Marshal(result.Trace)
-	if err != nil {
-		counters.failed++
-		counters.total++
-		logUpload("error", "conversion_trace_serialize_failed", map[string]any{"page_id": page.Id, "error": err.Error()})
-		return
-	}
-	page.Set("normalization_trace_json", string(trace))
-	candidates, err := json.Marshal(result.Candidates)
-	if err != nil {
-		counters.failed++
-		counters.total++
-		logUpload("error", "conversion_candidates_serialize_failed", map[string]any{"page_id": page.Id, "error": err.Error()})
-		return
-	}
-	page.Set("normalization_candidates_json", string(candidates))
-	// 只写本函数改动过的字段。processConversion 一次读 200 条进内存，逐条 Save 默认会
-	// 把「批次读取那一刻」的整行快照写回库，覆盖掉这个窗口里任何并发的校对提交
-	// （proofread_row_json / proofread_at / first_proofreader 等）。IgnoreUnchangedFields(true)
-	// 让 Save 只导出本实例 Set 过的字段，未动过的列一律不写。
-	page.IgnoreUnchangedFields(true)
-	if err := s.app.Save(page); err != nil {
-		counters.failed++
-		counters.total++
-		logUpload("error", "conversion_page_write_failed", map[string]any{"page_id": page.Id, "error": err.Error()})
-		return
-	}
+		result := scheme.Convert(value, adapter)
+		page.Set("source_scheme_id", result.SourceScheme)
+		page.Set("normalization_source_column", column)
+		// 抄下这一刻读到的源值。之后复核队列、例外草案读的都是这一份，而不是现读校对行：
+		// 一条 AMBIGUOUS 是「针对某个原值」判的，如果原值随校对改动而变，那条结论针对的
+		// 对象就被悄悄换掉了，而结论本身看不出来。每个走到这里的条目都写，不论结论是什么——
+		// 只给 AMBIGUOUS 写会让「为什么这一条没有快照」需要靠状态去猜。
+		page.Set("normalization_source_snapshot", value)
+		page.Set("canonical_scheme_id", result.CanonicalScheme)
+		page.Set("canonical_pronunciation", result.CanonicalPronunciation)
+		page.Set("normalization_status", string(result.Status))
+		page.Set("normalization_rule_version", result.RuleVersion)
+		trace, err := json.Marshal(result.Trace)
+		if err != nil {
+			logUpload("error", "conversion_trace_serialize_failed", map[string]any{"page_id": page.Id, "error": err.Error()})
+			return err
+		}
+		page.Set("normalization_trace_json", string(trace))
+		candidates, err := json.Marshal(result.Candidates)
+		if err != nil {
+			logUpload("error", "conversion_candidates_serialize_failed", map[string]any{"page_id": page.Id, "error": err.Error()})
+			return err
+		}
+		page.Set("normalization_candidates_json", string(candidates))
+		// 只写本函数改动过的字段。processConversion 一次读 200 条进内存，逐条 Save 默认会
+		// 把「批次读取那一刻」的整行快照写回库，覆盖掉这个窗口里任何并发的校对提交
+		// （proofread_row_json / proofread_at / first_proofreader 等）。IgnoreUnchangedFields(true)
+		// 让 Save 只导出本实例 Set 过的字段，未动过的列一律不写。
+		page.IgnoreUnchangedFields(true)
+		if err := tx.Save(page); err != nil {
+			logUpload("error", "conversion_page_write_failed", map[string]any{"page_id": page.Id, "error": err.Error()})
+			return err
+		}
 
-	counters.total++
-	switch result.Status {
-	case scheme.Exact:
-		counters.exact++
-	case scheme.Reviewed:
-		counters.reviewed++
-	case scheme.Ambiguous:
-		counters.ambiguous++
-	case scheme.Unsupported:
-		counters.unsupported++
+		local.total++
+		switch result.Status {
+		case scheme.Exact:
+			local.exact++
+		case scheme.Reviewed:
+			local.reviewed++
+		case scheme.Ambiguous:
+			local.ambiguous++
+		case scheme.Unsupported:
+			local.unsupported++
+		}
+		return nil
+	})
+	if err != nil {
+		counters.total++
+		counters.failed++
+		return
 	}
+	counters.total += local.total
+	counters.exact += local.exact
+	counters.reviewed += local.reviewed
+	counters.ambiguous += local.ambiguous
+	counters.unsupported += local.unsupported
+	counters.skipped += local.skipped
 }
 
 func writeConversionCounters(job *core.Record, counters *conversionCounters) {
