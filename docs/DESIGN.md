@@ -6,12 +6,12 @@
 
 产品名为「万语校坊」。纸色底、墨色字、朱砂点缀来自 `style.css` 的 `:root`：`--paper`、`--ink`、`--accent`。颜色、圆角、层级、字体栈只在令牌定义处写字面值，调用点使用变量，不重新定义一套配色。
 
-`--space-1` 至 `--space-6`、`--text-xs` 至 `--text-2xl`、`--radius-*`、`--z-*`、`--badge-*` 与状态色也定义在同一 `:root`。新组件使用这些刻度；本轮工作台重构统一调整层级与尺寸：常规界面15px，校对输入17px，手机主要触控目标至少44px。
+`--space-1` 至 `--space-6`、`--text-xs` 至 `--text-2xl`、`--radius-*`、`--z-*`、`--badge-*` 与状态色也定义在同一 `:root`。新组件使用这些刻度；常规界面15px、次级文字13.5px、辅助标注12px，校对输入18px。`--control-height` / `--control-height-sm` / `--control-height-touch` 分别为40/34/44px，手机主要触控目标至少44px。
 
 字体约定：
 
 - `--font-rare` 同时包含 `Fangji Phonetic` 与 `Fangji Rare Han`，不能遗漏任一家族。
-- 普通界面使用 `--font-ui`，标题与码位说明使用对应 `--font-display` / `--font-mono`。
+- 普通界面与常规页标题使用 `--font-ui`，系统无衬线字体优先；音标字体不能放在 UI 字体栈首位，以免普通英文和数字混入记音字体。品牌和少量编辑性标题使用 `--font-display`，码位说明使用 `--font-mono`。
 - 字段值、`.proofread-textarea.form-control`、`.final-value textarea`、`.ipa-key` 优先使用 `var(--font-rare), var(--font-ui)`；记音与缺字先由随附字体呈现，普通字符仍有系统回退。
 - `AppFieldValue` 统一承载 `white-space: pre-wrap` 与 `overflow-wrap: anywhere`。调用方只负责间距、字号和布局，不再自行复制文本保真规则。
 - 已明确的 IPA 字段使用 `lang="und-fonipa"`。未知方言转写不猜成英语或其他语言；来源明确时可显式传入语言。
@@ -25,6 +25,9 @@ UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_base
 | 组件/资源 | 职责与接口 | 调用范围 |
 | --- | --- | --- |
 | `AppErrorBoundary` | 渲染异常时给可见错误与恢复入口 | `App.vue` |
+| `AppButton` | 原生 button，variant=primary/secondary/ghost/danger，size=md/sm；loading 同时禁用并标记 aria-busy，属性与事件透传 | 四个精修样板的操作；链接仍保持 RouterLink 语义 |
+| `AppSelect` | Reka Select；v-model 保留空字符串和数值类型，options 为 label/value/disabled；id/aria-label 等传给触发器，Portal 弹层避让视口 | 条目列表筛选；真实字段编辑器继续保留原 textarea 与 IME/选区逻辑 |
+| `AppDropdown` | Reka DropdownMenu；items 为 label/action/disabled/danger（可选 to）；select(action)，上下文 aria-label 透传 | 条目次要操作；菜单先关闭并回到触发器，再打开确认框 |
 | `AppShell` / `AppNavigation` / `UserAvatar` | 统一侧栏、页眉、账户菜单、移动导航；作业态隐藏侧栏 | 受保护路由，账号切换重建 |
 | `ProjectHubTabs` / `ProjectWorkspaceNav` | 项目目录的参与/发现/管理视图；项目概览/材料/校勘/交付/设置 | 项目目录及项目子页 |
 | `WorkspaceLeaveGuard` | 复用 AppModal 处理未保存编辑与未完成上传的离页选择 | 项目材料、设置、核验约定 |
@@ -52,6 +55,18 @@ UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_base
 作业页使用 `DocumentReviewWorkspace.experience-workspace`。桌面默认45/55双栏，分隔条支持指针和方向键调整（30–65%）；来源页码、缩放、旋转与全屏合为一条工具栏。来源/约定默认摘要，阻塞、未完成或依据失配时自动展开。校对字段的编辑值与导入文本分别呈现，修改后才出现恢复操作。仲裁默认差异字段，来源复核和无差异情况展示全部字段，采用值不自动改变来源正误。
 
 字符托盘默认关闭，开合与分栏按用户/项目存本机偏好；最近字符按精确值保留，搜索支持字符、提示和码位。不因搜索、缩放、托盘切换改变原字符串或光标选区。校对、租约、草稿、提交、退回及本人只读回看继续由原有 composables 和服务端裁决。
+
+## Reka UI 精修样板
+
+依赖锁定 Reka UI 2.11.0，公共外观集中在 `styles/ui-components.css`，不在业务页面直接散布组件库样式补丁。首批仅精修工作台、项目条目列表与桌面/手机校对，公共字体和控件令牌作为共享基础。其他旅程继续按此规范逐步迁移，不把首批验收等同全站验收。
+
+工作台只有一个当前工作主入口，优先恢复仍可访问的工作；无当前工作时提升待仲裁或可领取工作。项目进展收为去重列表，读取失败仍显示错误与重试。项目条目默认关闭批量选择与高级筛选，URL已有筛选时展开对应筛选；普通待校对与质量待定分别以中性文字呈现，仲裁/异常继续突出。手机列表在同一表格内容列呈现进度与质量摘要，避免重复交互与整页横向滚动。
+
+校对结果位于字段主体，导入文本作为紧凑对照；短字段可双列，多行字段自然跨列。textarea 按内容增高但保留可滚动上限，换行、空白、组合字符与选区不得被修整。手机原文入口在任务头，默认专注当前字段，字符搜索与分类压为一行。健康来源摘要紧凑呈现，失配/阻塞仍自动展开。
+
+动效统一使用 `--motion-fast` 120ms、`--motion-normal` 180ms、`--motion-slow` 220ms 与 `--ease-out`。按钮仅过渡颜色/边框，菜单淡入并小幅移动，字符托盘只在展开时入场；保存反馈按真实结果即时更新。减少动态效果设置关闭位移/入场动画。不得给 RouterView、任务/账号更换或权限失效添加延迟卸载，不得让动画改变光标、草稿落盘或服务端判断。
+
+Reka 提供的运行时定位变量在 UI 债务检查中逐个登记；近似拼写仍报错。回归入口 `run_frontend_quality_browser.py --only components` 验证空值/数值选择、禁用/忙碌、键盘菜单、菜单到模态的焦点交接、窄屏弹层及减少动态效果；`workbench` 组包含真实临时后端的条目样板检查。
 
 新手提示为三个可跳过、可重放的非模态小贴士，入口放在应用页眉，不占字段与底部导航区域，也不阻断编辑器快捷键。研究用途告知和提交前明确选择保持独立，不将查看/跳过提示当作同意。
 

@@ -17,6 +17,11 @@
 <script setup>
 defineProps({ name: { type: String, default: 'project' } })
 const paths = {
+  keyboard:
+    'M3 5h18v14H3V5Zm3 3h.01M10 8h.01M14 8h.01M18 8h.01M6 11h.01M10 11h.01M14 11h.01M18 11h.01M7 15h10',
+  search: 'M21 21l-5-5m2-6a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
+  chevron: 'm6 9 6 6 6-6',
+  'chevron-up': 'm6 15 6-6 6 6',
   home: 'M3 10 12 3l9 7v10H3V10Zm6 10v-7h6v7',
   task: 'M8 5H5v16h14V5h-3M8 3h8v4H8V3Zm0 9 2 2 5-5M8 18h8',
   project: 'M3 7V4h7l2 3h9v13H3V7Z',

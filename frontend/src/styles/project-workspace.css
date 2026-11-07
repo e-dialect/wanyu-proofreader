@@ -123,7 +123,57 @@
   line-height: 1.6;
 }
 .project-workspace-page .project-detail-heading {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
+  align-items: center;
+}
+.project-heading-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+}
+.project-heading-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.project-heading-main h1 {
+  overflow-wrap: anywhere;
+}
+.project-heading-return {
+  flex: 0 0 auto;
+  min-height: var(--control-height-touch);
+  min-width: var(--control-height-touch);
+  padding: var(--space-2);
+  justify-content: center;
+}
+.project-heading-description {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+.project-heading-description summary {
+  cursor: pointer;
+  padding-block: var(--space-2);
+}
+.project-heading-description[open] {
+  flex-basis: 100%;
+}
+.project-heading-description p {
+  padding-block: var(--space-2);
+}
+.project-workspace-page .project-workspace-nav {
+  margin-bottom: var(--space-2);
+}
+.project-workspace-page .project-subnav {
+  margin-bottom: var(--space-3);
+}
+.project-workspace-nav a,
+.project-subnav a {
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
 .project-workspace-page .project-detail-heading h1 {
   font-size: var(--text-xl);

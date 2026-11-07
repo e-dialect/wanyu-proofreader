@@ -49,10 +49,10 @@ async function openTray(page) {
     await page.screenshot({ path: `/tmp/review-${admin ? 'arb' : 'proof'}-mobile-pdf.png` })
     await openTray(page)
     await page.getByRole('button', { name: '钉住', exact: true }).click()
-    await page.getByRole('button', { name: '声调 1', exact: true }).click()
+    await page.getByRole('combobox', { name: '字符分组', exact: true }).selectOption('tones')
     if (!(await page.getByRole('button', { name: '插入字符 ˥', exact: true }).isVisible()))
       throw Error('Group switch failed')
-    await page.getByRole('button', { name: '元音 4', exact: true }).click()
+    await page.getByRole('combobox', { name: '字符分组', exact: true }).selectOption('vowels')
     await page.locator('.ipa-key').first().click()
     if (
       !(await page
@@ -170,34 +170,13 @@ async function openTray(page) {
       if (mobile) {
         await openTray(page)
         await page.getByRole('button', { name: '钉住', exact: true }).click()
-        if (
-          (await page
-            .locator('.keyboard-section-switcher button[aria-pressed="true"]')
-            .innerText()) !== '常用校对 24'
-        )
-          throw Error('Wrong initial mobile group')
-      } else {
-        if ((await page.locator('details.ipa-section[open]').count()) !== 1)
-          throw Error('Only shortcuts should start expanded')
       }
-      const group = (id) =>
-        page.locator('details.ipa-section').filter({
-          has: page.locator('summary', {
-            hasText: preset.sections.find((s) => s.id === id).label
-          })
-        })
+      const category = page.getByRole('combobox', { name: '字符分组', exact: true })
+      if ((await category.inputValue()) !== 'common-proofreading')
+        throw Error('Wrong initial character group')
+      const group = (id) => page.locator(`.ipa-section[id$="-${id}"]`)
       const choose = async (id) => {
-        const section = preset.sections.find((s) => s.id === id)
-        if (mobile)
-          await page
-            .getByRole('button', { name: section.label + ' ' + section.keys.length, exact: true })
-            .click()
-        else if (
-          !(await group(id)
-            .getAttribute('open')
-            .then((v) => v !== null))
-        )
-          await group(id).locator('summary').click()
+        await category.selectOption(id)
         return group(id)
       }
       const insert = async (id, value) => {
@@ -210,7 +189,7 @@ async function openTray(page) {
       const count = new Set(preset.sections.flatMap((s) => s.keys.map((k) => k.value))).size
       if (
         !(await page
-          .locator('.ipa-keyboard-heading')
+          .locator('.keyboard-footer')
           .innerText()
           .then((t) => t.includes(count + ' 个字符')))
       )

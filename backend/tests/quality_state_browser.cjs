@@ -85,17 +85,16 @@ async function session (browser, auth) {
 }
 
 const entriesSection = (page) => page.locator('section', { has: page.locator('h2', { hasText: '条目管理' }) }).first()
-const rowButton = (page, index = 0) =>
-  page.locator('section:has(h2:text("条目管理")) tbody tr').nth(index).getByRole('button', { name: /设置第 \d+ 条的质量状态/ })
+const rowButton = (page) => page.getByRole('menuitem', { name: '设置质量状态', exact: true })
 async function expandAdvanced(page) {
-  const details = page.locator('#project-entries .project-entry-advanced')
-  if (!await details.evaluate(element => element.open)) await details.locator('summary').click()
+  const toggle = page.locator('#project-entries [aria-controls=entry-list-filters]')
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
 }
-// 必须限定在筛选条里：每行的「标注」按钮 aria-label 也含「质量状态」四个字，
-// 不限定作用域时 getByLabel('质量状态') 会同时命中那 4 个按钮。
-// 按选项定位而不是按可见文案：筛选条里有两个 select，而「质量状态」这四个字还出现在
-// 每行「标注」按钮的 aria-label 里，按名字取会同时命中 5 个元素。
-const qualityFilter = (page) => page.locator('.admin-list-filters select').filter({ has: page.locator('option[value="withheld"]') })
+// 按真实公共控件的角色选择；空值选项也走菜单，不跳过状态与URL更新。
+async function selectQualityFilter(page, label) {
+  await page.getByRole('combobox', { name: '质量状态', exact: true }).click()
+  await page.getByRole('option', { name: label, exact: true }).click()
+}
 // 对话框里只有这一个 select，直接取首个即可（filter({has}) 里的内层 locator 若已按 dialog
 // 作用域，Playwright 会当成二次限定而匹配不到）。
 const targetStateSelect = (dialog) => dialog.locator('select').first()
@@ -128,17 +127,17 @@ async function openProject (page, projectId) {
     await shoot(manager, 'quality-state-summary')
 
     // ---------- 2. 筛选：选「暂缓外发」后只剩那一行 ----------
-    await qualityFilter(manager).selectOption('withheld')
+    await selectQualityFilter(manager, '暂缓外发')
     await manager.waitForTimeout(1500)
     const filteredRows = await manager.locator('section:has(h2:text("条目管理")) tbody tr').count()
     assert.equal(filteredRows, 1, `筛暂缓外发应只剩 1 行，实得 ${filteredRows}`)
     await shoot(manager, 'quality-state-filter-withheld')
-    await qualityFilter(manager).selectOption('')
+    await selectQualityFilter(manager, '全部质量状态')
     await manager.waitForTimeout(1000)
 
     // ---------- 3. 依据必填：目标为「已确认」而依据为空时保存被禁用 ----------
     // 第一行是夹具里已经标成「已确认」的那条，所以同值写入会在下一步被服务端拒绝。
-    await manager.locator('#project-entries tbody tr').first().locator('.project-entry-actions > summary').click()
+    await manager.locator('#project-entries tbody tr').first().locator('.app-dropdown-trigger').click()
     await rowButton(manager).click()
     const dialog = manager.locator('[role="dialog"]')
     await dialog.waitFor({ timeout: 20000 })

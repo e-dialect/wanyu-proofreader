@@ -32,14 +32,6 @@
       ></template>
     </dl>
   </details>
-
-  <div class="field-progress-summary">
-    <div>
-      <span>结构化校对</span>
-      <strong>{{ fieldCount }} 个字段，已修改 {{ changedCount }} 个</strong>
-    </div>
-    <span class="pass-badge">独立校对</span>
-  </div>
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
@@ -52,12 +44,7 @@ defineProps({
   leaseLost: Boolean,
   saveError: String,
   reclaiming: Boolean,
-  ownReview: Boolean,
-  draftStatus: String,
-  leaseStatus: String,
-  staleLocalDrafts: { type: Array, default: () => [] },
-  fieldCount: Number,
-  changedCount: Number
+  staleLocalDrafts: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['retry-claim', 'reclaim'])
 </script>

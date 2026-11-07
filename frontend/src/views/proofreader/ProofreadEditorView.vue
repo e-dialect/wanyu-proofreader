@@ -1,5 +1,6 @@
 <template>
   <DocumentReviewWorkspace
+    inline-source-toggle
     :page="page"
     :keyboard-available="keyboardAvailable"
     :suspended="(mobile && overview) || reviewingSubmission"
@@ -11,11 +12,14 @@
     content-labelled-by="task-panel-title"
     empty-pdf-description="请保存草稿并提交来源问题，待来源 PDF 可用后继续核对。"
   >
-    <template #panel-header>
+    <template #panel-header="{ sourceCollapsed, toggleSource, compact }">
       <ProofreadTaskHeader
         v-bind="taskHeaderProps"
         :overview="overview"
         :lease-status="leaseStatus"
+        :source-toggle-visible="compact"
+        :source-collapsed="sourceCollapsed"
+        @source-toggle="toggleSource"
         @previous="gotoPrevTask"
         @next="gotoNextTask"
         @retry-position="loadNeighbors"
@@ -46,12 +50,7 @@
           :lease-lost="leaseLost"
           :save-error="saveError"
           :reclaiming="reclaiming"
-          :own-review="ownReview"
-          :draft-status="draftStatus"
-          :lease-status="leaseStatus"
           :stale-local-drafts="staleLocalDrafts"
-          :field-count="rowHeaders.length"
-          :changed-count="changedFields.length"
           @retry-claim="retryClaimNext"
           @reclaim="reclaimTask"
         />
@@ -84,12 +83,6 @@
           :findings-truncated="findingsTruncated"
           :gated-notice-text="gatedNoticeText"
         />
-        <details v-if="!ownReview" class="editor-correction-help">
-          <summary>校对与提交说明</summary>
-          <p class="correction-paths text-sm text-muted" role="note">
-            字写错了，改对应的文字字段。记音或说法不对，改读音字段，特殊字符用下方字符键盘。还没提交时，用这一栏的「恢复导入值」。提交之后不能撤回，系统会尝试打开下一条，不会停在这一条上再改。
-          </p>
-        </details>
         <div class="proofread-fields">
           <ProofreadFieldCard
             v-for="(header, index) in rowHeaders"
@@ -122,6 +115,12 @@
             @change="onTextChange"
           />
         </div>
+        <details v-if="!ownReview" class="editor-correction-help">
+          <summary>校对与提交说明</summary>
+          <p class="correction-paths text-sm text-muted" role="note">
+            逐字段对照来源，特殊字符从字符键盘插入。提交前可恢复导入值；提交后不能撤回，系统会尝试打开下一条。
+          </p>
+        </details>
       </template>
     </template>
     <template #navigation
@@ -132,7 +131,12 @@
         @select="selectField"
         @next="nextField"
         ><template v-if="!ownReview" #submit
-          ><button class="btn btn-success" @click="openSubmitReview">检查并提交</button></template
+          ><AppButton
+            variant="primary"
+            :disabled="saving || loadingPage || leaseLost || !leaseToken"
+            @click="openSubmitReview"
+            >检查并提交</AppButton
+          ></template
         ></FieldNavigation
       ></template
     >
@@ -184,6 +188,7 @@
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
+import AppButton from '@/components/AppButton.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import DocumentReviewWorkspace from '@/components/editor/DocumentReviewWorkspace.vue'
 import FieldNavigation from '@/components/editor/FieldNavigation.vue'
@@ -229,7 +234,6 @@ const {
   retryingClaim,
   saveError,
   reclaiming,
-  draftStatus,
   leaseStatus,
   staleLocalDrafts,
   rowHeaders,

@@ -149,7 +149,14 @@ async function noOverflow(page) {
     releaseReviewed()
     await page.unroute(reviewUrl)
     await page.goto(base + '/workspace')
-    await page.getByRole('link', { name: '继续校对', exact: false }).first().click()
+    await page.getByRole('link', { name: '继续校对', exact: true }).waitFor()
+    await page.screenshot({ path: path.join(output, 'desktop-reader-workbench.png') })
+    assert.equal(
+      await page.getByRole('link', { name: '继续校对', exact: true }).count(),
+      1,
+      'the current task has one resume action'
+    )
+    await page.getByRole('link', { name: '继续校对', exact: true }).click()
     await page.waitForURL('**/tasks/*/edit')
     await page.goto(base + `/tasks?view=reviewed&project=${project.id}`)
     await page.getByRole('button', { name: '回看已提交', exact: true }).waitFor()
@@ -177,9 +184,11 @@ async function noOverflow(page) {
     assert.equal(await page.getByRole('heading', { name: '我的校对', exact: true }).count(), 0)
     await page.reload()
     await page
-      .locator('[aria-labelledby="managed-progress-title"]')
-      .getByRole('heading', { name: project.name, exact: true })
+      .getByRole('region', { name: '项目进展', exact: true })
+      .getByRole('link')
+      .filter({ hasText: project.name })
       .waitFor()
+    await page.screenshot({ path: path.join(output, 'desktop-manager-workbench.png') })
     await page.goto(base + '/projects?view=mine')
     await page.getByRole('link', { name: '项目管理', exact: true }).click()
     await page.waitForURL('**/admin')
@@ -193,7 +202,13 @@ async function noOverflow(page) {
     await page.screenshot({ path: path.join(output, 'mobile-manager-workbench.png') })
     await logout(page)
     await login(page, readerEmail)
-    await page.getByRole('link', { name: '继续校对', exact: false }).first().click()
+    await page.getByRole('link', { name: '继续校对', exact: true }).waitFor()
+    assert.equal(
+      await page.getByRole('link', { name: '继续校对', exact: true }).count(),
+      1,
+      'the current task has one resume action'
+    )
+    await page.getByRole('link', { name: '继续校对', exact: true }).click()
     await page.waitForURL('**/tasks/*/edit')
     const input = page.locator('.proofread-textarea').first()
     await input.focus()

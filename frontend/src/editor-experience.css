@@ -26,7 +26,7 @@
   box-shadow: none;
 }
 .editor-layout.experience-workspace .editor-panel-body--fields {
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
 }
 .editor-layout.experience-workspace .editor-panel-header--task {
   padding: var(--space-3) var(--space-4);
@@ -147,6 +147,9 @@
   padding: var(--space-2) var(--space-3);
   align-items: center;
 }
+.keyboard-toggle-icon {
+  display: none;
+}
 .editor-layout.experience-workspace .keyboard-dock-content {
   display: none;
 }
@@ -155,13 +158,15 @@
   overflow: auto;
 }
 .editor-layout.experience-workspace .keyboard-discovery {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
   margin: 0;
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs);
   border-bottom: 1px solid var(--line);
+}
+.editor-layout.experience-workspace .keyboard-discovery > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 .editor-layout.experience-workspace .ipa-keyboard-heading {
   position: static;
@@ -176,14 +181,25 @@
 }
 .keyboard-search-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-2);
   align-items: center;
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 .keyboard-search {
   flex: 1;
-  min-width: 150px;
+  min-width: 0;
+}
+.keyboard-category {
+  min-width: 0;
+  flex: 0 1 42%;
+}
+.keyboard-category select {
+  width: 100%;
+  font-size: var(--text-sm);
+}
+.keyboard-search-row.is-searching .keyboard-category {
+  display: none;
 }
 .keyboard-search input {
   font-size: var(--text-sm);
@@ -192,7 +208,42 @@
   margin: 0;
 }
 .keyboard-recent {
-  margin-bottom: var(--space-3);
+  margin: 0;
+}
+.keyboard-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  padding-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+.keyboard-footer .keyboard-switcher {
+  flex: 1;
+  min-width: 0;
+}
+.keyboard-footer .keyboard-guide {
+  padding: 0;
+  border: 0;
+}
+.keyboard-footer .keyboard-guide[open] {
+  flex-basis: 100%;
+}
+.keyboard-name {
+  margin-right: auto;
+}
+.editor-layout.experience-workspace .ipa-section {
+  border: 0;
+  margin: 0;
+  background: transparent;
+}
+.editor-layout.experience-workspace .ipa-keys {
+  padding: 0;
+  gap: var(--space-2);
+}
+.editor-layout.experience-workspace .ipa-keyboard {
+  padding: var(--space-2) var(--space-3);
 }
 .keyboard-recent-heading {
   display: flex;
@@ -215,7 +266,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   font-size: var(--text-sm);
   list-style-position: inside;
@@ -304,19 +355,27 @@
   cursor: pointer;
 }
 .editor-layout.experience-workspace .proofread-fields {
-  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.editor-layout.experience-workspace .proofread-field--wide {
+  grid-column: 1 / -1;
 }
 .editor-layout.experience-workspace .proofread-field {
-  padding: var(--space-3);
+  padding: 0;
   box-shadow: none;
-  border-color: var(--line);
-  border-radius: var(--radius-sm);
+  border: 0;
+  border-radius: var(--radius-none);
+  background: transparent;
+  overflow: visible;
 }
-.editor-layout.experience-workspace .proofread-field--active {
-  border-color: var(--primary);
+.editor-layout.experience-workspace .proofread-field--active h2 {
+  color: var(--primary);
 }
 .editor-layout.experience-workspace .proofread-field__header {
   margin-bottom: var(--space-2);
+  padding: 0;
+  border: 0;
   align-items: center;
 }
 .editor-layout.experience-workspace .proofread-field__header > div:first-of-type {
@@ -332,10 +391,19 @@
   font-size: var(--text-xs);
 }
 .editor-layout.experience-workspace .source-value {
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-2);
-  background: var(--paper);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-2) 0 0;
+  margin: 0;
+  background: transparent;
   border: 0;
+}
+.editor-layout.experience-workspace .source-value > .app-field-value {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  line-height: 1.5;
 }
 .editor-layout.experience-workspace .source-value .field-value,
 .editor-layout.experience-workspace .comparison-option .field-value {
@@ -347,9 +415,37 @@
 }
 .editor-layout.experience-workspace .proofread-textarea.form-control,
 .editor-layout.experience-workspace .final-value textarea.form-control {
-  min-height: 72px;
+  min-height: 48px;
   font-size: var(--text-entry);
-  line-height: 1.65;
+  line-height: 1.55;
+}
+.editor-layout.experience-workspace .proofread-textarea.form-control {
+  max-height: 176px;
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+  resize: vertical;
+}
+.editor-correction-help {
+  margin-top: var(--space-4);
+}
+.editor-layout.experience-workspace.keyboard-open .keyboard-dock-content {
+  animation: editor-surface-enter var(--motion-normal) var(--ease-out);
+}
+@keyframes editor-surface-enter {
+  from {
+    opacity: 0.65;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-layout.experience-workspace.keyboard-open .keyboard-dock-content {
+    animation: none;
+    transform: none;
+  }
 }
 .editor-layout.experience-workspace .pdf-page-navigation .pdf-tool {
   min-width: 32px;
@@ -513,6 +609,40 @@
   .editor-layout.experience-workspace .keyboard-discovery {
     display: none;
   }
+  .editor-layout.experience-workspace.source-toggle-inline .mobile-source-toggle {
+    display: none;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline {
+    grid-template-rows: minmax(0, 38fr) minmax(0, 62fr) auto auto;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline .source-panel {
+    grid-row: 1;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline .fields-panel {
+    grid-row: 2;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline .workspace-navigation {
+    grid-row: 3;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline .keyboard-panel {
+    grid-row: 4;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-collapsed,
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-unavailable {
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-collapsed .fields-panel,
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-unavailable .fields-panel {
+    grid-row: 1;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-collapsed .workspace-navigation,
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-unavailable .workspace-navigation {
+    grid-row: 2;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-collapsed .keyboard-panel,
+  .editor-layout.experience-workspace.source-toggle-inline.pdf-unavailable .keyboard-panel {
+    grid-row: 3;
+  }
 }
 @media (max-width: 768px) {
   .editor-layout.experience-workspace .workspace-navigation {
@@ -535,7 +665,7 @@
     padding: var(--space-1);
   }
   .editor-layout.experience-workspace .proofread-field {
-    padding: var(--space-2);
+    padding: 0;
   }
   .editor-layout.experience-workspace .proofread-field__header > div:first-of-type > span {
     display: none;
@@ -544,7 +674,7 @@
     padding-inline: var(--space-2);
   }
   .editor-layout.experience-workspace .source-value {
-    padding: var(--space-2);
+    padding: var(--space-2) 0 0;
   }
   .editor-layout.experience-workspace .field-progress-summary {
     display: none;
@@ -557,6 +687,120 @@
   }
   .editor-layout.experience-workspace .arbitration-queue {
     padding: var(--space-1) var(--space-2);
+  }
+  .editor-layout.experience-workspace .proofread-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .editor-layout.experience-workspace .verification-source-label {
+    display: none;
+  }
+  .editor-layout.experience-workspace .verification-summary-action {
+    margin-left: auto;
+  }
+  .editor-layout.experience-workspace .task-inline-navigation {
+    display: none;
+  }
+  .editor-layout.experience-workspace .editor-panel-header--task {
+    gap: var(--space-1) var(--space-2);
+  }
+  .editor-layout.experience-workspace .task-secondary-actions .task-inline-navigation {
+    display: flex;
+  }
+  .editor-layout.experience-workspace .mobile-field-navigation {
+    position: static;
+    padding: var(--space-1) 0;
+    gap: var(--space-1);
+  }
+  .editor-layout.experience-workspace .mobile-field-navigation label {
+    min-width: 0;
+  }
+  .editor-layout.experience-workspace .field-step {
+    flex: 0 0 44px;
+    width: 44px;
+    padding-inline: 0;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open) {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-rows: minmax(0, 38fr) minmax(0, 62fr) auto;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open)
+    .source-panel,
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open)
+    .fields-panel {
+    grid-column: 1 / -1;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open)
+    .workspace-navigation {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open)
+    .keyboard-panel {
+    grid-column: 2;
+    grid-row: 3;
+    border: 0;
+    border-radius: var(--radius-none);
+    background: transparent;
+    padding: 0;
+    max-height: none;
+    align-self: end;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(
+      .keyboard-open
+    ).pdf-collapsed,
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(
+      .keyboard-open
+    ).pdf-unavailable {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(
+      .keyboard-open
+    ).pdf-collapsed
+    .workspace-navigation,
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(
+      .keyboard-open
+    ).pdf-unavailable
+    .workspace-navigation,
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(
+      .keyboard-open
+    ).pdf-collapsed
+    .keyboard-panel,
+  .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(
+      .keyboard-open
+    ).pdf-unavailable
+    .keyboard-panel {
+    grid-row: 2;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline:not(.keyboard-open)
+    .keyboard-dock-controls {
+    padding: var(--space-1) 0;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline:not(.keyboard-open) .keyboard-toggle {
+    width: 44px;
+    min-width: 44px;
+    padding-inline: 0;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline:not(.keyboard-open)
+    .keyboard-toggle-icon {
+    display: block;
+  }
+  .editor-layout.experience-workspace.source-toggle-inline:not(.keyboard-open)
+    .keyboard-toggle-label,
+  .editor-layout.experience-workspace.source-toggle-inline:not(.keyboard-open)
+    .keyboard-toggle-chevron {
+    display: none;
+  }
+  .editor-layout.experience-workspace .keyboard-dock-controls {
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+  }
+  .editor-layout.experience-workspace .keyboard-dock-controls .btn {
+    font-size: var(--text-xs);
+    padding-inline: var(--space-2);
+  }
+  .editor-layout.experience-workspace .keyboard-search-row .form-control {
+    min-height: 44px;
+    font-size: var(--text-sm);
   }
 }
 

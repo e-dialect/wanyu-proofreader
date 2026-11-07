@@ -1,14 +1,18 @@
 <template>
   <article
     class="proofread-field"
-    :class="{ 'proofread-field--active': active, 'proofread-field--changed': changed }"
+    :class="{
+      'proofread-field--active': active,
+      'proofread-field--changed': changed,
+      'proofread-field--wide': wide
+    }"
   >
     <header class="proofread-field__header">
       <button v-if="mobile && overview" class="btn btn-secondary" @click="emit('select')">
         修改此字段
       </button>
       <div>
-        <span>字段 {{ index + 1 }}</span>
+        <span class="sr-only">字段 {{ index + 1 }}</span>
         <h2>{{ header }}</h2>
       </div>
       <div class="proofread-field__actions">
@@ -24,7 +28,25 @@
         </button>
       </div>
     </header>
-    <div class="source-value">
+    <label class="sr-only" :for="`proofread-field-${index}`">{{ header }} 校对结果</label>
+    <textarea
+      :id="`proofread-field-${index}`"
+      :ref="setInput"
+      v-model="value"
+      :lang="language"
+      :inputmode="inputMode"
+      :readonly="readOnly"
+      rows="1"
+      class="form-control proofread-textarea"
+      :placeholder="`输入${header}的校对结果`"
+      @focus="emit('activate', $event)"
+      @blur="emit('remember', $event)"
+      @select="emit('remember', $event)"
+      @keyup="emit('remember', $event)"
+      @click="emit('remember', $event)"
+      @input="onInput"
+    ></textarea>
+    <div class="source-value source-value--compact">
       <span>导入文本</span>
       <AppFieldValue
         as="p"
@@ -61,29 +83,13 @@
         本字段疑点较多，已按密度折叠 {{ hintOverflow }} 条
       </li>
     </ul>
-    <label class="sr-only" :for="`proofread-field-${index}`">{{ header }} 校对结果</label>
-    <textarea
-      :id="`proofread-field-${index}`"
-      :ref="(el) => emit('textarea', el)"
-      v-model="value"
-      :lang="language"
-      :inputmode="inputMode"
-      :readonly="readOnly"
-      class="form-control proofread-textarea"
-      :placeholder="`输入${header}的校对结果`"
-      @focus="emit('activate', $event)"
-      @blur="emit('remember', $event)"
-      @select="emit('remember', $event)"
-      @keyup="emit('remember', $event)"
-      @click="emit('remember', $event)"
-      @input="emit('change')"
-    ></textarea>
   </article>
 </template>
 <script setup>
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import { hintKindLabel as hintLabel } from '@/lib/fieldHints'
-defineProps({
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+const props = defineProps({
   header: String,
   index: Number,
   originalValue: String,
@@ -101,6 +107,53 @@ defineProps({
   hintOverflow: Number
 })
 const value = defineModel({ type: String, default: '' })
+const input = ref(null)
+const wide = computed(
+  () =>
+    /\n/.test(value.value) || Math.max(value.value.length, props.originalValue?.length || 0) > 100
+)
+let observer
+let alive = true
+function setInput(element) {
+  input.value = element
+  emit('textarea', element)
+}
+function fit() {
+  const element = input.value
+  if (!alive || !element?.getClientRects().length) return
+  const styles = getComputedStyle(element)
+  const minimum = Number.parseFloat(styles.minHeight) || 48
+  const maximum = Number.parseFloat(styles.maxHeight) || 176
+  const border =
+    (Number.parseFloat(styles.borderTopWidth) || 0) +
+    (Number.parseFloat(styles.borderBottomWidth) || 0)
+  element.style.height = 'auto'
+  element.style.height = `${Math.min(maximum, Math.max(minimum, element.scrollHeight + border))}px`
+}
+function onInput() {
+  fit()
+  emit('change')
+}
+watch([value, () => props.mobile, () => props.overview], () => nextTick(fit), { flush: 'post' })
+onMounted(() => {
+  fit()
+  if (typeof ResizeObserver !== 'undefined') {
+    let width = 0
+    observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width !== width) {
+        width = entry.contentRect.width
+        fit()
+      }
+    })
+    observer.observe(input.value)
+  }
+  document.fonts?.addEventListener('loadingdone', fit)
+})
+onBeforeUnmount(() => {
+  alive = false
+  observer?.disconnect()
+  document.fonts?.removeEventListener('loadingdone', fit)
+})
 const emit = defineEmits([
   'select',
   'restore',

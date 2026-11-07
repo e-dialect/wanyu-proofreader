@@ -1,18 +1,6 @@
 <template>
   <main class="container page workspace-page project-workspace-page">
-    <header class="page-heading project-detail-heading">
-      <div>
-        <RouterLink to="/admin" class="back-link">← 所有项目</RouterLink>
-        <h1>{{ project?.name || '项目工作区' }}</h1>
-        <p v-if="project?.description">{{ project.description }}</p>
-      </div>
-      <RouterLink
-        v-if="project"
-        :to="`/admin/projects/${projectId}/settings`"
-        class="btn btn-quiet btn-sm"
-        >项目设置</RouterLink
-      >
-    </header>
+    <ProjectWorkspaceHeading :project="project" />
     <ProjectWorkspaceNav v-if="project" :project-id="projectId" :active="location.section" />
     <AppStatusPanel v-if="loadingProject" state="pending" message="正在打开项目…" />
     <AppStatusPanel
@@ -155,6 +143,7 @@ import {
 } from '@/lib/projectWorkspace'
 import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import ProjectWorkspaceHeading from '@/components/admin/project/ProjectWorkspaceHeading.vue'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
 import ProjectImportChoice from '@/components/admin/project/ProjectImportChoice.vue'
 import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'

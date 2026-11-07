@@ -24,6 +24,11 @@ const output =
     await toggle.waitFor()
     assert.equal(await toggle.getAttribute('aria-expanded'), 'false')
     await page.locator('.pdf-page-label').waitFor()
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector('.pdf-canvas')
+      return canvas?.width > 100 && !document.querySelector('.pdf-loading-mask')
+    })
+    await page.screenshot({ path: path.join(output, 'desktop-default.png') })
     assert.equal(await page.getByRole('toolbar', { name: '原文工具' }).count(), 1)
     await page.locator('.pdf-preview-help > summary').click()
     await page.getByText('已经下载的副本无法收回。', { exact: true }).waitFor()
@@ -47,6 +52,20 @@ const output =
     const width = Number(await divider.getAttribute('aria-valuenow'))
     assert.ok(width > 40 && width < 50)
     const input = page.locator('.proofread-textarea').first()
+    const shortHeight = (await input.boundingBox()).height
+    assert.ok(shortHeight <= 80, 'short fields do not reserve a paragraph-sized editor')
+    const exactMultiline = '  ia̤̍h\n' + '𠮷  '.repeat(80) + '\n  '
+    await input.fill(exactMultiline)
+    assert.equal(
+      await input.inputValue(),
+      exactMultiline,
+      'autoheight preserves leading/trailing whitespace, newlines and combining characters'
+    )
+    const longHeight = (await input.boundingBox()).height
+    assert.ok(
+      longHeight > shortHeight && longHeight <= 177,
+      'long fields grow to a bounded editing area'
+    )
     await input.fill('甲乙')
     await input.evaluate((element) => {
       element.setSelectionRange(1, 1)
@@ -58,6 +77,7 @@ const output =
     assert.equal(await input.inputValue(), '甲ɑ乙')
     assert.equal(await input.evaluate((element) => element === document.activeElement), true)
     await page.getByRole('button', { name: '清除搜索', exact: true }).click()
+    await page.getByRole('combobox', { name: '字符分组', exact: true }).selectOption('__recent')
     await page
       .getByRole('region', { name: '最近使用字符' })
       .getByRole('button', { name: '再次插入字符 ɑ' })
@@ -70,6 +90,22 @@ const output =
     assert.equal(Number(await divider.getAttribute('aria-valuenow')), width)
     await page.getByRole('button', { name: '系统输入 / 收起', exact: true }).click()
     await page.setViewportSize({ width: 390, height: 844 })
+    const fieldNavigation = await page.getByRole('navigation', { name: '字段导航' }).boundingBox()
+    const collapsedKeyboard = await toggle.boundingBox()
+    assert.ok(
+      Math.abs(fieldNavigation.y - collapsedKeyboard.y) <= 5,
+      'closed character entry shares the field navigation row'
+    )
+    assert.ok(
+      Math.max(
+        fieldNavigation.y + fieldNavigation.height,
+        collapsedKeyboard.y + collapsedKeyboard.height
+      ) -
+        Math.min(fieldNavigation.y, collapsedKeyboard.y) <=
+        60,
+      'closed mobile controls use one compact bottom bar'
+    )
+    await page.screenshot({ path: path.join(output, 'mobile-compact-controls.png') })
     await page.getByRole('button', { name: '查看原文', exact: true }).click()
     const source = await page.locator('.source-panel').boundingBox()
     const fieldPanel = await page.locator('.fields-panel').boundingBox()
@@ -165,7 +201,8 @@ const output =
     await short.screenshot({ path: path.join(output, 'reflow-640x400-character-tray.png') })
     await navigation.getByRole('combobox').selectOption('0')
     assert.equal(await short.locator('.proofread-textarea:visible').evaluate(centerUncovered), true)
-    await short.getByRole('button', { name: '检查并提交', exact: true }).click()
+    await navigation.getByRole('combobox').selectOption('2')
+    await navigation.getByRole('button', { name: '整条总览', exact: true }).click()
     await navigation.getByRole('button', { name: '检查并提交', exact: true }).click()
     const confirmation = short.getByRole('dialog')
     await confirmation.getByRole('checkbox').check()

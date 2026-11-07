@@ -1,0 +1,379 @@
+/* One reading surface; filters and batch tools appear when needed. */
+.entry-list-experience {
+  padding: var(--space-5);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-width: 0;
+}
+.entry-list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.entry-list-heading h2 {
+  font: 600 var(--text-lg) / 1.4 var(--font-ui);
+}
+.entry-list-counts {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+.entry-list-counts strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.entry-list-error {
+  margin-bottom: var(--space-3);
+  color: var(--danger);
+}
+.entry-list-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.entry-list-search {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.entry-list-search > .app-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  transform: translateY(-50%);
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+.entry-list-search .form-control {
+  padding-left: calc(var(--space-6) + var(--space-2));
+  min-height: 40px;
+  background: var(--paper-quiet);
+}
+.entry-list-toolbar > [role='combobox'],
+.entry-list-toolbar > .app-select {
+  flex: 0 1 185px;
+  min-width: 0;
+}
+.entry-list-filters,
+.entry-list-batch {
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--paper-quiet);
+  border-radius: var(--radius-sm);
+}
+.entry-quality-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.entry-list-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.entry-list-filter-fields .form-group {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.entry-list-filter-fields .form-label {
+  font-size: var(--text-sm);
+}
+.entry-batch-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.entry-batch-heading > span {
+  color: var(--ink-muted);
+}
+.entry-batch-selection,
+.entry-batch-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.entry-batch-selection .form-control {
+  width: min(100%, 260px);
+}
+.entry-batch-actions {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+.entry-list-experience .table-wrapper {
+  border-radius: var(--radius-none);
+}
+.entry-experience-table {
+  width: 100%;
+  table-layout: fixed;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.entry-experience-table th,
+.entry-experience-table td {
+  padding: var(--space-4) var(--space-3);
+  vertical-align: top;
+}
+.entry-experience-table th {
+  padding-block: var(--space-3);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: normal;
+  background: transparent;
+}
+.entry-experience-table td {
+  border-bottom-color: var(--line-faint);
+}
+.entry-experience-table tr:last-child td {
+  border-bottom: 0;
+}
+.entry-experience-table th:first-child,
+.entry-experience-table td:first-child {
+  padding-left: 0;
+}
+.entry-experience-table th:last-child,
+.entry-experience-table td:last-child {
+  padding-right: 0;
+}
+.entry-experience-table .entry-select-cell {
+  width: 56px;
+}
+.entry-checkbox-hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+}
+.entry-select-cell input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  margin: 0;
+}
+.entry-content-cell {
+  color: var(--ink);
+}
+.entry-content-location {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.entry-detail-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.entry-detail-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.entry-detail-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.entry-content-text {
+  display: block;
+  font-size: var(--text-entry);
+  line-height: 1.65;
+}
+.entry-content-cell .ocr-cell-summary {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.entry-experience-table .entry-progress-cell {
+  width: 155px;
+}
+.entry-progress-cell > small {
+  display: block;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.entry-experience-table .entry-quality-cell {
+  width: 105px;
+}
+.entry-experience-table .entry-actions-cell {
+  width: 95px;
+  text-align: right;
+}
+.entry-arbitration-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-height: 32px;
+  color: var(--warn-ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.entry-list-experience .badge {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.entry-list-experience .badge-pending {
+  padding-inline: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+.entry-mobile-status {
+  display: none;
+}
+@media (max-width: 900px) {
+  .entry-list-filter-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .entry-list-experience {
+    padding: var(--space-4);
+  }
+  .entry-list-heading {
+    gap: var(--space-2);
+  }
+  .entry-list-counts {
+    gap: var(--space-1) var(--space-3);
+  }
+  .entry-list-search {
+    flex-basis: 100%;
+  }
+  .entry-list-toolbar > [role='combobox'],
+  .entry-list-toolbar > .app-select {
+    flex: 1 1 120px;
+  }
+  .entry-list-filters,
+  .entry-list-batch {
+    padding: var(--space-3);
+  }
+  .entry-list-filter-fields {
+    gap: var(--space-3) var(--space-2);
+  }
+  .entry-experience-table th,
+  .entry-experience-table td {
+    padding-inline: var(--space-2);
+  }
+  .entry-experience-table .entry-progress-cell,
+  .entry-experience-table .entry-quality-cell {
+    display: none;
+  }
+  .entry-experience-table .entry-actions-cell {
+    width: 88px;
+  }
+  .entry-experience-table .entry-select-cell {
+    width: 52px;
+  }
+  .entry-select-cell input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+  }
+  .entry-detail-link,
+  .entry-arbitration-link {
+    min-height: 44px;
+  }
+  .entry-content-location {
+    column-gap: var(--space-2);
+    margin-top: calc(-1 * var(--space-2));
+  }
+  .entry-mobile-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-2);
+    margin-top: var(--space-2);
+    color: var(--ink-muted);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+  }
+  .entry-mobile-status .badge {
+    padding: 0;
+    background: transparent;
+  }
+  .entry-batch-selection .form-control {
+    width: 100%;
+  }
+}
+
+.entry-actions-cell .app-dropdown-trigger {
+  padding-inline: var(--space-2);
+  gap: var(--space-1);
+}
+.entry-actions-cell .app-dropdown-trigger .app-icon,
+.entry-arbitration-link .app-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.entry-list-heading > .app-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.entry-list-search > .app-icon {
+  width: 18px;
+  height: 18px;
+}
+
+@media (min-width: 641px) {
+  .entry-list-heading > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-4);
+  }
+  .entry-list-heading .entry-list-counts {
+    margin-top: 0;
+  }
+}
+@media (max-width: 640px) {
+  .entry-list-toolbar {
+    position: relative;
+  }
+  .entry-list-toolbar > .entry-filter-reset {
+    position: absolute;
+    top: 0;
+    right: var(--space-1);
+  }
+  .entry-list-search .form-control {
+    padding-right: 60px;
+  }
+  .entry-list-search input::-webkit-search-cancel-button {
+    display: none;
+  }
+}

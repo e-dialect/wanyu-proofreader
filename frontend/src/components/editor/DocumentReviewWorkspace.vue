@@ -3,11 +3,12 @@
     ref="workspace"
     class="editor-layout experience-workspace"
     :class="{
-      'has-keyboard': keyboardAvailable,
+      'has-keyboard': keyboardAvailable && !suspended,
       'keyboard-open': keyboardOpen && !suspended,
       'pdf-collapsed': sourceCollapsed,
       'pdf-unavailable': !loading && !pdfLoading && !pdfUrl && !pdfError,
-      'is-resizing': resizing
+      'is-resizing': resizing,
+      'source-toggle-inline': inlineSourceToggle
     }"
     :style="viewportStyle"
     @pointerdown="onOutsidePointer"
@@ -125,32 +126,56 @@
       <span></span>
     </div>
     <section class="editor-panel fields-panel" :aria-labelledby="contentLabelledBy">
-      <slot name="panel-header"></slot>
+      <slot
+        name="panel-header"
+        :source-collapsed="sourceCollapsed"
+        :toggle-source="toggleSource"
+        :compact="compact"
+      ></slot>
       <div class="editor-panel-body editor-panel-body--fields">
         <slot :input-mode="compact && keyboardOpen && !suspended ? 'none' : 'text'"></slot>
       </div>
     </section>
     <div class="workspace-navigation"><slot name="navigation"></slot></div>
-    <aside v-show="keyboardAvailable" class="keyboard-panel" aria-label="项目字符键盘">
-      <p v-if="showKeyboardHint" class="keyboard-discovery" role="note">
-        <span>{{ keyboardDiscoveryNotice }}</span>
-        <button type="button" class="btn btn-quiet btn-sm" @click="dismissHint">知道了</button>
-      </p>
+    <aside
+      v-show="keyboardAvailable && !suspended"
+      class="keyboard-panel"
+      aria-label="项目字符键盘"
+    >
+      <details v-if="showKeyboardHint" class="keyboard-discovery">
+        <summary>特殊字符输入提示</summary>
+        <div role="note">
+          <span>{{ keyboardDiscoveryNotice }}</span>
+          <button type="button" class="btn btn-quiet btn-sm" @click="dismissHint">知道了</button>
+        </div>
+      </details>
       <div class="keyboard-dock-controls">
         <button
-          class="btn btn-secondary btn-sm"
+          class="btn btn-secondary btn-sm keyboard-toggle"
           :aria-expanded="keyboardOpen && !suspended"
           aria-controls="project-character-tray"
           aria-label="字符键盘"
           @click="keyboardOpen ? closeKeyboard() : openKeyboard()"
         >
-          字符键盘 <span aria-hidden="true">{{ keyboardOpen && !suspended ? '⌄' : '⌃' }}</span>
+          <AppIcon name="keyboard" class="keyboard-toggle-icon" /><span
+            class="keyboard-toggle-label"
+            >字符键盘</span
+          ><span class="keyboard-toggle-chevron" aria-hidden="true">{{
+            keyboardOpen && !suspended ? '⌄' : '⌃'
+          }}</span>
         </button>
         <template v-if="keyboardOpen && !suspended">
-          <button class="btn btn-secondary" :aria-pressed="pinned" @click="pinned = !pinned">
+          <button
+            v-if="compact"
+            class="btn btn-secondary btn-sm"
+            :aria-pressed="pinned"
+            @click="pinned = !pinned"
+          >
             {{ pinned ? '取消钉住' : '钉住' }}
           </button>
-          <button class="btn btn-quiet" @click="closeKeyboard">系统输入 / 收起</button>
+          <button class="btn btn-quiet btn-sm" aria-label="系统输入 / 收起" @click="closeKeyboard">
+            系统输入 / 收起
+          </button>
         </template>
       </div>
       <div id="project-character-tray" class="keyboard-dock-content">
@@ -166,6 +191,7 @@ import '@/editor-experience.css'
 import { clampSourceWidth, editorPreferenceKey, readEditorPreference } from '@/lib/editorExperience'
 import { currentUserId } from '@/services/authService'
 import PdfSinglePageViewer from '@/components/editor/PdfSinglePageViewer.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { useProjectPdf } from '@/composables/useProjectPdf'
 import {
   KEYBOARD_DISCOVERY_NOTICE,
@@ -175,6 +201,7 @@ import {
 
 const props = defineProps({
   keyboardAvailable: { type: Boolean, default: false },
+  inlineSourceToggle: { type: Boolean, default: false },
   suspended: { type: Boolean, default: false },
   page: { type: Object, default: null },
   loading: { type: Boolean, default: false },

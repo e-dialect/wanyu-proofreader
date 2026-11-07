@@ -93,6 +93,16 @@ class UiDebtTests(unittest.TestCase):
         self.assertEqual(found['undefined_variables'], [])
         self.assertEqual(found['alerts_without_role'], [])
 
+    def test_reka_runtime_geometry_does_not_hide_misspelled_variables(self):
+        self.write('controls.css', '''.menu {
+ width: var(--reka-select-trigger-width, 180px);
+ max-height: var(--reka-select-content-available-height, 360px);
+ transform-origin: var(--reka-dropdown-menu-content-transform-origin, top);
+ height: var(--reka-select-content-available-heigth);
+}''')
+        self.assertEqual([row['value'] for row in guard.measure(self.source)['undefined_variables']],
+                         ['--reka-select-content-available-heigth'])
+
     def test_warning_then_strict_failure_then_removal_passes(self):
         self.write('View.vue', '<style>.x { color: #fff; }</style>')
         baseline = self.baseline()

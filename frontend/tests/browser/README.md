@@ -1,5 +1,17 @@
 # Review workspace browser regression
 
+`run_frontend_quality_browser.py --only components` runs `reka-controls.cjs`
+against the real public components: empty-string and numeric values, reordered
+options, an asynchronous disabled change while open, disabled/busy actions,
+keyboard menu dismissal, menu-to-AppModal focus return, 1280/390/320px portal
+geometry and reduced-motion preferences. It uses no backend requests.
+
+The `workbench` group also runs `entry-list-experience.cjs` against a disposable
+real backend. It checks exact CSV values, default-hidden batch selection,
+select/exit, details, required quality basis, URL filters, reload, 503 retention
+and retry, stale empty-result suppression and mobile summaries. Its screenshots
+and JSON receipt are in `output/playwright/entry-list-experience/`.
+
 With Vite running on port 5173, run `node tests/browser/auth-navigation.cjs`
 from the frontend directory for login/registration navigation regression.
 It mounts the real views with a memory router and synthetic authentication,
