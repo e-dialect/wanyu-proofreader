@@ -488,7 +488,7 @@
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppField from '@/components/AppField.vue'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import {
   deleteProject,
@@ -582,6 +582,12 @@ const transferCandidates = computed(() =>
 )
 
 let loadGeneration = 0
+let disposed = false
+const currentProject = (id) => !disposed && id === projectId.value
+onBeforeUnmount(() => {
+  disposed = true
+  loadGeneration++
+})
 watch(projectId, load, { immediate: true })
 
 async function load() {
@@ -651,16 +657,19 @@ async function saveRoles() {
   savingRoles.value = true
   rolesError.value = ''
   rolesSuccess.value = ''
+  const id = projectId.value
   try {
     const roles = {}
     for (const column of columnRoles.value) roles[column.name] = column.role
-    const roleView = await saveColumnRoles(projectId.value, roles)
+    const roleView = await saveColumnRoles(id, roles)
+    if (!currentProject(id)) return
     columnRoles.value = (roleView.columns || []).map((column) => ({ ...column }))
     rolesSuccess.value = '列角色已保存。条目内容没有改动。'
   } catch (e) {
+    if (!currentProject(id)) return
     rolesError.value = getPbMessage(e, '列角色保存失败。')
   } finally {
-    savingRoles.value = false
+    if (currentProject(id)) savingRoles.value = false
   }
 }
 
@@ -675,15 +684,19 @@ async function saveDetails() {
     return
   }
   savingDetails.value = true
+  const id = projectId.value
   try {
-    project.value = await updateProject(projectId.value, { name, description })
+    const updated = await updateProject(id, { name, description })
+    if (!currentProject(id)) return
+    project.value = updated
     details.name = project.value.name
     details.description = project.value.description || ''
     detailsSuccess.value = '项目资料已保存。'
   } catch (e) {
+    if (!currentProject(id)) return
     detailsError.value = getPbMessage(e, '项目资料保存失败，请重试。')
   } finally {
-    savingDetails.value = false
+    if (currentProject(id)) savingDetails.value = false
   }
 }
 
@@ -692,43 +705,55 @@ async function saveSettings() {
   saving.value = true
   error.value = ''
   success.value = ''
+  const id = projectId.value
   try {
-    project.value = await updateProject(projectId.value, {
+    const updated = await updateProject(id, {
       accessMode: settings.accessMode,
       password: settings.password,
       requiredProofreads: settings.requiredProofreads
     })
+    if (!currentProject(id)) return
+    project.value = updated
     settings.password = ''
     success.value = '项目设置已保存，现有成员保持不变。'
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '项目设置保存失败。')
   } finally {
-    saving.value = false
+    if (currentProject(id)) saving.value = false
   }
 }
 
 async function addMember() {
   savingMember.value = true
   error.value = ''
+  const id = projectId.value
   try {
-    await setProjectMember(projectId.value, newMember.userId, newMember.role)
+    await setProjectMember(id, newMember.userId, newMember.role)
+    if (!currentProject(id)) return
     newMember.userId = ''
-    await reloadMembers()
+    await reloadMembers(id)
+    if (!currentProject(id)) return
     success.value = '成员已添加。'
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '成员添加失败。')
   } finally {
-    savingMember.value = false
+    if (currentProject(id)) savingMember.value = false
   }
 }
 
 async function changeRole(member, role) {
   error.value = ''
+  const id = projectId.value
   try {
-    await setProjectMember(projectId.value, member.user, role)
-    await reloadMembers()
+    await setProjectMember(id, member.user, role)
+    if (!currentProject(id)) return
+    await reloadMembers(id)
+    if (!currentProject(id)) return
     success.value = '项目角色已更新。'
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '项目角色更新失败。')
   }
 }
@@ -736,17 +761,23 @@ async function changeRole(member, role) {
 async function removeMember(member) {
   if (!window.confirm(`确定移除 ${member.name || member.email} 吗？`)) return
   error.value = ''
+  const id = projectId.value
   try {
-    await removeProjectMember(projectId.value, member.user)
-    await reloadMembers()
+    await removeProjectMember(id, member.user)
+    if (!currentProject(id)) return
+    await reloadMembers(id)
+    if (!currentProject(id)) return
     success.value = '成员已移除。'
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '成员移除失败。')
   }
 }
 
-async function reloadMembers() {
-  members.value = await listProjectMembers(projectId.value)
+async function reloadMembers(id = projectId.value) {
+  const result = await listProjectMembers(id)
+  if (!currentProject(id)) return
+  members.value = result
   await auth.loadAccessContext({ force: true })
 }
 
@@ -754,19 +785,23 @@ async function generateVolunteers() {
   generatingVolunteers.value = true
   error.value = ''
   success.value = ''
+  const id = projectId.value
   try {
-    const batch = await generateProjectVolunteers(projectId.value, {
+    const batch = await generateProjectVolunteers(id, {
       ...volunteerForm,
       loginUrl: `${window.location.origin}/login`
     })
+    if (!currentProject(id)) return
     generatedBatch.value = batch
-    await reloadMembers()
+    await reloadMembers(id)
+    if (!currentProject(id)) return
     success.value = `已生成并加入 ${batch.count} 个志愿者账号。凭据只保留在当前页面。`
     downloadGeneratedCredentials()
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '志愿者账号生成失败，未创建任何账号。')
   } finally {
-    generatingVolunteers.value = false
+    if (currentProject(id)) generatingVolunteers.value = false
   }
 }
 
@@ -787,15 +822,20 @@ async function transferOwner() {
   if (!window.confirm('确定转移项目所有权吗？你将保留为项目管理员。')) return
   transferring.value = true
   error.value = ''
+  const id = projectId.value
   try {
-    await transferProjectOwnership(projectId.value, nextOwnerId.value)
+    await transferProjectOwnership(id, nextOwnerId.value)
+    if (!currentProject(id)) return
     await auth.loadAccessContext({ force: true })
+    if (!currentProject(id)) return
     await load()
+    if (!currentProject(id)) return
     success.value = '项目所有权已转移。'
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '所有权转移失败。')
   } finally {
-    transferring.value = false
+    if (currentProject(id)) transferring.value = false
   }
 }
 
@@ -803,14 +843,18 @@ async function removeProject() {
   if (!window.confirm(`确定永久删除项目“${project.value.name}”及其全部材料吗？`)) return
   deleting.value = true
   error.value = ''
+  const id = projectId.value
   try {
-    await deleteProject(projectId.value)
+    await deleteProject(id)
+    if (!currentProject(id)) return
     await auth.loadAccessContext({ force: true })
+    if (!currentProject(id)) return
     await router.push('/admin')
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '项目删除失败。')
   } finally {
-    deleting.value = false
+    if (currentProject(id)) deleting.value = false
   }
 }
 
@@ -832,21 +876,24 @@ async function saveKeyboardSettings() {
   savingKeyboards.value = true
   error.value = ''
   success.value = ''
+  const id = projectId.value
   try {
     const config = await configureProjectKeyboards(
-      projectId.value,
+      id,
       enabledKeyboardIds.value,
       defaultKeyboardId.value
     )
+    if (!currentProject(id)) return
     enabledKeyboardIds.value = config.items.map((item) => item.keyboardId)
     defaultKeyboardId.value = config.defaultKeyboardId || ''
     success.value = enabledKeyboardIds.value.length
       ? '项目键盘设置已保存。'
       : '已关闭本项目的键盘入口。'
   } catch (e) {
+    if (!currentProject(id)) return
     error.value = getPbMessage(e, '键盘设置保存失败。')
   } finally {
-    savingKeyboards.value = false
+    if (currentProject(id)) savingKeyboards.value = false
   }
 }
 

@@ -3,6 +3,7 @@ package ocrengine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,93 @@ import (
 	"testing"
 	"time"
 )
+
+func TestNativeBoundingBoxContainsEveryWord(t *testing.T) {
+	rows, err := ParseNative(`<line><word xMin="100" yMin="30" xMax="120" yMax="40">right</word><word xMin="50" yMin="20" xMax="80" yMax="50">left</word></line>`, "right left")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	if got := rows[0].Cells[0].BBox; got != [4]float64{50, 20, 70, 30} {
+		t.Fatalf("box excludes part of the line: %v", got)
+	}
+}
+
+func TestNativeRawMatchingKeepsForwardOrderAndExactSpaces(t *testing.T) {
+	layout := `<line><word>same</word></line><line><word>unmatched</word></line><line><word>same</word></line><line><word>first</word></line>`
+	rows, err := ParseNative(layout, "first\n  same  \n same \n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"  same  ", "unmatched", " same ", "first"} {
+		if got := rows[i].Cells[0].Text; got != want {
+			t.Fatalf("row %d text %q want %q", i, got, want)
+		}
+	}
+}
+
+func BenchmarkParseNativeUnmatchedLines(b *testing.B) {
+	layout := strings.Repeat(`<line><word xMin="1" yMin="1" xMax="10" yMax="10">native</word></line>`, 2000)
+	raw := strings.Repeat("  unmatched physical line \n", 2000)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := ParseNative(layout, raw); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestCommandOutputIsBoundedWhileProcessRuns(t *testing.T) {
+	if len(os.Args) > 1 && os.Args[len(os.Args)-1] == "ocr-output-helper" {
+		// A parser can emit warnings for attacker-controlled PDF objects. Do
+		// not let it fill memory before the process/output deadline is checked.
+		block := []byte(strings.Repeat("x", 1<<20))
+		for i := 0; i < 32; i++ {
+			if _, err := os.Stdout.Write(block); err != nil {
+				break
+			}
+		}
+		time.Sleep(4 * time.Second)
+		os.Exit(0)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	started := time.Now()
+	output, err := CommandOutput(ctx, executable, "-test.run=^TestCommandOutputIsBoundedWhileProcessRuns$", "--", "ocr-output-helper")
+	if err == nil || !strings.Contains(fmt.Sprint(err), "output exceeds budget") || len(output) > MaxOutputBytes {
+		t.Fatalf("output length=%d err=%v", len(output), err)
+	}
+	if elapsed := time.Since(started); elapsed > 3*time.Second {
+		t.Fatalf("oversized child continued running for %v", elapsed)
+	}
+}
+
+func TestCommandEnvironmentContracts(t *testing.T) {
+	if len(os.Args) > 1 && os.Args[len(os.Args)-1] == "ocr-environment-helper" {
+		fmt.Print(os.Getenv("WANYU_COMMAND_ENV_FIXTURE"))
+		os.Exit(0)
+	}
+	t.Setenv("WANYU_COMMAND_ENV_FIXTURE", "controlled-environment-fixture")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	args := []string{"-test.run=^TestCommandEnvironmentContracts$", "--", "ocr-environment-helper"}
+	output, err := CommandOutput(ctx, executable, args...)
+	if err != nil || string(output) != "" {
+		t.Fatalf("OCR inherited caller environment: %q %v", output, err)
+	}
+	output, err = CommandOutputWithEnv(ctx, executable, os.Environ(), args...)
+	if err != nil || string(output) != "controlled-environment-fixture" {
+		t.Fatalf("image environment contract changed: %q %v", output, err)
+	}
+}
 
 func TestNativePreservesWhitespaceUnicodeAndCoordinates(t *testing.T) {
 	text := "  𠀀 \uE001 ⿰木木 ɕ˥\uFFFD"

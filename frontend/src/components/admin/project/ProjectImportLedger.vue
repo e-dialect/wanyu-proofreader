@@ -4,7 +4,8 @@
     <div class="card-title">批次台账</div>
     <p class="text-sm text-muted mb-3">
       本项目的导入批次汇总：入册行数、来源覆盖与未知来源计数均由系统对账给出。「跳过」列为 Review
-      Bundle 复用自然键的条数；CSV 预检被跳过的无效行计入「失败」列。
+      Bundle 复用自然键的条数；CSV 预检被跳过的无效行计入「失败」列。OCR
+      输入与失败按物理页计，入册仍按条目行计。
     </p>
     <div v-if="loadingLedger" class="text-muted">加载中...</div>
     <div v-else-if="ledgerError" class="alert alert-error" role="alert">{{ ledgerError }}</div>
@@ -15,6 +16,9 @@
         >
         <span
           ><strong>{{ ledger.summary.total_rows }}</strong> 行输入</span
+        >
+        <span
+          ><strong>{{ ledger.summary.ocr_pages || 0 }}</strong> OCR 页输入</span
         >
         <span
           ><strong>{{ ledger.summary.imported_rows }}</strong> 行入册</span
@@ -57,10 +61,10 @@
           <td>{{ batch.finished_at || batch.created || '—' }}</td>
           <td>{{ batch.original_filename || '—' }}</td>
           <td>{{ batch.status }}</td>
-          <td>{{ batch.total_count }}</td>
-          <td>{{ batch.inserted_count }}</td>
-          <td>{{ batch.skipped_count }}</td>
-          <td>{{ batch.failed_count }}</td>
+          <td>{{ batch.total_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
+          <td>{{ batch.inserted_count }} 行</td>
+          <td>{{ batch.skipped_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
+          <td>{{ batch.failed_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
           <td>
             {{ batch.counts_label
             }}<span v-if="batch.counts_note" class="text-muted">（{{ batch.counts_note }}）</span>

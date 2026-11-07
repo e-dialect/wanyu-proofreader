@@ -11,8 +11,11 @@ what to prune.
   python3 ops/audit_storage.py --data-dir /var/lib/fangji/pb_data --json
 """
 import argparse
+import heapq
 import json
+import os
 import shutil
+import stat
 import sys
 import time
 from pathlib import Path
@@ -33,26 +36,32 @@ def human(size):
     return f'{size:,.1f} PiB'
 
 
-def size_of(path):
-    try:
-        return path.stat().st_size
-    except OSError:
-        return 0  # the in-process sweep may have just reclaimed it
+def walk_entries(root, findings, relative=()):
+    """Stream each entry/stat once, ignoring links and tolerating swept files.
 
-
-def directory_size(path):
-    total = 0
+    A permissions/I/O error is an incomplete audit, never a successful zero-byte
+    result. Keep the traversal bounded by directory depth instead of file count.
+    """
     try:
-        entries = list(path.rglob('*'))
-    except OSError:
-        return total
-    for entry in entries:
-        try:
-            if entry.is_file() and not entry.is_symlink():
-                total += size_of(entry)
-        except OSError:
-            continue
-    return total
+        with os.scandir(root) as entries:
+            for entry in entries:
+                try:
+                    info = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    continue  # concurrent cache reclamation
+                except OSError as error:
+                    findings.append({'level': 'error', 'what': f'Cannot inspect {entry.path}: {error}'})
+                    continue
+                if stat.S_ISLNK(info.st_mode):
+                    continue
+                parts = (*relative, entry.name)
+                yield entry.path, parts, info
+                if stat.S_ISDIR(info.st_mode):
+                    yield from walk_entries(entry.path, findings, parts)
+    except FileNotFoundError:
+        pass  # a cache directory may disappear during a sweep
+    except OSError as error:
+        findings.append({'level': 'error', 'what': f'Cannot scan {root}: {error}'})
 
 
 def audit(data_dir, now, budget):
@@ -60,8 +69,47 @@ def audit(data_dir, now, budget):
     if not data_dir.is_dir():
         return [{'level': 'error', 'what': f'{data_dir} is not a directory'}], {}
 
-    total = directory_size(data_dir)
-    free = shutil.disk_usage(data_dir).free
+    total = 0
+    largest = []
+    caches = {}
+    storage_bytes = None
+    database_bytes = None
+    for path, parts, info in walk_entries(data_dir, findings):
+        directory = stat.S_ISDIR(info.st_mode)
+        regular = stat.S_ISREG(info.st_mode)
+        if len(parts) == 1 and directory:
+            if parts[0] in TTLs:
+                caches[parts[0]] = {'bytes': 0, 'entries': 0}
+            elif parts[0] == 'storage':
+                storage_bytes = 0
+        if len(parts) == 1 and regular and parts[0] == 'data.db':
+            database_bytes = info.st_size
+        if regular:
+            total += info.st_size
+            item = (info.st_size, path)
+            if len(largest) < 10:
+                heapq.heappush(largest, item)
+            elif item > largest[0]:
+                heapq.heapreplace(largest, item)
+            if len(parts) > 1 and parts[0] == 'storage' and storage_bytes is not None:
+                storage_bytes += info.st_size
+            if len(parts) > 1 and parts[0] in caches:
+                caches[parts[0]]['bytes'] += info.st_size
+        if len(parts) == 2 and parts[0] in caches and (directory or regular):
+            caches[parts[0]]['entries'] += 1
+            age = now - info.st_mtime
+            ttl = TTLs[parts[0]]
+            if parts[1].startswith('building-') and age > 3600:
+                findings.append({'level': 'warn',
+                                 'what': f'{path} is a crashed page-split left for {age / 3600:.0f}h'})
+            elif age > 2 * ttl:
+                findings.append({'level': 'warn',
+                                 'what': f'{path} is {age / ttl:.1f} TTLs old; the in-process sweep has not reclaimed it'})
+    try:
+        free = shutil.disk_usage(data_dir).free
+    except OSError as error:
+        findings.append({'level': 'error', 'what': f'Cannot inspect filesystem space: {error}'})
+        free = 0
     summary = {'data_dir': str(data_dir), 'total_bytes': total, 'free_bytes': free,
                'budget_bytes': budget}
 
@@ -75,39 +123,17 @@ def audit(data_dir, now, budget):
     elif free < 5 * 1024 ** 3:
         findings.append({'level': 'warn', 'what': f'only {human(free)} free on the {data_dir} filesystem'})
 
-    for name, ttl in TTLs.items():
-        root = data_dir / name
-        if not root.is_dir():
+    for name in TTLs:
+        if name not in caches:
             # A renamed directory would otherwise switch these findings off silently.
             findings.append({'level': 'note', 'what': f'{name} is absent, so its TTL is not audited'})
             continue
-        size = directory_size(root)
-        summary[name] = {'bytes': size, 'entries': len([p for p in root.iterdir() if p.is_dir() or p.is_file()])}
-        for entry in sorted(root.iterdir()):
-            try:
-                age = now - entry.stat().st_mtime
-            except OSError:
-                continue
-            if entry.name.startswith('building-') and age > 3600:
-                findings.append({'level': 'warn',
-                                 'what': f'{entry} is a crashed page-split left for {age / 3600:.0f}h'})
-            elif age > 2 * ttl:
-                findings.append({'level': 'warn',
-                                 'what': f'{entry} is {age / ttl:.1f} TTLs old; the in-process sweep has not reclaimed it'})
-
-    database = data_dir / 'data.db'
-    if database.exists():
-        summary['data.db'] = {'bytes': database.stat().st_size}
-    storage = data_dir / 'storage'
-    if storage.is_dir():
-        summary['storage'] = {'bytes': directory_size(storage)}
-
-    try:
-        files = [path for path in data_dir.rglob('*') if path.is_file()]
-    except OSError:
-        files = []
-    largest = sorted(files, key=size_of, reverse=True)[:10]
-    summary['largest'] = [{'path': str(path), 'bytes': size_of(path)} for path in largest]
+        summary[name] = caches[name]
+    if database_bytes is not None:
+        summary['data.db'] = {'bytes': database_bytes}
+    if storage_bytes is not None:
+        summary['storage'] = {'bytes': storage_bytes}
+    summary['largest'] = [{'path': path, 'bytes': size} for size, path in sorted(largest, reverse=True)]
     return findings, summary
 
 

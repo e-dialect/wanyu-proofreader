@@ -6,6 +6,7 @@ const joinBlockDurationMs = 15 * 60 * 1000
 function auth(c) {
   const record = c.auth
   if (!record) throw new UnauthorizedError("登录状态已失效，请重新登录")
+  if (record.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
   return record
 }
 
@@ -173,7 +174,26 @@ function creatorGrant(dao, userId) {
 }
 
 function ownedProjectCount(dao, userId) {
-  return dao.findRecordsByFilter("projects", "admin = {:user}", "", 1000000, 0, { user: userId }).length
+  return Number(dao.countRecords("projects", $dbx.exp("admin = {:user}", { user: userId })))
+}
+
+// Platform-only account/grant projection: aggregate ownership once rather than
+// loading every user's projects and fetching one grant per account.
+function creatorGrantList(dao) {
+  const rows = arrayOf(new DynamicModel({ id: "", name: "", username: "", email: "", role: "", enabled: false, project_limit: 0, owned_count: 0, granted_at: "", revoked_at: "" }))
+  dao.db().newQuery(`SELECT u.id, u.name, u.username, u.email, u.role,
+      COALESCE(g.enabled, 0) AS enabled, COALESCE(g.project_limit, 0) AS project_limit,
+      COALESCE(p.owned_count, 0) AS owned_count,
+      COALESCE(g.granted_at, '') AS granted_at, COALESCE(g.revoked_at, '') AS revoked_at
+    FROM users u LEFT JOIN project_creator_grants g ON g.user = u.id
+    LEFT JOIN (SELECT admin, COUNT(*) AS owned_count FROM projects GROUP BY admin) p ON p.admin = u.id
+    ORDER BY u.name, u.email`).all(rows)
+  return rows.map(row => ({
+    user: row.id, name: row.name, username: row.username, email: row.email,
+    globalRole: row.role, enabled: row.role === "platform_admin" || row.enabled,
+    projectLimit: row.role === "platform_admin" || Number(row.project_limit) <= 0 ? null : Number(row.project_limit),
+    ownedProjectCount: Number(row.owned_count), grantedAt: row.granted_at, revokedAt: row.revoked_at
+  }))
 }
 
 function creationCapability(dao, authRecord, precomputedOwnedCount) {
@@ -436,6 +456,7 @@ module.exports = {
   canProofread,
   nullableLimit,
   creatorGrant,
+  creatorGrantList,
   ownedProjectCount,
   creationCapability,
   projectJson,

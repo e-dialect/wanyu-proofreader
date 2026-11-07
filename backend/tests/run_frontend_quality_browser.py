@@ -14,7 +14,7 @@ import time
 import harness
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor'])
+parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor', 'repository'])
 selected = parser.parse_args().only
 ROOT = harness.BACKEND.parent
 FRONTEND = ROOT / 'frontend'
@@ -33,7 +33,7 @@ with harness.temporary_root() as temporary:
                'VITE_DEV_SERVER_PORT': str(port), 'VITE_PB_URL': origin,
                'FANGJI_TEST_DATA_DIR': str(temporary / 'data'),
                'SCREENSHOT_DIR': str(output), 'SCREENSHOT_PATH': str(output / 'profile-session.png'),
-               'RARE_BROWSER_FIXTURE': str(temporary / 'rare.json'), 'FONT_ENGINES': 'chromium'}
+               'RARE_BROWSER_FIXTURE': str(temporary / 'rare.json'), 'FONT_ENGINES': 'chromium', 'REPOSITORY_REVIEW_OUTPUT': str(output / 'repository-review')}
         with (temporary / 'vite.log').open('w') as log:
             vite = subprocess.Popen(['npm', 'run', 'dev', '--', '--host', '127.0.0.1'], cwd=FRONTEND, env=env, stdout=log, stderr=log)
             try:
@@ -48,6 +48,7 @@ with harness.temporary_root() as temporary:
                 else:
                     raise RuntimeError('Quality fixture Vite did not start')
                 checks = {
+                    'repository': ['frontend/tests/browser/repository-review.cjs'],
                     'review': ['frontend/tests/browser/review.cjs'],
                     'modal': ['frontend/tests/browser/modal.cjs'],
                     'members': ['frontend/tests/browser/member-candidates.cjs'],

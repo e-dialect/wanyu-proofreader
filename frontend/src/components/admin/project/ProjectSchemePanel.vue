@@ -236,15 +236,19 @@ const reviewEmptyMessage = computed(() => {
 })
 
 let schemePollGeneration = 0
+let reviewGeneration = 0
+let disposed = false
 
 const schemeSummary = computed(() => conversionSummaryLines(schemeJob.value))
 
 const testOnlySchemes = computed(() => testOnlySchemeIds(schemeOptions.value))
 
 async function loadReviews() {
+  const generation = ++reviewGeneration
   const status =
     reviewStatusFilter.value === 'all' ? 'AMBIGUOUS,UNSUPPORTED' : reviewStatusFilter.value
   const queue = await listNormalizations(projectId, { status, perPage: 10, page: reviewPage.value })
+  if (disposed || generation !== reviewGeneration) return
   reviewRows.value = queue.items || []
   reviewTotalItems.value = queue.totalItems || 0
   reviewTotalPages.value = queue.totalPages || 1
@@ -253,7 +257,10 @@ async function loadReviews() {
   reviewPage.value = queue.page || 1
   // 草稿按条目 id 存：刷新后原来的输入不该串到别的条目上。
   reviewDraft.value = Object.fromEntries(
-    reviewRows.value.map((row) => [row.id, { canonical: '', basis: '' }])
+    reviewRows.value.map((row) => [
+      row.id,
+      reviewDraft.value[row.id] || { canonical: '', basis: '' }
+    ])
   )
 }
 
@@ -342,6 +349,7 @@ function pollConversion() {
     if (generation !== schemePollGeneration) return
     try {
       const conversions = await listConversions(projectId)
+      if (disposed || generation !== schemePollGeneration) return
       const latest = (conversions.items || [])[0]
       if (latest) schemeJob.value = latest
       if (latest && ['queued', 'processing'].includes(latest.status)) {
@@ -376,6 +384,8 @@ async function saveReview(row) {
   }
 }
 onBeforeUnmount(() => {
+  disposed = true
+  reviewGeneration += 1
   schemeObserver?.disconnect()
   schemePollGeneration += 1
 })

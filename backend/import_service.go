@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -172,6 +173,9 @@ func (s *importService) requireProjectManager(c *core.RequestEvent, projectID st
 	auth := c.Auth
 	if auth == nil {
 		return nil, nil, apis.NewUnauthorizedError("登录状态已失效，请重新登录。", nil)
+	}
+	if auth.GetBool("must_change_password") {
+		return nil, nil, apis.NewForbiddenError("首次登录请先修改密码。", nil)
 	}
 	project, err := s.findProject(projectID)
 	if err != nil {
@@ -377,21 +381,15 @@ func (s *importService) commitCSVImport(c *core.RequestEvent) error {
 		logUploadRejected(requestID, "csv", "", "job_lookup", "CSV inspection job was not found", err)
 		return apis.NewNotFoundError("CSV 预检作业不存在或已被删除。", err)
 	}
-	if _, _, err := s.requireProjectManager(c, job.GetString("project")); err != nil {
+	projectID := job.GetString("project")
+	if _, _, err := s.requireProjectManager(c, projectID); err != nil {
 		logUploadRejected(requestID, "csv", job.GetString("project"), "authorization", "CSV commit authorization failed", err)
 		return err
 	}
-	if job.GetString("status") != "validated" {
-		return apis.NewBadRequestError("CSV 只有在后端预检通过后才能确认导入。", nil)
-	}
-	job.Set("status", "queued")
-	job.Set("started_at", "")
-	job.Set("finished_at", "")
-	job.Set("error_code", "")
-	job.Set("error_message", "")
-	if err := s.app.Save(job); err != nil {
-		logUploadRejected(requestID, "csv", job.GetString("project"), "commit_persist", "CSV commit failed", err)
-		return apis.NewBadRequestError("无法确认 CSV 导入。", err)
+	job, shouldEnqueue, err := s.confirmCSVJob(jobID)
+	if err != nil {
+		logUploadRejected(requestID, "csv", projectID, "commit_persist", "CSV commit failed", err)
+		return err
 	}
 	logUpload("info", "csv_commit_requested", map[string]any{
 		"request_id": requestID,
@@ -402,8 +400,45 @@ func (s *importService) commitCSVImport(c *core.RequestEvent) error {
 		"file_size":  job.GetInt("file_size"),
 		"file_hash":  job.GetString("file_hash"),
 	})
-	s.enqueue(importWork{kind: "csv", id: jobID, requestID: requestID})
+	if shouldEnqueue {
+		s.enqueue(importWork{kind: "csv", id: jobID, requestID: requestID})
+	}
 	return c.JSON(http.StatusAccepted, job)
+}
+
+// Re-read and change status in the same write transaction. Two confirmations
+// must not both save a stale validated snapshot over a worker's progress (or
+// re-enqueue a completed batch after the first worker has released its key).
+func (s *importService) confirmCSVJob(jobID string) (job *core.Record, enqueue bool, err error) {
+	err = s.app.RunInTransaction(func(tx core.App) error {
+		var lookupErr error
+		job, lookupErr = tx.FindRecordById("import_jobs", jobID)
+		if lookupErr != nil {
+			return apis.NewNotFoundError("CSV 预检作业不存在或已被删除。", lookupErr)
+		}
+		if job.GetString("mode") != "skip_invalid" {
+			return apis.NewBadRequestError("只有 CSV 预检作业可以确认导入。", nil)
+		}
+		switch job.GetString("status") {
+		case "queued", "processing", "completed", "completed_with_errors":
+			// Lost HTTP responses and duplicate clicks name this same operation.
+			return nil
+		case "validated":
+		default:
+			return apis.NewBadRequestError("CSV 只有在后端预检通过后才能确认导入。", nil)
+		}
+		job.Set("status", "queued")
+		job.Set("started_at", "")
+		job.Set("finished_at", "")
+		job.Set("error_code", "")
+		job.Set("error_message", "")
+		if err := tx.Save(job); err != nil {
+			return apis.NewApiError(http.StatusServiceUnavailable, "暂时无法确认 CSV 导入，请重试原作业。", nil)
+		}
+		enqueue = true
+		return nil
+	})
+	return
 }
 
 func (s *importService) uploadPDF(c *core.RequestEvent) error {
@@ -651,76 +686,84 @@ func (s *importService) runWorkQueue(queue <-chan importWork) {
 	}
 }
 
+// Keyset pagination stays stable as workers change statuses while recovery runs.
+// Offset pagination would skip records when completed jobs leave the predicate.
+func (s *importService) walkPendingWork(collection, filter string, pageSize int, visit func(*core.Record)) (int, error) {
+	if pageSize < 1 {
+		return 0, fmt.Errorf("recovery page size must be positive")
+	}
+	var afterCreated, afterID string
+	count := 0
+	for {
+		query := "(" + filter + ")"
+		params := dbx.Params{}
+		if afterID != "" {
+			query += ` && (created > {:afterCreated} || (created = {:afterCreated} && id > {:afterID}))`
+			params["afterCreated"], params["afterID"] = afterCreated, afterID
+		}
+		records, err := s.app.FindRecordsByFilter(collection, query, "created,id", pageSize, 0, params)
+		if err != nil {
+			return count, err
+		}
+		if len(records) == pageSize {
+			last := records[len(records)-1]
+			afterID = last.Id
+			// PocketBase normalizes date precision when loading a record. Use
+			// the database's exact ordering value for legacy date strings too;
+			// a no-millisecond timestamp must not repeatedly match itself.
+			if err := s.app.DB().Select("created").From(collection).Where(dbx.HashExp{"id": last.Id}).Row(&afterCreated); err != nil {
+				if !errors.Is(err, sql.ErrNoRows) {
+					return count, err
+				}
+				afterCreated = last.GetString("created")
+			}
+		}
+		for _, record := range records {
+			visit(record)
+			count++
+		}
+		if len(records) < pageSize {
+			return count, nil
+		}
+	}
+}
+
 func (s *importService) recoverPendingWork() {
-	jobs, err := s.app.FindRecordsByFilter(
-		"import_jobs",
-		`status = "queued" || status = "processing" || status = "inspecting"`,
-		"created",
-		10000,
-		0,
-	)
-	if err != nil {
-		logUpload("error", "recovery_query_failed", map[string]any{
-			"kind":  "csv",
-			"error": err.Error(),
-		})
-	} else {
-		for _, job := range jobs {
-			kind := "csv"
-			if job.GetString("status") == "inspecting" {
-				kind = "csv_inspect"
-			}
-			if job.GetString("mode") == "ocr" {
-				kind = "ocr"
-			}
-			// 恢复扫描只看 status，默认把作业当成 CSV；bundle 作业的 source_file 是 zip，
-			// 落到 processCSV 会直接判成编码错误，所以模式必须在这里分流。
-			if job.GetString("mode") == "bundle" {
-				kind = "bundle"
-			}
-			s.enqueue(importWork{kind: kind, id: job.Id, requestID: "recovery-" + job.Id})
-		}
+	type recoveryScan struct {
+		collection, filter, kind string
 	}
-
-	conversions, err := s.app.FindRecordsByFilter(
-		"conversion_jobs",
-		`status = "queued" || status = "processing"`,
-		"created",
-		10000,
-		0,
-	)
-	if err != nil {
-		logUpload("error", "recovery_query_failed", map[string]any{
-			"kind":  "conversion",
-			"error": err.Error(),
-		})
-	} else {
-		for _, job := range conversions {
-			s.enqueue(importWork{kind: "conversion", id: job.Id, requestID: "recovery-" + job.Id})
-		}
+	scans := []recoveryScan{
+		{"import_jobs", `(status="queued" || status="processing" || status="inspecting") && mode!="ocr"`, "csv"},
+		{"import_jobs", `(status="queued" || status="processing" || status="inspecting") && mode="ocr"`, "ocr"},
+		{"conversion_jobs", `status="queued" || status="processing"`, "conversion"},
+		{"project_files", `status="processing"`, "pdf"},
 	}
-
-	files, err := s.app.FindRecordsByFilter(
-		"project_files",
-		`status = "processing"`,
-		"created",
-		10000,
-		0,
-	)
-	if err != nil {
-		logUpload("error", "recovery_query_failed", map[string]any{
-			"kind":  "pdf",
-			"error": err.Error(),
+	counts := make([]int, len(scans))
+	var pending sync.WaitGroup
+	for index, scan := range scans {
+		pending.Go(func() {
+			// Discovery is independent; a full CSV queue cannot prevent the
+			// separately bounded OCR queue from receiving its recovery jobs.
+			count, err := s.walkPendingWork(scan.collection, scan.filter, 250, func(record *core.Record) {
+				kind := scan.kind
+				if kind == "csv" {
+					if record.GetString("mode") == "bundle" {
+						kind = "bundle"
+					} else if record.GetString("status") == "inspecting" {
+						kind = "csv_inspect"
+					}
+				}
+				s.enqueue(importWork{kind: kind, id: record.Id, requestID: "recovery-" + record.Id})
+			})
+			counts[index] = count
+			if err != nil {
+				logUpload("error", "recovery_query_failed", map[string]any{"kind": scan.kind, "error": err.Error()})
+			}
 		})
-	} else {
-		for _, file := range files {
-			s.enqueue(importWork{kind: "pdf", id: file.Id, requestID: "recovery-" + file.Id})
-		}
 	}
+	pending.Wait()
 	logUpload("info", "recovery_scan_completed", map[string]any{
-		"csv_jobs":    len(jobs),
-		"pdf_files":   len(files),
-		"conversions": len(conversions),
+		"csv_jobs": counts[0], "ocr_jobs": counts[1], "conversions": counts[2], "pdf_files": counts[3],
 	})
 }
 
@@ -761,11 +804,11 @@ func (s *importService) markFatal(work importWork, code, message string, cause e
 	}
 	record.Set("error_code", code)
 	record.Set("error_message", message)
-	if work.kind == "csv" || work.kind == "csv_inspect" || work.kind == "ocr" {
+	if work.kind == "csv" || work.kind == "csv_inspect" || work.kind == "ocr" || work.kind == "bundle" {
 		record.Set("finished_at", types.NowDateTime())
 	}
 	var cleanup func() error
-	if work.kind == "csv" || work.kind == "ocr" {
+	if work.kind == "csv" || work.kind == "ocr" || work.kind == "bundle" {
 		cleanup = func() error {
 			return s.clearJobPages(work.id)
 		}

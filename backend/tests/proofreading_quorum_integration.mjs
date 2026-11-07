@@ -343,6 +343,19 @@ try {
   assert.equal(decreased.status, 'approved')
   assert.equal(decreased.proofread_count, 2)
 
+  // Explicit exclusion survives both upward and downward quorum changes.
+  // The prior matching attempts remain as history, never a recovery command.
+  const excludedContext = await request(`/api/fangji/pages/${decreasingPage.id}/verification`, { token: platformAuth.token })
+  await request(`/api/fangji/pages/${decreasingPage.id}/empty-source`, {
+    method: 'POST', token: platformAuth.token,
+    body: { basis: excludedContext.context.basis, empty: true, reason: 'Synthetic exclusion regression' }
+  })
+  await setQuorum(decreasing.id, 3)
+  await setQuorum(decreasing.id, 2)
+  const stillExcluded = await pageRecord(decreasingPage.id)
+  assert.equal(stillExcluded.status, 'rejected')
+  assert.equal(stillExcluded.source_empty, true)
+
   const leased = await createProject('Lease-aware quorum', 4, users)
   const leasedPage = await createPage(leased.id, 1, '租约')
   await claimAndSubmit(leased.id, leasedPage.id, users[0], '租约', 'proofread')

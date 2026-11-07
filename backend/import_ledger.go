@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -56,6 +57,7 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 		SourceLink       string `db:"source_link"`
 		SourceLogicalID  string `db:"source_logical_id"`
 		SourceTitle      string `db:"source_title"`
+		OCRResultJSON    string `db:"ocr_result_json"`
 	}
 	batches := []batchRow{}
 	if err := s.app.DB().NewQuery(
@@ -66,6 +68,7 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 		        COALESCE(j.success_count, 0) AS success_count,
 		        COALESCE(j.failed_count, 0) AS failed_count,
 		        COALESCE(j.skipped_count, 0) AS skipped_count,
+		        COALESCE(j.ocr_result_json, '') AS ocr_result_json,
 		        (SELECT COUNT(*) FROM pages pp WHERE pp.import_job = j.id AND pp.status != 'importing') AS inserted_count,
 		        CASE WHEN COALESCE(j.source_link, '') = '' THEN 'unknown' ELSE j.source_link END AS source_link,
 		        COALESCE(src.logical_id, '') AS source_logical_id,
@@ -131,11 +134,17 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("读取待返工条数失败。", err)
 	}
 
-	// 输入行数从批次列表就地汇总：所有批次 total_count 之和（含跳过的输入行）。
+	// CSV/bundle 的 total_count 是输入行；OCR 的同名字段是物理页。
+	// 不把两个单位加成“行输入”，OCR 页数单独给出。
 	totalBatches := len(batches)
 	totalRows := 0
+	ocrPages := 0
 	for _, b := range batches {
-		totalRows += b.TotalCount
+		if b.Mode == "ocr" {
+			ocrPages += b.TotalCount
+		} else {
+			totalRows += b.TotalCount
+		}
 	}
 
 	sources := make([]map[string]any, 0, len(sourceAggs))
@@ -150,6 +159,11 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 	batchViews := make([]map[string]any, 0, len(batches))
 	for _, b := range batches {
 		label, note := importCountBalance(b.Status, b.Mode, b.TotalCount, b.SuccessCount, b.FailedCount, b.SkippedCount, b.InsertedCount)
+		unit := "rows"
+		if b.Mode == "ocr" {
+			unit = "pages"
+			label, note = ocrImportCountBalance(b.Status, b.TotalCount, b.SuccessCount, b.FailedCount, b.InsertedCount, b.OCRResultJSON)
+		}
 		batchViews = append(batchViews, map[string]any{
 			"id":                b.ID,
 			"created":           b.Created,
@@ -158,6 +172,7 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 			"mode":              b.Mode,
 			"original_filename": b.OriginalFilename,
 			"total_count":       b.TotalCount,
+			"count_unit":        unit,
 			"success_count":     b.SuccessCount,
 			"failed_count":      b.FailedCount,
 			"skipped_count":     b.SkippedCount,
@@ -183,12 +198,42 @@ func (s *importService) projectImportLedger(c *core.RequestEvent) error {
 		"summary": map[string]any{
 			"total_batches":       totalBatches,
 			"total_rows":          totalRows,
+			"ocr_pages":           ocrPages,
 			"imported_rows":       importedRows,
 			"unknown_source_rows": unknownSourceRows,
 			"rework_count":        reworkCount,
 			"sources":             sources,
 		},
 	})
+}
+
+// OCR progress is physical pages; the immutable completed result records how
+// many proofreading rows those pages produced. Reconcile like units, including
+// a later legal row deletion, rather than comparing one page with several rows.
+func ocrImportCountBalance(status string, total, success, failed, inserted int, resultJSON string) (string, string) {
+	switch status {
+	case "queued", "processing", "":
+		return "进行中", "识别进度按物理页计数，留存按条目计数。"
+	case "failed", "error":
+		return "不适用", "识别作业没有完成，不按导入成功条数对账。"
+	}
+	if total != success+failed {
+		return "不一致", "识别总页数与成功加失败页数不一致。"
+	}
+	var result struct {
+		Rows *int `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(resultJSON), &result); err != nil || result.Rows == nil || *result.Rows < 0 {
+		return "需核对", "识别结果缺少有效的条目数，不能将物理页数当作入册条数核对。"
+	}
+	switch {
+	case inserted > *result.Rows:
+		return "不一致", "当前留存条数多于识别结果记录的条数。"
+	case inserted < *result.Rows:
+		return "需核对", fmt.Sprintf("当前留存比历史识别结果少 %d 条。这不是把删除改写成导入失败；识别结果记录 %d 条，当前留存 %d 条。", *result.Rows-inserted, *result.Rows, inserted)
+	default:
+		return "一致", "识别进度按物理页计数；入册按识别结果记录的条目数核对。"
+	}
 }
 
 // importCountBalance 只在作业终态对账。成功与失败必须加总等于输入；

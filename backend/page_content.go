@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // #124 管理侧写入路由：管理员修正「识别产出」（导入原文）的内容。
@@ -94,15 +96,6 @@ func (s *importService) setPageContent(c *core.RequestEvent) error {
 		return err
 	}
 
-	page, err := s.app.FindRecordById("pages", c.Request.PathValue("pageId"))
-	if err != nil || page == nil {
-		return apis.NewNotFoundError("条目不存在。", err)
-	}
-	// 条目存在但属于别的项目：报 404 而不是 403（本路由作用域内它不存在）。
-	if page.GetString("project") != projectID {
-		return apis.NewNotFoundError("条目不存在。", nil)
-	}
-
 	payload := struct {
 		RowJSON         string `json:"rowJson"`
 		HeadersJSON     string `json:"headersJson"`
@@ -112,55 +105,80 @@ func (s *importService) setPageContent(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("请求内容无法解析。", err)
 	}
 
-	// 乐观锁：expectedUpdated 必填，与当前 updated 不符 → 409，避免两人同时编辑互相覆盖。
-	if payload.ExpectedUpdated == "" {
-		return apis.NewBadRequestError("缺少乐观锁版本号。", nil)
-	}
-	if payload.ExpectedUpdated != page.GetString("updated") {
-		return apis.NewApiError(http.StatusConflict, "条目内容已被他人修改，请刷新后重试。", nil)
-	}
+	var page *core.Record
+	err = s.app.RunInTransaction(func(app core.App) error {
+		current, err := app.FindRecordById("pages", c.Request.PathValue("pageId"))
+		if err != nil || current == nil {
+			return apis.NewNotFoundError("条目不存在。", err)
+		}
+		// 条目存在但属于别的项目：报 404 而不是 403（本路由作用域内它不存在）。
+		if current.GetString("project") != projectID {
+			return apis.NewNotFoundError("条目不存在。", nil)
+		}
 
-	// 源键集：以 ocr_row_json 为准（退化到「内容」）。
-	sourceKeys := []string{"内容"}
-	if raw := page.GetString("ocr_row_json"); raw != "" {
-		if candidate, err := parseRowObject(raw); err == nil && len(candidate) > 0 {
-			sourceKeys = make([]string, 0, len(candidate))
-			for k := range candidate {
-				sourceKeys = append(sourceKeys, k)
+		page = current
+		// 乐观锁：expectedUpdated 必填，与当前 updated 不符 → 409，避免两人同时编辑互相覆盖。
+		if payload.ExpectedUpdated == "" {
+			return apis.NewBadRequestError("缺少乐观锁版本号。", nil)
+		}
+		if payload.ExpectedUpdated != page.GetString("updated") {
+			return apis.NewApiError(http.StatusConflict, "条目内容已被他人修改，请刷新后重试。", nil)
+		}
+
+		// 源键集：以 ocr_row_json 为准（退化到「内容」）。
+		sourceKeys := []string{"内容"}
+		if raw := page.GetString("ocr_row_json"); raw != "" {
+			if candidate, err := parseRowObject(raw); err == nil && len(candidate) > 0 {
+				sourceKeys = make([]string, 0, len(candidate))
+				for k := range candidate {
+					sourceKeys = append(sourceKeys, k)
+				}
 			}
 		}
-	}
 
-	if err := validateRowKeys(payload.RowJSON, sourceKeys); err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
-	}
+		if err := validateRowKeys(payload.RowJSON, sourceKeys); err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
 
-	// row_headers_json 必须是列名数组，且集合等于刚验过的键集（数组顺序即列序）。
-	headers, err := parseHeaderList(payload.HeadersJSON)
+		// row_headers_json 必须是列名数组，且集合等于刚验过的键集（数组顺序即列序）。
+		headers, err := parseHeaderList(payload.HeadersJSON)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		if !sameKeySet(headers, sourceKeys) {
+			return apis.NewBadRequestError(
+				fmt.Sprintf("列序必须与字段一致：%s", strings.Join(sourceKeys, "、")), nil)
+		}
+
+		// ocr_text 在服务端按 rowJson + 表头序生成，不接受调用方传入（保证与
+		// import_service.go 的 entryText 拼接 / frontend useStructuredRow.js 的 composeRowText 同口径）。
+		rowObj, _ := parseRowObject(payload.RowJSON)
+		text := composeRowText(headers, rowObj)
+
+		page.Set("ocr_row_json", strings.TrimSpace(payload.RowJSON))
+		page.Set("ocr_text", text)
+		page.Set("row_headers_json", strings.TrimSpace(payload.HeadersJSON))
+		// 管理员修正原文后，若不再含 @N 缺字占位符，退出缺字待登记队列（只清自动状态，
+		// 不碰人工 blocked_reason）。缺字是否补上以「原文内容」为准，不是校对员的草稿提交。
+		if page.GetBool("missing_glyph") && !glyphPlaceholderRe.MatchString(text) {
+			page.Set("missing_glyph", false)
+		}
+		page.Set("fidelity_change_actor", c.Auth.Id)
+		// Timestamp precision is milliseconds. Even two saves in the same millisecond
+		// must produce different optimistic versions, including after clock rollback.
+		nextUpdated := types.NowDateTime()
+		minimum := page.GetDateTime("updated").Add(time.Millisecond)
+		if nextUpdated.Before(minimum) {
+			nextUpdated = minimum
+		}
+		page.SetRaw("updated", nextUpdated)
+		if err := app.Save(page); err != nil {
+			return apis.NewBadRequestError("保存修正内容失败。", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
-	}
-	if !sameKeySet(headers, sourceKeys) {
-		return apis.NewBadRequestError(
-			fmt.Sprintf("列序必须与字段一致：%s", strings.Join(sourceKeys, "、")), nil)
-	}
-
-	// ocr_text 在服务端按 rowJson + 表头序生成，不接受调用方传入（保证与
-	// import_service.go 的 entryText 拼接 / frontend useStructuredRow.js 的 composeRowText 同口径）。
-	rowObj, _ := parseRowObject(payload.RowJSON)
-	text := composeRowText(headers, rowObj)
-
-	page.Set("ocr_row_json", strings.TrimSpace(payload.RowJSON))
-	page.Set("ocr_text", text)
-	page.Set("row_headers_json", strings.TrimSpace(payload.HeadersJSON))
-	// 管理员修正原文后，若不再含 @N 缺字占位符，退出缺字待登记队列（只清自动状态，
-	// 不碰人工 blocked_reason）。缺字是否补上以「原文内容」为准，不是校对员的草稿提交。
-	if page.GetBool("missing_glyph") && !glyphPlaceholderRe.MatchString(text) {
-		page.Set("missing_glyph", false)
-	}
-	page.Set("fidelity_change_actor", c.Auth.Id)
-	if err := s.app.Save(page); err != nil {
-		return apis.NewBadRequestError("保存修正内容失败。", err)
+		return err
 	}
 	return c.JSON(http.StatusOK, map[string]any{
 		"id":             page.Id,

@@ -59,6 +59,21 @@ func availableNickname(app core.App, name, fallback, exceptID string) (string, e
 }
 
 func registerNicknameLogin(app core.App) {
+	// Serialize validation with persistence, across all identity fields. The
+	// users.name/username/email indexes are individually unique, but cannot stop
+	// two concurrent writes from reserving the same login in different fields.
+	// PocketBase's nonconcurrent transaction owns the single write connection;
+	// nested callers reuse their existing transaction.
+	identityWrite := func(e *core.RecordEvent) error {
+		return e.App.RunInTransaction(func(tx core.App) error {
+			original := e.App
+			e.App = tx
+			defer func() { e.App = original }()
+			return e.Next()
+		})
+	}
+	app.OnRecordCreate("users").BindFunc(identityWrite)
+	app.OnRecordUpdate("users").BindFunc(identityWrite)
 	app.OnRecordValidate("users").BindFunc(func(e *core.RecordEvent) error {
 		name := strings.TrimSpace(e.Record.GetString("name"))
 		if !validNickname(name) {

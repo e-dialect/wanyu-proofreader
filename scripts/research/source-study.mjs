@@ -2,7 +2,7 @@
 // Local research artifacts. Reference readings are supplied by humans, saved
 // before comparison, and never sent to runtime routing or rule engines.
 import { parseArgs } from 'node:util'
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
@@ -23,18 +23,21 @@ export async function makeBlindPackage(study, sources, output) {
   // filled reference or an earlier blind package.
   await mkdir(output)
   await mkdir(path.join(output, 'sources'))
-  const copied = new Set()
+  const copied = new Map()
   const materials = []
   const references = []
   for (const item of study.snapshot.materials) {
     const source = item.context.source
     if (!source || !/^[a-z0-9]{15}$/.test(source.id) || path.basename(source.file) !== source.file) throw new Error('来源文件标识无效')
+    if (copied.has(source.id) && copied.get(source.id) !== source.hash) throw new Error('重复来源版本不一致')
     if (!copied.has(source.id)) {
       const input = path.join(sources, source.file)
       const bytes = await readFile(input)
       if (digest(bytes) !== source.hash) throw new Error(`来源 PDF 摘要不符：${source.name}`)
-      await copyFile(input, path.join(output, 'sources', `${source.id}.pdf`))
-      copied.add(source.id)
+      // Copy the bytes whose digest we actually checked. Reopening the live
+      // input with copyFile allowed a replacement between verification/copy.
+      await writeFile(path.join(output, 'sources', `${source.id}.pdf`), bytes, { flag: 'wx' })
+      copied.set(source.id, source.hash)
     }
     const fields = Object.keys(item.context.input)
     const readers = study.snapshot.assignments.filter(assignment => assignment.material_id === item.material_id && assignment.role === 'reference')
@@ -119,8 +122,9 @@ export function evaluate(study, reference, process, effort = { entries: [] }) {
       // an automated score is produced; no majority vote manufactures truth.
       const policy = material.context.policy
       const accepted = candidates.map(item => [item.value, ...item.alternatives])
-      if (!accepted.every(values => values.some(a => accepted[0].some(b => comparison.equivalent(a, b, field, policy))))) return { correct: null, status: 'reference_disagreement' }
-      return { correct: accepted.every(values => values.some(answer => comparison.equivalent(value, answer, field, policy))), status: 'independent_source_reference' }
+      const common = accepted[0].filter(answer => accepted.every(values => values.some(candidate => comparison.equivalent(answer, candidate, field, policy))))
+      if (!common.length) return { correct: null, status: 'reference_disagreement' }
+      return { correct: common.some(answer => comparison.equivalent(value, answer, field, policy)), status: 'independent_source_reference' }
     }
     for (const assignment of assignments.filter(item => item.material_id === material.material_id && item.role === 'proofreader')) {
       const attempts = (process.attempts || []).filter(attempt => {

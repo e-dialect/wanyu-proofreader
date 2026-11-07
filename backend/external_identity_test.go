@@ -574,3 +574,15 @@ func TestHinghwaResponseLimitIsEnforcedBeforeJSONParsing(t *testing.T) {
 		t.Fatalf("oversized JSON should be rejected, got %v", err)
 	}
 }
+
+func TestExternalUsernamePropagatesDatabaseFailure(t *testing.T) {
+	app := newSchemaTestApp(t)
+	// An actual SQLite failure must be returned, not treated as an endless stream
+	// of username collisions. This is a disposable test database only.
+	if _, err := app.DB().NewQuery("DROP TABLE users").Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := availableExternalUsername(app, "mock", "storage-failure"); err == nil {
+		t.Fatal("username allocation swallowed database failure")
+	}
+}

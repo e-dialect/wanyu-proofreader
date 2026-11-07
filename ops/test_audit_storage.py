@@ -7,6 +7,7 @@ be pinned. Nothing here touches a real pb_data.
 """
 import importlib.util
 import io
+import json
 import os
 import shutil
 import tempfile
@@ -101,6 +102,44 @@ class AuditStorage(unittest.TestCase):
         code, output = self.run_audit(self.temp)
         self.assertEqual(code, 0)
         self.assertIn('"total_bytes"', output)
+
+    @unittest.skipIf(os.name == 'nt', 'symlinks require optional Windows privileges')
+    def test_external_links_never_enter_largest_or_cache_totals(self):
+        with tempfile.TemporaryDirectory() as outside:
+            external = Path(outside) / 'private.pdf'
+            external.write_bytes(b'x' * 10000)
+            (self.temp / 'data.db').write_bytes(b'local')
+            (self.temp / 'alias.pdf').symlink_to(external)
+            (self.temp / 'pdf-preview-cache-v1').symlink_to(outside, target_is_directory=True)
+            code, output = self.run_audit(self.temp)
+            self.assertEqual(code, 0)
+            summary = json.loads(output)['summary']
+            self.assertEqual(summary['total_bytes'], 5)
+            self.assertEqual([Path(item['path']).name for item in summary['largest']], ['data.db'])
+            self.assertNotIn('pdf-preview-cache-v1', summary)
+
+    def test_top_ten_and_subtotals_match_independent_file_sizes(self):
+        build_data_dir(self.temp)
+        for number in range(25):
+            (self.temp / 'storage' / f'{number:02}.bin').write_bytes(b'x' * (number + 1))
+        _, summary = audit.audit(self.temp, time.time(), audit.DEFAULT_BUDGET)
+        sizes = sorted(((p.stat().st_size, str(p)) for p in self.temp.rglob('*') if p.is_file()), reverse=True)
+        self.assertEqual(summary['largest'], [{'path': p, 'bytes': s} for s, p in sizes[:10]])
+        self.assertEqual(summary['total_bytes'], sum(s for s, _ in sizes))
+        self.assertEqual(summary['storage']['bytes'], 2048 + sum(range(1, 26)))
+        self.assertEqual(summary['pdf-preview-cache-v1'], {'bytes': 1024, 'entries': 1})
+
+    def test_unreadable_subtree_is_an_error_not_a_successful_partial_audit(self):
+        build_data_dir(self.temp)
+        scandir = os.scandir
+        def denied(path):
+            if Path(path) == self.temp / 'storage':
+                raise PermissionError('synthetic inaccessible subtree')
+            return scandir(path)
+        with mock.patch.object(audit.os, 'scandir', side_effect=denied):
+            code, output = self.run_audit(self.temp)
+        self.assertEqual(code, 1)
+        self.assertIn('Cannot scan', output)
 
 
 if __name__ == '__main__':

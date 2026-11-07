@@ -40,14 +40,30 @@ echo "Configured trusted proxy CIDRs."
 
 backend_url="${VITE_BACKEND_URL:-${PB_URL:-}}"
 
-if [ -z "$backend_url" ]; then
-  echo "VITE_BACKEND_URL is empty; frontend will use window.location.origin."
-  exit 0
-fi
-
-escaped_backend_url="$(printf '%s' "$backend_url" | sed -e 's/[\/&]/\\&/g')"
-
-find /usr/share/nginx/html -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) \
-  -exec sed -i "s|VITE_BACKEND_URL_RUNTIME_REPLACEMENT|${escaped_backend_url}|g" {} +
-
-echo "Configured frontend backend URL: ${backend_url}"
+# Keep content-hashed bundles immutable. Rewriting a placeholder also rewrote
+# the old equality sentinel, so configured URLs were ignored; on restart the
+# placeholder was gone altogether. Only this small, uncached file is mutable.
+runtime_config=/usr/share/nginx/html/runtime-config.js
+temporary_config="$(mktemp "${runtime_config}.XXXXXX")"
+trap 'rm -f "$temporary_config"' EXIT HUP INT TERM
+FANGJI_RUNTIME_BACKEND_URL="$backend_url" awk 'BEGIN {
+  value = ENVIRON["FANGJI_RUNTIME_BACKEND_URL"]
+  if (value != "" && value !~ /^https?:\/\/[^\/[:space:]]+/) exit 1
+  for (n = 1; n < 33; n++) if (index(value, sprintf("%c", n))) exit 1
+  if (index(value, sprintf("%c", 127))) exit 1
+  printf "globalThis.__FANGJI_BACKEND_URL__ = \""
+  for (n = 1; n <= length(value); n++) {
+    c = substr(value, n, 1)
+    if (c == "\\") printf "\\\\"
+    else if (c == "\"") printf "\\\""
+    else printf "%s", c
+  }
+  print "\";"
+}' > "$temporary_config" || {
+  echo "Invalid frontend backend URL; expected an HTTP(S) URL without whitespace or control characters." >&2
+  exit 1
+}
+chmod 644 "$temporary_config"
+mv -f "$temporary_config" "$runtime_config"
+trap - EXIT HUP INT TERM
+echo "Configured frontend runtime backend address."

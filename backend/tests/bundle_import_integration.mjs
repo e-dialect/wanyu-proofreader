@@ -80,6 +80,29 @@ function buildZip(files) {
 
 const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex')
 
+function minimalPdf(count) {
+  const objects=['','<< /Type /Catalog /Pages 2 0 R >>',`<< /Type /Pages /Kids [${Array.from({length:count},(_,i)=>`${i+3} 0 R`).join(' ')}] /Count ${count} >>`]
+  for(let i=0;i<count;i++)objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents ${count+i+3} 0 R >>`)
+  for(let i=0;i<count;i++)objects.push('<< /Length 0 >>\nstream\n\nendstream')
+  let out='%PDF-1.4\n';const offsets=[0]
+  for(let i=1;i<objects.length;i++){offsets[i]=Buffer.byteLength(out);out+=`${i} 0 obj\n${objects[i]}\nendobj\n`}
+  const start=Buffer.byteLength(out);out+=`xref\n0 ${objects.length}\n0000000000 65535 f \n`
+  for(const n of offsets.slice(1))out+=`${String(n).padStart(10,'0')} 00000 n \n`
+  return out+`trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`
+}
+
+async function readyPdf(projectId, count) {
+  const form=new FormData();form.set('file',new Blob([minimalPdf(count)],{type:'application/pdf'}),`synthetic-${count}.pdf`)
+  const file=await api(`/api/fangji/projects/${projectId}/files/pdf`,{method:'POST',token,body:form,status:202})
+  for(let i=0;i<100;i++) {
+    const current=await api(`/api/collections/project_files/records/${file.id}`,{token})
+    if(current.status==='ready')return current
+    assert.notEqual(current.status,'error',JSON.stringify(current))
+    await new Promise(resolve=>setTimeout(resolve,50))
+  }
+  throw Error('synthetic PDF did not become ready')
+}
+
 // 一条 payload 行：entry_id + fields。fieldValues 为 null 时该字段写成非文本值，
 // 用来越过契约校验、落到导入侧的逐条错误上。
 function payload(entries, requestedFields) {
@@ -413,6 +436,37 @@ assert.notEqual(retried.id, brokenJob.id, 'failed 作业不得短路重试，必
 await waitJob(retried.id, token, ['completed'])
 assert.ok((await listPages()).some((page) => page.source_entry_id === 'r-1'), '重试应当真的导进来')
 
+// A legacy failed staging row still points at PDF A. A retry accepted after
+// replacement by B must not take that row into a job also inserting B rows.
+const snapshotProject=await api('/api/fangji/projects',{method:'POST',token,status:201,body:{name:`Bundle retry PDF snapshot ${suffix}`}})
+try {
+  const pdfA=await readyPdf(snapshotProject.id,1)
+  const originalZip=bundleZip({bundleId:'rb-snapshot-retry',sourceVersion:'snapshot-v1',requestedFields:FIELDS,rightsRef:RIGHTS_REF,entries:[{entry_id:'snapshot-old',headword:'原PDF A',reading:'original'}]})
+  const originalJob=await upload(token,snapshotProject.id,originalZip,'original.zip')
+  await waitJob(originalJob.id,token,['completed'])
+  const originalPage=(await listPages('',snapshotProject.id))[0]
+  assert.equal(originalPage.project_file,pdfA.id)
+  await api(`/api/collections/import_jobs/records/${originalJob.id}`,{method:'PATCH',token:superAuth.token,body:{status:'failed'}})
+  // The public lifecycle correctly forbids rewinding pending -> importing.
+  // Recreate only this generated, unclaimed row as an explicit legacy crash
+  // checkpoint through the same superuser fixture API as OCR recovery tests.
+  await api(`/api/fangji/projects/${snapshotProject.id}/pages/delete-pending`,{method:'POST',token,body:{ids:[originalPage.id]}})
+  await api('/api/collections/pages/records',{method:'POST',token:superAuth.token,body:{id:originalPage.id,project:snapshotProject.id,import_job:originalJob.id,project_file:pdfA.id,page_number:originalPage.page_number,pdf_page:originalPage.pdf_page,status:'importing',proofread_round:1,source_system:originalPage.source_system,source_id:originalPage.source_id,source_version:originalPage.source_version,source_entry_id:originalPage.source_entry_id,ocr_row_json:originalPage.ocr_row_json,row_headers_json:originalPage.row_headers_json,ocr_text:originalPage.ocr_text}})
+  const pdfB=await readyPdf(snapshotProject.id,2)
+  const retryZip=bundleZip({bundleId:'rb-snapshot-retry',sourceVersion:'snapshot-v1',requestedFields:FIELDS,rightsRef:RIGHTS_REF,entries:[{entry_id:'snapshot-old',headword:'不得覆盖A',reading:'replacement'},{entry_id:'snapshot-new',headword:'新PDF B',reading:'new'}]})
+  const retryJob=await upload(token,snapshotProject.id,retryZip,'replacement.zip')
+  const retryDone=await waitJob(retryJob.id,token,['completed_with_errors'])
+  assert.equal(retryDone.project_file,pdfB.id);assert.equal(retryDone.success_count,1);assert.equal(retryDone.failed_count,1)
+  const retained=await api(`/api/collections/pages/records/${originalPage.id}`,{token:superAuth.token})
+  assert.equal(retained.import_job,originalJob.id);assert.equal(retained.project_file,pdfA.id);assert.equal(retained.ocr_row_json,originalPage.ocr_row_json)
+  const retryRows=await listPages(` && import_job="${retryJob.id}"`,snapshotProject.id)
+  assert.equal(retryRows.length,1);assert.equal(retryRows[0].source_entry_id,'snapshot-new');assert.equal(retryRows[0].project_file,pdfB.id)
+  const retryErrors=await api(`/api/collections/import_job_errors/records?filter=${encodeURIComponent(`job="${retryJob.id}"`)}`,{token:superAuth.token})
+  assert.equal(retryErrors.totalItems,1);assert.match(retryErrors.items[0].raw_value,/PDF snapshot differs/)
+} finally {
+  await api(`/api/fangji/projects/${snapshotProject.id}`,{method:'DELETE',token,status:204})
+}
+
 // ---------- 6. 恢复：作业被中断后重启，重放不产生重复 ----------
 // 这一段留给 --prepare-recovery / --verify-recovery 两个阶段（见
 // run_bundle_import_integration.py）：只有在真实重启后重新入队，才谈得上「中断恢复」。
@@ -420,6 +474,9 @@ if (process.argv.includes('--prepare-recovery')) {
   const handoff = process.env.BUNDLE_RECOVERY_JOB_FILE
   assert.ok(handoff, '--prepare-recovery needs BUNDLE_RECOVERY_JOB_FILE')
   await api(`/api/collections/import_jobs/records/${created.id}`, {
+    method: 'PATCH', token: superAuth.token, body: { status: 'processing' }
+  })
+  await api(`/api/collections/import_jobs/records/${createdC.id}`, {
     method: 'PATCH', token: superAuth.token, body: { status: 'processing' }
   })
   // 回读确认这次改写真的落库了：写没落库的话，重启后的恢复扫描什么也不会做，
@@ -433,6 +490,7 @@ if (process.argv.includes('--prepare-recovery')) {
   // 会让下一阶段把「本来就该多出来的一条」误判成重放新建。
   writeFileSync(handoff, JSON.stringify({
     jobId: created.id,
+    errorJobId: createdC.id,
     projectId: project.id,
     pagesBefore: (await listPages()).length
   }))
@@ -442,9 +500,17 @@ if (process.argv.includes('--prepare-recovery')) {
   const recovered = await waitJob(handoff.jobId, token, ['completed', 'completed_with_errors'])
   assert.equal(recovered.status, 'completed', '恢复后必须落到确定态，不能留在 processing')
   assert.equal(recovered.success_count, 3)
-  // 这一次是**全量重放**（零写入），而上一阶段的同一条断言在一次全新导入上也为真——
-  // 所以必须有一条能区分两者的 oracle，否则「重放」在作业记录上是隐形的。
-  assert.match(recovered.error_message, /已跳过 3 条重复条目/, `重放必须在作业上可见：${JSON.stringify(recovered.error_message)}`)
+  // Same-job restart keeps ownership of its original rows. Counting them as
+  // another batch's skips would make retained_rows > success - skipped.
+  assert.equal(recovered.skipped_count, 0)
+  const recoveredErrors=await waitJob(handoff.errorJobId,token,['completed_with_errors'])
+  assert.equal(recoveredErrors.failed_count,10)
+  assert.equal(recoveredErrors.skipped_count,0)
+  const errorRecords=await api(`/api/collections/import_job_errors/records?filter=${encodeURIComponent(`job="${handoff.errorJobId}"`)}`,{token:superAuth.token})
+  assert.equal(errorRecords.totalItems,10,'restarting must regenerate rather than duplicate the same invalid-row diagnostics')
+  const ledger=await api(`/api/fangji/projects/${handoff.projectId}/import-ledger`,{token})
+  assert.equal(ledger.batches.find(batch=>batch.id===handoff.jobId).counts_label,'一致')
+  assert.equal(ledger.batches.find(batch=>batch.id===handoff.errorJobId).counts_label,'一致')
   const afterRecovery = await listPages('', handoff.projectId)
   for (const page of afterRecovery) {
     assert.notEqual(page.status, 'importing', '不得留下 importing 僵尸')

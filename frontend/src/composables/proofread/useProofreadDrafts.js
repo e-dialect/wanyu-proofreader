@@ -1,4 +1,5 @@
 import {
+  archiveTaskDraft,
   clearTaskDraft,
   loadTaskDraft,
   loadTaskDraftHistory,
@@ -35,6 +36,9 @@ export function useProofreadDrafts({
     if (!draftReady.value || !page.value || !currentUserId.value || !initialRowJson.value) return
     try {
       if (!hasUnsavedChanges.value) {
+        // An incompatible draft can still occupy the current storage key. Keep
+        // its old values before clearing an otherwise unchanged current row.
+        for (const draft of staleLocalDrafts.value) archiveTaskDraft(window.localStorage, draft)
         clearTaskDraft(window.localStorage, {
           userId: currentUserId.value,
           pageId: page.value.id
@@ -81,6 +85,7 @@ export function useProofreadDrafts({
   function receiveVerificationContext(context) {
     verificationContext.value = context
     const draft = restoredLocalDraft.value
+    restoredLocalDraft.value = null
     if (draft?.contextBasis && draft.contextBasis !== context.basis) {
       staleLocalDrafts.value.push(draft)
       replaceEditedRow(originalRow.value)

@@ -159,7 +159,7 @@ docker compose down
 - 本地生产入口默认隐藏 PocketBase Admin UI。需要访问时，将 `ENABLE_POCKETBASE_ADMIN_UI=true` 后执行 `docker compose up -d --force-recreate frontend`；完成后改回 `false` 并再次重建前端容器。
 - `TRUSTED_PROXY_CIDRS` 必须限制为实际 Traefik、内置 Nginx 与后端共享的 Docker network。Nginx 只信任这些来源提供的 `X-Real-IP`，并会覆盖浏览器传入的 `X-Forwarded-For`；后端也只解析该网段转发的地址。不要把 backend 端口直接暴露到公网。
 - `BACKEND_URL` 留空时，前端自动使用 `window.location.origin`，适合同域名或同端口反向代理部署。
-- `BACKEND_URL` 设置为完整后端地址时，前端容器会把构建产物里的 `VITE_BACKEND_URL_RUNTIME_REPLACEMENT` 替换成该地址，适合前后端不同域名部署。
+- `BACKEND_URL` 设置为完整 HTTP(S) 后端地址时，前端容器会原子生成 `/runtime-config.js`，在应用模块前加载；适合前后端不同域名部署。该文件禁止缓存，重启容器即可更新地址，清空后恢复构建时 `VITE_PB_URL` 或当前站点 origin。带内容哈希的 JS/CSS 保持原字节并长期缓存，入口 HTML 每次使用前重新验证。
 - PocketBase 数据默认通过本地目录 `./pb_data` 持久化，重建容器不会清空数据库和上传文件。Windows 宿主机如果遇到 SQLite 或文件挂载问题，可叠加 `docker-compose.named-volume.yml` 改用 Docker named volume。
 - PocketBase schema 和 API rules 由 `backend/pb_migrations` 自动应用。
 
