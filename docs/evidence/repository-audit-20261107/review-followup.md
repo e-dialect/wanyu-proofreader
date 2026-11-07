@@ -29,3 +29,9 @@
 已通过恢复域针对Go和race回归、实际三阶段转换重启、归一依据/物理文件/规则摘要/空值HTTP回归、新增7项Node测试，以及真实归一Panel的5项浏览器检查和1280/390截图。统一mounted入口还运行了原5项项目/身份/草稿检查，确认新脚本已接入CI。
 
 新增路径已完成独立只读交叉复核。完整门禁与最终提交的CI结果在PR验证清单登记，不把一次局部通过提前写成所有检查成功。
+
+### 旧归一截图夹具的条件提交接线
+
+`bc59374` 的CI在 `Scheme conversion admin screenshots` 发现一处遗漏：旧截图脚本用真实API批量结掉剩余11条 `AMBIGUOUS` 时，没有回传已由该队列GET提供的 `expected_basis`，新服务端按预期返回409。修复只涉及该循环：断言每条真实GET结果有凭据，并逐条原样回传；界面提交、原截图与状态/分页/空态断言保持。
+
+实际执行 `PATH=<Go1.27.3>/bin:$PATH NODE_PATH=<既有Playwright目录> BROWSER_CHANNEL=msedge python3 backend/tests/run_scheme_conversion_browser.py` 已通过。入口使用临时数据库、临时规则和真实服务端/浏览器，五张原有截图全部生成并通过非空校验：汇总与队列、第二页、填写草稿、复核完成、仅剩暂未支持。最终输出 `Scheme conversion browser integration test passed.` 与 `PASS: scheme conversion admin screenshots`，进程退出0。没有降低服务端凭据要求；该局部通过不提前替代新提交的完整CI结果。
