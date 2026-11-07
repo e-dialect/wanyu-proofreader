@@ -77,9 +77,39 @@ func TestCommandOutputIsBoundedWhileProcessRuns(t *testing.T) {
 }
 
 func TestCommandEnvironmentContracts(t *testing.T) {
+	const valuePrefix = "WANYU_COMMAND_ENV_VALUE="
 	if len(os.Args) > 1 && os.Args[len(os.Args)-1] == "ocr-environment-helper" {
-		fmt.Print(os.Getenv("WANYU_COMMAND_ENV_FIXTURE"))
+		value, err := json.Marshal(os.Getenv("WANYU_COMMAND_ENV_FIXTURE"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("%s%s\n", valuePrefix, value)
 		os.Exit(0)
+	}
+	// Coverage-instrumented child test binaries may emit Go runtime diagnostics
+	// on stderr when OCR correctly omits GOCOVERDIR. CombinedOutput preserves
+	// those diagnostics; verify the helper's unique JSON protocol separately.
+	assertValue := func(output []byte, expected string) {
+		t.Helper()
+		values := []string{}
+		for _, line := range strings.Split(string(output), "\n") {
+			if strings.HasPrefix(line, valuePrefix) {
+				values = append(values, strings.TrimPrefix(line, valuePrefix))
+			}
+		}
+		if len(values) != 1 {
+			t.Fatalf("expected exactly one child environment value, got %d: %q", len(values), output)
+		}
+		var value *string
+		if err := json.Unmarshal([]byte(values[0]), &value); err != nil {
+			t.Fatalf("invalid child environment JSON: %q %v", values[0], err)
+		}
+		if value == nil {
+			t.Fatal("child environment JSON must be a string")
+		}
+		if *value != expected {
+			t.Fatalf("child environment value=%q want=%q", *value, expected)
+		}
 	}
 	t.Setenv("WANYU_COMMAND_ENV_FIXTURE", "controlled-environment-fixture")
 	executable, err := os.Executable()
@@ -90,13 +120,15 @@ func TestCommandEnvironmentContracts(t *testing.T) {
 	defer cancel()
 	args := []string{"-test.run=^TestCommandEnvironmentContracts$", "--", "ocr-environment-helper"}
 	output, err := CommandOutput(ctx, executable, args...)
-	if err != nil || string(output) != "" {
-		t.Fatalf("OCR inherited caller environment: %q %v", output, err)
+	if err != nil {
+		t.Fatalf("OCR environment helper failed: %q %v", output, err)
 	}
+	assertValue(output, "")
 	output, err = CommandOutputWithEnv(ctx, executable, os.Environ(), args...)
-	if err != nil || string(output) != "controlled-environment-fixture" {
-		t.Fatalf("image environment contract changed: %q %v", output, err)
+	if err != nil {
+		t.Fatalf("image environment helper failed: %q %v", output, err)
 	}
+	assertValue(output, "controlled-environment-fixture")
 }
 
 func TestNativePreservesWhitespaceUnicodeAndCoordinates(t *testing.T) {

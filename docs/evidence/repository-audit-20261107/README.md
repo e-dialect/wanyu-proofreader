@@ -45,6 +45,18 @@
 
 最终验证结果在 PR 的检查清单中登记。前端 [缺陷/反证/截图及5项真实浏览器检查](../repository-review-20261107/frontend/README.md) 覆盖跨项目、快速草稿换条、账号切换、退出、登录原目标和编辑器四态；API数据为构造夹具。新增脚本已接既有 mounted CI 入口。
 
+本地 `make check`、399项Node测试、Go全包与完整race（backend220.7s）、41/41可独立集成、OCR/Bundle专用实际重启和完整mounted浏览器通过。最终Nginx镜像实际验证三次地址配置/替换/清空、缓存与安全头；最终OCR镜像以标准HTTP客户端验证纯文字正常、扫描及混合页均422。后端本地镜像下载遇上游EOF，没有据此记通过；远端CI Containers已实际构建并验证三个镜像、严格安全扫描、SBOM及OCR浏览器。
+
+首轮远端结果为53项成功、Unicode覆盖率步骤和聚合门禁失败。原覆盖率命令把真实断言重定向到文件后又在失败时跳过工件上传，日志无法判断原因；现失败时打印并始终保存覆盖率日志，保持原失败退出语义。最终结果以PR最新head为准。
+
+已在本机完整coverage重现根因：环境契约测试使用空stdout做协议，但插桩子进程会在stderr输出 `GOCOVERDIR not set`，合并输出后误判。测试改为唯一前缀JSON协议并严格核对值；不向正式OCR注入覆盖率环境，也不忽略重复/缺失/非法协议数据。
+
+### 依赖告警边界
+
+2026-11-07实查：npm生产依赖0漏洞；开发工具链保留4条moderate报告（同一minimatch根因及其影响包），[上游修复为11.0.1](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249)。当前ESLint依赖树仍要求旧主版本，npm自动建议降级ESLint9；本轮没有强制跨主版本override或降级来消除数字，high/critical门槛不变。
+
+GitHub另保留 [imaging低危告警](https://github.com/advisories/GHSA-q7pp-wcgr-pffx)，上游尚无修复版本。现有用户头像MIME和外部头像解码路径拒绝TIFF，代码未调用Grayscale；但告警涉及共用scanner，不能用“没有直接调用Grayscale”证明整个传递依赖不可达。因此没有将该告警关闭，也没有把govulncheck的0可达结果表述成所有数据库都零告警。
+
 ## 兼容性与回退
 
 - 没有新增 schema，也没有改写历史迁移。Bundle 复用已有 PDF 快照字段；CSV重复确认返回原作业。
