@@ -223,6 +223,13 @@ func (s *importService) startOCR(c *core.RequestEvent) error {
 // and private evidence are saved; failure removes staged rows, never publishes
 // half a book. Restart replays the immutable PDF snapshot from the beginning.
 func (s *importService) processOCR(work importWork) {
+	ctx := s.imageContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return
+	}
 	job, err := s.app.FindRecordById("import_jobs", work.id)
 	if err != nil {
 		return
@@ -235,7 +242,13 @@ func (s *importService) processOCR(work importWork) {
 	if err := s.app.Save(job); err != nil {
 		return
 	}
-	fail := func(code, message string, cause error) { s.markFatal(work, code, message, cause) }
+	fail := func(code, message string, cause error) {
+		// Shutdown is an interruption, not a terminal recognition failure. Keep
+		// importing rows/evidence so the same durable job can replay on restart.
+		if ctx.Err() == nil {
+			s.markFatal(work, code, message, cause)
+		}
+	}
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv(ocrEngineEnv)), "true") {
 		fail("OCR_ENGINE_DISABLED", "识别能力当前未启用，请配置本地 OCR worker 后重试。", nil)
 		return
@@ -272,7 +285,15 @@ func (s *importService) processOCR(work importWork) {
 	resultSummary := map[string]any{"rows": 0, "certain": 0, "needs_review": 0, "abstained": 0, "artifacts": []map[string]any{}, "engine": "local_poppler_text", "layout": "single_column"}
 	rowsCount := 0
 	for page := options.StartPage; page <= options.EndPage; page++ {
+		if ctx.Err() != nil {
+			return
+		}
 		result, err := s.recognizeOCRPage(file, workerURL, token, work.requestID, page, options.Language)
+		// Check before recording a failed page: the request inherits ctx and is
+		// cancelled by OnTerminate even when the local worker is healthy.
+		if ctx.Err() != nil {
+			return
+		}
 		if err != nil {
 			job.Set("processed_count", page-options.StartPage+1)
 			job.Set("failed_count", 1)
@@ -350,6 +371,9 @@ func (s *importService) processOCR(work importWork) {
 			fail("OCR_PROGRESS_FAILED", "保存识别进度失败。", err)
 			return
 		}
+	}
+	if ctx.Err() != nil {
+		return
 	}
 	job.Set("status", "completed")
 	job.Set("finished_at", types.NowDateTime())
