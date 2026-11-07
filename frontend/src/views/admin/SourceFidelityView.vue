@@ -61,7 +61,12 @@
       <p v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</p>
       <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
       <template v-if="loaded && view === 'problems'">
-        <AppStatusPanel v-if="!activeIssues.length" state="empty" message="暂无成员报告。" />
+        <AppStatusPanel
+          v-if="!activeIssues.length"
+          state="empty"
+          reason="none"
+          message="暂无成员报告。"
+        />
         <template v-else>
           <section v-if="selection.length" class="card mb-4" aria-label="报告批量处理">
             <div class="section-heading">
@@ -130,6 +135,18 @@
                   </p>
                 </li>
               </ul>
+              <div v-if="issueConflicts[selectedIssue.id]" class="alert alert-warning" role="alert">
+                <p>
+                  此事项已被其他人更新。你的未保存修改已保留，请先保留需要的文字，再采用最新记录重新编辑。
+                </p>
+                <button
+                  class="btn btn-secondary"
+                  :disabled="busy"
+                  @click="adoptLatestIssue(selectedIssue.id)"
+                >
+                  采用最新记录
+                </button>
+              </div>
               <form @submit.prevent="saveIssue(selectedIssue.id)">
                 <AppField label="状态"
                   ><select v-model="issueEdits[selectedIssue.id].status" class="form-control">
@@ -181,7 +198,10 @@
                     ></textarea>
                   </AppField>
                 </details>
-                <button class="btn btn-primary" :disabled="busy">
+                <button
+                  class="btn btn-primary"
+                  :disabled="busy || loading || issueConflicts[selectedIssue.id]"
+                >
                   {{ busy ? '正在保存…' : '保存处理与反馈' }}
                 </button>
               </form>
@@ -204,6 +224,7 @@
         <AppStatusPanel
           v-if="!reviewItems.length"
           state="empty"
+          reason="none"
           :message="summary.length ? '当前范围没有待复核条目，可切换查看全部。' : '暂无条目。'"
         />
         <ul v-else class="project-review-list">
@@ -305,6 +326,8 @@ const operationError = ref('')
 const message = ref('')
 const problems = ref({ items: [], issues: [] })
 const issueEdits = reactive({})
+const issueBaselines = reactive({})
+const issueConflicts = reactive({})
 const summary = ref([])
 const selection = ref([])
 const groupReason = ref('')
@@ -328,12 +351,36 @@ const issueSignature = (item) =>
       (key) => item?.[key] || ''
     )
   )
+const issueVersion = (item) => JSON.stringify([item?.updated || '', issueSignature(item)])
 const problemsDirty = computed(
   () =>
-    problems.value.issues.some(
-      (issue) => issueSignature(issue) !== issueSignature(issueEdits[issue.id])
+    Object.entries(issueEdits).some(
+      ([id, edit]) => issueSignature(edit) !== issueSignature(issueBaselines[id])
     ) || !!(emptyTarget.value && emptyReason.value.trim())
 )
+function syncIssue(issue) {
+  const id = issue.id
+  const baseline = issueBaselines[id]
+  const edit = issueEdits[id]
+  if (
+    !baseline ||
+    issueSignature(edit) === issueSignature(baseline) ||
+    issueSignature(edit) === issueSignature(issue)
+  ) {
+    issueEdits[id] = { ...issue }
+    issueBaselines[id] = { ...issue }
+    delete issueConflicts[id]
+  } else if (issueVersion(issue) !== issueVersion(baseline)) {
+    issueConflicts[id] = true
+  }
+}
+function adoptLatestIssue(id) {
+  const issue = problems.value.issues.find((item) => item.id === id)
+  if (!issue || busy.value) return
+  issueEdits[id] = { ...issue }
+  issueBaselines[id] = { ...issue }
+  delete issueConflicts[id]
+}
 useQueueReturnPosition(loaded)
 let generation = 0
 let disposed = false
@@ -363,8 +410,7 @@ async function load() {
     if (disposed || token !== generation) return
     if (requested === 'problems') {
       problems.value = result
-      for (const issue of result.issues)
-        if (!issueEdits[issue.id]) issueEdits[issue.id] = { ...issue }
+      for (const issue of result.issues) syncIssue(issue)
       if (!activeIssues.value.some((issue) => issue.id === selectedIssueId.value))
         selectedIssueId.value = activeIssues.value[0]?.id || ''
     } else summary.value = result.items
@@ -392,10 +438,15 @@ async function act(fn, success) {
   }
 }
 async function saveIssue(id) {
-  await act(
-    () => updateProblem(projectId, id, { ...issueEdits[id] }),
-    '处理与反馈已保存；词条内容状态未自动变更。'
-  )
+  if (busy.value || loading.value || issueConflicts[id] || !issueEdits[id]) return
+  const submitted = { ...issueEdits[id] }
+  await act(async () => {
+    const saved = await updateProblem(projectId, id, submitted)
+    if (disposed) return
+    issueBaselines[id] = { ...saved }
+    if (issueSignature(issueEdits[id]) === issueSignature(submitted)) issueEdits[id] = { ...saved }
+    delete issueConflicts[id]
+  }, '处理与反馈已保存；词条内容状态未自动变更。')
 }
 async function group(split) {
   const target = split

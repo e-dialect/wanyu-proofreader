@@ -66,6 +66,15 @@ and therefore in the existing CI mounted browser job; `--only repository` runs
 this regression alone. Native browser APIs are exercised; synthetic data does
 not establish human acceptance or real-language quality.
 
+`source-fidelity.cjs` runs in the same `repository` group using the real source
+workspace and App error boundary. Synthetic responses cover empty reports,
+empty/filtered review queues, clean-form refresh, preserved same-version drafts,
+changed-server conflicts blocking both button and native form submission,
+explicit adoption of the latest record, and the clean baseline after saving.
+The first response is held behind a request barrier to confirm that a visible
+heading does not establish list readiness. Its report and mobile conflict
+screenshot are in `repository-review/source-fidelity/`.
+
 `normalization-draft.cjs` mounts the real normalization panel with explicit
 synthetic API snapshots. It verifies same-basis refresh, changed-source stale
 lockout and visible old drafts, explicit fresh input, a GET-to-save 409, and

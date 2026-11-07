@@ -65,6 +65,7 @@ async function waitFor(check) {
     const root = `/admin/projects/${fixture.project.id}`
     await manager.goto(`http://localhost${root}/verification`)
     await manager.getByRole('heading', { name: '问题处理' }).waitFor({ timeout: 10000 })
+    await waitFor(async () => (await manager.locator('.project-issue-list > li').count()) === 2)
     assert.equal(await manager.locator('.project-issue-list > li').count(), 2)
     await shot(manager, 'manager-problems-desktop')
     await exportFeedback(manager, fixture.project.id, output)
@@ -143,6 +144,7 @@ async function waitFor(check) {
     await shot(member, 'proofreader-mobile-report')
     await member.goto('http://localhost/tasks/problems')
     await member.getByRole('heading', { name: '我的问题', exact: true }).waitFor()
+    await waitFor(async () => (await member.locator('.problem-item').count()) >= 2)
     assert.ok((await member.locator('.problem-item').count()) >= 2)
     await shot(member, 'my-problems-mobile')
     const savedMemberWork = (await api(`/api/fangji/pages/${fixture.pages[2].id}/verification`, fixture.users[0])).draft.row
