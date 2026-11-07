@@ -54,3 +54,21 @@ Regrouping checks assert the 24-key initial group, a deduplicated total, identic
 shortcut/category insertion, cross-group selection replacement, reachability of
 all categories and complete pinyin insertion. The default layouts are captured
 with synthetic data in `/tmp/keyboard-default-*.png`.
+
+Run `node tests/browser/repository-review.cjs` for repository audit regressions.
+The fixture mounts the real App, AdminLayout, source workspace, and proofreader
+editor with intercepted synthetic APIs. It checks project identity remounting,
+query-preserving component keys, draft flush before a fast task switch, account
+replacement, and logout removing the old private view. Its normal/empty/mobile
+screenshots and request report are in `output/playwright/repository-review`.
+The same script is included in `backend/tests/run_frontend_quality_browser.py`
+and therefore in the existing CI mounted browser job; `--only repository` runs
+this regression alone. Native browser APIs are exercised; synthetic data does
+not establish human acceptance or real-language quality.
+
+`normalization-draft.cjs` mounts the real normalization panel with explicit
+synthetic API snapshots. It verifies same-basis refresh, changed-source stale
+lockout and visible old drafts, explicit fresh input, a GET-to-save 409, and
+read-only access after a row leaves the queue. Screenshots cover 1280 and 390px.
+It runs with the unified runner's `repository` group; set `REVIEW_BASE_URL` and
+`NORMALIZATION_DRAFT_OUTPUT` to override its default local server/output.

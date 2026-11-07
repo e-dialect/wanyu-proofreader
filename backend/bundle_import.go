@@ -327,6 +327,10 @@ func (s *importService) uploadBundle(c *core.RequestEvent) error {
 	if err != nil {
 		return apis.NewBadRequestError("导入作业存储尚未初始化。", err)
 	}
+	projectFileID, pdfPageLimit, err := s.primaryPDFSnapshotWithError(projectID)
+	if err != nil {
+		return apis.NewApiError(http.StatusServiceUnavailable, "暂时无法读取 PDF 快照，请重试原压缩包。", nil)
+	}
 	sum := sha256.Sum256(data)
 	record := core.NewRecord(collection)
 	record.Set("project", projectID)
@@ -340,6 +344,9 @@ func (s *importService) uploadBundle(c *core.RequestEvent) error {
 	record.Set("processed_count", 0)
 	record.Set("success_count", 0)
 	record.Set("failed_count", 0)
+	record.Set("project_file", projectFileID)
+	record.Set("pdf_page_limit", pdfPageLimit)
+	record.Set("pdf_snapshot_captured", true)
 	record.Set("bundle_id", bundle.BundleID)
 	record.Set("bundle_schema_version", bundle.SchemaVersion)
 	record.Set("source", sourceID)
@@ -434,6 +441,12 @@ func (s *importService) processBundle(work importWork) {
 	}
 	// 刻意**不**清理本作业已有的条目：重跑（含恢复）要靠自然键跳过已写入的行，
 	// 删掉它们等于把「恢复」变成「从头再来」，而后者会丢掉与旧版本并存的历史。
+	// Diagnostics are regenerated while replaying every input row. Keeping old
+	// diagnostics would count the same invalid row once per restart.
+	if err := deleteRecordBatches(s.app, "import_job_errors", fmt.Sprintf("job=%q", jobID)); err != nil {
+		s.markFatal(work, "JOB_RECOVERY_CLEANUP_FAILED", "无法清理该作业上次的导入诊断。", err)
+		return
+	}
 
 	file, closeFile, err := s.openRecordFile(job, "source_file")
 	if err != nil {
@@ -457,8 +470,11 @@ func (s *importService) processBundle(work importWork) {
 	}
 
 	projectID := job.GetString("project")
-	projectFileID, pdfPageLimit := s.primaryPDFSnapshot(projectID)
-	job.Set("project_file", projectFileID)
+	if err := s.captureBundlePDFSnapshot(job); err != nil {
+		s.markFatal(work, "PDF_SNAPSHOT_UNAVAILABLE", "导入使用的 PDF 快照已不可用，请核对后重新上传压缩包。", err)
+		return
+	}
+	pdfPageLimit := job.GetInt("pdf_page_limit")
 
 	counters := bundleCounters{total: len(bundle.Entries)}
 	nextPageNumber := s.nextProjectPageNumber(projectID)
@@ -517,12 +533,9 @@ func (s *importService) processBundle(work importWork) {
 		}
 		return txDao.Save(job)
 	}); err != nil {
-		// finalize 失败会把已写入的条目留在 status='importing'（那是导入中的暂存态，
-		// 对用户不可见也不会进任何队列）。这些僵尸页现在依赖「failed 可重试」被清掉：
-		// 调用方重新上传同一个包时，未失败作业的短路不会命中（这条是 failed），于是
-		// 走一条新作业，而新作业里同键条目的写入会被条目级唯一索引挡住——僵尸页不会
-		// 因此消失。清理它属于运维动作，见本文件头部「failed 可重试」那段口径；
-		// 这里先如实记下，不让它成为一条没人知道的隐含性质。
+		// markFatal persists failure before removing only pristine importing
+		// rows. Otherwise a fresh retry would hit their natural keys, skip them,
+		// and report success while leaving all of those rows unpublished.
 		s.markFatal(work, "JOB_FINALIZE_FAILED", "条目已处理，但作业状态更新失败。", err)
 		return
 	}
@@ -539,6 +552,54 @@ func (s *importService) processBundle(work importWork) {
 		"ignored":     len(counters.ignoredFields),
 		"status":      status,
 	})
+}
+
+// New uploads already capture their PDF at acceptance. A legacy interrupted
+// job can recover its original file from its own stored page rows; never mix
+// those rows with a replacement primary PDF encountered after restart.
+func (s *importService) captureBundlePDFSnapshot(job *core.Record) error {
+	projectID := job.GetString("project")
+	fileID, limit := job.GetString("project_file"), job.GetInt("pdf_page_limit")
+	legacy := !job.GetBool("pdf_snapshot_captured")
+	if legacy {
+		var previous []struct {
+			ID string `db:"id"`
+		}
+		if err := s.app.DB().NewQuery("SELECT DISTINCT COALESCE(project_file, '') AS id FROM pages WHERE import_job={:job} LIMIT 2").Bind(dbx.Params{"job": job.Id}).All(&previous); err != nil {
+			return err
+		}
+		if len(previous) > 1 || (len(previous) == 1 && fileID != "" && fileID != previous[0].ID) {
+			return fmt.Errorf("legacy bundle contains inconsistent PDF snapshots")
+		}
+		if len(previous) == 1 {
+			fileID = previous[0].ID
+		} else if fileID == "" {
+			var err error
+			fileID, limit, err = s.primaryPDFSnapshotWithError(projectID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if fileID != "" {
+		file, err := s.app.FindRecordById("project_files", fileID)
+		if err != nil {
+			return err
+		}
+		if file.GetString("project") != projectID || file.GetString("status") != "ready" {
+			return fmt.Errorf("snapshotted PDF no longer belongs to the project or is not ready")
+		}
+		if legacy {
+			limit = file.GetInt("page_count")
+		}
+	}
+	if legacy {
+		job.Set("project_file", fileID)
+		job.Set("pdf_page_limit", limit)
+		job.Set("pdf_snapshot_captured", true)
+		return s.app.Save(job)
+	}
+	return nil
 }
 
 type bundleCounters struct {
@@ -578,14 +639,19 @@ func (s *importService) flushBundleBatch(
 	skippedInBatch := 0
 	err := s.app.RunInTransaction(func(txDao core.App) error {
 		skippedInBatch = 0
+		var err error
+		number, err = allocateProjectPageNumber(txDao, projectID, nextPageNumber)
+		if err != nil {
+			return err
+		}
 		for _, page := range pages {
-			inserted, err := writeBundlePage(txDao, job.Id, projectID, projectFileID, number, page)
+			outcome, err := writeBundlePage(txDao, job.Id, projectID, projectFileID, number, page)
 			if err != nil {
 				return err
 			}
-			if inserted {
+			if outcome == bundlePageInserted {
 				number++
-			} else {
+			} else if outcome == bundlePageSkipped {
 				skippedInBatch++
 			}
 		}
@@ -606,8 +672,20 @@ func (s *importService) flushBundleBatch(
 		"batch_size": len(pages),
 		"error":      err.Error(),
 	})
+	// The failed batch was rolled back; do not retain its tentative numbering.
+	number = nextPageNumber
 	for _, page := range pages {
-		inserted, writeErr := writeBundlePage(s.app, job.Id, projectID, projectFileID, number, page)
+		var outcome bundleWriteOutcome
+		allocated := number
+		writeErr := s.app.RunInTransaction(func(tx core.App) error {
+			var err error
+			allocated, err = allocateProjectPageNumber(tx, projectID, number)
+			if err != nil {
+				return err
+			}
+			outcome, err = writeBundlePage(tx, job.Id, projectID, projectFileID, allocated, page)
+			return err
+		})
 		counters.processed++
 		counters.recordIgnored([]bundlePage{page})
 		if writeErr != nil {
@@ -621,24 +699,35 @@ func (s *importService) flushBundleBatch(
 		// 与事务成功路径的 `+= len(pages)` 同义。收成一处是为了让这两条路径不可能
 		// 再各自漂移（正常单线程导入走不到这里，CI 的套件覆盖不到回退分支）。
 		counters.success++
-		if !inserted {
+		number = allocated
+		if outcome == bundlePageSkipped {
 			counters.skipped++
-			continue
 		}
-		number++
+		if outcome == bundlePageInserted {
+			number++
+		}
 	}
 	return number
 }
 
-// writeBundlePage 返回 (是否新建, 错误)。已经存在同键条目时返回 (false, nil)——
-// 那是重放或恢复，不是失败，所以既不新建也不覆盖。
-func writeBundlePage(dao core.App, jobID, projectID, projectFileID string, pageNumber int, page bundlePage) (bool, error) {
+type bundleWriteOutcome uint8
+
+const (
+	bundlePageInserted bundleWriteOutcome = iota
+	bundlePageOwned
+	bundlePageSkipped
+)
+
+// The caller holds a write transaction. Same-job recovery retains ownership
+// without incrementing skipped_count: those rows are already in this job's
+// inserted_count. A published row owned by another job is an actual skip.
+func writeBundlePage(dao core.App, jobID, projectID, projectFileID string, pageNumber int, page bundlePage) (bundleWriteOutcome, error) {
 	existing, err := findPageBySourceKey(dao, projectID, page)
 	if err != nil {
-		return false, err
+		return bundlePageInserted, err
 	}
 	if len(existing) > 0 {
-		return false, nil
+		return existingBundlePage(dao, existing[0], jobID, projectFileID)
 	}
 	if err := insertBundlePage(dao, jobID, projectID, projectFileID, pageNumber, page); err != nil {
 		// 并发导入同一批时，两边都可能先查后写：唯一索引会挡住后来者。
@@ -646,11 +735,41 @@ func writeBundlePage(dao core.App, jobID, projectID, projectFileID string, pageN
 		// 不这么分，一条真实的写入失败会被当成重复而静默吞掉。
 		again, lookupErr := findPageBySourceKey(dao, projectID, page)
 		if lookupErr == nil && len(again) > 0 {
-			return false, nil
+			return existingBundlePage(dao, again[0], jobID, projectFileID)
 		}
-		return false, err
+		return bundlePageInserted, err
 	}
-	return true, nil
+	return bundlePageInserted, nil
+}
+
+func existingBundlePage(dao core.App, page *core.Record, jobID, projectFileID string) (bundleWriteOutcome, error) {
+	if page.GetString("import_job") == jobID {
+		return bundlePageOwned, nil
+	}
+	if page.GetString("status") != "importing" {
+		return bundlePageSkipped, nil
+	}
+	// Repair legacy failed-job staging when its source identity is replayed.
+	// Never overwrite text, publish another running job, or take human work.
+	previous, err := dao.FindRecordById("import_jobs", page.GetString("import_job"))
+	if err != nil || previous.GetString("mode") != "bundle" || previous.GetString("status") != "failed" {
+		return bundlePageOwned, fmt.Errorf("source identity belongs to an unfinished import")
+	}
+	if page.GetString("project_file") != projectFileID {
+		return bundlePageOwned, fmt.Errorf("staged row PDF snapshot differs from the retry job; refusing to rebind or mix source files")
+	}
+	attempts, err := dao.FindRecordsByFilter("proofreading_attempts", "page={:page}", "", 1, 0, dbx.Params{"page": page.Id})
+	if err != nil {
+		return bundlePageOwned, err
+	}
+	if !isDiscardableImportPage(page.GetString("status"), page.GetString("proofreader"), page.GetString("first_proofreader"), page.GetString("second_proofreader"), len(attempts) != 0) {
+		return bundlePageOwned, fmt.Errorf("refusing to take ownership of a non-pristine import row")
+	}
+	page.Set("import_job", jobID)
+	if err := dao.Save(page); err != nil {
+		return bundlePageOwned, err
+	}
+	return bundlePageOwned, nil
 }
 
 func findPageBySourceKey(dao core.App, projectID string, page bundlePage) ([]*core.Record, error) {

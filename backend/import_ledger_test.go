@@ -69,3 +69,25 @@ func TestImportSourceHintDoesNotTreatUnknownAsLinked(t *testing.T) {
 		t.Fatalf("linked=%q unknown=%q", linked, unknown)
 	}
 }
+
+func TestOCRLedgerReconcilesRowsSeparatelyFromPhysicalPages(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, result, want       string
+		total, success, failed, inserted int
+	}{
+		{"one page can yield several rows", "completed", `{"rows":3}`, "一致", 1, 1, 0, 3},
+		{"later deletion stays a retained row gap", "completed", `{"rows":3}`, "需核对", 1, 1, 0, 2},
+		{"unexpected duplicate rows", "completed", `{"rows":3}`, "不一致", 1, 1, 0, 4},
+		{"page progress still reconciles", "completed", `{"rows":3}`, "不一致", 2, 1, 0, 3},
+		{"missing result cannot be assumed equal", "completed", `{}`, "需核对", 1, 1, 0, 3},
+		{"malformed result is explicit", "completed", `bad`, "需核对", 1, 1, 0, 3},
+		{"failed partial output was never published", "failed", `{"rows":3}`, "不适用", 2, 1, 1, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			label, note := ocrImportCountBalance(tc.status, tc.total, tc.success, tc.failed, tc.inserted, tc.result)
+			if label != tc.want || note == "" {
+				t.Fatalf("got %s %q want %s", label, note, tc.want)
+			}
+		})
+	}
+}

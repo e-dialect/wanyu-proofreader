@@ -93,9 +93,14 @@ func LoadScheme(path string) (*Scheme, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read canonical scheme %s: %w", path, err)
 	}
+	return LoadSchemeData(raw, path)
+}
+
+// LoadSchemeData loads a caller-owned immutable target inventory snapshot.
+func LoadSchemeData(raw []byte, source string) (*Scheme, error) {
 	doc := &Scheme{}
 	if err := json.Unmarshal(raw, doc); err != nil {
-		return nil, ErrInvalidScheme{Reason: fmt.Sprintf("%s: %v", path, err)}
+		return nil, ErrInvalidScheme{Reason: fmt.Sprintf("%s: %v", source, err)}
 	}
 	if err := doc.validate(); err != nil {
 		return nil, err

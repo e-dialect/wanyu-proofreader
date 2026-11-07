@@ -18,12 +18,17 @@ export const useAuthStore = defineStore('auth', () => {
   let accessGeneration = 0
 
   pb.authStore.onChange((newToken, newModel) => {
+    const identityChanged = user.value?.id !== newModel?.id
     token.value = newToken
     user.value = newModel
-    if (!newToken) accessContext.value = null
+    if (!newToken || identityChanged) {
+      ++accessGeneration
+      accessContext.value = null
+      accessRequest = null
+    }
   })
 
-  const isLoggedIn = computed(() => pb.authStore.isValid)
+  const isLoggedIn = computed(() => Boolean(token.value) && pb.authStore.isValid)
   const role = computed(() => user.value?.role || null)
   const isPlatformAdmin = computed(() => platformAdmin(role.value))
   const isAdmin = isPlatformAdmin
@@ -64,16 +69,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(email, password) {
     const authData = await loginWithPassword(email, password)
-    user.value = authData.record
-    token.value = authData.token
     await loadAccessContext({ force: true })
     return authData
   }
 
   async function loginExternal(provider, identity, password) {
     const authData = await loginWithExternalProvider(provider, identity, password)
-    user.value = authData.record
-    token.value = authData.token
     await loadAccessContext({ force: true })
     return authData
   }

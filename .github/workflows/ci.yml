@@ -604,12 +604,18 @@ jobs:
       - name: Publish Go coverage summary
         working-directory: backend
         run: |
-          go test -coverprofile=coverage.out ./... >coverage.log
+          go test -coverprofile=coverage.out ./... >coverage.log 2>&1 || {
+            cat coverage.log
+            exit 1
+          }
           go tool cover -func=coverage.out | tail -1
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: backend-coverage
-          path: backend/coverage.out
+          path: |
+            backend/coverage.out
+            backend/coverage.log
           retention-days: 7
 
   containers:

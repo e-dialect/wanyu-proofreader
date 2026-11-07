@@ -78,6 +78,12 @@ try {
  const summary=JSON.parse(completed.ocr_result_json);assert.equal(summary.rows,3);assert.equal(summary.abstained,1);assert.equal(summary.artifacts.length,2)
  const pages=await api(`/api/collections/pages/records?filter=${encodeURIComponent(`import_job="${job.id}"`)}&sort=page_number`,{token})
  assert.equal(pages.items.length,3);assert.ok(pages.items.every(row=>row.status==='pending'))
+ const ledger=await api(`/api/fangji/projects/${project.id}/import-ledger`,{token})
+ const ocrBatch=ledger.batches.find(batch=>batch.id===job.id)
+ assert.equal(ocrBatch.count_unit,'pages');assert.equal(ocrBatch.counts_label,'一致','2 physical pages yielding 3 rows must reconcile by the completed OCR result')
+ assert.equal(ocrBatch.total_count,2);assert.equal(ocrBatch.inserted_count,3)
+ assert.equal(ledger.summary.total_rows,1,'CSV input rows must not include OCR physical pages')
+ assert.equal(ledger.summary.ocr_pages,2);assert.equal(ledger.summary.imported_rows,4,'actual retained rows include both CSV and OCR')
  const page=pages.items[0],original='  𠀀 \ue123 ⿰木木 ɕ˥'
  assert.equal(JSON.parse(page.ocr_row_json).原文,original);assert.equal(JSON.parse(page.ocr_cells_json)[0].text,original);assert.equal(pages.items[1].missing_glyph,true)
  const artifact=summary.artifacts[0]

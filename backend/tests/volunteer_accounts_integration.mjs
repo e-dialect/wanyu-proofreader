@@ -191,6 +191,16 @@ try {
     method: 'POST', body: { identity: csv[1][1], password: initialPassword }
   })
   assert.equal(volunteerNicknameAuth.record.id, volunteerAuth.record.id)
+  // Assigning manager status must not bypass the first-password boundary.
+  const memberURL = `/api/fangji/projects/${projectId}/members/${volunteerAuth.record.id}`
+  await request(memberURL, { method: 'PUT', token: manager.token, body: { role: 'manager' } })
+  await request(`/api/fangji/projects/${projectId}/members`, { token: volunteerAuth.token, expected: 403 })
+  await request(`/api/fangji/projects/${projectId}/quality-summary`, { token: volunteerAuth.token, expected: 403 })
+  await request(`/api/fangji/projects/${projectId}/pages/${page.id}/content`, {
+    method: 'POST', token: volunteerAuth.token, expected: 403,
+    body: { rowJson: JSON.stringify({ 词条: '初始改密' }), headersJson: '["词条"]', expectedUpdated: page.updated }
+  })
+  await request(memberURL, { method: 'PUT', token: manager.token, body: { role: 'proofreader' } })
   await request(`/api/fangji/projects/${projectId}/claim`, {
     method: 'POST', token: volunteerAuth.token, expected: 403
   })

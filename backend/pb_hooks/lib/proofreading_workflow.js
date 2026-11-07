@@ -185,6 +185,10 @@ function reconcileProjectQuorum(dao, projectId) {
   const pages = dao.findRecordsByFilter("pages", `project = "${projectId}"`, "page_number", 100000, 0)
   const required = requiredProofreads(dao, projectId)
   for (const page of pages) {
+    // Quorum changes are not a recovery action for excluded/staged/rework rows.
+    // In particular, historical matching attempts must not re-approve a row the
+    // manager has explicitly classified as empty/not applicable.
+    if (page.getBool("source_empty") || !["pending", "proofread", "approved", "claimed", "proofreading", "arbitration"].includes(page.getString("status"))) continue
     if (arbitrationAttempt(dao, page)) continue
     if (page.getString("status") === "arbitration") continue
     const attempts = proofreadAttempts(dao, page)

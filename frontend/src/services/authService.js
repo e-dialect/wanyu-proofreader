@@ -9,8 +9,36 @@ export function currentUserRole(fallbackUser = null) {
   return pb.authStore.model?.role || fallbackUser?.role || null
 }
 
+// Auth SDK helpers save tokens before resolving. Use the same REST endpoints
+// with a scoped publication step, so a late response cannot restore a session
+// after logout or replace a different account selected in another tab.
+async function withCurrentSession(operation, accept) {
+  const store = pb.authStore
+  let unchanged = true
+  const unsubscribe = store.onChange(() => {
+    unchanged = false
+  })
+  try {
+    const result = await operation()
+    if (!unchanged || store !== pb.authStore)
+      throw new DOMException('登录会话已变化，请重试。', 'AbortError')
+    accept(result, store)
+    return result
+  } finally {
+    unsubscribe()
+  }
+}
+
 export async function loginWithPassword(identity, password) {
-  return pb.collection('users').authWithPassword(identity, password)
+  return withCurrentSession(
+    () =>
+      pb.send('/api/collections/users/auth-with-password', {
+        method: 'POST',
+        body: { identity, password },
+        requestKey: null
+      }),
+    (result, store) => store.save(result.token, result.record)
+  )
 }
 
 export async function listExternalProviders() {
@@ -22,48 +50,74 @@ export async function listExternalProviders() {
 }
 
 export async function loginWithExternalProvider(provider, identity, password) {
-  const authData = await pb.send(`/api/fangji/auth/external/${encodeURIComponent(provider)}/login`, {
-    method: 'POST',
-    body: { identity, password },
-    requestKey: null
-  })
-  pb.authStore.save(authData.token, authData.record)
-  return authData
+  return withCurrentSession(
+    () =>
+      pb.send(`/api/fangji/auth/external/${encodeURIComponent(provider)}/login`, {
+        method: 'POST',
+        body: { identity, password },
+        requestKey: null
+      }),
+    (result, store) => store.save(result.token, result.record)
+  )
 }
 
 export async function bindExternalIdentity(provider, identity, password) {
-  const result = await pb.send(`/api/fangji/auth/external/${encodeURIComponent(provider)}/bind`, {
-    method: 'POST',
-    body: { identity, password },
-    requestKey: null
-  })
-  if (result.token && result.record) pb.authStore.save(result.token, result.record)
-  return result
+  return withCurrentSession(
+    () =>
+      pb.send(`/api/fangji/auth/external/${encodeURIComponent(provider)}/bind`, {
+        method: 'POST',
+        body: { identity, password },
+        requestKey: null
+      }),
+    (result, store) => {
+      if (result.token && result.record) store.save(result.token, result.record)
+    }
+  )
 }
 
 export async function refreshStoredAuth() {
   if (!pb.authStore.isValid) return null
   try {
-    return await pb.collection('users').authRefresh({ requestKey: null })
-  } catch (error) {
-    if (shouldClearAuthAfterRefreshError(error)) pb.authStore.clear()
+    return await withCurrentSession(
+      async () => {
+        try {
+          return await pb.send('/api/collections/users/auth-refresh', {
+            method: 'POST',
+            requestKey: null
+          })
+        } catch (error) {
+          return { refreshError: error }
+        }
+      },
+      (result, store) => {
+        if (result.refreshError) {
+          if (shouldClearAuthAfterRefreshError(result.refreshError)) store.clear()
+        } else store.save(result.token, result.record)
+      }
+    ).then((result) => (result.refreshError ? null : result))
+  } catch {
     return null
   }
 }
 
 export async function registerProofreader({ email, password, passwordConfirm, name }) {
-  return pb.collection('users').create({
-    email,
-    password,
-    passwordConfirm,
-    name: name.trim(),
-    role: 'user'
-  }, { requestKey: null })
+  return pb.collection('users').create(
+    {
+      email,
+      password,
+      passwordConfirm,
+      name: name.trim(),
+      role: 'user'
+    },
+    { requestKey: null }
+  )
 }
 
 export async function checkNicknameAvailable(name) {
   return pb.send('/api/fangji/auth/nickname-available', {
-    method: 'GET', query: { name: name.trim() }, requestKey: null
+    method: 'GET',
+    query: { name: name.trim() },
+    requestKey: null
   })
 }
 
@@ -80,12 +134,16 @@ export function clearAuth() {
 }
 
 export async function updateProfile({ name, email }) {
-  const { record, token } = await pb.send('/api/fangji/profile', {
-    method: 'PATCH', body: { name, email }, requestKey: null
-  })
-  // Never restore a session that was logged out or replaced during the request.
-  if (pb.authStore.isValid && pb.authStore.model?.id === record.id) {
-    pb.authStore.save(token, record)
-  }
-  return record
+  const result = await withCurrentSession(
+    () =>
+      pb.send('/api/fangji/profile', {
+        method: 'PATCH',
+        body: { name, email },
+        requestKey: null
+      }),
+    ({ token, record }, store) => {
+      if (store.isValid && store.model?.id === record.id) store.save(token, record)
+    }
+  )
+  return result.record
 }

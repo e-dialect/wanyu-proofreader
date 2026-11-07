@@ -5,7 +5,10 @@ export function taskDraftKey(userId, pageId) {
   return `${DRAFT_PREFIX}:${String(userId || '')}:${String(pageId || '')}`
 }
 
-export function saveTaskDraft(storage, { userId, pageId, sourceSignature, row, contextBasis, savedAt = new Date().toISOString() }) {
+export function saveTaskDraft(
+  storage,
+  { userId, pageId, sourceSignature, row, contextBasis, savedAt = new Date().toISOString() }
+) {
   if (!storage || !userId || !pageId || !sourceSignature || !row) return null
   const payload = {
     version: 1,
@@ -17,11 +20,23 @@ export function saveTaskDraft(storage, { userId, pageId, sourceSignature, row, c
   }
   if (contextBasis) payload.contextBasis = String(contextBasis)
   let previous = null
-  try { previous = JSON.parse(storage.getItem(taskDraftKey(userId, pageId)) || 'null') } catch { /* A corrupt old payload is not a recoverable draft. */ }
-  if (previous?.userId === String(userId) && previous?.pageId === String(pageId) && (previous.sourceSignature !== payload.sourceSignature || (previous.contextBasis && previous.contextBasis !== payload.contextBasis))) {
+  try {
+    previous = JSON.parse(storage.getItem(taskDraftKey(userId, pageId)) || 'null')
+  } catch {
+    /* A corrupt old payload is not a recoverable draft. */
+  }
+  if (
+    previous?.userId === String(userId) &&
+    previous?.pageId === String(pageId) &&
+    (previous.sourceSignature !== payload.sourceSignature ||
+      (previous.contextBasis && previous.contextBasis !== payload.contextBasis))
+  ) {
     // Quota/storage failures must propagate: replacing the current value before
     // its old version is retained would silently lose an incompatible draft.
-    storage.setItem(`${taskDraftKey(userId, pageId)}:history:${previous.savedAt || savedAt}`, JSON.stringify(previous))
+    storage.setItem(
+      `${taskDraftKey(userId, pageId)}:history:${previous.savedAt || savedAt}`,
+      JSON.stringify(previous)
+    )
   }
   storage.setItem(taskDraftKey(userId, pageId), JSON.stringify(payload))
   return payload
@@ -46,12 +61,23 @@ export function loadTaskDraft(storage, { userId, pageId, sourceSignature, onStal
       storage.removeItem(key)
       return null
     }
-    if (draft.sourceSignature !== String(sourceSignature)) { onStale?.(draft); return null }
+    if (draft.sourceSignature !== String(sourceSignature)) {
+      onStale?.(draft)
+      return null
+    }
     return draft
   } catch {
     storage.removeItem(key)
     return null
   }
+}
+
+export function archiveTaskDraft(storage, draft) {
+  if (!storage || !draft?.userId || !draft?.pageId || !draft?.savedAt) return
+  storage.setItem(
+    `${taskDraftKey(draft.userId, draft.pageId)}:history:${draft.savedAt}`,
+    JSON.stringify(draft)
+  )
 }
 
 export function loadTaskDraftHistory(storage, { userId, pageId }) {
@@ -60,7 +86,12 @@ export function loadTaskDraftHistory(storage, { userId, pageId }) {
   for (let i = 0; i < Number(storage?.length || 0); i++) {
     const key = storage.key(i)
     if (!key?.startsWith(prefix)) continue
-    try { const draft = JSON.parse(storage.getItem(key)); if (draft.userId === String(userId) && draft.pageId === String(pageId)) rows.push(draft) } catch { /* Leave a corrupt history entry out of the view. */ }
+    try {
+      const draft = JSON.parse(storage.getItem(key))
+      if (draft.userId === String(userId) && draft.pageId === String(pageId)) rows.push(draft)
+    } catch {
+      /* Leave a corrupt history entry out of the view. */
+    }
   }
   return rows
 }

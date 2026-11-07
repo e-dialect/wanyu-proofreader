@@ -362,6 +362,44 @@ class CliTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertIn("declares no tone values for column", err)
 
+    def test_existing_outputs_and_input_aliases_are_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            source = Path(workspace) / 'source.csv'
+            source.write_bytes(FIXTURE.read_bytes())
+            existing = Path(workspace) / 'existing.csv'
+            existing.write_bytes(b'preserve this unrelated file')
+            targets = [existing]
+            hardlink = Path(workspace) / 'hardlink.csv'
+            os.link(source, hardlink)
+            targets.append(hardlink)
+            if os.name != 'nt':
+                alias = Path(workspace) / 'alias.csv'
+                alias.symlink_to(source)
+                targets.append(alias)
+                repo_alias = Path(workspace) / 'repo'
+                repo_alias.symlink_to(convert_tones.REPO_ROOT, target_is_directory=True)
+                target = repo_alias / 'leaked.csv'
+                code, _, err = run_main(['--csv', str(source), '--out', str(target)])
+                self.assertEqual(code, 2, err)
+                self.assertFalse(target.exists())
+            for target in targets:
+                before = target.read_bytes()
+                code, _, err = run_main(['--csv', str(source), '--out', str(target)])
+                self.assertEqual(code, 2, err)
+                self.assertEqual(target.read_bytes(), before)
+            self.assertEqual(source.read_bytes(), FIXTURE.read_bytes())
+
+    def test_json_with_output_is_valid_json_and_exclusive_create_closes_the_race(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            target = Path(workspace) / 'converted.csv'
+            code, out, err = run_main(['--csv', str(FIXTURE), '--out', str(target), '--json'])
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out)['rows'], 13)
+            before = target.read_bytes()
+            with self.assertRaises(FileExistsError):
+                convert_tones.write_csv(target, ['header'], [['replacement']])
+            self.assertEqual(target.read_bytes(), before)
+
     def test_flatten_direction_returns_the_corpus_shape(self):
         code, out, err = run_main(["--csv", str(FIXTURE), "--direction", "flatten", "--json"])
         self.assertEqual(0, code, err)

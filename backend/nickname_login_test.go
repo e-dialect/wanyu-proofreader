@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -90,5 +92,62 @@ func TestNicknamePasswordIdentities(t *testing.T) {
 		if err := app.Save(first); err == nil {
 			t.Fatalf("accepted unavailable nickname %q", name)
 		}
+	}
+}
+
+// Both field-local unique indexes permit nickname/username cross-field races.
+// Pause one save after validation so the other save observes its old state.
+func TestConcurrentNicknameCannotShadowUsername(t *testing.T) {
+	app := newSchemaTestApp(t)
+	registerNicknameLogin(app)
+	users, _ := app.FindCollectionByNameOrId("users")
+	newUser := func(name, username string) *core.Record {
+		user := core.NewRecord(users)
+		user.Set("name", name)
+		user.Set("username", username)
+		user.Set("role", "user")
+		user.SetPassword("NicknameRacePassword123!")
+		return user
+	}
+	first := newUser("crossFieldIdentity", "first-race-user")
+	second := newUser("different nickname", "crossFieldIdentity")
+	ready := make(chan struct{})
+	release := make(chan struct{})
+	secondValidated := make(chan struct{})
+	var once sync.Once
+	app.OnRecordCreateExecute("users").BindFunc(func(e *core.RecordEvent) error {
+		if e.Record == first {
+			once.Do(func() { close(ready) })
+			<-release
+		}
+		if e.Record == second {
+			close(secondValidated)
+		}
+		return e.Next()
+	})
+	result := make(chan error, 2)
+	go func() { result <- app.Save(first) }()
+	select {
+	case <-ready:
+	case err := <-result:
+		t.Fatalf("first save failed before execution: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("first save stalled before execution")
+	}
+	go func() { result <- app.Save(second) }()
+	// The competing save must be excluded from validation until the first commit.
+	select {
+	case <-secondValidated:
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(release)
+	successes := 0
+	for range 2 {
+		if <-result == nil {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("cross-field identity race persisted %d users, want exactly one", successes)
 	}
 }

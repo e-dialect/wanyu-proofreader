@@ -103,18 +103,22 @@ def verify(headers, before, after, columns):
 
 def guard_output(csv_path, out_path):
     """Keep the 正本 itself and the repo tree out of harm's way."""
-    target = os.path.abspath(out_path)
-    if target == os.path.abspath(csv_path):
+    target = os.path.realpath(out_path)
+    if target == os.path.realpath(csv_path) or (
+            os.path.exists(target) and os.path.samefile(target, csv_path)):
         return "refusing to overwrite the input corpus: %s" % input_source.display_path(target)
-    if target == REPO_ROOT or target.startswith(REPO_ROOT + os.sep):
+    repo = os.path.realpath(REPO_ROOT)
+    if target == repo or target.startswith(repo + os.sep):
         return ("refusing to write corpus text inside the repository (%s): unlicensed "
                 "corpus must not be committed (CONTRIBUTING.md, #92)" % REPO_ROOT)
+    if os.path.lexists(out_path):
+        return "refusing to overwrite an existing output: %s" % input_source.display_path(target)
     return None
 
 
 def write_csv(path, headers, rows):
     """Match the 正本's shape: UTF-8 BOM, CRLF record terminators, minimal quoting."""
-    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+    with open(path, "x", encoding="utf-8-sig", newline="") as handle:
         writer = csv.writer(handle, lineterminator="\r\n")
         writer.writerow(headers)
         writer.writerows(rows)
@@ -202,9 +206,14 @@ def main(argv=None):
             print("error: refusing to write, verification failed: %s"
                   % "; ".join(problems[:5]), file=sys.stderr)
             return 2
-        write_csv(args.out, headers, converted)
+        try:
+            write_csv(args.out, headers, converted)
+        except OSError as error:
+            print("error: could not create output: %s" % error, file=sys.stderr)
+            return 2
         print("wrote: %s (verification: %d rows, untouched columns identical)"
-              % (input_source.display_path(args.out), len(converted)))
+              % (input_source.display_path(args.out), len(converted)),
+              file=sys.stderr if args.json else sys.stdout)
 
     if args.json:
         json.dump({"source": os.path.basename(path), "sha256": digest, "rows": len(rows),

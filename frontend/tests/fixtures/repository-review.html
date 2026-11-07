@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>仓库审查隔离回归</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h } from 'vue'
+      import { createPinia } from 'pinia'
+      import { createMemoryHistory, createRouter } from 'vue-router'
+      import { BaseAuthStore } from 'pocketbase'
+      import App from '../../src/App.vue'
+      import LoginView from '../../src/views/LoginView.vue'
+      import AdminLayout from '../../src/views/admin/AdminLayout.vue'
+      import SourceFidelity from '../../src/views/admin/SourceFidelityView.vue'
+      import ProofreadEditor from '../../src/views/proofreader/ProofreadEditorView.vue'
+      import { useAuthStore } from '../../src/stores/auth'
+      import { authState, resolveNavigation } from '../../src/lib/access'
+      import pb from '../../src/lib/pocketbase'
+      import '../../src/style.css'
+      pb.authStore = new BaseAuthStore()
+      const token = `fixture.${btoa(JSON.stringify({ exp: 4102444800 }))}.fixture`
+      if (!new URLSearchParams(location.search).has('anonymous'))
+        pb.authStore.save(token, { id: 'account-a', name: '合成账号 A', role: 'user' })
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          {
+            path: '/admin',
+            component: AdminLayout,
+            meta: { requiresAuth: true },
+            children: [
+              {
+                path: 'projects/:id/verification',
+                name: 'SourceFidelity',
+                component: SourceFidelity
+              }
+            ]
+          },
+          {
+            path: '/tasks/:id/edit',
+            name: 'ProofreadEditor',
+            component: ProofreadEditor,
+            meta: { requiresAuth: true }
+          },
+          {
+            path: '/login',
+            component: LoginView,
+            meta: { guest: true }
+          },
+          {
+            path: '/workspace',
+            component: { render: () => h('main', '合成工作台') },
+            meta: { requiresAuth: true }
+          }
+        ]
+      })
+      router.beforeEach((to) =>
+        resolveNavigation(
+          to,
+          authState({ isValid: pb.authStore.isValid, model: pb.authStore.model })
+        )
+      )
+      await router.push(
+        new URLSearchParams(location.search).get('start') ||
+          '/admin/projects/project-a/verification'
+      )
+      const pinia = createPinia()
+      const auth = useAuthStore(pinia)
+      globalThis.__REPOSITORY_REVIEW__ = { router, pb, auth, token }
+      createApp(App).use(pinia).use(router).mount('#app')
+    </script>
+  </body>
+</html>

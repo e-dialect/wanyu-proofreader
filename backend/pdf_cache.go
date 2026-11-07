@@ -25,6 +25,11 @@ const pdfBookBudget int64 = 256 * 1024 * 1024
 
 // Serialize CPU work, cold misses, cache publication and cleanup across requests.
 var pdfCacheMu sync.Mutex
+
+// Inputs used by the image worker remain part of the cache budget, but cannot
+// be evicted until the worker releases them. Access only under pdfCacheMu.
+var pdfCachePins = map[string]int{}
+
 var errPDFPageBudget = errors.New("PDF page cache exceeds disk budget")
 
 func (s *importService) pdfCacheDir() string {
@@ -49,6 +54,7 @@ func cleanupPDFCache(root string, now time.Time, reserve int64) {
 		path     string
 		modified time.Time
 		size     int64
+		pinned   bool
 	}
 	var live []artifact
 	var total int64
@@ -62,7 +68,8 @@ func cleanupPDFCache(root string, now time.Time, reserve int64) {
 		if e.IsDir() || strings.HasPrefix(e.Name(), "oversized-") || strings.HasPrefix(e.Name(), "shared-watermark-") {
 			ttl = pdfPagesTTL
 		}
-		if !info.ModTime().Add(ttl).After(now) {
+		pinned := pdfCachePins[p] > 0
+		if !pinned && !info.ModTime().Add(ttl).After(now) {
 			_ = os.RemoveAll(p)
 			continue
 		}
@@ -75,7 +82,7 @@ func cleanupPDFCache(root string, now time.Time, reserve int64) {
 			}
 			return nil
 		})
-		live = append(live, artifact{p, info.ModTime(), size})
+		live = append(live, artifact{p, info.ModTime(), size, pinned})
 		total += size
 	}
 	sort.Slice(live, func(i, j int) bool { return live[i].modified.Before(live[j].modified) })
@@ -83,8 +90,25 @@ func cleanupPDFCache(root string, now time.Time, reserve int64) {
 		if total+reserve <= pdfCacheBudget {
 			break
 		}
+		if a.pinned {
+			continue
+		}
 		if os.RemoveAll(a.path) == nil {
 			total -= a.size
+		}
+	}
+}
+
+// Caller holds pdfCacheMu while acquiring the pin. Release after rendering,
+// including errors/cancellation; cleanup must continue accounting for the bytes.
+func pinPDFCache(dir string) func() {
+	pdfCachePins[dir]++
+	return func() {
+		pdfCacheMu.Lock()
+		defer pdfCacheMu.Unlock()
+		pdfCachePins[dir]--
+		if pdfCachePins[dir] <= 0 {
+			delete(pdfCachePins, dir)
 		}
 	}
 }
