@@ -1,11 +1,76 @@
 package main
 
 import (
+	"io"
+	"log"
 	"testing"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
+
+func TestRecoverySharedQueuePreservesImportConversionPDFOrder(t *testing.T) {
+	s, jobs := recoveryPagingService(t)
+	var want []string
+	for i, mode := range []string{"skip_invalid", "bundle", "skip_invalid", "bundle"} {
+		job := core.NewRecord(jobs)
+		job.Set("mode", mode)
+		job.Set("status", "queued")
+		if i == 2 {
+			job.Set("status", "inspecting")
+		}
+		job.Set("created", time.Date(2026, 11, 1, i, 0, 0, 0, time.UTC))
+		if err := s.app.Save(job); err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, job.Id)
+	}
+	for i, name := range []string{"conversion_jobs", "project_files"} {
+		collection, _ := s.app.FindCollectionByNameOrId(name)
+		job := core.NewRecord(collection)
+		job.Set("status", "processing")
+		job.Set("created", time.Date(2026, 11, 2, i, 0, 0, 0, time.UTC))
+		if err := s.app.Save(job); err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, job.Id)
+	}
+	previousLog := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(previousLog)
+	const repetitions = 100
+	var reversed int
+	var first []string
+	for range repetitions {
+		service := newImportService(s.app)
+		service.queue = make(chan importWork, 1) // Exercise actual admission backpressure.
+		done := make(chan struct{})
+		go func() { service.recoverPendingWork(); close(done) }()
+		got := make([]string, 0, len(want))
+		for range want {
+			select {
+			case work := <-service.queue:
+				got = append(got, work.id)
+			case <-time.After(5 * time.Second):
+				t.Fatal("recovery did not admit the complete shared-queue backlog")
+			}
+		}
+		<-done
+		service.imageCancel()
+		for index := range want {
+			if got[index] != want[index] {
+				reversed++
+				if first == nil {
+					first = got
+				}
+				break
+			}
+		}
+	}
+	if reversed != 0 {
+		t.Fatalf("shared recovery reordered import→conversion→PDF in %d/%d runs; first=%v want=%v", reversed, repetitions, first, want)
+	}
+}
 
 func recoveryPagingService(t *testing.T) (*importService, *core.Collection) {
 	t.Helper()

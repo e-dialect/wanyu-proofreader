@@ -16,18 +16,25 @@ export async function startConversion(projectId, sourceSchemeId) {
 }
 
 export async function listConversions(projectId) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/conversions`, { requestKey: null })
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/conversions`, {
+    requestKey: null
+  })
 }
 
-export async function listNormalizations(projectId, { status = 'AMBIGUOUS', page = 1, perPage = 10 } = {}) {
+export async function listNormalizations(
+  projectId,
+  { status = 'AMBIGUOUS', page = 1, perPage = 10 } = {}
+) {
   const query = new URLSearchParams({ status, page: String(page), perPage: String(perPage) })
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/normalizations?${query}`, { requestKey: null })
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/normalizations?${query}`, {
+    requestKey: null
+  })
 }
 
-export async function decideNormalization(pageId, { canonical, basis }) {
+export async function decideNormalization(pageId, { canonical, basis, expectedBasis }) {
   return pb.send(`/api/fangji/pages/${encodeURIComponent(pageId)}/normalization`, {
     method: 'POST',
-    body: { canonical_pronunciation: canonical, basis },
+    body: { canonical_pronunciation: canonical, basis, expected_basis: expectedBasis },
     requestKey: null
   })
 }

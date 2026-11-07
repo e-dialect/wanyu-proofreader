@@ -284,8 +284,14 @@ await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
 // 所以「拼不出来」与「超长」是两句不同的话。编号沿用 decideNormalization 里那三个注释，
 // 中间的「第 2 道闸」（规则版本绑定）的取证不在这一段——整套套件只有 --verify-rule-change
 // 那一刻版本是对不上的，见那边。
+const reviewSnapshot = (await api(`/api/fangji/projects/${project.id}/normalizations?status=AMBIGUOUS,UNSUPPORTED`, { token })).items.find(row => row.id === byHeadword.丙.id)
+assert.ok(reviewSnapshot.expected_basis, 'review GET provides the conditional decision basis')
+const expectedBasis = reviewSnapshot.expected_basis
+await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
+  method: 'POST', token, expected: 409, body: { canonical_pronunciation: 'gu533', basis: 'missing snapshot must be refused' }
+})
 const notSpellable = await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
-  method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'za533', basis: '我觉得对' }
+  method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'za533', basis: '我觉得对', expected_basis: expectedBasis }
 })
 assert.match(notSpellable.message, /不是「synthetic-canonical」能拼出的音节/, JSON.stringify(notSpellable))
 await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
@@ -298,7 +304,7 @@ assert.equal(stillUndecided.normalization_basis, '')
 
 const decided = await api(`/api/fangji/pages/${byHeadword.丙.id}/normalization`, {
   method: 'POST', token,
-  body: { canonical_pronunciation: 'gu533', basis: '对照原书凡例，n 在 k 后作 u' }
+  body: { canonical_pronunciation: 'gu533', basis: '对照原书凡例，n 在 k 后作 u', expected_basis: expectedBasis }
 })
 assert.equal(decided.normalization_status, 'REVIEWED')
 assert.equal(decided.canonical_pronunciation, 'gu533')
@@ -364,8 +370,26 @@ if (process.argv.includes('--prepare-resume')) {
   const parked = await api(`/api/collections/conversion_jobs/records/${job.id}`, { token: superAuth.token })
   assert.equal(parked.status, 'processing')
   assert.equal(parked.cursor, third.page_number)
+  // Recovery ordering is part of conversion scope: a later conversion must
+  // not overtake an already queued CSV and finish before its rows publish.
+  // Keep one visible row (so the real conversion-start route is eligible),
+  // then stage an immutable CSV job and a later conversion for the restart.
+  const orderProject=await projectWithReadingColumn(`导入先于转换恢复 ${suffix}`)
+  await importCSV(orderProject.id,[['恢复原条目','ki533',1]],'recovery-existing.csv')
+  const orderImport=await importCSV(orderProject.id,[['恢复新条目甲','pa533',1],['恢复新条目乙','ti21',2]],'recovery-pending.csv')
+  const pendingPages=(await listPages(orderProject.id)).filter(page=>page.import_job===orderImport.id)
+  assert.equal(pendingPages.length,2)
+  await api(`/api/fangji/projects/${orderProject.id}/pages/delete-pending`,{method:'POST',token,body:{ids:pendingPages.map(page=>page.id)}})
+  await api(`/api/collections/import_jobs/records/${orderImport.id}`,{method:'PATCH',token:superAuth.token,body:{status:'queued'}})
+  const orderConversion=await api(`/api/fangji/projects/${orderProject.id}/conversions`,{method:'POST',token,expected:202,body:{source_scheme_id:SOURCE_SCHEME}})
+  assert.equal((await waitConversion(orderConversion.id)).total_count,1,'the pre-restart checkpoint has one published row')
+  await api(`/api/collections/conversion_jobs/records/${orderConversion.id}`,{method:'PATCH',token:superAuth.token,body:{status:'queued',cursor:0,total_count:0,exact_count:0,reviewed_count:0,ambiguous_count:0,unsupported_count:0,skipped_count:0,failed_count:0}})
+  const queuedImport=await api(`/api/collections/import_jobs/records/${orderImport.id}`,{token:superAuth.token})
+  const queuedConversion=await api(`/api/collections/conversion_jobs/records/${orderConversion.id}`,{token:superAuth.token})
+  assert.equal(queuedImport.status,'queued');assert.equal(queuedConversion.status,'queued')
+  assert.ok(queuedImport.created<=queuedConversion.created,'import must have been accepted before conversion')
   const { writeFileSync } = await import('node:fs')
-  writeFileSync(handoff, JSON.stringify({ jobId: job.id, projectId: project.id }))
+  writeFileSync(handoff, JSON.stringify({ jobId: job.id, projectId: project.id,recoveryOrder:{projectId:orderProject.id,importJobId:orderImport.id,conversionJobId:orderConversion.id} }))
   console.log(`PREPARED: conversion job ${job.id} parked mid-way for the restart phase`)
 } else if (process.argv.includes('--verify-resume')) {
   const handoff = JSON.parse(readFileSync(process.env.SCHEME_CONVERSION_HANDOFF, 'utf8'))
@@ -388,6 +412,23 @@ if (process.argv.includes('--prepare-resume')) {
     { token: superAuth.token })).items.filter((page) => page.normalization_basis !== '')
   assert.equal(humanDecided.length, 1, JSON.stringify(humanDecided))
   assert.equal(humanDecided[0].canonical_pronunciation, 'gu533')
+  const order=handoff.recoveryOrder
+  const orderConversion=await waitConversion(order.conversionJobId)
+  const orderImport=await api(`/api/collections/import_jobs/records/${order.importJobId}`,{token:superAuth.token})
+  assert.equal(orderImport.status,'completed')
+  assert.equal(orderImport.success_count,2)
+  assert.equal(orderConversion.status,'completed')
+  assert.equal(orderConversion.total_count,3,'recovered conversion must include the earlier queued CSV, not finish with only the pre-existing row')
+  assert.equal(orderConversion.exact_count,3);assert.equal(orderConversion.failed_count,0)
+  const orderedPages=await listPages(order.projectId)
+  assert.equal(orderedPages.length,3)
+  for(const page of orderedPages) {
+    assert.equal(page.status,'pending')
+    assert.equal(page.normalization_status,'EXACT','no newly imported row may be silently left outside the completed conversion')
+    assert.equal(page.source_scheme_id,SOURCE_SCHEME)
+    assert.ok(page.canonical_pronunciation)
+  }
+  console.log('PASS: queued CSV recovery publishes its rows before the later conversion scans its scope')
   // 为下一阶段铺前置：下一次启动之前脚手架会把规则文件换成下一版，所以这里先停一个
   // 「记着当前版本、还没开始处理」的作业。cursor 与计数全部归零，好让下一阶段能断言
   // 「拦在第一条之前」——只断言状态是 failed 的话，一个处理到一半才失败的作业也会通过。

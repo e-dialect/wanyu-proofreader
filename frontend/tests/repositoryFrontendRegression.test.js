@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { computed, reactive, ref } from 'vue'
 import { adminRouteKey } from '../src/lib/adminRouteKey.js'
 import * as taskDraft from '../src/lib/taskDraft.js'
+import * as normalizationDraft from '../src/lib/normalizationDraft.js'
 
 const regression = (name, run) => test(name, { timeout: 5000 }, run)
 
@@ -21,6 +22,7 @@ function evaluate(path, names, overrides = {}) {
     watch: () => {},
     onBeforeUnmount: (callback) => cleanup.push(callback),
     getPbMessage: (error) => error.message,
+    ...normalizationDraft,
     ...overrides
   }
   const environment = new Proxy(scope, {
@@ -549,20 +551,24 @@ regression(
             ? old.promise
             : calls === 2
               ? next.promise
-              : Promise.resolve({ items: [{ id: 'latest' }], page: 1 })
+              : Promise.resolve({
+                  items: [{ id: 'latest', expected_basis: 'same-basis' }],
+                  page: 1
+                })
       }
     )
     const first = api.loadReviews()
     api.reviewStatusFilter.value = 'UNSUPPORTED'
     const second = api.loadReviews()
-    next.resolve({ items: [{ id: 'latest' }], page: 1 })
+    next.resolve({ items: [{ id: 'latest', expected_basis: 'same-basis' }], page: 1 })
     await second
     old.resolve({ items: [{ id: 'old-filter' }], page: 1 })
     await first
     assert.equal(api.reviewRows.value[0].id, 'latest')
-    api.reviewDraft.value.latest = { canonical: 'ɡa̤⁵³³', basis: '人工填写依据' }
+    Object.assign(api.reviewDraft.value.latest, { canonical: 'ɡa̤⁵³³', basis: '人工填写依据' })
     await api.loadReviews()
-    assert.deepEqual(api.reviewDraft.value.latest, { canonical: 'ɡa̤⁵³³', basis: '人工填写依据' })
+    assert.equal(api.reviewDraft.value.latest.canonical, 'ɡa̤⁵³³')
+    assert.equal(api.reviewDraft.value.latest.basis, '人工填写依据')
   }
 )
 

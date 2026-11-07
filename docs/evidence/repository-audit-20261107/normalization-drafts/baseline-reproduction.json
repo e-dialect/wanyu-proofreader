@@ -1,0 +1,58 @@
+{
+  "baseline": "a36d1c2",
+  "synthetic": true,
+  "before": {
+    "atNewSource": {
+      "source": "si533",
+      "draft": {
+        "canonical": "ge533",
+        "basis": "人工依据针对 ma533"
+      }
+    },
+    "submitted": [
+      {
+        "id": "row",
+        "canonical": "ge533",
+        "basis": "人工依据针对 ma533"
+      }
+    ]
+  },
+  "after": {
+    "atNewSource": {
+      "source": "si533",
+      "draft": {
+        "canonical": "",
+        "basis": "",
+        "expectedBasis": "basis-si",
+        "context": {
+          "expectedBasis": "basis-si",
+          "source": "si533",
+          "currentSource": "",
+          "sourceColumn": "",
+          "sourceScheme": "",
+          "targetScheme": "",
+          "ruleVersion": "",
+          "schemaVersion": null
+        },
+        "history": [
+          {
+            "canonical": "ge533",
+            "basis": "人工依据针对 ma533",
+            "context": {
+              "expectedBasis": "basis-ma",
+              "source": "ma533",
+              "currentSource": "",
+              "sourceColumn": "",
+              "sourceScheme": "",
+              "targetScheme": "",
+              "ruleVersion": "",
+              "schemaVersion": null
+            }
+          }
+        ],
+        "stale": true
+      }
+    },
+    "submitted": []
+  }
+}

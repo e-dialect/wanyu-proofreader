@@ -739,27 +739,33 @@ func (s *importService) recoverPendingWork() {
 		{"project_files", `status="processing"`, "pdf"},
 	}
 	counts := make([]int, len(scans))
-	var pending sync.WaitGroup
-	for index, scan := range scans {
-		pending.Go(func() {
-			// Discovery is independent; a full CSV queue cannot prevent the
-			// separately bounded OCR queue from receiving its recovery jobs.
-			count, err := s.walkPendingWork(scan.collection, scan.filter, 250, func(record *core.Record) {
-				kind := scan.kind
-				if kind == "csv" {
-					if record.GetString("mode") == "bundle" {
-						kind = "bundle"
-					} else if record.GetString("status") == "inspecting" {
-						kind = "csv_inspect"
-					}
+	runScan := func(index int) {
+		scan := scans[index]
+		count, err := s.walkPendingWork(scan.collection, scan.filter, 250, func(record *core.Record) {
+			kind := scan.kind
+			if kind == "csv" {
+				if record.GetString("mode") == "bundle" {
+					kind = "bundle"
+				} else if record.GetString("status") == "inspecting" {
+					kind = "csv_inspect"
 				}
-				s.enqueue(importWork{kind: kind, id: record.Id, requestID: "recovery-" + record.Id})
-			})
-			counts[index] = count
-			if err != nil {
-				logUpload("error", "recovery_query_failed", map[string]any{"kind": scan.kind, "error": err.Error()})
 			}
+			s.enqueue(importWork{kind: kind, id: record.Id, requestID: "recovery-" + record.Id})
 		})
+		counts[index] = count
+		if err != nil {
+			logUpload("error", "recovery_query_failed", map[string]any{"kind": scan.kind, "error": err.Error()})
+		}
+	}
+	// OCR has its own worker/queue: its discovery may run independently even
+	// while admission into the shared queue is blocked by an import backlog.
+	var pending sync.WaitGroup
+	pending.Go(func() { runScan(1) })
+	// Preserve the original shared-worker recovery order. A conversion scans
+	// only published pages, so admitting it ahead of an older queued import
+	// could complete the conversion before that import publishes its rows.
+	for _, index := range []int{0, 2, 3} {
+		runScan(index)
 	}
 	pending.Wait()
 	logUpload("info", "recovery_scan_completed", map[string]any{

@@ -198,6 +198,12 @@ type ErrInvalidRule struct{ Reason string }
 
 func (e ErrInvalidRule) Error() string { return "invalid scheme adapter: " + e.Reason }
 
+// LoadAdapterData validates exactly the supplied snapshot. Callers that also
+// hash a rule must use these same bytes rather than re-reading a mutable file.
+func LoadAdapterData(raw []byte, source string, target *Scheme) (*Adapter, error) {
+	return loadAdapterBytes(raw, source, target)
+}
+
 // LoadAdapter reads and validates one v1 rule file. There is no default path: a
 // baked-in location is how #193/#195 ended up shipping someone's home directory.
 //

@@ -45,3 +45,5 @@
 ![租约失效只读](editor-disabled.png)
 
 其余 [正常](editor-normal.png) / [空](editor-empty.png)。嵌入的 PDF、账号、词条与约定均为合成材料；截图中的空 PDF/水印不是实际语料识别或来源质量证明。
+
+补充评审修复：此前按同条目ID保留归一草稿仍不足以绑定来源依据。PR #387评审发现来源变更后旧稿可被套用，本轮改为同ID且同复核依据保留，变化时只读归档并重新填写，服务端事务校验凭据。详见 [新增复核依据契约](../../../scheme-normalization-review.md) 与 `docs/evidence/repository-audit-20261107/normalization-drafts/`；此前399项通过并不表示覆盖了该来源变更路径。

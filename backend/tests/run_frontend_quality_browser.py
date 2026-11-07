@@ -48,7 +48,7 @@ with harness.temporary_root() as temporary:
                 else:
                     raise RuntimeError('Quality fixture Vite did not start')
                 checks = {
-                    'repository': ['frontend/tests/browser/repository-review.cjs'],
+                    'repository': ['frontend/tests/browser/repository-review.cjs', 'frontend/tests/browser/normalization-draft.cjs'],
                     'review': ['frontend/tests/browser/review.cjs'],
                     'modal': ['frontend/tests/browser/modal.cjs'],
                     'members': ['frontend/tests/browser/member-candidates.cjs'],

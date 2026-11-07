@@ -919,3 +919,7 @@ Traefik 的 TLS router 增加一年 HSTS，关闭强制 HTTP HSTS；本机 HTTP 
 edialect 部署主机使用当前选中的 edialect-bounded 构建器（1280 MiB 内存、内存和 swap 合计 2304 MiB、1 核 CPU、一个构建步骤）以及 2 GiB 主机 swap。上线前确认 docker buildx ls 的选中项正确，且没有 BUILDX_BUILDER 环境变量覆盖它，再执行 docker compose -f docker-compose.traefik.yml up --build -d。其他主机需按实际容量配置自己的构建器。
 
 主机的安装、资源保护、验收证据及回滚说明见 /home/edialect/infra/managed/RESOURCE_FIX.md。
+
+### 归一复核的条件提交
+
+人工归一复核现在必须回传当前队列行的 `expected_basis`。来源、方案、规则或文件快照变化以及旧客户端缺少凭据时，服务端返回409并保留原数据；界面保留只读旧稿，成功刷新后按当前依据重新填写。前后端需一起更新，完整接口与兼容边界见 [归一复核 API](docs/scheme-normalization-review.md)。
