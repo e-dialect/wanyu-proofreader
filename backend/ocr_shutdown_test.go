@@ -164,7 +164,6 @@ func TestOCRShutdownPreservesActiveAndQueuedJobsForRecovery(t *testing.T) {
 	if err := s.app.OnTerminate().Trigger(&core.TerminateEvent{App: s.app}); err != nil {
 		t.Fatal(err)
 	}
-	stop()
 	awaitOCRShutdown(t, done, "shutdown kept consuming the OCR queue")
 	checkpoint, _ := s.app.FindRecordById("import_jobs", active.Id)
 	if checkpoint.GetString("status") != "processing" || checkpoint.GetString("error_code") != "" || !checkpoint.GetDateTime("finished_at").IsZero() || checkpoint.GetInt("processed_count") != 1 || checkpoint.GetInt("success_count") != 1 || checkpoint.GetInt("failed_count") != 0 {
