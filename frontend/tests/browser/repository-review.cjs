@@ -75,12 +75,16 @@ const output =
         })
       return route.fallback()
     })
-    await page.goto(base + '/tests/fixtures/repository-review.html')
+    await page.goto(
+      base +
+        '/tests/fixtures/repository-review.html?start=' +
+        encodeURIComponent('/admin/projects/project-a/verification?view=policy')
+    )
     await page.waitForFunction(
       () => document.querySelector('textarea')?.value === '合成约定 project-a'
     )
     await page.evaluate(() =>
-      window.__REPOSITORY_REVIEW__.router.push('/admin/projects/project-b/verification')
+      window.__REPOSITORY_REVIEW__.router.push('/admin/projects/project-b/verification?view=policy')
     )
     await page.waitForFunction(
       () => document.querySelector('textarea')?.value === '合成约定 project-b'

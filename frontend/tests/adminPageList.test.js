@@ -110,27 +110,27 @@ test('keeps detail pagination decoupled from stats and defers scheme loading', (
     source.indexOf('async function loadPageStats()')
   )
   const mounted = source.slice(
-    source.indexOf('onMounted(async'),
-    source.indexOf('onBeforeUnmount(() =>')
+    source.indexOf('async function activate()'),
+    source.indexOf('async function loadProject()')
   )
   assert.doesNotMatch(loadPages, /result\.stats|loadPageStats|pages\.value\s*=\s*\[\]/)
   assert.match(mounted, /loadPageStats\(\)/)
-  assert.match(mounted, /setupSchemeObserver\(\)/)
+  assert.match(source, /const ProjectSchemePanel = lazyPanel/)
+  assert.match(source, /onMounted\(setupSchemeObserver\)/)
   assert.doesNotMatch(mounted, /Promise\.all\(\[[^\]]*loadSchemeState/)
   assert.match(source, /new IntersectionObserver/)
 })
 
 test('detail stats failures stay unknown instead of becoming zero', () => {
   const source = projectDetailSource()
-  assert.match(source, /当前无法判断项目总体完成情况/)
-  const urgent = source.slice(source.indexOf('class="project-status-action--urgent"'))
-  const expression = urgent.match(/<small>\s*\{\{([\s\S]*?)\}\}\s*<\/small>/)?.[1]
-  assert.ok(expression, 'arbitration status must have an explicit text expression')
+  const expression = source.match(/hasLoadedPageStats \? pageStats\.arbitration : '—'/)?.[0]
+  assert.ok(expression, 'arbitration count must remain unknown until statistics arrive')
   const label = new Function('hasLoadedPageStats', 'pageStats', `return (${expression})`)
-  assert.equal(label(false, { arbitration: 0 }), '统计数据尚未加载')
-  assert.equal(label(true, { arbitration: 0 }), '当前无异常')
-  assert.equal(label(true, { arbitration: 1 }), '需要管理员处理')
-  assert.match(source, /'is-empty': hasLoadedPageStats && pageStats\.arbitration === 0/)
+  assert.equal(label(false, { arbitration: 0 }), '—')
+  assert.equal(label(true, { arbitration: 0 }), 0)
+  assert.equal(label(true, { arbitration: 1 }), 1)
+  assert.match(source, /pageStatsError/)
+  assert.match(source, /重试统计/)
   assert.match(source, /项目总数暂不可用/)
   assert.doesNotMatch(source, /<p>共 \{\{ pageStats\.total \}\} 条/)
 })
@@ -166,8 +166,8 @@ test('detail route changes are applied during project initialization', () => {
   callback(...args)
   assert.deepEqual(calls, ['apply', 'apply', 'load'])
   const mounted = source.slice(
-    source.indexOf('onMounted(async'),
-    source.indexOf('onBeforeUnmount(() =>')
+    source.indexOf('async function activate()'),
+    source.indexOf('async function loadProject()')
   )
   assert.match(mounted, /applyListQuery\(route\.query\)[\s\S]*Promise\.all\(\[loadPages\(\)/)
 })

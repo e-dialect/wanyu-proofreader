@@ -41,6 +41,7 @@ async function main() {
           .first()
           .waitFor()
         if (admin) {
+          await page.getByRole('button', { name: '全部字段 3', exact: true }).click()
           if (mobile)
             await page
               .getByRole('navigation', { name: '字段导航' })
@@ -125,12 +126,18 @@ async function main() {
               )
             })
           }
+          // Keep the same background nodes throughout the assertion. A PDF/font
+          // finishing can change which nodes overflow while every scrollTop stays
+          // zero; that is layout progress, not background scrolling.
+          await page.evaluate(() => {
+            window.__reviewBackgroundNodes = [...document.querySelectorAll('*')].filter(
+              (element) => !element.closest('.modal-backdrop')
+            )
+          })
           const scrollPositions = () =>
             page.evaluate(() => [
               window.scrollY,
-              ...[...document.querySelectorAll('*')]
-                .filter((el) => el.scrollHeight > el.clientHeight)
-                .map((el) => el.scrollTop)
+              ...window.__reviewBackgroundNodes.map((element) => element.scrollTop)
             ])
           const beforeScroll = await scrollPositions()
           await page.mouse.move(5, 5)

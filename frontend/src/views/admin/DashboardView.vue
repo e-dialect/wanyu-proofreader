@@ -1,9 +1,10 @@
 <template>
   <main class="container page workspace-page">
+    <ProjectHubTabs active="managed" />
     <header class="page-heading">
       <div>
-        <div class="page-eyebrow">项目管理工作台</div>
-        <h1>先处理异常，再推进项目</h1>
+        <div class="page-eyebrow">项目 / 管理</div>
+        <h1>项目管理</h1>
         <p>按项目查看校对进展，优先处理待仲裁条目，再继续准备文件、管理条目或导出结果。</p>
       </div>
       <div class="page-heading-actions">
@@ -275,6 +276,8 @@
 </template>
 
 <script setup>
+import ProjectHubTabs from '@/components/ProjectHubTabs.vue'
+import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppPagination from '@/components/AppPagination.vue'
@@ -313,6 +316,7 @@ const {
 } = useAsyncResource(({ signal }, requested) => listProjectInsights(requested, { signal }), {
   formatError: dashboardError
 })
+useQueueReturnPosition(hasResult)
 const dashboardQuery = computed(() =>
   normalizeProjectInsightsQuery({
     ...route.query,

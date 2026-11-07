@@ -100,7 +100,7 @@
 
 <script setup>
 import AppDataTable from '@/components/AppDataTable.vue'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { listImportLedger } from '@/services/importJobsService'
 import { getPbMessage } from '@/utils/pbErrors'
 const props = defineProps({ projectId: { type: String, required: true } })
@@ -123,5 +123,6 @@ async function loadLedger() {
     loadingLedger.value = false
   }
 }
+onMounted(loadLedger)
 defineExpose({ loadLedger })
 </script>

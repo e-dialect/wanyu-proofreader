@@ -1,0 +1,53 @@
+{
+  "method": "sRGB relative luminance; text threshold 4.5:1",
+  "pairs": [
+    {
+      "foreground": "#24343a",
+      "background": "#ffffff",
+      "contrast": 12.9,
+      "passes": true
+    },
+    {
+      "foreground": "#24343a",
+      "background": "#f6f3ec",
+      "contrast": 11.65,
+      "passes": true
+    },
+    {
+      "foreground": "#315f68",
+      "background": "#ffffff",
+      "contrast": 7.08,
+      "passes": true
+    },
+    {
+      "foreground": "#315f68",
+      "background": "#f6f3ec",
+      "contrast": 6.39,
+      "passes": true
+    },
+    {
+      "foreground": "#626c78",
+      "background": "#ffffff",
+      "contrast": 5.34,
+      "passes": true
+    },
+    {
+      "foreground": "#626c78",
+      "background": "#f6f3ec",
+      "contrast": 4.82,
+      "passes": true
+    },
+    {
+      "foreground": "#475569",
+      "background": "#ffffff",
+      "contrast": 7.58,
+      "passes": true
+    },
+    {
+      "foreground": "#475569",
+      "background": "#f6f3ec",
+      "contrast": 6.84,
+      "passes": true
+    }
+  ]
+}

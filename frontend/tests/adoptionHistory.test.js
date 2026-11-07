@@ -57,7 +57,7 @@ function fixture(services = {}) {
     `${script}\nreturn {
     load, selectBatch, batches, currentId, exceptions, batchEvents, summary,
     historyPage, requestedHistoryPage, historyTotalPages, historyTotalItems,
-    loaded, loading, loadError, decisionDrafts, createForm
+    loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError
   }`
   )(...Object.values(bindings))
   return {
@@ -95,6 +95,7 @@ test('page failure preserves successful page/details and retry targets the faile
     }
   })
   await state.reset()
+  await state.selectBatch('batch-1')
   await state.load(2)
   assert.equal(state.historyPage.value, 1)
   assert.equal(state.currentId.value, 'batch-1')
@@ -110,7 +111,8 @@ test('page failure preserves successful page/details and retry targets the faile
     ['project-a', 2, 25]
   ])
   assert.equal(state.historyPage.value, 2)
-  assert.equal(state.currentId.value, 'batch-2')
+  assert.equal(state.currentId.value, '')
+  assert.equal(state.screen.value, 'list')
   assert.equal(state.loadError.value, '')
 })
 
@@ -165,7 +167,7 @@ test('changing projects resets to page one and ignores the old list response', a
     ['project-b', 1]
   ])
   assert.equal(state.historyPage.value, 1)
-  assert.equal(state.currentId.value, 'project-b-1')
+  assert.equal(state.currentId.value, '')
   assert.equal(state.summary.value.project, 'project-b')
   assert.equal(state.createForm.recipient, '')
 })
@@ -180,6 +182,7 @@ test('late old-project summary/details never overwrite the new project', async (
   await tick()
   state.route.params.id = 'project-b'
   await state.reset()
+  await state.selectBatch('project-b-1')
   summary.resolve({ project: 'project-a' })
   await old
   assert.equal(state.summary.value.project, 'project-b')
@@ -198,10 +201,100 @@ test('a late selected-batch response and errors are isolated across project swit
   const old = state.selectBatch('old-selection')
   state.route.params.id = 'project-b'
   await state.reset()
+  await state.selectBatch('project-b-1')
   events.reject(new Error('old failure'))
   await old
   assert.equal(state.currentId.value, 'project-b-1')
   assert.equal(state.batchEvents.value.batch, 'project-b-1')
   assert.equal(state.loadError.value, '')
   assert.equal(state.loading.value, false)
+})
+
+test('landing on a project shows the batch list without fetching or exposing an arbitrary batch', async () => {
+  const requested = []
+  const state = fixture({
+    listAdoptionExceptions: async (id) => {
+      requested.push(id)
+      return { exceptions: [], pending: [], pendingTotal: 0 }
+    },
+    listAdoptionEvents: async (id) => {
+      requested.push(id)
+      return { events: [], stale: false }
+    }
+  })
+  await state.reset()
+  assert.equal(state.screen.value, 'list')
+  assert.equal(state.currentId.value, '')
+  assert.deepEqual(requested, [])
+  await state.selectBatch('project-a-1')
+  assert.equal(state.screen.value, 'detail')
+  assert.deepEqual(requested, ['project-a-1', 'project-a-1'])
+})
+
+test('exception drafts belong to their batch even when both batches contain the same entry', async () => {
+  const state = fixture()
+  await state.reset()
+  await state.selectBatch('batch-one')
+  state.draftFor('same-entry').note = 'first batch evidence'
+  await state.selectBatch('batch-two')
+  assert.equal(state.draftFor('same-entry').note, '')
+  state.draftFor('same-entry').note = 'second batch evidence'
+  await state.selectBatch('batch-one')
+  assert.equal(state.draftFor('same-entry').note, 'first batch evidence')
+})
+
+test('preview failure retains the newly created batch and retries without creating a duplicate', async () => {
+  let created = 0,
+    failPreview = true
+  const batch = { id: 'created-batch', status: 'draft', counts: {}, reasons: [] }
+  const state = fixture({
+    createAdoptionBatch: async () => {
+      created++
+      return batch
+    },
+    previewAdoptionBatch: async () => {
+      if (failPreview) throw new Error('preview unavailable')
+      batch.status = 'previewed'
+    },
+    listAdoptionBatches: async () => ({
+      batches: created ? [batch] : [],
+      page: 1,
+      totalPages: 1,
+      totalItems: created
+    })
+  })
+  await state.reset()
+  state.createForm.recipient = 'synthetic recipient'
+  await state.create()
+  assert.equal(created, 1)
+  assert.equal(state.screen.value, 'detail')
+  assert.equal(state.currentId.value, 'created-batch')
+  assert.equal(state.operationError.value, 'preview unavailable')
+  failPreview = false
+  await state.preview()
+  assert.equal(created, 1)
+  assert.equal(state.currentId.value, 'created-batch')
+  assert.equal(state.operationError.value, '')
+})
+
+test('creating a batch keeps note edits made during the request and does not submit twice', async () => {
+  const pending = deferred()
+  let created = 0
+  const state = fixture({
+    createAdoptionBatch: async (_id, body) => {
+      created++
+      assert.equal(body.note, 'submitted note')
+      return pending.promise
+    },
+    previewAdoptionBatch: async () => {}
+  })
+  await state.reset()
+  state.createForm.note = 'submitted note'
+  const request = state.create()
+  state.createForm.note = 'new note typed while waiting'
+  await state.create()
+  pending.resolve({ id: 'created-batch', status: 'draft', counts: {} })
+  await request
+  assert.equal(created, 1)
+  assert.equal(state.createForm.note, 'new note typed while waiting')
 })

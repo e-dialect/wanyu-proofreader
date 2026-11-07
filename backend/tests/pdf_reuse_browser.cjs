@@ -46,7 +46,7 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
   await rendered()
   // Select the second local page and enlarge it: both selection and reader state
   // must survive route changes within this preview range.
-  await page.getByRole('button',{name:'下一页',exact:true}).click()
+  await page.getByRole('button',{name:'下一页原文',exact:true}).click()
   await page.getByRole('button',{name:'放大',exact:true}).click()
   await rendered()
   await page.evaluate(()=>{window.__canvas=document.querySelector('.pdf-canvas');document.querySelector('.pdf-scroll').scrollTop=90;window.__scroll=document.querySelector('.pdf-scroll').scrollTop})

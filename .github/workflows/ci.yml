@@ -236,7 +236,7 @@ jobs:
         run: |
           # These states mirror the page.screenshot() calls in
           # backend/tests/pdf_upload_browser.cjs; add new states in both places.
-          for state in invalid validation-failure failure progress success; do
+          for state in invalid validation-failure failure progress success navigation-paused navigation-resumed; do
             test -s "output/playwright/pdf-upload/upload-${state}.png" || {
               echo "Missing or empty PDF upload screenshot: upload-${state}.png" >&2
               exit 1
@@ -404,19 +404,24 @@ jobs:
               exit 1
             }
           done
+          test -s output/playwright/backlog/layout-report.json
       - name: Attach quality state screenshots
         if: success()
         uses: actions/upload-artifact@v7
         with:
           name: quality-state-admin
-          path: output/playwright/quality-state/*.png
+          path: |
+            output/playwright/quality-state/*.png
+            output/playwright/backlog/
           if-no-files-found: error
       - name: Attach quality state screenshots after failure
         if: ${{ always() && !success() }}
         uses: actions/upload-artifact@v7
         with:
           name: quality-state-admin
-          path: output/playwright/quality-state/*.png
+          path: |
+            output/playwright/quality-state/*.png
+            output/playwright/backlog/
           if-no-files-found: ignore
 
   scheme-conversion-browser:
@@ -582,16 +587,37 @@ jobs:
           npm --prefix frontend ci
           npm install --prefix "$RUNNER_TEMP/quality-components" playwright@1.62.1
           "$RUNNER_TEMP/quality-components/node_modules/.bin/playwright" install --with-deps chromium
-      - name: Verify mounted review and formerly orphaned frontend scripts
+      - name: Verify mounted components and real workbench journeys
         env:
           NODE_PATH: ${{ runner.temp }}/quality-components/node_modules
+          # Use the browser installed above, including scripts with local
+          # Chrome/Edge defaults. No --only filter: every registered group runs.
+          BROWSER_CHANNEL: chromium
         run: python3 backend/tests/run_frontend_quality_browser.py
+      - name: Require workbench, editor and bundle evidence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          groups = {
+              'output/playwright/workbench': ['result.json', 'desktop-editor-with-shell.png', 'mobile-manager-workbench.png', 'mobile-editor-with-shell.png'],
+              'output/playwright/editor-experience': ['desktop-tray.png', 'mobile-source-and-input.png', 'mobile-next-field.png', 'mobile-blocked-source.png', 'reflow-640x400.json', 'reflow-640x400-character-tray.png', 'reflow-640x400-confirmation.png'],
+              'output/playwright/frontend-quality/review-bundle': ['report.json', '01-invalid-bundle.png', '02-declaration-and-confirmation.png', '03-mobile-existing-job.png'],
+              'docs/evidence/workbench-experience-20261107/before-after': ['comparison.json'] + [f'{phase}-{screen}.png' for phase in ['before', 'after'] for screen in ['desktop-editor', 'mobile-editor', 'desktop-project']],
+          }
+          missing = [str(Path(root) / name) for root, names in groups.items() for name in names
+                     if not (Path(root) / name).is_file() or (Path(root) / name).stat().st_size == 0]
+          if missing:
+              raise SystemExit('Missing or empty UI evidence: ' + ', '.join(missing))
+          print('PASS: workbench/editor/bundle runtime evidence and reviewed comparison files exist')
+          PY
       - name: Attach mounted frontend synthetic evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: frontend-quality-browser
-          path: output/playwright/frontend-quality/
+          path: |
+            output/playwright/
+            docs/evidence/workbench-experience-20261107/before-after/
           if-no-files-found: ignore
       - name: Audit reachable Go vulnerabilities
         working-directory: backend

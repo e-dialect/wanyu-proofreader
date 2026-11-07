@@ -47,8 +47,11 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 }, acceptDownloads: true })
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
-    await page.addInitScript(({ token, record }) => localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record })), admin)
-    await page.goto(host.origin + `/admin/projects/${project.id}#project-files`)
+    await page.addInitScript(({ token, record }) => {
+      globalThis.__FANGJI_BACKEND_URL__ = window.location.origin
+      localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record }))
+    }, admin)
+    await page.goto(host.origin + `/admin/projects/${project.id}?section=materials&view=import&method=ocr`)
     const panel = page.getByRole('region', { name: 'OCR 识别', exact: true })
     await panel.getByRole('button', { name: '发起识别', exact: true }).waitFor()
     await panel.getByLabel('OCR 结束页').fill('201')
@@ -63,6 +66,7 @@ async function main() {
     assert.equal(await panel.getByLabel('OCR 结束页').inputValue(), '1')
     await panel.getByRole('button', { name: '确认本次请求状态', exact: true }).click()
     await panel.getByText('识别完成', { exact: true }).waitFor({ timeout: 60000 })
+    await page.getByRole('navigation', { name: '项目工作区' }).getByRole('link', { name: '校勘', exact: true }).click()
     await page.locator('#project-entries tbody tr').first().waitFor()
     assert.equal(await page.locator('#project-entries tbody tr').count(), 2)
     const rows = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`project="${project.id}"`)}&sort=page_number`, { token })
@@ -78,6 +82,8 @@ async function main() {
     const updated = await api(`/api/collections/pages/records/${rows.items[0].id}`, { token })
     assert.equal(JSON.parse(updated.ocr_row_json).原文, corrected)
     assert.equal(updated.ocr_cells_json, originalCells, 'raw certainty/text metadata is immutable under correction')
+    await page.getByRole('navigation', { name: '项目工作区' }).getByRole('link', { name: '材料', exact: true }).click()
+    await page.getByRole('button', { name: '从 PDF 提取文字', exact: false }).click()
     const downloading = page.waitForEvent('download')
     await panel.getByRole('button', { name: '下载第 1 页原始 JSON', exact: true }).click()
     const download = await downloading

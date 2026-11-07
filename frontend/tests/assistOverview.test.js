@@ -301,7 +301,11 @@ test('视图真的消费这两个 helper，跳转用精确页号而不是子串�
     /commitListQuery\(\{ page: 1 \}\)/,
     '精确页号必须提交为列表查询，不能只改输入框'
   )
-  assert.match(view, /@jump-entry="entries\?\.jumpToPdfPage/)
+  assert.match(view, /@jump-entry="jumpToEntry"/)
+  assert.match(
+    view,
+    /async function jumpToEntry\(page\)[\s\S]*router\.push\(link\('work', 'entries'\)\)[\s\S]*entries\.value\?\.jumpToPdfPage\(page\)/
+  )
   // q 是对正文的子串匹配，用它跳某一条会连带命中别条 ⇒ 这条路径不许出现
   assert.equal(jumpBody.includes('searchQuery'), false, `跳转改用了子串搜索：${jumpBody}`)
 })

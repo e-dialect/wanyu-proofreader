@@ -181,11 +181,12 @@ func buildBundlePage(bundle reviewbundle.Bundle, entry reviewbundle.Entry, maxPD
 				rawValue: truncateText(fmt.Sprint(field.Value), 200),
 			}
 		}
-		trimmed := strings.TrimSpace(value)
-		fields = append(fields, reviewbundle.Field{Name: field.Name, Value: trimmed})
+		// Whitespace helps decide whether a row has content, but is also part of
+		// the original transcription. Preserve it in both field and text storage.
+		fields = append(fields, reviewbundle.Field{Name: field.Name, Value: value})
 		headers = append(headers, field.Name)
-		if trimmed != "" {
-			parts = append(parts, trimmed)
+		if strings.TrimSpace(value) != "" {
+			parts = append(parts, value)
 		}
 	}
 

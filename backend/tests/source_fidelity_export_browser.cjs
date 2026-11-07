@@ -5,11 +5,13 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 module.exports = async function exportFeedback(page, projectId, output) {
+  const previousUrl = page.url()
+  await page.goto(`${new URL(previousUrl).origin}/admin/projects/${projectId}?section=delivery&view=process`)
   const url = `http://localhost/api/fangji/projects/${projectId}/verification-export`
   const originalViewport = page.viewportSize()
   const success = page.locator('.alert-success[role="status"]')
   const error = page.locator('.alert-error[role="alert"]')
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: '内容与过程导出', exact: true }) })
+  const section = page.getByRole('region', { name: '来源与过程记录', exact: true })
   const downloads = []
   const activeGates = new Set()
   let next = null
@@ -64,8 +66,8 @@ module.exports = async function exportFeedback(page, projectId, output) {
   await page.route(url, handler)
   try {
     for (const scenario of [
-      { name: 'export-csv-desktop', format: 'csv', button: '项目全量 CSV（含状态）', viewport: { width: 1440, height: 1000 } },
-      { name: 'export-json-mobile', format: 'json', button: '关联过程与研究记录 JSON', viewport: { width: 390, height: 844 } }
+      { name: 'export-csv-desktop', format: 'csv', button: '项目全量（含状态）', viewport: { width: 1440, height: 1000 } },
+      { name: 'export-json-mobile', format: 'json', button: '下载关联过程', viewport: { width: 390, height: 844 } }
     ]) {
       await page.setViewportSize(scenario.viewport)
       const button = section.getByRole('button', { name: scenario.button, exact: true })
@@ -104,5 +106,6 @@ module.exports = async function exportFeedback(page, projectId, output) {
     page.__expectedNetworkErrors.delete(url)
     page.off('download', recordDownload)
     await page.setViewportSize(originalViewport)
+    await page.goto(previousUrl)
   }
 }

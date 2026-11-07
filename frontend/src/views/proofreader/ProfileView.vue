@@ -223,7 +223,8 @@
 <script setup>
 import AppField from '@/components/AppField.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
-import { computed, inject, onMounted, reactive, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
   bindExternalIdentity,
@@ -237,6 +238,8 @@ import { chooseResearchNotice, getResearchNotice } from '@/services/researchNoti
 import { formatPbError, getPbMessage } from '@/utils/pbErrors'
 
 const auth = useAuthStore()
+const route = useRoute(),
+  router = useRouter()
 const profile = reactive({ name: auth.user?.name || '', email: auth.user?.email || '' })
 const savingProfile = ref(false)
 const profileError = ref('')
@@ -271,6 +274,18 @@ const bindingProvider = ref('')
 const bindingError = reactive({})
 const stats = ref(null)
 const onboardingRef = inject('proofreaderOnboarding', ref(null))
+watch(
+  () => route.query.guide,
+  async (requested) => {
+    if (!requested) return
+    await nextTick()
+    onboardingRef.value?.reopen()
+    const { guide, ...query } = route.query
+    void guide
+    await router.replace({ path: route.path, query })
+  },
+  { immediate: true }
+)
 const researchBody = RESEARCH_NOTICE_COPY.body
 const researchNotice = ref(null)
 const researchSaving = ref(false)

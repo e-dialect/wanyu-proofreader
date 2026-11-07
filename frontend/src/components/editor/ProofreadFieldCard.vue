@@ -14,7 +14,7 @@
       <div class="proofread-field__actions">
         <span v-if="changed" class="field-change-label">已修改</span>
         <button
-          v-if="!ownReview"
+          v-if="!ownReview && changed"
           type="button"
           class="btn btn-quiet btn-sm"
           :disabled="restoreDisabled"
@@ -25,7 +25,7 @@
       </div>
     </header>
     <div class="source-value">
-      <span>导入文本（提示定位对象）</span>
+      <span>导入文本</span>
       <AppFieldValue
         as="p"
         :value="originalValue"

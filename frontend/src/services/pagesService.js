@@ -32,7 +32,12 @@ export async function listPendingProofreadTasks(page, perPage) {
 
 export async function listProjectQueueSummaries(page = 1, perPage = 12, options = {}) {
   return pb.send('/api/fangji/proofreading-queues', {
-    query: { page, perPage },
+    query: {
+      page,
+      perPage,
+      ...(options.filter ? { filter: options.filter } : {}),
+      ...(options.project ? { project: options.project } : {})
+    },
     signal: options.signal,
     requestKey: null
   })
@@ -85,11 +90,12 @@ export async function getProofreaderTask(pageId, { review = false } = {}) {
   })
 }
 
-export async function listReviewedProofreads(projectId) {
+export async function listReviewedProofreads(projectId, { signal } = {}) {
   if (!projectId) return { items: [], position: 0, total: 0 }
   const result = await pb.send(
     `/api/fangji/projects/${encodeURIComponent(projectId)}/tasks/reviewed`,
     {
+      signal,
       requestKey: null
     }
   )
