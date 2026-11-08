@@ -34,6 +34,8 @@ routerAdd("POST", "/api/fangji/gates/changeset", (c) => {
   const payload = c.requestInfo().body || {}
   let result = null
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
+    if (!gateIsPlatformAdmin(auth)) throw new ForbiddenError("只有平台管理员能应用门控变更集")
     result = gateApply(txDao, payload, auth)
   })
   console.log("gate_changeset_applied", JSON.stringify({
@@ -55,6 +57,11 @@ routerAdd("POST", "/api/fangji/gates/revoke", (c) => {
   if (!gateIsPlatformAdmin(auth)) throw new ForbiddenError("只有平台管理员能调整规则档位")
   const body = c.requestInfo().body || {}
   const parts = gateIdentityFields.map((field) => body[field])
-  const result = gateRevoke($app, parts, auth, body.note, body.restore === true)
+  let result = null
+  $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
+    if (!gateIsPlatformAdmin(auth)) throw new ForbiddenError("只有平台管理员能调整规则档位")
+    result = gateRevoke(txDao, parts, auth, body.note, body.restore === true)
+  })
   return c.json(200, result)
 }, $apis.requireAuth("users"))
