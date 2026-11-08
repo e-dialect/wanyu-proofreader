@@ -415,8 +415,13 @@ function unzip(buffer) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     const pageErrors = [],
       downloads = []
+    let previewRequests = 0
     page.on('pageerror', (error) => pageErrors.push(error.message))
     page.on('download', (download) => downloads.push(download))
+    page.on('request', (request) => {
+      if (request.url() === backend + root + '/preview' && request.method() === 'POST')
+        previewRequests++
+    })
     await page.addInitScript(
       ({ backend, admin }) => {
         window.__FANGJI_BACKEND_URL__ = backend
@@ -476,6 +481,76 @@ function unzip(buffer) {
       }
       await panel.getByRole('checkbox', { name: /^我已确认所选字段/ }).check()
     }
+    async function reloadColumns() {
+      const reloaded = page.waitForResponse(
+        (response) =>
+          response.url() === backend + root &&
+          response.request().method() === 'GET' &&
+          response.status() === 200
+      )
+      await panel.getByRole('button', { name: '重新读取列配置', exact: true }).click()
+      await reloaded
+      await panel.getByRole('checkbox', { name: '调值', exact: true }).waitFor()
+      assert.equal(
+        await panel.locator('.tone-config-disclosure').getAttribute('data-state'),
+        'open'
+      )
+      assert.equal(await panel.getByRole('heading', { name: '候选预览', exact: true }).count(), 0)
+      assert.equal(
+        await panel.getByRole('checkbox', { name: /^我已确认所选字段/ }).isChecked(),
+        false,
+        'Refreshing column metadata requires the declaration again'
+      )
+      assert.equal(
+        await panel.getByRole('button', { name: '预览转换', exact: true }).isDisabled(),
+        true
+      )
+    }
+    await configure()
+    // The selected role may change before the first preview, which returns 400
+    // rather than the download's snapshot-conflict 409. Keep configuration
+    // editable and offer an explicit metadata refresh without retrying POST.
+    await setRoles({ ...roles, 读音: 'note' })
+    const invalidPreview = page.waitForResponse(
+      (response) => response.url() === backend + root + '/preview' && response.status() === 400
+    )
+    await panel.getByRole('button', { name: '预览转换', exact: true }).click()
+    await invalidPreview
+    await panel
+      .getByRole('alert')
+      .filter({ hasText: '所选列必须是当前项目已标注的独立记音列' })
+      .waitFor()
+    assert.equal(
+      await panel.getByRole('button', { name: '重新读取列配置', exact: true }).count(),
+      1,
+      'A first-preview role failure offers explicit column metadata recovery'
+    )
+    assert.equal(await panel.getByLabel('读音 · 依据说明', { exact: true }).isEditable(), true)
+    assert.equal(
+      await panel.getByLabel('读音 · 依据说明', { exact: true }).inputValue(),
+      custom.basis
+    )
+    await panel
+      .getByLabel('读音 · 依据说明', { exact: true })
+      .fill(custom.basis + ' 保留直接编辑。')
+    assert.equal(await panel.getByRole('alert').count(), 0)
+    assert.equal(
+      await panel.getByRole('button', { name: '重新读取列配置', exact: true }).count(),
+      1,
+      'Column refresh remains available after editing the retained configuration'
+    )
+    const failedPreviewCount = previewRequests
+    await reloadColumns()
+    assert.equal(await panel.getByRole('checkbox', { name: '读音', exact: true }).count(), 0)
+    assert.equal(previewRequests, failedPreviewCount, 'Reloading columns never retries preview')
+    await setRoles(roles)
+    await reloadColumns()
+    await panel.getByRole('checkbox', { name: '读音', exact: true }).waitFor()
+    assert.equal(
+      previewRequests,
+      failedPreviewCount,
+      'Restoring roles still needs an explicit preview'
+    )
     await configure()
     await panel.getByRole('button', { name: '预览转换', exact: true }).click()
     await panel.getByRole('heading', { name: '候选预览', exact: true }).waitFor()
@@ -512,20 +587,12 @@ function unzip(buffer) {
       await panel.getByRole('button', { name: '确认并下载候选 ZIP', exact: true }).isDisabled(),
       true
     )
-    const reloaded = page.waitForResponse(
-      (response) =>
-        response.url() === backend + root &&
-        response.request().method() === 'GET' &&
-        response.status() === 200
-    )
-    await panel.getByRole('button', { name: '重新读取列配置', exact: true }).click()
-    await reloaded
-    await panel.getByRole('checkbox', { name: '调值', exact: true }).waitFor()
+    await reloadColumns()
     assert.equal(await panel.getByRole('checkbox', { name: '读音', exact: true }).count(), 0)
     assert.equal(await panel.getByRole('heading', { name: '候选预览', exact: true }).count(), 0)
     assert.equal(downloads.length, 1)
     await setRoles(roles)
-    await page.reload()
+    await reloadColumns()
     await configure()
     await panel.getByRole('button', { name: '预览转换', exact: true }).click()
     await panel.getByRole('heading', { name: '候选预览', exact: true }).waitFor()
@@ -672,6 +739,7 @@ function unzip(buffer) {
             'default withheld/importing exclusion',
             'same-snapshot ZIP and exact Unicode JSONL',
             'role/source/keyboard/legal-set/actor conflict',
+            'selected-role400 recovery reloads columns without automatic preview and retains direct editing',
             'selected-role409 recovery reloads columns and clears stale preview',
             'manager and password gates',
             'real UI initial failure retry and confirmation/download/failure retention',

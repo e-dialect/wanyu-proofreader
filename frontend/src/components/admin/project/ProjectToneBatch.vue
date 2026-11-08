@@ -11,6 +11,15 @@
           把已经明确的调值数字排成上标。生成新候选文件供人工核对，项目条目、校对与来源判断均不改写。
         </p>
       </div>
+      <AppButton
+        v-if="options && !error"
+        variant="ghost"
+        size="sm"
+        :loading="loading"
+        :disabled="busy || confirming"
+        @click="reloadColumnConfiguration"
+        >重新读取列配置</AppButton
+      >
     </header>
     <AppStatusPanel v-if="loading" state="pending" message="正在读取记音列与可用依据…" />
     <AppStatusPanel
@@ -139,7 +148,7 @@
         v-if="error"
         state="error"
         :message="error"
-        :retry-label="stale ? '重新读取列配置' : ''"
+        retry-label="重新读取列配置"
         :busy="loading"
         @retry="reloadColumnConfiguration"
       />
