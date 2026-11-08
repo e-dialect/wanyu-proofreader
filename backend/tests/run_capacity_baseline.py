@@ -181,6 +181,11 @@ def main():
               'profile':args.profile,'synthetic':True,'seed':1701,'entries':args.entries,'users':args.users,
               'browser_users':2,'duration':args.duration,'repeats':args.repeats,'phases':fixture_helpers.phases(args.duration)}
     manifest['target_hardware']={'reference_profile':args.reference_profile,'cpu_cores':args.target_cpus,'memory_gib':args.target_memory_gib,'production_is_shared':args.reference_profile=='production_shared'}
+    manifest['runtime_environment']={
+        'GOMAXPROCS':os.environ.get('GOMAXPROCS'),
+        'GOMEMLIMIT':os.environ.get('GOMEMLIMIT'),
+        'constraint_type':'Go runtime soft budgets only; this local runner does not install container CPU or memory limits'
+    }
     manifest['workload_timing_assumptions']={'measured_human_timing':False,'full':{'proofreader_seconds':[30,60],'long_think_probability':.2,'long_think_seconds':[120,180],'manager_refresh_seconds':30,'arbitrator_seconds':[45,75]},'smoke':{'http_proofreader_think_ms':3000,'browser_think_ms':150,'manager_arbitrator_refresh_ms':500},'note':'Synthetic pacing assumptions; smoke intentionally accelerates interaction and refresh frequency. Neither is a measured real-user rhythm.'}
     manifest['actual_target_envelope_match']=(manifest['hardware']['effective_cpu_cores']==args.target_cpus and abs(manifest['hardware']['effective_memory_bytes']/1024**3-args.target_memory_gib)<.15)
     dist=harness.BACKEND.parent/'frontend/dist'

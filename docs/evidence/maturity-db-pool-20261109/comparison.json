@@ -1,0 +1,618 @@
+{
+  "protocol": {
+    "entries": 20000,
+    "users": 30,
+    "browser_actors": 2,
+    "duration_seconds": 180,
+    "profile": "accelerated smoke",
+    "runs_per_candidate": 1,
+    "gomaxprocs": 2,
+    "gomemlimit": "unset; Go default",
+    "hard_resource_limit_applied": false
+  },
+  "comparison": {
+    "upstream_defaults": {
+      "source": {
+        "baseline_sha": "03a3a3c85d504e652806a2c2a28d7f476e6501b8",
+        "dirty_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "source_map_sha256": "73796061ad824988765861ae9aeea7c4cefe8950903d5862cdce52f3aff1e2d2",
+      "hardware": {
+        "platform": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+        "effective_cpu_cores": 10,
+        "effective_memory_bytes": 68719476736,
+        "storage_medium_verified": false,
+        "storage_evidence": {
+          "verified": false,
+          "method": "unavailable"
+        },
+        "note": "Envelope is read from this process host/cgroup; storage passes only on a positive system-device query. No CLI flag manufactures hardware evidence."
+      },
+      "status": "fail",
+      "full_acceptance": false,
+      "source_unchanged": "pass",
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 353,
+          "p50_ms": 1797.4464650000155,
+          "p95_ms": 7977.0517300000065,
+          "p99_ms": 12647.12699199999,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 349,
+          "p50_ms": 3759.9110609999916,
+          "p95_ms": 11180.211486999993,
+          "p99_ms": 14999.341161999997,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 56,
+          "p50_ms": 4539.8098949999985,
+          "p95_ms": 12649.027793999994,
+          "p99_ms": 13811.232525,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 78,
+          "p50_ms": 42.94986600000993,
+          "p95_ms": 123.72524699999485,
+          "p99_ms": 441.93840299999283,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 353,
+          "p50_ms": 2.1130819999962114,
+          "p95_ms": 44.364534000000276,
+          "p99_ms": 119.26865600000019,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 355,
+          "p50_ms": 3.123,
+          "p95_ms": 48.40929600000527,
+          "p99_ms": 100.86416500000632,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 137,
+          "p50_ms": 1715.0941929999972,
+          "p95_ms": 8313.837262000001,
+          "p99_ms": 12614.267100999998,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "fail"
+        },
+        {
+          "operation": "verification",
+          "samples": 412,
+          "p50_ms": 10.572329999999056,
+          "p95_ms": 53.15938699999242,
+          "p99_ms": 88.328,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "request_count": 2544,
+      "failing_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "admin_pages",
+          "status": "fail"
+        },
+        {
+          "gate": "unexpected_http_responses",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        },
+        {
+          "gate": "LCP",
+          "status": "fail"
+        },
+        {
+          "gate": "CLS",
+          "status": "fail"
+        },
+        {
+          "gate": "reconciliation",
+          "status": "fail"
+        }
+      ],
+      "resource_samples": 38,
+      "rss_peak_bytes": 1609756672,
+      "heap_alloc_peak_bytes": 418186056,
+      "database_bytes": 2806177792,
+      "reconciliation": {
+        "pass": false,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 31354,
+          "submissions": 31354
+        },
+        "acknowledged_submissions": 349,
+        "duplicate_attempts": 0
+      }
+    },
+    "bounded_readers": {
+      "source": {
+        "baseline_sha": "03a3a3c85d504e652806a2c2a28d7f476e6501b8",
+        "dirty_diff_sha256": "c5782d0771cb3da7ac68b50ea07ca5da03494c3b47fcb4910d1a50217a57a1f6"
+      },
+      "source_map_sha256": "a7bd13f5eefa82c8dca96bf9533dceb9bf602ea4e3ed8ff506161c416f330a57",
+      "hardware": {
+        "platform": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+        "effective_cpu_cores": 10,
+        "effective_memory_bytes": 68719476736,
+        "storage_medium_verified": false,
+        "storage_evidence": {
+          "verified": false,
+          "method": "unavailable"
+        },
+        "note": "Envelope is read from this process host/cgroup; storage passes only on a positive system-device query. No CLI flag manufactures hardware evidence."
+      },
+      "status": "fail",
+      "full_acceptance": false,
+      "source_unchanged": "pass",
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 348,
+          "p50_ms": 1757.1343359999883,
+          "p95_ms": 7754.554533000017,
+          "p99_ms": 10669.206468999997,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 344,
+          "p50_ms": 3633.290276999993,
+          "p95_ms": 11890.57400600001,
+          "p99_ms": 14801.320149,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 53,
+          "p50_ms": 6162.318501999995,
+          "p95_ms": 15636.779414999997,
+          "p99_ms": 18230.666375,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 86,
+          "p50_ms": 41.42371999999159,
+          "p95_ms": 163.50319100000343,
+          "p99_ms": 222.6210299999948,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 352,
+          "p50_ms": 2.0731489999889163,
+          "p95_ms": 48.95693400000164,
+          "p99_ms": 94.267,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 350,
+          "p50_ms": 3.112122000005911,
+          "p95_ms": 53.83568899999955,
+          "p99_ms": 123.77039599999989,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 139,
+          "p50_ms": 1838.7058780000007,
+          "p95_ms": 7461.62909100001,
+          "p99_ms": 11779.865531000018,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "fail"
+        },
+        {
+          "operation": "verification",
+          "samples": 403,
+          "p50_ms": 8.861425000010058,
+          "p95_ms": 45.67924100000528,
+          "p99_ms": 81.907,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "request_count": 2512,
+      "failing_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "admin_pages",
+          "status": "fail"
+        },
+        {
+          "gate": "unexpected_http_responses",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        },
+        {
+          "gate": "LCP",
+          "status": "fail"
+        },
+        {
+          "gate": "CLS",
+          "status": "fail"
+        },
+        {
+          "gate": "browser_errors",
+          "status": "fail"
+        }
+      ],
+      "resource_samples": 38,
+      "rss_peak_bytes": 1583513600,
+      "heap_alloc_peak_bytes": 631091608,
+      "database_bytes": 2805686272,
+      "reconciliation": {
+        "pass": true,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 31348,
+          "submissions": 31348
+        },
+        "acknowledged_submissions": 344,
+        "duplicate_attempts": 0
+      },
+      "db_pool_samples": [
+        {
+          "ts": "2026-11-09T01:30:14.956923+08:00",
+          "heap_bytes": 107665288,
+          "db_pools": {
+            "aux_read": {
+              "max_open": 2,
+              "open": 0,
+              "in_use": 0,
+              "idle": 0,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "aux_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 0,
+              "idle": 1,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "data_read": {
+              "max_open": 8,
+              "open": 4,
+              "in_use": 0,
+              "idle": 4,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 1,
+              "max_idle_time_closed": 0
+            },
+            "data_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 1,
+              "idle": 0,
+              "wait_count": 113,
+              "wait_duration_ms": 75751,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            }
+          }
+        },
+        {
+          "ts": "2026-11-09T01:30:44.956084+08:00",
+          "heap_bytes": 120613712,
+          "db_pools": {
+            "aux_read": {
+              "max_open": 2,
+              "open": 0,
+              "in_use": 0,
+              "idle": 0,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "aux_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 0,
+              "idle": 1,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "data_read": {
+              "max_open": 8,
+              "open": 4,
+              "in_use": 1,
+              "idle": 3,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 11,
+              "max_idle_time_closed": 0
+            },
+            "data_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 1,
+              "idle": 0,
+              "wait_count": 367,
+              "wait_duration_ms": 730597,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            }
+          }
+        },
+        {
+          "ts": "2026-11-09T01:31:14.970155+08:00",
+          "heap_bytes": 167336104,
+          "db_pools": {
+            "aux_read": {
+              "max_open": 2,
+              "open": 0,
+              "in_use": 0,
+              "idle": 0,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "aux_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 0,
+              "idle": 1,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "data_read": {
+              "max_open": 8,
+              "open": 4,
+              "in_use": 0,
+              "idle": 4,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 15,
+              "max_idle_time_closed": 0
+            },
+            "data_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 1,
+              "idle": 0,
+              "wait_count": 625,
+              "wait_duration_ms": 1397178,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            }
+          }
+        },
+        {
+          "ts": "2026-11-09T01:31:44.954857+08:00",
+          "heap_bytes": 631091608,
+          "db_pools": {
+            "aux_read": {
+              "max_open": 2,
+              "open": 0,
+              "in_use": 0,
+              "idle": 0,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "aux_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 0,
+              "idle": 1,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "data_read": {
+              "max_open": 8,
+              "open": 4,
+              "in_use": 0,
+              "idle": 4,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 19,
+              "max_idle_time_closed": 0
+            },
+            "data_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 1,
+              "idle": 0,
+              "wait_count": 871,
+              "wait_duration_ms": 2057396,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            }
+          }
+        },
+        {
+          "ts": "2026-11-09T01:32:14.984015+08:00",
+          "heap_bytes": 190635608,
+          "db_pools": {
+            "aux_read": {
+              "max_open": 2,
+              "open": 0,
+              "in_use": 0,
+              "idle": 0,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "aux_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 0,
+              "idle": 1,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "data_read": {
+              "max_open": 8,
+              "open": 5,
+              "in_use": 1,
+              "idle": 4,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 19,
+              "max_idle_time_closed": 0
+            },
+            "data_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 1,
+              "idle": 0,
+              "wait_count": 1101,
+              "wait_duration_ms": 2771128,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            }
+          }
+        },
+        {
+          "ts": "2026-11-09T01:32:44.976505+08:00",
+          "heap_bytes": 493042952,
+          "db_pools": {
+            "aux_read": {
+              "max_open": 2,
+              "open": 0,
+              "in_use": 0,
+              "idle": 0,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "aux_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 0,
+              "idle": 1,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            },
+            "data_read": {
+              "max_open": 8,
+              "open": 4,
+              "in_use": 1,
+              "idle": 3,
+              "wait_count": 0,
+              "wait_duration_ms": 0,
+              "max_idle_closed": 22,
+              "max_idle_time_closed": 0
+            },
+            "data_write": {
+              "max_open": 1,
+              "open": 1,
+              "in_use": 0,
+              "idle": 1,
+              "wait_count": 1320,
+              "wait_duration_ms": 3242012,
+              "max_idle_closed": 0,
+              "max_idle_time_closed": 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Engineering-only native macOS same-host generators, not production shared 3.7 GiB acceptance.",
+    "One sequential run per candidate; no statistical performance-improvement claim.",
+    "No HTTP thresholds, phase timing or behavior pacing changed.",
+    "Pool-only candidate retains original unbounded claim scanning.",
+    "Heap/sys/released and actual Go budget telemetry added after this run; no retrospective readings invented."
+  ]
+}
