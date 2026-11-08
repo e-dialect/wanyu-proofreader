@@ -14,6 +14,8 @@ import io
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unicodedata
 import unittest
@@ -498,6 +500,32 @@ class ProductCodecTests(unittest.TestCase):
         self.assertEqual(text, result.text)
         self.assertEqual("tone_run_holds_10000_contours_in_at_least_4_ways", result.reason)
         self.assertEqual((), result.tones)
+
+    def test_unsegmentable_product_runs_finish_and_preserve_the_whole_cell(self):
+        # The old <=128-digit path explored every failed recursive split. Keep
+        # this in a disposable child so a regression fails within a fixed bound
+        # instead of hanging the suite; this is not a throughput benchmark.
+        values = ["a" + "1" * 40 + "2", "a" + "1" * 127 + "2",
+                  "a" + "1" * 129 + "2",
+                  "\t a53 b" + "1" * 40 + "2\u00a0 "]
+        program = """
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("tone", sys.argv[1])
+tone = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tone)
+print(json.dumps([tone.convert_product_cell(value, ["1", "11", "53"],
+                                          tone.ALL_SUPERSCRIPTS)._asdict()
+                  for value in json.loads(sys.argv[2])]))
+"""
+        result = subprocess.run([sys.executable, "-c", program, str(HERE / "tone.py"),
+                                 json.dumps(values)], capture_output=True, text=True,
+                                timeout=5, check=True)
+        actuals = json.loads(result.stdout)
+        self.assertEqual(len(values), len(actuals))
+        for value, actual in zip(values, actuals):
+            with self.subTest(value=value):
+                self.assertEqual({"text": value, "status": tone.UNSUPPORTED, "tones": [],
+                                  "reason": "tone_run_not_a_legal_value"}, actual)
 
     def test_untrusted_superscript_output_is_not_emitted(self):
         result = tone.convert_product_cell("a533", ["533"], {"5": "X", "3": "³"})

@@ -318,8 +318,11 @@ def convert_product_cell(value, legal, superscripts):
     if _product_mixed_notation(value, protected):
         return Conversion(text=value, status=UNSUPPORTED, tones=(),
                           reason="mixed_tone_notation")
+    runs, mark = [], 0
     for match in DIGIT_RUN.finditer(value):
-        if any(start <= match.start() < end for start, end in protected):
+        while mark < len(protected) and protected[mark][1] <= match.start():
+            mark += 1
+        if mark < len(protected) and protected[mark][0] <= match.start() < protected[mark][1]:
             continue
         if any(digit not in "0123456789" for digit in match.group(0)):
             return Conversion(text=value, status=UNSUPPORTED, tones=(),
@@ -327,33 +330,39 @@ def convert_product_cell(value, legal, superscripts):
         if not _product_phonetic_before(value, match.start()):
             return Conversion(text=value, status=UNSUPPORTED, tones=(),
                               reason="tone_digits_without_phonetic_context")
+        runs.append(match)
     trusted = {digit: char for digit, char in superscripts.items()
                if ALL_SUPERSCRIPTS.get(digit) == char}
-    # The legacy codec deliberately uses a small recursive enumerator. Product
-    # input can contain damaged runs thousands of digits long. Such a run cannot
-    # equal any declared (<=6 digit) value; compute its refusal iteratively rather
-    # than letting Python recursion fail. Ordinary cells retain the legacy path.
-    runs = [match.group(0) for match in DIGIT_RUN.finditer(value)
-            if not any(start <= match.start() < end for start, end in protected)]
-    if any(len(run) > 128 for run in runs):
-        status, reason = EXACT, ""
-        for run in runs:
-            if run in legal:
-                missing = sorted(digit for digit in run if digit not in trusted)
-                if missing:
-                    return Conversion(text=value, status=UNSUPPORTED, tones=(),
-                                      reason="superscript_untypeable:" + "".join(missing))
-                continue
-            contours, ways = _product_segment_info(run, frozenset(legal))
-            if ways:
-                detail = "tone_run_holds_%d_contours" % contours
-                if ways > 1:
-                    detail += "_in_%s%d_ways" % ("at_least_" if ways >= 4 else "", ways)
-                status, reason = _worst(status, AMBIGUOUS), detail
-            else:
-                status, reason = UNSUPPORTED, "tone_run_not_a_legal_value"
+    # A short run can still have exponentially many failed recursive paths when
+    # no complete segmentation exists. Bound every product run with DP; retain
+    # the legacy CLI's codec and its behavior independently.
+    known = frozenset(legal)
+    status, reason, tones, pieces, cursor = EXACT, "", [], [], 0
+    for match in runs:
+        run = match.group(0)
+        if run in known:
+            missing = sorted(digit for digit in run if digit not in trusted)
+            if missing:
+                return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                                  reason="superscript_untypeable:" + "".join(missing))
+            tones.append(run)
+            pieces.extend((value[cursor:match.start()], _raise(run, trusted)))
+            cursor = match.end()
+            continue
+        contours, ways = _product_segment_info(run, known)
+        if ways:
+            detail = "tone_run_holds_%d_contours" % contours
+            if ways > 1:
+                detail += "_in_%s%d_ways" % ("at_least_" if ways >= 4 else "", ways)
+            status, reason = _worst(status, AMBIGUOUS), detail
+        else:
+            status, reason = UNSUPPORTED, "tone_run_not_a_legal_value"
+    if status != EXACT:
         return Conversion(text=value, status=status, tones=(), reason=reason)
-    return convert_cell(value, frozenset(legal), trusted)
+    if not tones:
+        return Conversion(text=value, status=NO_TONE, tones=(), reason="")
+    pieces.append(value[cursor:])
+    return Conversion(text="".join(pieces), status=EXACT, tones=tuple(tones), reason="")
 
 
 def _product_segment_info(run, legal):
