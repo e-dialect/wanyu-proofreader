@@ -34,7 +34,7 @@
 只读资源采集（在有权限的部署环境执行）：
 
 ```sh
-python3 ops/collect_runtime.py --data-dir /private/path/pb_data --container BACKEND_CONTAINER --output /private/path/runtime.jsonl
+python3 ops/collect_runtime.py --data-dir /private/path/pb_data --container BACKEND_CONTAINER --cache-interval 300 --backup-receipt /private/path/backup/receipt.json --backup-max-age 86400 --output /private/path/runtime.jsonl
 python3 ops/summarize_metrics.py /private/path/application.jsonl --output /private/path/summary.json
 ```
 
@@ -85,3 +85,6 @@ GOMAXPROCS=2 python3 backend/tests/run_capacity_baseline.py --profile full --fau
 ## 安全与评审边界
 
 账户与权限操作的成功审计同事务提交；导出授权在发送正文前记录，传输完成只表示服务端写完，不能作为接收方回执。原生和旧清单交付都在事务内复核当前身份与项目权限。恢复能力、审计字段与限制见account-security.md；适用标准映射见security-asvs-mapping.md，未覆盖项保持开放。
+
+
+派生读模型和权限代际补丁集成后，已实际通过完整常规门禁、41个默认集成套件与账户/Bundle/转换重启生命周期。后续新增的退出保护、例外URL兼容、Nginx默认关闭与备份运行证据会在最终集成证据中分别列出，不能沿用早期测试数量冒充最终检查。

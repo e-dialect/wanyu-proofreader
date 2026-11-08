@@ -615,6 +615,8 @@ jobs:
               raise SystemExit('Missing or empty UI evidence: ' + ', '.join(missing))
           print('PASS: workbench/editor/bundle runtime evidence and reviewed comparison files exist')
           PY
+      - name: Verify full-directory restore and recovered business workflows
+        run: python3 backend/tests/run_restore_business.py --output output/maturity/restore-business.json
       - name: Attach mounted frontend synthetic evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -622,6 +624,7 @@ jobs:
           name: frontend-quality-browser
           path: |
             output/playwright/
+            output/maturity/restore-business.json
             docs/evidence/workbench-experience-20261107/before-after/
           if-no-files-found: ignore
       - name: Audit reachable Go vulnerabilities
