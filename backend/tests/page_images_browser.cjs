@@ -105,17 +105,53 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
     window.__nativeRequestFullscreen=Element.prototype.requestFullscreen
     Element.prototype.requestFullscreen=()=>Promise.reject(new DOMException('Synthetic fullscreen denial','NotAllowedError'))
    },previewSelector)
-   const assertPreviewRetained=async()=>{
-    assert.equal(await page.evaluate(selector=>{
-     const preview=document.querySelector(selector)
-     return preview===window.__fullscreenPreview && preview.isConnected && preview.getBoundingClientRect().width>10
-    },previewSelector),true,`${mode}: fullscreen failure must retain the rendered preview node`)
-    assert.equal(await page.locator('.pdf-viewer > .alert-error').count(),0,'fullscreen failure is not a fatal PDF error')
-    assert.equal(await watermark.isVisible(),true,'identity remains visible after fullscreen failure')
+   const previewState=()=>page.evaluate(selector=>{
+    const preview=document.querySelector(selector), bounds=preview?.getBoundingClientRect()
+    return {
+     sameNode:preview===window.__fullscreenPreview,
+     connected:preview?.isConnected===true,
+     width:bounds?.width||0,
+     height:bounds?.height||0,
+     pixels:preview?.naturalWidth||preview?.width||0,
+     rendering:!!document.querySelector('.pdf-loading-mask, .pdf-transition-mask'),
+     error:document.querySelector('.pdf-viewer > .alert-error')?.textContent||'',
+     viewport:[innerWidth,innerHeight]
+    }
+   },previewSelector)
+   const fullscreenChecks={}
+   const assertPreviewRetained=async phase=>{
+    const initial=await previewState()
+    assert.equal(initial.sameNode && initial.connected,true,`${mode}/${phase}: fullscreen must retain the original preview node: ${JSON.stringify(initial)}`)
+    assert.equal(initial.error,'',`${mode}/${phase}: fullscreen must not become a fatal PDF error`)
+    // fullscreenchange precedes ResizeObserver and PDF.js's async redraw. Check
+    // identity immediately, then wait for the existing node's rendering to settle;
+    // a replacement or a fatal error wakes this wait and still fails below.
+    await page.evaluate(()=>{window.__fullscreenReadyFrame=null})
+    try {
+     await page.waitForFunction(selector=>{
+      const preview=document.querySelector(selector), bounds=preview?.getBoundingClientRect()
+      if(preview!==window.__fullscreenPreview || !preview?.isConnected || document.querySelector('.pdf-viewer > .alert-error')) return true
+      const ready=bounds.width>10 && bounds.height>10 && (preview.naturalWidth||preview.width)>10 && !document.querySelector('.pdf-loading-mask, .pdf-transition-mask')
+      if(!ready){window.__fullscreenReadyFrame=null;return false}
+      const dimensions=[bounds.width,bounds.height,preview.naturalWidth||preview.width].join(':')
+      const previous=window.__fullscreenReadyFrame
+      const frames=previous?.dimensions===dimensions?previous.frames+1:1
+      window.__fullscreenReadyFrame={dimensions,frames}
+      return frames>=3
+     },previewSelector,{timeout:10000,polling:'raf'})
+    } catch(cause) {
+     throw new Error(`${mode}/${phase}: retained preview did not finish redrawing: ${JSON.stringify(await previewState())}`,{cause})
+    }
+    const settled=await previewState()
+    assert.equal(settled.sameNode && settled.connected,true,`${mode}/${phase}: preview identity changed during redraw: ${JSON.stringify(settled)}`)
+    assert.equal(settled.error,'',`${mode}/${phase}: redraw must not become a fatal PDF error`)
+    assert(settled.width>10 && settled.height>10 && settled.pixels>10 && !settled.rendering,`${mode}/${phase}: preview must remain rendered: ${JSON.stringify(settled)}`)
+    assert.equal(await watermark.isVisible(),true,'identity remains visible after fullscreen interaction')
+    fullscreenChecks[phase]=settled
    }
    await page.getByRole('button',{name:'全屏',exact:true}).click()
    await page.getByRole('status').filter({hasText:'浏览器未允许进入全屏模式，请重试。'}).waitFor({state:'visible'})
-   await assertPreviewRetained()
+   await assertPreviewRetained('entry-denied')
    await page.getByRole('button',{name:'放大',exact:true}).click()
    assert.equal(await page.locator('.pdf-zoom-label').textContent(),'150%','zoom remains usable after denial')
    await page.getByRole('button',{name:'缩小',exact:true}).click()
@@ -124,7 +160,7 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
    await page.getByRole('button',{name:'全屏',exact:true}).click()
    await page.waitForFunction(()=>document.fullscreenElement?.classList.contains('pdf-viewer'))
    assert.equal(await page.locator('.pdf-fullscreen-notice').count(),0,'successful entry retry clears the notice')
-   await assertPreviewRetained()
+   await assertPreviewRetained('entry-retry')
    assert.equal(await watermark.isVisible(),true,'identity remains in fullscreen')
    await page.evaluate(()=>{
     window.__nativeExitFullscreen=Document.prototype.exitFullscreen
@@ -132,16 +168,16 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
    })
    await page.getByRole('button',{name:'退出全屏',exact:true}).click()
    await page.getByRole('status').filter({hasText:'浏览器未允许退出全屏模式，请重试。'}).waitFor({state:'visible'})
-   await assertPreviewRetained()
+   await assertPreviewRetained('exit-denied')
    assert.equal(await page.evaluate(()=>document.fullscreenElement?.classList.contains('pdf-viewer')),true)
    await page.screenshot({path:path.join(out,`${mode}-exit-fullscreen-denied.png`),fullPage:true})
    await page.evaluate(()=>{Document.prototype.exitFullscreen=window.__nativeExitFullscreen})
    await page.getByRole('button',{name:'退出全屏',exact:true}).click()
    await page.waitForFunction(()=>!document.fullscreenElement)
    assert.equal(await page.locator('.pdf-fullscreen-notice').count(),0,'successful exit retry clears the notice')
-   await assertPreviewRetained()
+   await assertPreviewRetained('exit-retry')
    assert.deepEqual(errors,[])
-   evidence[mode]={initialMs,network,identityStamp:stamp}
+   evidence[mode]={initialMs,network,identityStamp:stamp,fullscreenChecks}
    await context.close()
   }
   fs.writeFileSync(path.join(out,'network-and-timing.json'),JSON.stringify(evidence,null,2))

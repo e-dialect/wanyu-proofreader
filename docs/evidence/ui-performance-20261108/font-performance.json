@@ -1,0 +1,40 @@
+{
+  "baseline": "f3834f5",
+  "synthetic": true,
+  "environment": "v24.11.0",
+  "note": "Node microbenchmark; font API calls are not network downloads",
+  "before": {
+    "lookup": {
+      "lookupsPerRun": 25600,
+      "runsMs": [
+        217.80743899999993,
+        235.81802500000003,
+        571.5001139999999,
+        152.64425099999994,
+        128.07242999999994,
+        128.48112400000014,
+        130.3326850000003
+      ],
+      "medianMs": 152.64425099999994,
+      "checksum": 1788000
+    },
+    "fontApiCalls": 55
+  },
+  "after": {
+    "lookup": {
+      "lookupsPerRun": 25600,
+      "runsMs": [
+        1.6375960000000305,
+        1.672751000000062,
+        1.369104999999763,
+        0.7230320000003303,
+        0.7222389999997176,
+        0.7215550000000803,
+        0.7259040000003552
+      ],
+      "medianMs": 0.7259040000003552,
+      "checksum": 1788000
+    },
+    "fontApiCalls": 5
+  }
+}

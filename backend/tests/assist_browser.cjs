@@ -187,7 +187,7 @@ async function dismissOnboarding (page) {
     await hall.goto('http://localhost/workspace')
     await hall.waitForTimeout(1500)
     await hall.goto(`http://localhost/tasks?view=available`)
-    await hall.locator('.task-options > summary').first().click()
+    await hall.locator('.task-options').first().getByRole('button', { name: '按难度选择任务', exact: true }).click()
     // 层级计数只在 queue-tiers 那块出现（TaskHallView 的 tierRows），所以等它出现而不是等固定时长
     const strip = hall.locator('.queue-tiers').first()
     await strip.waitFor({ timeout: 60000 })

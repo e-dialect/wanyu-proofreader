@@ -241,7 +241,9 @@ async function openTray(page) {
       }
       await insert('mandarin-tones', 'ǖ')
       if ((await field.inputValue()) !== '甲ã〔〕ǖ乙')
-        throw Error('Complete Mandarin group lost caret')
+        throw Error(
+          `Complete Mandarin group lost caret (${admin ? 'arbitration' : 'proofreading'}, ${mobile ? 'mobile' : 'desktop'}): ${JSON.stringify(await field.inputValue())}`
+        )
       const loaded = await page.evaluate(
         async (values) =>
           Promise.all(

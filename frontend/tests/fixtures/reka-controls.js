@@ -4,6 +4,7 @@ import AppButton from '../../src/components/AppButton.vue'
 import AppDropdown from '../../src/components/AppDropdown.vue'
 import AppSelect from '../../src/components/AppSelect.vue'
 import AppModal from '../../src/components/AppModal.vue'
+import AppDisclosure from '../../src/components/AppDisclosure.vue'
 import '../../src/style.css'
 
 const router = createRouter({
@@ -16,9 +17,16 @@ createApp({
     const value = ref('')
     const dialog = ref(false)
     const busy = ref(false)
+    const labelledBusy = ref(false)
+    const labelledButton = ref(null)
     const events = ref(0)
     const locked = ref(false)
     const reverse = ref(false)
+    const detailsOpen = ref(false)
+    const detailsValue = ref('  𠮷 ia̤̍h  ')
+    const lazyOpen = ref(false)
+    const lazyValue = ref('  𠮷 ia̤̍h\n  ')
+    const controlledLazyOpen = ref(false)
     const options = [
       { label: '全部状态', value: '' },
       { label: '待校对', value: 'pending' },
@@ -83,6 +91,143 @@ createApp({
           () => '保存'
         ),
         h('output', { 'aria-label': '保存请求次数' }, String(events.value)),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              busy.value = false
+            }
+          },
+          '结束保存'
+        ),
+        h('section', { 'aria-label': '忙碌尺寸验证' }, [
+          h(
+            AppButton,
+            {
+              ref: labelledButton,
+              loading: labelledBusy.value,
+              loadingLabel: '正在提交到服务端…',
+              'data-operation': 'geometry',
+              onClick: () => {
+                labelledBusy.value = true
+              }
+            },
+            () => '提交'
+          ),
+          h(AppButton, { variant: 'ghost' }, () => '后续操作'),
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: () => {
+                labelledBusy.value = false
+              }
+            },
+            '结束提交'
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              onClick: () => {
+                labelledButton.value?.focus()
+              }
+            },
+            '聚焦提交按钮'
+          )
+        ]),
+        h(
+          AppDisclosure,
+          {
+            'data-testid': 'eager-disclosure',
+            label: '核对说明',
+            modelValue: detailsOpen.value,
+            'onUpdate:modelValue': (open) => {
+              detailsOpen.value = open
+            }
+          },
+          () =>
+            h('label', [
+              '说明草稿',
+              h('input', {
+                'aria-label': '说明草稿',
+                value: detailsValue.value,
+                onInput: (event) => {
+                  detailsValue.value = event.target.value
+                }
+              })
+            ])
+        ),
+        h(
+          AppButton,
+          {
+            onClick: () => {
+              detailsOpen.value = false
+            }
+          },
+          () => '外部收起说明'
+        ),
+        h(
+          AppDisclosure,
+          {
+            'data-testid': 'lazy-disclosure',
+            label: '按需核对说明',
+            lazy: true,
+            modelValue: lazyOpen.value,
+            'onUpdate:modelValue': (open) => {
+              lazyOpen.value = open
+            }
+          },
+          () =>
+            h('label', [
+              '按需说明草稿',
+              h('textarea', {
+                'aria-label': '按需说明草稿',
+                value: lazyValue.value,
+                onInput: (event) => {
+                  lazyValue.value = event.target.value
+                }
+              })
+            ])
+        ),
+        h(
+          AppButton,
+          {
+            onClick: () => {
+              lazyOpen.value = false
+            }
+          },
+          () => '外部收起按需说明'
+        ),
+        h(AppDisclosure, { label: '默认展开的按需说明', lazy: true, defaultOpen: true }, () =>
+          h('p', { 'data-testid': 'lazy-default-content' }, '默认展开内容立即可用')
+        ),
+        h(AppDisclosure, { label: '受控初始展开的按需说明', lazy: true, modelValue: true }, () =>
+          h('p', { 'data-testid': 'lazy-initial-content' }, '受控初始展开内容立即可用')
+        ),
+        h(
+          AppDisclosure,
+          {
+            'data-testid': 'controlled-lazy-disclosure',
+            label: '受控按需说明',
+            lazy: true,
+            modelValue: controlledLazyOpen.value,
+            'onUpdate:modelValue': (open) => {
+              controlledLazyOpen.value = open
+            }
+          },
+          () => h('p', { 'data-testid': 'lazy-controlled-content' }, '受控展开内容立即可用')
+        ),
+        h(
+          AppButton,
+          {
+            onClick: () => {
+              controlledLazyOpen.value = true
+            }
+          },
+          () => '外部展开按需说明'
+        ),
         h(
           AppModal,
           {

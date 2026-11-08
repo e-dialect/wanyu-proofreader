@@ -52,8 +52,93 @@ const output =
     const width = Number(await divider.getAttribute('aria-valuenow'))
     assert.ok(width > 40 && width < 50)
     const input = page.locator('.proofread-textarea').first()
+    await page.evaluate(() => document.fonts.ready)
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    )
+    await input.evaluate((element) => {
+      const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight')
+      window.__inputHeightReads = 0
+      Object.defineProperty(element, 'scrollHeight', {
+        configurable: true,
+        get() {
+          window.__inputHeightReads++
+          return descriptor.get.call(this)
+        }
+      })
+    })
+    await input.fill('甲乙丙')
+    assert.equal(
+      await input.inputValue(),
+      '甲乙丙',
+      'model/input updates without waiting for resize'
+    )
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    )
+    assert.equal(
+      await page.evaluate(() => window.__inputHeightReads),
+      1,
+      'a stable-width input fits once after render'
+    )
+    await input.evaluate((element) => {
+      delete element.scrollHeight
+    })
     const shortHeight = (await input.boundingBox()).height
     assert.ok(shortHeight <= 80, 'short fields do not reserve a paragraph-sized editor')
+    const preedit = '𠮷 a̤̍\n'.repeat(8)
+    await input.evaluate((element, text) => {
+      element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      element.value = text
+      element.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          isComposing: true,
+          inputType: 'insertCompositionText'
+        })
+      )
+    }, preedit)
+    assert.ok(
+      (await input.boundingBox()).height > shortHeight,
+      'IME preedit grows even before v-model commits'
+    )
+    await input.evaluate((element) =>
+      element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    )
+    assert.equal(
+      await input.inputValue(),
+      preedit,
+      'composition preserves exact Unicode and newlines'
+    )
+    await input.fill('甲乙丙')
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    )
+    await input.evaluate((element, text) => {
+      element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+      element.value = text
+      element.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          isComposing: true,
+          inputType: 'insertCompositionText'
+        })
+      )
+    }, preedit)
+    assert.ok((await input.boundingBox()).height > shortHeight)
+    await input.evaluate((element) => {
+      element.value = '甲乙丙'
+      element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    })
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    )
+    assert.equal(await input.inputValue(), '甲乙丙')
+    assert.equal(
+      (await input.boundingBox()).height,
+      shortHeight,
+      'cancelled composition restores the short height even when model value did not change'
+    )
     const exactMultiline = '  ia̤̍h\n' + '𠮷  '.repeat(80) + '\n  '
     await input.fill(exactMultiline)
     assert.equal(

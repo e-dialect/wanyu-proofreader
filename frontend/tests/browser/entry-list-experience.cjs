@@ -38,7 +38,7 @@ async function api(endpoint, token, body, method = 'POST') {
     upload.set(
       'file',
       new Blob([
-        'PDF页码,词头,记音,释义\n1,𠮷,a̤̍⁵³³,  保留空白  \n2,食,ia̍h,吃\n3,囝,kiâ,孩子\n4,目,ba̍k,眼睛\n'
+        'PDF页码,索引,记音,释义,备注\n1,𠮷,a̤̍⁵³³,  保留空白  ,  注\t释  \n2,食,ia̍h,吃,\n3,囝,kiâ,孩子,\n4,目,ba̍k,眼睛,\n'
       ]),
       'synthetic-entry-list.csv'
     )
@@ -55,13 +55,43 @@ async function api(endpoint, token, body, method = 'POST') {
       assert.ok(i < 99, 'import must finish')
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    const rows = await api(
+    let rows = await api(
       `/api/fangji/projects/${project.id}/pages?page=1&perPage=25`,
       admin.token,
       null,
       'GET'
     )
-    const expected = Array.from(rows.items[0].ocr_text).slice(0, 120).join('')
+    // Exercise saved field fidelity through the existing manager correction API.
+    // CSV import currently trims edges before storing; this presentation test
+    // deliberately verifies values that actually contain legal whitespace.
+    const imported = rows.items[0]
+    const corrected = {
+      ...JSON.parse(imported.ocr_row_json),
+      释义: '  保留空白  ',
+      备注: '  注\t释  '
+    }
+    await api(`/api/fangji/projects/${project.id}/pages/${imported.id}/content`, admin.token, {
+      rowJson: JSON.stringify(corrected),
+      headersJson: imported.row_headers_json,
+      expectedUpdated: imported.updated
+    })
+    rows = await api(
+      `/api/fangji/projects/${project.id}/pages?page=1&perPage=25`,
+      admin.token,
+      null,
+      'GET'
+    )
+    const expected = rows.items[0].ocr_text
+    const expectedRow = JSON.parse(rows.items[0].ocr_row_json)
+    assert.equal(expectedRow.释义, '  保留空白  ')
+    await api(
+      `/api/fangji/projects/${project.id}/column-roles`,
+      admin.token,
+      {
+        roles: { 索引: 'headword', 记音: 'reading', 释义: 'meaning', 备注: 'note' }
+      },
+      'PUT'
+    )
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -73,12 +103,82 @@ async function api(endpoint, token, body, method = 'POST') {
       { backend, admin }
     )
     await fs.mkdir(output, { recursive: true })
+    await page.route(
+      `**/api/fangji/projects/${project.id}/column-roles`,
+      (route) => route.fulfill({ status: 503, json: { message: '合成列用途读取故障' } }),
+      { times: 1 }
+    )
     await page.goto(base + `/admin/projects/${project.id}?section=work&view=entries`)
     const section = page.locator('#project-entries')
     await section.locator('tbody tr').first().waitFor()
     assert.equal(await section.locator('tbody tr').count(), 4)
     assert.equal(await section.locator('input[type=checkbox]').count(), 0)
-    assert.equal(await section.locator('.entry-content-text').first().textContent(), expected)
+    await section.getByRole('alert').filter({ hasText: '列用途暂时无法读取' }).waitFor()
+    assert.equal(
+      await section.locator('.entry-field--headword').count(),
+      0,
+      'Unavailable roles remain neutral'
+    )
+    assert.equal(
+      await section.locator('[data-entry-field="索引"] .entry-field-value').first().textContent(),
+      expectedRow.索引
+    )
+    await section.getByRole('button', { name: '重试列用途', exact: true }).click()
+    const firstEntry = section.locator('tbody tr').first()
+    await firstEntry.locator('.entry-field--headword').waitFor()
+    for (const [name, value] of Object.entries(expectedRow)) {
+      assert.equal(
+        await firstEntry.locator(`[data-entry-field="${name}"] .entry-field-value`).textContent(),
+        value
+      )
+    }
+    assert.equal(
+      await firstEntry.locator('.entry-field--reading .entry-field-value').textContent(),
+      'a̤̍⁵³³'
+    )
+    const originals = firstEntry.locator('.entry-original-values')
+    assert.equal(await originals.getAttribute('data-state'), 'closed')
+    assert.equal(
+      await section.locator('.entry-original-text').count(),
+      0,
+      'Closed original values are not mounted before first use'
+    )
+    assert.equal(await section.locator('.entry-original-values [data-field-value-text]').count(), 0)
+    await originals.getByRole('button', { name: '查看原值', exact: true }).click()
+    await originals.locator('.entry-original-text').waitFor({ state: 'visible' })
+    assert.equal(await originals.locator('.entry-original-text').textContent(), expected)
+    const originalTextNode = await originals.locator('.entry-original-text').elementHandle()
+    for (const [name, value] of Object.entries(expectedRow)) {
+      assert.equal(
+        await originals
+          .locator('dl > div')
+          .filter({ has: page.locator('dt', { hasText: name }) })
+          .locator('dd')
+          .textContent(),
+        value
+      )
+    }
+    await originals.getByRole('button', { name: '查看原值', exact: true }).click()
+    await originals.locator('.entry-original-text').waitFor({ state: 'hidden' })
+    assert.equal(
+      await originals
+        .locator('.entry-original-text')
+        .evaluate((node, saved) => node === saved, originalTextNode),
+      true,
+      'First-open original values remain the same DOM after closing'
+    )
+    await originals.getByRole('button', { name: '查看原值', exact: true }).click()
+    await originals.locator('.entry-original-text').waitFor({ state: 'visible' })
+    assert.equal(
+      await originals
+        .locator('.entry-original-text')
+        .evaluate((node, saved) => node === saved, originalTextNode),
+      true,
+      'Reopening retains the original DOM'
+    )
+    assert.equal(await originals.locator('.entry-original-text').textContent(), expected)
+    await originals.getByRole('button', { name: '查看原值', exact: true }).click()
+    await originals.locator('.entry-original-text').waitFor({ state: 'hidden' })
     assert.equal(
       await section
         .locator('.entry-progress-cell .badge-pending')
@@ -87,7 +187,45 @@ async function api(endpoint, token, body, method = 'POST') {
       'rgba(0, 0, 0, 0)'
     )
     const firstRow = await section.locator('tbody tr').first().boundingBox()
+    const secondRow = await section.locator('tbody tr').nth(1).boundingBox()
+    assert.ok(firstRow.height <= 140, `Short entry with note stays compact: ${firstRow.height}px`)
+    assert.ok(
+      secondRow.height <= 118,
+      `Short entry without note stays compact: ${secondRow.height}px`
+    )
+    const word = await firstEntry.locator('.entry-field--headword').boundingBox()
+    const reading = await firstEntry.locator('.entry-field--reading').boundingBox()
+    const meaning = await firstEntry.locator('.entry-field--meaning').boundingBox()
+    assert.ok(
+      Math.max(word.y, reading.y, meaning.y) <
+        Math.min(word.y + word.height, reading.y + reading.height, meaning.y + meaning.height),
+      'Word, reading and short meaning share a reading line'
+    )
+    const location = await firstEntry.locator('.entry-content-location').boundingBox()
+    const originalTrigger = await originals
+      .getByRole('button', { name: '查看原值', exact: true })
+      .boundingBox()
+    assert.ok(
+      originalTrigger.y < location.y + location.height &&
+        originalTrigger.y + originalTrigger.height > location.y,
+      'Original values action shares the location line'
+    )
+    assert.equal(
+      await firstEntry
+        .locator('.entry-content-cell')
+        .evaluate((el) => getComputedStyle(el).display),
+      'table-cell'
+    )
     await page.screenshot({ path: path.join(output, 'desktop-list.png'), fullPage: true })
+    await page.evaluate(async () => {
+      await document.fonts.ready
+      const originalLoad = document.fonts.load.bind(document.fonts)
+      window.__entryUnchangedTextFontLoads = 0
+      document.fonts.load = (...args) => {
+        window.__entryUnchangedTextFontLoads++
+        return originalLoad(...args)
+      }
+    })
     await section.getByRole('button', { name: '批量选择', exact: true }).click()
     await section.getByRole('button', { name: '全选待校对', exact: true }).click()
     await page.waitForFunction(
@@ -95,6 +233,11 @@ async function api(endpoint, token, body, method = 'POST') {
     )
     await section.getByRole('button', { name: '退出批量', exact: true }).click()
     assert.equal(await section.locator('input[type=checkbox]').count(), 0)
+    assert.equal(
+      await page.evaluate(() => window.__entryUnchangedTextFontLoads),
+      0,
+      'Unchanged list content does not restart font checks during batch selection'
+    )
     await section.getByRole('button', { name: '查看第 1 条详情与修正', exact: true }).click()
     await page.getByRole('dialog').getByRole('heading', { name: '修正识别结果' }).waitFor()
     assert.equal(
@@ -172,12 +315,49 @@ async function api(endpoint, token, body, method = 'POST') {
     await page.unroute(pagesRoute)
     await section.getByRole('button', { name: '重新加载', exact: true }).click()
     await section.locator('tbody tr').first().waitFor()
-    assert.match(await section.locator('.entry-content-text').first().textContent(), /食/)
+    assert.match(
+      await section.locator('.entry-field--headword .entry-field-value').first().textContent(),
+      /食/
+    )
     await search.fill('𠮷')
     await page.waitForFunction(
       (expected) =>
-        document.querySelector('#project-entries .entry-content-text')?.textContent === expected,
-      expected
+        document.querySelector('#project-entries .entry-field--headword .entry-field-value')
+          ?.textContent === expected,
+      expectedRow.索引
+    )
+    const superuser = await api('/api/collections/_superusers/auth-with-password', '', {
+      identity: process.env.PB_SUPER_EMAIL,
+      password: process.env.PB_SUPER_PASSWORD
+    })
+    const rawText = '\n  原值回退  𠮷\ta̤̍⁵³³  ' + '原样保留'.repeat(40) + '  \n'
+    await api('/api/collections/pages/records', superuser.token, {
+      project: project.id,
+      page_number: 5,
+      status: 'pending',
+      ocr_text: rawText,
+      ocr_row_json: '',
+      row_headers_json: ''
+    })
+    await search.fill('原值回退')
+    await page.waitForFunction(
+      (value) =>
+        document.querySelector('#project-entries .entry-content-text')?.textContent === value,
+      rawText
+    )
+    assert.equal(
+      await section.locator('.entry-content-fields').count(),
+      0,
+      'Free-form text is not split into invented fields'
+    )
+    await section
+      .locator('.entry-original-values')
+      .getByRole('button', { name: '查看原值', exact: true })
+      .click()
+    assert.equal(await section.locator('.entry-original-text').textContent(), rawText)
+    await search.fill('𠮷')
+    await page.waitForFunction(
+      () => document.querySelectorAll('#project-entries tbody tr').length === 2
     )
     await page.setViewportSize({ width: 390, height: 844 })
     await page.reload()
@@ -196,9 +376,19 @@ async function api(endpoint, token, body, method = 'POST') {
       .locator('.table-wrapper')
       .evaluate((el) => ({ width: el.clientWidth, scroll: el.scrollWidth }))
     assert.ok(tableGeometry.scroll <= tableGeometry.width, JSON.stringify(tableGeometry))
-    const mobileText = await section.locator('.entry-content-text').first().boundingBox()
+    const mobileText = await section.locator('.entry-content-cell').first().boundingBox()
     assert.ok(mobileText.width > 190)
     const mobileRow = await section.locator('tbody tr').first().boundingBox()
+    const mobileOriginalTrigger = await section
+      .locator('tbody tr')
+      .first()
+      .locator('.entry-original-values')
+      .getByRole('button', { name: '查看原值', exact: true })
+      .boundingBox()
+    assert.ok(
+      mobileOriginalTrigger.height >= 44,
+      'Mobile original values action keeps its touch target'
+    )
     await page.screenshot({ path: path.join(output, 'mobile-list.png'), fullPage: true })
     await section.getByRole('button', { name: '第 1 条的更多操作', exact: true }).click()
     await page.getByRole('menuitem', { name: '设置质量状态', exact: true }).waitFor()
@@ -210,10 +400,16 @@ async function api(endpoint, token, body, method = 'POST') {
         {
           synthetic: true,
           desktopFirstRowY: firstRow.y,
+          desktopFirstRowHeight: firstRow.height,
+          desktopShortRowHeight: secondRow.height,
           mobileContentWidth: mobileText.width,
           mobileFirstRowY: mobileRow.y,
           checks: [
-            'exact text',
+            'structured field roles from authorized API with neutral failure and retry',
+            'exact structured values and lazy original disclosure retaining DOM after first open',
+            'batch controls do not restart unchanged font checks',
+            'unstructured raw fallback retains whitespace and full text without splitting',
+            'compact desktop rows with shared location/action and word/reading/meaning line',
             'neutral pending',
             'batch enter/select/exit',
             'content detail IPA',

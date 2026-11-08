@@ -1,0 +1,192 @@
+{
+  "baseline": false,
+  "synthetic": true,
+  "requests": {
+    "normal": [
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/task"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/research-notice"
+      },
+      {
+        "method": "POST",
+        "path": "/api/fangji/projects/project1/claim"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/keyboards"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/tasks/mine"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/tasks/reviewed"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/findings"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/pdf/descriptor"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/verification"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/images/5/descriptor"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/pdf"
+      }
+    ],
+    "empty": [
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/task"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/research-notice"
+      }
+    ],
+    "error": [
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/task"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/research-notice"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/task"
+      },
+      {
+        "method": "POST",
+        "path": "/api/fangji/projects/project1/claim"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/keyboards"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/tasks/mine"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/tasks/reviewed"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/findings"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/pdf/descriptor"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/verification"
+      }
+    ],
+    "disabled": [
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/task"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/research-notice"
+      },
+      {
+        "method": "POST",
+        "path": "/api/fangji/projects/project1/claim"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/keyboards"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/tasks/mine"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/projects/project1/tasks/reviewed"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/findings"
+      },
+      {
+        "method": "GET",
+        "path": "/api/fangji/pages/page1/verification"
+      }
+    ]
+  },
+  "feedback": [
+    {
+      "width": 1440,
+      "original": {
+        "headerHeight": 103.25,
+        "feedbackY": 69.25,
+        "feedbackHeight": 34
+      },
+      "draft": {
+        "headerHeight": 103.25,
+        "feedbackY": 69.25,
+        "feedbackHeight": 34
+      },
+      "editingDraftOfflineFailureStable": true,
+      "offlineNoAutomaticSubmit": true,
+      "server503And409Preserved": true,
+      "onlyServerSuccessIsSubmitted": true,
+      "submittedBeforeClaimResult": true,
+      "previousSubmissionFlashDoesNotMarkCurrentSubmitted": true,
+      "inputSelectionAndElementPreserved": true,
+      "reducedMotion": {
+        "animation": "none",
+        "transition": "1e-05s"
+      },
+      "submissions": 3,
+      "pageErrors": []
+    },
+    {
+      "width": 390,
+      "original": {
+        "headerHeight": 109,
+        "feedbackY": 65,
+        "feedbackHeight": 44
+      },
+      "draft": {
+        "headerHeight": 109,
+        "feedbackY": 65,
+        "feedbackHeight": 44
+      },
+      "editingDraftOfflineFailureStable": true,
+      "offlineNoAutomaticSubmit": true,
+      "server503And409Preserved": true,
+      "onlyServerSuccessIsSubmitted": true,
+      "submittedBeforeClaimResult": true,
+      "previousSubmissionFlashDoesNotMarkCurrentSubmitted": true,
+      "inputSelectionAndElementPreserved": true,
+      "reducedMotion": {
+        "animation": "none",
+        "transition": "1e-05s"
+      },
+      "submissions": 3,
+      "pageErrors": []
+    }
+  ]
+}

@@ -114,6 +114,7 @@ const wide = computed(
 )
 let observer
 let alive = true
+let composing = false
 function setInput(element) {
   input.value = element
   emit('textarea', element)
@@ -130,8 +131,15 @@ function fit() {
   element.style.height = 'auto'
   element.style.height = `${Math.min(maximum, Math.max(minimum, element.scrollHeight + border))}px`
 }
-function onInput() {
-  fit()
+function onInput(event) {
+  // v-model updates immediately; the post-render value watcher fits once after
+  // the DOM update. IME preedit has no model update until composition ends, so
+  // keep its visible textarea growing without committing the composing value.
+  const preedit = event.isComposing || event.target?.composing
+  // The final input also fits when composition is cancelled back to the same
+  // model value, which would not trigger the value watcher.
+  if (preedit || composing) fit()
+  composing = Boolean(preedit)
   emit('change')
 }
 watch([value, () => props.mobile, () => props.overview], () => nextTick(fit), { flush: 'post' })

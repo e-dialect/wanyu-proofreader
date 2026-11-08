@@ -227,7 +227,7 @@
   padding: 0;
   border: 0;
 }
-.keyboard-footer .keyboard-guide[open] {
+.keyboard-footer .keyboard-guide[data-state='open'] {
   flex-basis: 100%;
 }
 .keyboard-name {

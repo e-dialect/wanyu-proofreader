@@ -5,9 +5,9 @@
         <h1>我的任务</h1>
         <p>继续当前工作，或领取下一条材料。</p>
       </div>
-      <AppButton variant="ghost" @click="loadProjects" :loading="loading">
+      <AppButton variant="ghost" @click="loadProjects" :loading="loading" loading-label="正在刷新">
         <AppIcon name="refresh" />
-        {{ loading ? '正在刷新' : '刷新项目' }}
+        刷新项目
       </AppButton>
     </header>
 
@@ -211,11 +211,11 @@
             </div>
           </dl>
 
-          <details
+          <AppDisclosure
             v-if="taskView !== 'reviewed' && (tierRows(queue).length || queue.missingGlyph)"
             class="task-options"
+            label="按难度选择任务"
           >
-            <summary>按难度选择任务</summary>
             <div class="queue-tiers" aria-label="按难度层级领取">
               <AppButton
                 v-for="option in tierRows(queue)"
@@ -248,7 +248,7 @@
                 {{ tierResidualText(queue) }}
               </span>
             </div>
-          </details>
+          </AppDisclosure>
 
           <footer class="project-work-card__footer">
             <span>{{ queueAction(queue).detail }}</span>
@@ -257,6 +257,7 @@
                 type="button"
                 :variant="taskView === 'reviewed' ? 'primary' : 'ghost'"
                 :loading="reviewingProject === queue.project.id"
+                loading-label="正在打开…"
                 :disabled="
                   loading ||
                   reviewingProject === queue.project.id ||
@@ -264,12 +265,13 @@
                 "
                 @click="openOwnReview(queue)"
               >
-                {{ reviewingProject === queue.project.id ? '正在打开…' : '回看已提交' }}
+                回看已提交
               </AppButton>
               <AppButton
                 v-if="taskView !== 'reviewed'"
                 variant="primary"
                 :loading="claimingProject === queue.project.id"
+                loading-label="正在打开…"
                 :disabled="
                   loading ||
                   claimingProject === queue.project.id ||
@@ -278,7 +280,7 @@
                 "
                 @click="enterProject(queue)"
               >
-                {{ claimingProject === queue.project.id ? '正在打开…' : queueAction(queue).label }}
+                {{ queueAction(queue).label }}
                 <AppIcon v-if="queueAction(queue).canEnter" name="arrow" />
               </AppButton>
             </div>
@@ -304,6 +306,7 @@ import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import '@/styles/work-catalog.css'
 import { RouterLink, useRoute, useRouter } from 'vue-router'

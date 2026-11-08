@@ -2,14 +2,24 @@ import coverage from './fontCoverage.json' with { type: 'json' }
 
 // Derived from the shipped manifests; tests require exact coverage equality.
 const phoneticPoints = new Set(coverage.phoneticCodepoints)
-const rareRanges = coverage.rareHanRanges.map((range) => {
-  const [start, end = start] = range
-    .trim()
-    .replace(/^U\+/, '')
-    .split('-')
-    .map((value) => parseInt(value, 16))
-  return [start, end]
-})
+const sortedRareRanges = coverage.rareHanRanges
+  .map((range) => {
+    const [start, end = start] = range
+      .trim()
+      .replace(/^U\+/, '')
+      .split('-')
+      .map((value) => parseInt(value, 16))
+    return [start, end]
+  })
+  .sort(([a], [b]) => a - b)
+// Font subsets fragment the same contiguous Unicode coverage across thousands
+// of files/ranges. Merge only touching/overlapping intervals once, not per glyph.
+const rareRanges = []
+for (const [start, end] of sortedRareRanges) {
+  const last = rareRanges.at(-1)
+  if (last && start <= last[1] + 1) last[1] = Math.max(last[1], end)
+  else rareRanges.push([start, end])
+}
 
 export function fontFamilyForCharacter(char) {
   const cp = String(char).codePointAt(0)

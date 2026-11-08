@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "desktopFirstRowY": 417.5,
+  "desktopFirstRowHeight": 129.890625,
+  "desktopShortRowHeight": 104.296875,
+  "mobileContentWidth": 238,
+  "mobileFirstRowY": 534.28125,
+  "checks": [
+    "structured field roles from authorized API with neutral failure and retry",
+    "exact structured values and full original disclosure",
+    "unstructured raw fallback retains whitespace and full text without splitting",
+    "compact desktop rows with shared location/action and word/reading/meaning line",
+    "neutral pending",
+    "batch enter/select/exit",
+    "content detail IPA",
+    "quality required basis and save",
+    "filter URL reload",
+    "failed fetch retains rows and retry",
+    "empty result is not reused for a pending or failed query",
+    "390px summary and menu"
+  ],
+  "pageErrors": []
+}

@@ -1,0 +1,92 @@
+{
+  "capturedAt": "2026-11-08T09:50:56.767896+00:00",
+  "baseline": "f3834f54050951c6ea17492856781b0df64c5e2f",
+  "branch": "feat/ui-refinement-20261108",
+  "synthetic": true,
+  "dataset": {
+    "rows": 100,
+    "columns": 20,
+    "sha256": "2610cd0977c333fcdd508755648d44f40fd9fb9c6e65d541c73809d5e9dfe208"
+  },
+  "browser": "157.0.4341.42",
+  "repetitionsPerVariant": 5,
+  "listElements": {
+    "before": 12639,
+    "after": 4239,
+    "reductionPercent": 66.46095418941371
+  },
+  "fieldValues": {
+    "before": 2500,
+    "after": 400
+  },
+  "medianInitialRenderMs": {
+    "before": 994.8000000119209,
+    "after": 852.5
+  },
+  "medianExpandFirstMs": {
+    "before": 40.5,
+    "after": 40.10000002384186
+  },
+  "fontApiCallsForEquivalentUpdates": {
+    "before": 55,
+    "after": 5,
+    "networkDownloads": false
+  },
+  "stableWidthInputHeightReads": {
+    "before": 2,
+    "after": 1,
+    "imeCommitAndCancelCovered": true
+  },
+  "fontRangeSearch": {
+    "before": 3858,
+    "after": 11,
+    "codePointsVerified": 1114112,
+    "differences": 0
+  },
+  "validation": {
+    "makeCheck": "passed",
+    "frontendTests": 490,
+    "browserGroups": [
+      "components",
+      "workbench",
+      "editor",
+      "review",
+      "fonts",
+      "unicode"
+    ],
+    "scriptEntrypoints": 19,
+    "finalImeCancelRegression": "passed",
+    "productionBuild": "passed"
+  },
+  "pending": [
+    "native phone IMEs/keyboards",
+    "human usability and screen readers",
+    "PR-triggered remote CI"
+  ],
+  "sourceSha256": {
+    "frontend/scripts/benchmark-font-performance.mjs": "db29c31e6f700a7b386a4e7a647eccae4acb1f3d279154e1c0210af420e7af74",
+    "frontend/src/components/AppDisclosure.vue": "10d1c8e48da5851752bc93cd307c665320aa1cc74d37f74cfd88818e157ef7b9",
+    "frontend/src/components/admin/project/ProjectEntriesPanel.vue": "91422212757c7d19ad9ed1dba07754bb3b83be8df37035c9d23d3e65efef30ec",
+    "frontend/src/components/editor/KeyboardGuide.vue": "aa94b7ebbbbfc4e507822dee59cef703437135d052c026751f75f16f65f5db11",
+    "frontend/src/components/editor/ProofreadFieldCard.vue": "a11ccc8a243337de8756731991acba668cc5df8a8f8c420a7c67c138e194b13a",
+    "frontend/src/composables/useFontAvailability.js": "0555a150f53606b142bdd1269656fe975d5305dfc4409d2a338e0e8afa24e703",
+    "frontend/src/lib/entryListPresentation.js": "90cb971cd74e21e3d800c259c2d458ef36b0b712115c5b44c2afb86cd2f21c1e",
+    "frontend/src/lib/rareCharacters.js": "7147c85a69a34bb590a1b1e32257fe5bb7663d4b7a4bae21b870471ec1bc43b2",
+    "frontend/tests/browser/disclosure.cjs": "ba5d11d21bc2794536b17b64defc9ae7926c049d6275e6f2bd957d6826a8aef9",
+    "frontend/tests/browser/editor-experience.cjs": "840907ccfd315ebfbd941e9d0c75b653bb799f0519b1ddba8a08de9fe88e4611",
+    "frontend/tests/browser/entry-list-experience.cjs": "fdb2b0acec34e21df4e7c886971693e7ab2a8a2a656f856432b77f34f9f2e74d",
+    "frontend/tests/browser/run-ui-performance.py": "0ea24637b3a5c75be5e59f5d91ad672361c24e9d919155fe4796b7cfc07526d4",
+    "frontend/tests/browser/ui-performance.cjs": "dd3719776186949cd5a08c1cf7b6d279ee2f360305862109fe928cc8ec88c13c",
+    "frontend/tests/entryListPresentation.test.js": "3a0ee8e00592773cc9e3906c726b7d72fd31dd371194b9c7867c3603d6c4daa1",
+    "frontend/tests/fixtures/reka-controls.js": "56fcdd5c9e4328faad66879c4c2945ca1ec7589e3e0c0256d581970136627359",
+    "frontend/tests/fontAvailability.test.js": "acb1a7b17f61148c7c2be7c3c3ef694f57343f4b611d9c975e435a10a97b5904"
+  },
+  "receiptSha256": {
+    "font-performance.json": "8efb0c40734e233af58c710de5a15f8e66c2853ef20dbb9633c9c054416c8ebf",
+    "entry-computation.json": "7d982e2216a1450195a610c1cf108264af0ee79f59f4cefb1ac8681f79a27a22",
+    "after.json": "ded13fddbc03acbec15d3b6662ebe82808cca6c71d65384066d10d1a3b16bcef",
+    "baseline-list.png": "710d330e7e3c4055652438c1728e7fef7d01151d2fbffbb203b6b87136f582b8",
+    "baseline.json": "c4df6a05320f502217e099fd6ae4d6438e47c0d704e111e3e0eb4829e7ee9556",
+    "after-list.png": "b25118870b75c29bd3f344b6ea48ba97459ae673da14b9573fc168129e84dc8d"
+  }
+}

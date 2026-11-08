@@ -94,6 +94,82 @@ test('field language is explicit and highlight segments must preserve every code
   assert.equal(exactFieldSegments(value, [{ text: value.normalize('NFC') }]), null)
 })
 
+test('equivalent glyph sets retain pending/ready/error state without rechecking, while retry and new glyphs still check', async () => {
+  const previous = globalThis.document
+  const pending = []
+  let calls = 0
+  globalThis.document = {
+    fonts: {
+      load: () => {
+        calls++
+        return new Promise((resolve) => pending.push(resolve))
+      }
+    }
+  }
+  const scope = effectScope()
+  try {
+    const texts = ref(['ɡ⁵'])
+    const api = scope.run(() => useFontAvailability(texts))
+    assert.equal(calls, 2)
+    for (let i = 0; i < 10; i++) {
+      texts.value = [i % 2 ? '⁵ 普通 ɡ⁵' : 'ɡ⁵']
+      await nextTick()
+    }
+    assert.equal(calls, 2, 'same glyphs and reordered text share the pending check')
+    pending.splice(0).forEach((resolve) => resolve([{}]))
+    await settle()
+    assert.equal(api.state.value, 'ready')
+    texts.value = ['⁵ɡ']
+    await settle()
+    assert.equal(calls, 2)
+    assert.equal(api.state.value, 'ready')
+    api.retry()
+    await nextTick()
+    assert.equal(calls, 4, 'explicit retry rechecks even the same set')
+    pending.splice(0).forEach((resolve) => resolve([]))
+    await settle()
+    assert.equal(api.state.value, 'error')
+    texts.value = ['ɡ⁵ extra ASCII']
+    await settle()
+    assert.equal(calls, 4)
+    assert.equal(api.state.value, 'error', 'unrelated text does not clear a font error')
+    texts.value = ['́']
+    await nextTick()
+    assert.equal(calls, 5, 'new glyphs start a fresh check')
+    pending.shift()([{}])
+    await settle()
+    assert.equal(api.state.value, 'ready')
+  } finally {
+    scope.stop()
+    globalThis.document = previous
+  }
+})
+
+test('compacted font ranges classify every code point exactly as the shipped coverage', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const coverage = JSON.parse(
+    await readFile(new URL('../src/lib/fontCoverage.json', import.meta.url), 'utf8')
+  )
+  const han = new Set()
+  for (const range of coverage.rareHanRanges) {
+    const [start, end = start] = range
+      .replace(/^U\+/, '')
+      .split('-')
+      .map((cp) => parseInt(cp, 16))
+    for (let cp = start; cp <= end; cp++) han.add(cp)
+  }
+  const phonetic = new Set(coverage.phoneticCodepoints)
+  for (let cp = 0; cp <= 0x10ffff; cp++) {
+    const expected = han.has(cp)
+      ? 'Fangji Rare Han'
+      : cp > 0x7f && phonetic.has(cp)
+        ? 'Fangji Phonetic'
+        : ''
+    assert.equal(fontFamilyForCharacter(String.fromCodePoint(cp)), expected, `U+${cp.toString(16)}`)
+  }
+  assert.equal(fontFamilyForCharacter(''), '')
+})
+
 test('runtime font coverage exactly matches the shipped manifests', async () => {
   const { readFile } = await import('node:fs/promises')
   const read = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), 'utf8'))

@@ -2441,7 +2441,7 @@ button.field-hint-chip:focus-visible {
   font-size: 0.85rem;
   line-height: 1.65;
 }
-.comparison-option button {
+.comparison-option button:not(.app-button) {
   align-self: end;
   justify-self: start;
   margin-top: auto;
@@ -2453,7 +2453,7 @@ button.field-hint-chip:focus-visible {
   cursor: pointer;
   font-size: 0.7rem;
 }
-.comparison-option button:hover {
+.comparison-option button:not(.app-button):hover {
   border-color: var(--primary);
   background: var(--primary-light);
 }

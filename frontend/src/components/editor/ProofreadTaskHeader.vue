@@ -114,16 +114,34 @@
         :title="feedback.detail || feedback.text"
         >{{ feedback.text }}</span
       >
+      <button
+        type="button"
+        class="editor-feedback-details"
+        aria-label="查看任务状态详情"
+        aria-haspopup="dialog"
+        @click="feedbackOpen = true"
+      >
+        详情
+      </button>
     </p>
     <p v-if="activeField" class="text-sm text-muted editor-active-field">
       当前字段：{{ activeField }}<span v-if="!ownReview"> · 字符键盘会插入这里</span>
     </p>
   </header>
+  <AppModal :open="feedbackOpen" title-id="task-feedback-title" @close="feedbackOpen = false">
+    <h2 id="task-feedback-title">{{ feedback.label }}</h2>
+    <p class="editor-feedback-detail-copy">{{ feedback.detail || feedback.text }}</p>
+    <template #actions>
+      <AppButton @click="feedbackOpen = false">关闭详情</AppButton>
+    </template>
+  </AppModal>
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
-import { computed, inject } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import AppButton from '@/components/AppButton.vue'
+import AppModal from '@/components/AppModal.vue'
+const feedbackOpen = ref(false)
 const returnTarget = inject('workReturnTarget', '/tasks')
 const props = defineProps({
   projectName: String,
@@ -151,6 +169,12 @@ const props = defineProps({
   activeField: String,
   feedback: { type: Object, required: true }
 })
+watch(
+  () => [props.pageNumber, props.ownReview],
+  () => {
+    feedbackOpen.value = false
+  }
+)
 const shortcutHints = computed(() => {
   const hints = []
   if (!props.ownReview && props.hasPage && !props.loadingPage && !props.submittedHere) {
@@ -189,12 +213,42 @@ const emit = defineEmits([
   transition: color var(--motion-fast) var(--ease-out);
 }
 .editor-feedback-copy {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 400;
   animation: editor-feedback-reveal var(--motion-fast) var(--ease-out);
+}
+.editor-feedback-details {
+  flex: 0 0 auto;
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--primary-dark);
+  font: inherit;
+  cursor: pointer;
+}
+.editor-feedback-details:hover {
+  background: var(--primary-light);
+}
+.editor-feedback-details:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.editor-feedback-detail-copy {
+  margin-top: var(--space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+@media (max-width: 640px) {
+  .editor-feedback-details {
+    min-height: var(--control-height-touch);
+  }
 }
 [data-task-feedback='error'] .editor-feedback-label {
   color: var(--danger-ink);

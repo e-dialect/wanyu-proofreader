@@ -1,4 +1,90 @@
 /* Shared controls: Reka owns keyboard/focus behavior; the product owns its theme. */
+.app-disclosure {
+  min-width: 0;
+}
+.app-disclosure__trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-height);
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.app-disclosure__trigger:hover:not(:disabled) {
+  color: var(--primary-dark);
+}
+.app-disclosure__trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.app-disclosure__trigger:disabled {
+  cursor: not-allowed;
+  color: var(--gray-500);
+}
+.app-disclosure__summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-disclosure__chevron {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  transform: rotate(-90deg);
+  transition: transform var(--motion-normal) var(--ease-out);
+}
+.app-disclosure__trigger[data-state='open'] .app-disclosure__chevron {
+  transform: rotate(0);
+}
+.app-disclosure__content {
+  overflow: hidden;
+}
+.app-disclosure__content[data-state='open'] {
+  animation: ui-disclosure-open var(--motion-normal) var(--ease-out);
+}
+.app-disclosure__content[data-state='closed'] {
+  animation: ui-disclosure-close var(--motion-fast) var(--ease-out);
+}
+.app-disclosure__body {
+  padding: var(--space-2) 0 var(--space-3);
+}
+@keyframes ui-disclosure-open {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--reka-collapsible-content-height);
+  }
+}
+@keyframes ui-disclosure-close {
+  from {
+    height: var(--reka-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+@media (max-width: 640px) {
+  .app-disclosure__trigger {
+    min-height: var(--control-height-touch);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-disclosure__content {
+    animation: none !important;
+  }
+  .app-disclosure__chevron {
+    transition: none;
+  }
+}
 .app-button,
 .app-dropdown-trigger,
 .app-select-trigger {

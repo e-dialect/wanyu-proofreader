@@ -24,16 +24,23 @@
         v-if="hasLoadedPages"
         variant="ghost"
         size="sm"
-        :disabled="loadingPages"
+        :loading="loadingPages"
+        loading-label="正在刷新"
         @click="loadPages"
-        >{{ loadingPages ? '正在刷新' : '刷新条目' }}</AppButton
+        >刷新条目</AppButton
       >
     </header>
     <p v-if="pageStatsError" class="entry-list-error" role="alert">
       {{ pageStatsError }}
       <AppButton variant="ghost" size="sm" @click="loadPageStats">重试统计</AppButton>
     </p>
-    <RareCharacterNotice :texts="displayedPages.map((page) => page.ocr_text || '')" />
+    <RareCharacterNotice :texts="fontTexts" />
+    <p v-if="columnRolesError" class="entry-list-error" role="alert">
+      列用途暂时无法读取，当前按原列名展示。
+      <AppButton variant="ghost" size="sm" :loading="loadingColumnRoles" @click="loadColumnRoles"
+        >重试列用途</AppButton
+      >
+    </p>
     <div v-if="mutationSuccess" class="alert alert-success" role="status">
       {{ mutationSuccess }}
     </div>
@@ -235,13 +242,17 @@
         <template #head
           ><tr>
             <th v-if="batchMode" class="entry-select-cell">选择</th>
-            <th>条目与导入文本</th>
+            <th>条目内容</th>
             <th class="entry-progress-cell">校对进度</th>
             <th class="entry-quality-cell">质量状态</th>
             <th class="entry-actions-cell"><span class="sr-only">操作</span></th>
           </tr></template
         >
-        <tr v-for="(pg, idx) in displayedPages" :key="pg.id" :data-entry-id="pg.id">
+        <tr
+          v-for="({ page: pg, content, visibleFields }, idx) in presentedPages"
+          :key="pg.id"
+          :data-entry-id="pg.id"
+        >
           <td v-if="batchMode" class="entry-select-cell">
             <label class="entry-checkbox-hit"
               ><input
@@ -253,47 +264,93 @@
             /></label>
           </td>
           <td class="entry-content-cell">
-            <div class="entry-content-location">
-              <button
-                type="button"
-                class="entry-detail-link"
-                :disabled="mutatingRows"
-                :aria-label="`查看第 ${formatItemNo(pg.page_number, displayedPageOffset + idx)} 条详情与修正`"
-                @click="openContentEdit(pg)"
+            <div class="entry-content-layout">
+              <div class="entry-content-location">
+                <button
+                  type="button"
+                  class="entry-detail-link"
+                  :disabled="mutatingRows"
+                  :aria-label="`查看第 ${formatItemNo(pg.page_number, displayedPageOffset + idx)} 条详情与修正`"
+                  @click="openContentEdit(pg)"
+                >
+                  第 {{ formatItemNo(pg.page_number, displayedPageOffset + idx) }} 条
+                </button>
+                <span v-if="pg.pdf_page">PDF 第 {{ pg.pdf_page }} 页</span>
+              </div>
+              <dl v-if="content.structured" class="entry-content-fields">
+                <div
+                  v-for="field in visibleFields"
+                  :key="field.name"
+                  :class="['entry-field', `entry-field--${field.role}`]"
+                  :data-entry-field="field.name"
+                >
+                  <dt :class="{ 'sr-only': ['headword', 'reading'].includes(field.role) }">
+                    {{ field.name }}
+                  </dt>
+                  <dd>
+                    <AppFieldValue
+                      class="entry-field-value"
+                      :value="field.value"
+                      :lang="fieldValueLanguage(field.name)"
+                      :font-notice="false"
+                    />
+                  </dd>
+                </div>
+              </dl>
+              <AppFieldValue
+                v-else
+                class="entry-content-text"
+                :value="content.rawText"
+                empty-label="—"
+                :font-notice="false"
+              />
+              <AppDisclosure class="entry-original-values" lazy>
+                <template #summary>查看原值</template>
+                <dl v-if="content.structured">
+                  <div v-for="field in content.fields" :key="field.name">
+                    <dt>{{ field.name }}</dt>
+                    <dd>
+                      <AppFieldValue
+                        :value="field.value"
+                        :lang="fieldValueLanguage(field.name)"
+                        :font-notice="false"
+                      />
+                    </dd>
+                  </div>
+                </dl>
+                <p class="entry-original-text-label">完整导入文本</p>
+                <AppFieldValue
+                  class="entry-original-text"
+                  :value="content.rawText"
+                  empty-label="（空值）"
+                  :font-notice="false"
+                />
+              </AppDisclosure>
+              <small v-if="pg.ocr_cells_json" class="ocr-cell-summary"
+                >识别时：<span
+                  v-for="state in ocrCellSummary(pg.ocr_cells_json)"
+                  :key="state.status"
+                  >{{ state.label }} {{ state.count }} 格
+                </span></small
               >
-                第 {{ formatItemNo(pg.page_number, displayedPageOffset + idx) }} 条
-              </button>
-              <span v-if="pg.pdf_page">PDF 第 {{ pg.pdf_page }} 页</span>
-            </div>
-            <AppFieldValue
-              class="entry-content-text"
-              :value="
-                Array.from(pg.ocr_text || '')
-                  .slice(0, 120)
-                  .join('')
-              "
-              empty-label="—"
-              :font-notice="false"
-            />
-            <small v-if="pg.ocr_cells_json" class="ocr-cell-summary"
-              >识别时：<span v-for="state in ocrCellSummary(pg.ocr_cells_json)" :key="state.status"
-                >{{ state.label }} {{ state.count }} 格
-              </span></small
-            >
-            <div class="entry-mobile-status">
-              <span :class="statusBadgeClass(pg.status)" class="badge">{{
-                statusLabel(pg.status)
-              }}</span>
-              <span
-                >{{ pg.proofread_count || 0 }}/{{ project?.required_proofreads || 2 }} 份结果</span
-              >
-              <span :class="qualityStateBadgeClass(pg.quality_state)"
-                >质量{{ qualityStateLabel(pg.quality_state) }}</span
-              >
-              <span v-if="pg.expand?.proofreader">{{
-                pg.expand.proofreader.name || pg.expand.proofreader.email
-              }}</span>
-              <span v-if="pg.mismatch_count">不一致 {{ pg.mismatch_count }} 次</span>
+              <div class="entry-mobile-status">
+                <span :class="statusBadgeClass(pg.status)" class="badge">{{
+                  statusLabel(pg.status)
+                }}</span>
+                <span
+                  >{{ pg.proofread_count || 0 }}/{{
+                    project?.required_proofreads || 2
+                  }}
+                  份结果</span
+                >
+                <span :class="qualityStateBadgeClass(pg.quality_state)"
+                  >质量{{ qualityStateLabel(pg.quality_state) }}</span
+                >
+                <span v-if="pg.expand?.proofreader">{{
+                  pg.expand.proofreader.name || pg.expand.proofreader.email
+                }}</span>
+                <span v-if="pg.mismatch_count">不一致 {{ pg.mismatch_count }} 次</span>
+              </div>
             </div>
           </td>
           <td class="entry-progress-cell">
@@ -406,11 +463,16 @@
 <script setup>
 import '@/entry-list-experience.css'
 import AppButton from '@/components/AppButton.vue'
+import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppDropdown from '@/components/AppDropdown.vue'
 import AppSelect from '@/components/AppSelect.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
 import { ocrCellSummary } from '@/lib/ocrJob'
+import { entryListPresentation } from '@/lib/entryListPresentation'
+import { fieldValueLanguage } from '@/lib/fieldValue'
+import { getColumnRoles } from '@/services/projectsService'
+import { useAsyncResource } from '@/composables/useAsyncResource'
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import AppField from '@/components/AppField.vue'
@@ -423,6 +485,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import PageContentEditModal from '@/components/admin/PageContentEditModal.vue'
 import { useProjectEntries } from '@/composables/project/useProjectEntries'
 import { computed, ref, toRef, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 const props = defineProps({
   projectId: { type: String, required: true },
   project: { type: Object, required: true },
@@ -499,6 +562,55 @@ const {
   toggleSelectAllPending,
   totalFilteredItems
 } = useProjectEntries(projectId, project, props.refreshLedger)
+
+const {
+  data: columnRoleView,
+  pending: loadingColumnRoles,
+  error: columnRolesError,
+  reload: reloadColumnRoles
+} = useAsyncResource(async (_context, scope) => ({
+  ...scope,
+  roles: (await getColumnRoles(scope.projectId)).roles
+}))
+const auth = useAuthStore()
+function loadColumnRoles() {
+  return reloadColumnRoles({ projectId: props.projectId, actorId: auth.user?.id })
+}
+watch([() => props.projectId, () => auth.user?.id], loadColumnRoles, { immediate: true })
+const hasCurrentColumnRoles = computed(
+  () =>
+    columnRoleView.value?.projectId === props.projectId &&
+    columnRoleView.value?.actorId === auth.user?.id
+)
+const entryPresentationOptions = computed(() => {
+  const available = hasCurrentColumnRoles.value && !columnRolesError.value
+  return {
+    roles: available ? columnRoleView.value.roles : {},
+    inferFromHeaders: available
+  }
+})
+const presentedPages = computed(() =>
+  displayedPages.value.map((page) => {
+    const content = entryListPresentation(page, undefined, entryPresentationOptions.value)
+    const core = [...content.primary, ...content.meanings]
+    const notes = content.secondary.filter((field) => field.role === 'note' && field.value !== '')
+    const visibleFields = core.length
+      ? [...core.slice(0, 4), ...notes.slice(0, 1)]
+      : content.fields.slice(0, 3)
+    return {
+      page,
+      content,
+      visibleFields
+    }
+  })
+)
+
+const fontTexts = computed(() =>
+  presentedPages.value.flatMap(({ content }) => [
+    content.rawText,
+    ...content.fields.map((field) => field.value)
+  ])
+)
 
 const showAdvanced = ref(false)
 const batchMode = ref(false)
