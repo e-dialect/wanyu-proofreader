@@ -2,10 +2,9 @@
   <main class="container page workspace-page">
     <header class="page-heading">
       <div>
-        <div class="page-eyebrow">校对工作台</div>
-        <h1>从最需要你的项目开始</h1>
-        <p>进行中的任务排在最前；每次只需独立判断当前材料。</p>
-        <RouterLink to="/tasks/problems">我的问题与草稿</RouterLink>
+        <div class="page-eyebrow">独立校对</div>
+        <h1>我的任务</h1>
+        <p>继续当前工作，或领取下一条材料。</p>
       </div>
       <button class="btn btn-secondary" @click="loadProjects" :disabled="loading">
         <span aria-hidden="true">↻</span>
@@ -13,6 +12,33 @@
       </button>
     </header>
 
+    <nav class="task-view-tabs" aria-label="任务视图">
+      <RouterLink :to="taskViewRoute('active')" :class="{ 'is-active': taskView === 'active' }"
+        >进行中</RouterLink
+      >
+      <RouterLink
+        :to="taskViewRoute('available')"
+        :class="{ 'is-active': taskView === 'available' }"
+        >待领取</RouterLink
+      >
+      <RouterLink to="/tasks/problems">问题与草稿</RouterLink>
+      <RouterLink :to="taskViewRoute('reviewed')" :class="{ 'is-active': taskView === 'reviewed' }"
+        >已提交</RouterLink
+      >
+    </nav>
+    <p v-if="selectedProject" class="task-project-filter">
+      下方任务列表仅显示所选项目；概况统计包含全部参与项目。<RouterLink
+        :to="{ path: '/tasks', query: { view: taskView } }"
+        >查看全部项目</RouterLink
+      >
+    </p>
+    <AppStatusPanel
+      v-if="taskView === 'reviewed' && reviewError"
+      state="error"
+      :message="reviewError"
+      retry-label="重新读取记录"
+      @retry="loadReviews"
+    />
     <AppStatusPanel
       v-if="loadError"
       state="error"
@@ -26,7 +52,7 @@
       <p v-else>项目与统计暂不可用，这不代表没有任务。</p>
     </AppStatusPanel>
 
-    <section class="workspace-summary" aria-label="我的校对概况">
+    <section class="workspace-summary" aria-label="全部参与项目的校对概况">
       <article class="workspace-stat workspace-stat--accent">
         <span>正在处理</span>
         <strong>{{ hasLoadedProjects ? queueSummary.activeProjects : '—' }}</strong>
@@ -52,13 +78,35 @@
     <section aria-labelledby="project-list-title">
       <div class="section-heading">
         <div>
-          <h2 id="project-list-title">项目队列</h2>
+          <h2 id="project-list-title">
+            {{
+              taskView === 'active'
+                ? '继续校对'
+                : taskView === 'reviewed'
+                  ? '本人已提交记录'
+                  : '可以领取的项目'
+            }}
+          </h2>
           <p>系统会保留本地草稿；完成提交后自动领取同项目下一条。</p>
         </div>
-        <span v-if="!loading" class="section-count">{{ projectQueues.length }} 个项目</span>
+        <span v-if="hasLoadedProjects && !loading" class="section-count"
+          >{{ totalProjects }} 个项目</span
+        >
       </div>
 
-      <div v-if="loading && !hasLoadedProjects" class="project-card-grid" aria-label="正在加载项目">
+      <p
+        v-if="loading && hasLoadedProjects"
+        class="text-sm text-muted"
+        role="status"
+        data-task-list-updating
+      >
+        正在更新任务列表，已有内容仍可查看。
+      </p>
+      <div
+        v-if="(loading && !hasLoadedProjects) || (taskView === 'reviewed' && reviewPending)"
+        class="project-card-grid"
+        aria-label="正在加载项目"
+      >
         <div
           v-for="index in 3"
           :key="index"
@@ -72,17 +120,44 @@
       </div>
 
       <div
-        v-else-if="hasLoadedProjects && !loadError && projectQueues.length === 0"
+        v-else-if="
+          hasLoadedProjects &&
+          !loading &&
+          !loadError &&
+          (taskView !== 'reviewed' || !reviewError) &&
+          displayQueues.length === 0
+        "
         class="empty-state card"
       >
         <div class="empty-state-mark" aria-hidden="true">✓</div>
-        <div class="empty-state-text">当前没有需要你处理的项目</div>
-        <p>可能是所有条目已经完成，或暂时没有适合你的独立校对任务。</p>
+        <div class="empty-state-text">
+          {{
+            taskView === 'active'
+              ? '没有进行中的任务'
+              : taskView === 'reviewed'
+                ? '还没有本人提交记录'
+                : '暂时没有可领取任务'
+          }}
+        </div>
+        <p>
+          {{
+            selectedProject
+              ? '当前项目在此视图没有匹配任务。可以切换视图，或查看全部项目。'
+              : '可以切换任务视图，或加入一个新的项目。'
+          }}
+        </p>
+        <RouterLink
+          v-if="taskView === 'active'"
+          :to="taskViewRoute('available')"
+          class="btn btn-primary"
+          >查看待领取任务</RouterLink
+        >
+        <RouterLink v-else to="/projects" class="btn btn-secondary">浏览项目</RouterLink>
       </div>
 
       <div v-else-if="hasLoadedProjects" class="project-card-grid">
         <article
-          v-for="queue in projectQueues"
+          v-for="queue in displayQueues"
           :key="queue.project.id"
           class="project-work-card"
           :class="`project-work-card--${queueAction(queue).tone}`"
@@ -127,56 +202,62 @@
             </div>
           </dl>
 
-          <div
-            v-if="tierRows(queue).length || queue.missingGlyph"
-            class="queue-tiers"
-            aria-label="按难度层级领取"
+          <details
+            v-if="taskView !== 'reviewed' && (tierRows(queue).length || queue.missingGlyph)"
+            class="task-options"
           >
-            <button
-              v-for="option in tierRows(queue)"
-              :key="option.key"
-              class="queue-tier"
-              :disabled="claimingProject === queue.project.id"
-              @click="enterProject(queue, option.key)"
-            >
-              {{ option.label }} · {{ option.count }}
-            </button>
-            <button
-              v-if="queue.missingGlyph"
-              class="queue-tier queue-tier--glyph"
-              :disabled="claimingProject === queue.project.id"
-              @click="enterProject(queue, '', true)"
-            >
-              缺字待登记 · {{ queue.missingGlyph }}
-            </button>
-            <span v-if="tierUnknown(queue)" class="queue-tier queue-tier--muted">
-              信号不足 {{ tierUnknown(queue) }}
-            </span>
-            <span v-if="tierUnlabeled(queue)" class="queue-tier queue-tier--muted">
-              未评估 {{ tierUnlabeled(queue) }}
-            </span>
-            <span v-if="tierResidual(queue)" class="queue-tier queue-tier--warn" role="status">
-              {{ tierResidualText(queue) }}
-            </span>
-          </div>
+            <summary>按难度选择任务</summary>
+            <div class="queue-tiers" aria-label="按难度层级领取">
+              <button
+                v-for="option in tierRows(queue)"
+                :key="option.key"
+                class="queue-tier"
+                :disabled="loading || claimingProject === queue.project.id"
+                @click="enterProject(queue, option.key)"
+              >
+                {{ option.label }} · {{ option.count }}
+              </button>
+              <button
+                v-if="queue.missingGlyph"
+                class="queue-tier queue-tier--glyph"
+                :disabled="loading || claimingProject === queue.project.id"
+                @click="enterProject(queue, '', true)"
+              >
+                缺字待登记 · {{ queue.missingGlyph }}
+              </button>
+              <span v-if="tierUnknown(queue)" class="queue-tier queue-tier--muted">
+                信号不足 {{ tierUnknown(queue) }}
+              </span>
+              <span v-if="tierUnlabeled(queue)" class="queue-tier queue-tier--muted">
+                未评估 {{ tierUnlabeled(queue) }}
+              </span>
+              <span v-if="tierResidual(queue)" class="queue-tier queue-tier--warn" role="status">
+                {{ tierResidualText(queue) }}
+              </span>
+            </div>
+          </details>
 
           <footer class="project-work-card__footer">
             <span>{{ queueAction(queue).detail }}</span>
             <div class="project-work-card__actions">
               <button
                 type="button"
-                class="btn btn-quiet"
+                :class="taskView === 'reviewed' ? 'btn btn-primary' : 'btn btn-quiet'"
                 :disabled="
-                  reviewingProject === queue.project.id || claimingProject === queue.project.id
+                  loading ||
+                  reviewingProject === queue.project.id ||
+                  claimingProject === queue.project.id
                 "
                 @click="openOwnReview(queue)"
               >
                 {{ reviewingProject === queue.project.id ? '正在打开…' : '回看已提交' }}
               </button>
               <button
+                v-if="taskView !== 'reviewed'"
                 class="btn"
                 :class="queueAction(queue).tone === 'active' ? 'btn-success' : 'btn-primary'"
                 :disabled="
+                  loading ||
                   claimingProject === queue.project.id ||
                   reviewingProject === queue.project.id ||
                   !queueAction(queue).canEnter
@@ -203,11 +284,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
+import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppPagination from '@/components/AppPagination.vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { currentUserId } from '@/services/authService'
 import {
@@ -221,22 +303,63 @@ import { formatClaimConflict, formatPbError, getPbMessage } from '@/utils/pbErro
 import { saveTaskLease, saveGlyphQueue } from '@/lib/taskLease'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const loading = ref(true)
 const hasLoadedProjects = ref(false)
+useQueueReturnPosition(hasLoadedProjects)
 const claimingProject = ref('')
 const reviewingProject = ref('')
 const loadError = ref('')
 const actionError = ref('')
+let active = true
+let actionGeneration = 0
+onBeforeUnmount(() => {
+  active = false
+  actionGeneration++
+})
+function beginAction() {
+  const generation = ++actionGeneration
+  const userId = currentUserId(auth.user)
+  const token = auth.token
+  const fullPath = route.fullPath
+  const isLatest = () => active && generation === actionGeneration
+  return {
+    isLatest,
+    isCurrent: () =>
+      isLatest() &&
+      currentUserId(auth.user) === userId &&
+      auth.token === token &&
+      route.fullPath === fullPath
+  }
+}
+watch(
+  () => route.fullPath,
+  () => {
+    actionGeneration++
+    claimingProject.value = ''
+    reviewingProject.value = ''
+  }
+)
+
 const projectQueues = ref([])
 const queueSummary = ref(summarizeProofreaderQueues([]))
-const currentPage = ref(1)
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
+const selectedProject = computed(() => String(route.query.project || ''))
+const taskView = computed(() =>
+  ['active', 'available', 'reviewed'].includes(route.query.view) ? route.query.view : 'active'
+)
+const totalProjects = ref(0)
 const totalPages = ref(1)
 const queueResource = useAsyncResource(
   async ({ signal }) => {
     const userId = currentUserId(auth.user)
     if (!userId) throw new Error('登录状态已失效，请重新登录')
-    return listProjectQueueSummaries(currentPage.value, 12, { signal })
+    return listProjectQueueSummaries(currentPage.value, 12, {
+      signal,
+      filter: taskView.value,
+      project: selectedProject.value || undefined
+    })
   },
   {
     formatError: (error) => formatPbError('加载项目大厅失败', error),
@@ -247,31 +370,81 @@ const queueResource = useAsyncResource(
   }
 )
 
+const {
+  data: reviewData,
+  pending: reviewPending,
+  error: reviewError,
+  reload: loadReviews,
+  cancel: cancelReviews
+} = useAsyncResource(
+  async ({ signal }) => {
+    const results = await Promise.allSettled(
+      projectQueues.value.map(async (queue) => ({
+        id: queue.project.id,
+        result: await listReviewedProofreads(queue.project.id, { signal })
+      }))
+    )
+    const failed = results.find((result) => result.status === 'rejected')
+    if (failed) throw failed.reason
+    return Object.fromEntries(results.map((result) => [result.value.id, result.value.result]))
+  },
+  { formatError: (cause) => getPbMessage(cause, '本人提交记录暂时无法加载，请重试。') }
+)
+const displayQueues = computed(() =>
+  projectQueues.value.filter((queue) =>
+    taskView.value === 'active'
+      ? queue.activeMine > 0
+      : taskView.value === 'available'
+        ? Boolean(queue.nextPage)
+        : Boolean(reviewData.value?.[queue.project.id]?.items?.length)
+  )
+)
+function taskViewRoute(view) {
+  return { path: '/tasks', query: { ...route.query, page: undefined, view } }
+}
+watch(
+  () => route.query.view,
+  () => {
+    if (taskView.value !== 'reviewed') cancelReviews()
+  }
+)
+watch(
+  () => [route.query.page, route.query.project, route.query.view],
+  () => {
+    if (taskView.value === 'reviewed') cancelReviews()
+    currentPage.value = Math.max(1, Number(route.query.page) || 1)
+    void loadProjects()
+  }
+)
 onMounted(loadProjects)
 
 async function loadProjects({ keepActionError = false } = {}) {
   if (!keepActionError) actionError.value = ''
+  const requestedPath = route.fullPath
   const result = await queueResource.reload()
-  if (!result.ok) return
+  if (!result.ok || route.fullPath !== requestedPath) return
   projectQueues.value = result.data.items
   queueSummary.value = result.data.summary
   currentPage.value = result.data.page
   totalPages.value = result.data.totalPages
+  totalProjects.value = Number(result.data.totalItems) || 0
   hasLoadedProjects.value = true
+  if (taskView.value === 'reviewed') await loadReviews()
 }
 
 function changeProjectPage(page) {
-  currentPage.value = page
-  loadProjects()
+  router.push({ path: route.path, query: { ...route.query, page: String(page) } })
 }
 
 async function openOwnReview(queue) {
   const projectId = queue?.project?.id
   if (!projectId || reviewingProject.value || claimingProject.value) return
+  const { isCurrent, isLatest } = beginAction()
   reviewingProject.value = projectId
   actionError.value = ''
   try {
     const reviewed = await listReviewedProofreads(projectId)
+    if (!isCurrent()) return
     const first = reviewed.items[0]
     if (!first?.id) {
       actionError.value = '你在这个项目里还没有可以回看的已提交条目。'
@@ -279,9 +452,10 @@ async function openOwnReview(queue) {
     }
     await router.push(`/tasks/${first.id}/edit`)
   } catch (error) {
+    if (!isCurrent()) return
     actionError.value = getPbMessage(error, '已提交条目暂时打不开，请稍后再试。')
   } finally {
-    reviewingProject.value = ''
+    if (isLatest()) reviewingProject.value = ''
   }
 }
 
@@ -289,12 +463,14 @@ async function enterProject(queue, tier = '', glyph = false) {
   const projectId = queue?.project?.id
   if (!projectId || claimingProject.value || reviewingProject.value || !queueAction(queue).canEnter)
     return
+  const { isCurrent, isLatest } = beginAction()
   claimingProject.value = projectId
   actionError.value = ''
   try {
     const userId = currentUserId(auth.user)
     if (!userId) throw new Error('登录状态已失效，请重新登录')
     const page = await claimNextProjectPage(projectId, userId, '', tier, glyph)
+    if (!isCurrent()) return
     if (!page?.id) {
       actionError.value = glyph
         ? '缺字待登记队列暂时没有可领取的条目。'
@@ -313,10 +489,11 @@ async function enterProject(queue, tier = '', glyph = false) {
     saveGlyphQueue(window.sessionStorage, { userId, projectId, glyph })
     await router.push(`/tasks/${page.id}/edit`)
   } catch (e) {
+    if (!isCurrent()) return
     actionError.value = `进入项目失败：${formatClaimConflict(e, '该项目的下一条任务可能已被其他校对员接取，请刷新后重试')}`
     await loadProjects({ keepActionError: true })
   } finally {
-    claimingProject.value = ''
+    if (isLatest()) claimingProject.value = ''
   }
 }
 

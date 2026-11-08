@@ -7,6 +7,8 @@ import { documentTitleFor } from '@/lib/pageTitle'
 import { shouldFocusMainLandmark } from '@/lib/routeFocus'
 import { focusMainLandmark } from '@/lib/mainLandmark'
 import './style.css'
+import './workbench.css'
+import './styles/ui-components.css'
 
 router.afterEach(async (to, from, failure) => {
   if (failure) return

@@ -22,30 +22,6 @@
   </div>
   <div v-else-if="saveError" class="alert alert-error" role="alert">{{ saveError }}</div>
 
-  <div class="editor-meta" aria-live="polite">
-    <template v-if="ownReview">
-      <span class="draft-indicator">只读回看，不会保存草稿，也不会重新领取。</span>
-      <span class="shortcut-hint">Alt+←/→ 切换</span>
-    </template>
-    <template v-else>
-      <span
-        class="draft-indicator"
-        :class="{
-          'draft-indicator--saved': draftStatus.includes('已保存') || draftStatus.includes('已恢复')
-        }"
-      >
-        <i aria-hidden="true"></i>
-        {{ draftStatus || '修改后自动保存到本机' }}
-      </span>
-      <span
-        v-if="leaseStatus"
-        class="lease-indicator"
-        :class="{ 'lease-indicator--lost': leaseLost }"
-        >{{ leaseStatus }}</span
-      >
-      <span class="shortcut-hint">⌘/Ctrl+S 草稿 · ⌘/Ctrl+Enter 提交 · Alt+←/→ 切换</span>
-    </template>
-  </div>
   <details v-if="staleLocalDrafts.length" class="alert" role="note">
     <summary>本人旧版／失配本机草稿（{{ staleLocalDrafts.length }}）</summary>
     <p>旧值未自动套用到新来源；请逐字段重新核对。</p>
@@ -56,14 +32,6 @@
       ></template>
     </dl>
   </details>
-
-  <div class="field-progress-summary">
-    <div>
-      <span>结构化校对</span>
-      <strong>{{ fieldCount }} 个字段，已修改 {{ changedCount }} 个</strong>
-    </div>
-    <span class="pass-badge">独立校对</span>
-  </div>
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
@@ -76,12 +44,7 @@ defineProps({
   leaseLost: Boolean,
   saveError: String,
   reclaiming: Boolean,
-  ownReview: Boolean,
-  draftStatus: String,
-  leaseStatus: String,
-  staleLocalDrafts: { type: Array, default: () => [] },
-  fieldCount: Number,
-  changedCount: Number
+  staleLocalDrafts: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['retry-claim', 'reclaim'])
 </script>

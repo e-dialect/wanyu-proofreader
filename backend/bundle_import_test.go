@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -38,17 +39,47 @@ func TestBuildBundlePageKeepsFieldOrderAndSourceKey(t *testing.T) {
 	}
 	// 列顺序取 requested_fields（不是条目键序，也不是 Go map 的字母序）；
 	// 夹具的键序恰好与 requested_fields 一致，所以这一格同时也钉住了它对不上 map 排序。
-	if got, want := page.rowJSON, `{"headword":"甲","reading":"kah"}`; got != want {
+	if got, want := page.rowJSON, `{"headword":" 甲 ","reading":"kah"}`; got != want {
 		t.Fatalf("rowJSON = %s, want %s", got, want)
 	}
 	if got, want := page.headersJSON, `["headword","reading"]`; got != want {
 		t.Fatalf("headersJSON = %s, want %s", got, want)
 	}
-	if page.entryText != "甲 kah" {
+	if page.entryText != " 甲  kah" {
 		t.Fatalf("entryText = %q", page.entryText)
 	}
 	if page.pdfPage != 0 {
 		t.Fatalf("pdfPage = %d, want 0 when the manifest carries no page column", page.pdfPage)
+	}
+}
+
+func TestBuildBundlePagePreservesOriginalUnicodeAndWhitespace(t *testing.T) {
+	values := []string{" \tɕʰ  a\u0303\u00a0", "\u3000𠮷⁵⁵\n", "e\u0301", "é"}
+	for _, value := range values {
+		page, rowErr := buildBundlePage(testBundle(), testEntry("unicode",
+			reviewbundle.Field{Name: "headword", Value: value},
+			reviewbundle.Field{Name: "reading", Value: "\t \u3000"},
+		), 0)
+		if rowErr != nil {
+			t.Fatalf("valid content rejected: %+v", rowErr)
+		}
+		var row map[string]string
+		if err := json.Unmarshal([]byte(page.rowJSON), &row); err != nil {
+			t.Fatal(err)
+		}
+		if row["headword"] != value || row["reading"] != "\t \u3000" || page.entryText != value {
+			t.Fatalf("original value changed: row=%q text=%q want=%q", row, page.entryText, value)
+		}
+	}
+	// Preserving original field values does not make whitespace-only rows valid.
+	for _, whitespace := range []string{"", " \t\n", "\u00a0\u3000"} {
+		_, rowErr := buildBundlePage(testBundle(), testEntry("blank",
+			reviewbundle.Field{Name: "headword", Value: whitespace},
+			reviewbundle.Field{Name: "reading", Value: " "},
+		), 0)
+		if rowErr == nil || rowErr.code != "EMPTY_CONTENT" {
+			t.Fatalf("whitespace-only row accepted: %q %+v", whitespace, rowErr)
+		}
 	}
 }
 
@@ -90,7 +121,7 @@ func TestBuildBundlePageAcceptsNonStringPageColumn(t *testing.T) {
 		{"JSON 数字", float64(3), 3, "encoding/json 把 JSON 数字解成 float64"},
 		{"整数浮点", float64(7), 7, "上游写 3 与 3.0 同义"},
 		{"数字字符串", "3", 3, "契约 §2 的样例形状"},
-		{"带空白的数字字符串", " 12 ", 12, "与文本列同样 TrimSpace"},
+		{"带空白的数字字符串", " 12 ", 12, "仅页码解析时 TrimSpace"},
 		{"解析不出的字符串", "三", 0, "解析不出来按『这一行没有页码』处理，不整行失败"},
 		{"小数", float64(3.5), 0, "3.5 不是页号，但不该让整行消失"},
 		{"非正数", float64(0), 0, "页号从 1 起"},

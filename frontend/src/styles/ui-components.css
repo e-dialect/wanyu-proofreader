@@ -1,0 +1,149 @@
+/* Shared controls: Reka owns keyboard/focus behavior; the product owns its theme. */
+.app-button,
+.app-dropdown-trigger,
+.app-select-trigger {
+  min-height: var(--control-height);
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.app-button.btn-sm,
+.app-dropdown-trigger.btn-sm {
+  min-height: var(--control-height-sm);
+}
+.app-button:active:not(:disabled),
+.app-dropdown-trigger:active:not(:disabled) {
+  background-image: linear-gradient(var(--ink-glow), var(--ink-glow));
+}
+.app-button__spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-circle);
+  animation: ui-spin 700ms linear infinite;
+}
+.app-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+}
+.app-select-trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-select-trigger:disabled {
+  color: var(--gray-500);
+  background: var(--gray-100);
+  cursor: not-allowed;
+}
+.app-menu {
+  z-index: var(--z-modal);
+  min-width: 180px;
+  max-width: calc(100vw - var(--space-5));
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  transform-origin: var(--reka-dropdown-menu-content-transform-origin, top right);
+}
+.app-menu[data-state='open'] {
+  animation: ui-popover-in var(--motion-fast) var(--ease-out);
+}
+.app-menu__item {
+  display: flex;
+  align-items: center;
+  position: relative;
+  min-height: var(--control-height);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  outline-offset: -3px;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  line-height: 1.5;
+}
+.app-menu__item[data-highlighted] {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  outline: 2px solid var(--primary);
+}
+.app-menu__item[data-disabled] {
+  color: var(--gray-500);
+  cursor: not-allowed;
+}
+.app-menu__item--danger {
+  color: var(--danger-ink);
+}
+.app-menu__item--danger[data-highlighted] {
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+}
+.app-menu__separator {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--line);
+}
+.app-select-menu {
+  min-width: var(--reka-select-trigger-width, 180px);
+  max-height: min(360px, var(--reka-select-content-available-height, 360px));
+  transform-origin: var(--reka-select-content-transform-origin, top);
+}
+.app-select-viewport {
+  padding: var(--space-1);
+}
+.app-select-item {
+  padding-right: var(--space-6);
+}
+.app-select-check {
+  position: absolute;
+  right: var(--space-2);
+  display: flex;
+}
+.app-select-scroll {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  color: var(--primary);
+}
+@keyframes ui-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (pointer: coarse), (max-width: 768px) {
+  .app-button,
+  .app-button.btn-sm,
+  .app-dropdown-trigger.btn-sm,
+  .app-select-trigger,
+  .app-menu__item {
+    min-height: var(--control-height-touch);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-menu[data-state='open'],
+  .app-button__spinner {
+    animation: none;
+  }
+}

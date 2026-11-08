@@ -124,7 +124,10 @@ async function api(path, token, body) {
   const saved = await api(`/api/collections/pages/records/${pageId}`, admin.token)
   assert.equal(JSON.parse(saved.proofread_row_json)[key], sample + '终')
   assert.equal(saved.arbitration_note, sample)
-  await page.goto(`${origin}/admin/projects/${project.id}`)
+  // Working files now live in the project's delivery section. Keep the same
+  // server export and all byte/field assertions below; only its UI entry moved.
+  await page.goto(`${origin}/admin/projects/${project.id}?section=delivery&view=exports`)
+  await page.getByRole('heading', { name: '核验结果 CSV', exact: true }).waitFor()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: '下载服务端导出文件', exact: true }).click()
   const download = await downloadPromise

@@ -6,7 +6,11 @@
     :suspended="(mobile && overview) || reviewingSubmission"
     :loading="loading"
     :watermark-user-id="currentUserId"
-    :return-to="`/admin/projects/${projectId}?status=arbitration`"
+    :return-to="
+      verificationMode
+        ? sourceReviewListTarget(projectId, sourceReviewScope)
+        : `/admin/projects/${projectId}?status=arbitration`
+    "
     return-label="返回列表"
     content-labelled-by="arbitration-panel-title"
     empty-pdf-description="请保存进度并处理来源问题，待来源 PDF 可用后继续核验。"
@@ -23,7 +27,11 @@
         <div class="editor-toolbar">
           <RouterLink
             v-if="mobile"
-            :to="`/admin/projects/${projectId}?status=arbitration`"
+            :to="
+              verificationMode
+                ? sourceReviewListTarget(projectId, sourceReviewScope)
+                : `/admin/projects/${projectId}?status=arbitration`
+            "
             class="btn btn-quiet"
             >返回列表</RouterLink
           >
@@ -81,6 +89,26 @@
         {{ queueError }}
       </p>
       <p v-if="queueMessage" class="alert alert-success" role="status">{{ queueMessage }}</p>
+      <p v-if="continuingSourceReview" role="status">本条核验已保存，正在载入下一条…</p>
+      <div
+        v-if="verificationMode && submitted && sourceQueueError"
+        class="alert alert-error"
+        role="alert"
+      >
+        <p>{{ sourceQueueError }}</p>
+        <button
+          class="btn btn-secondary btn-sm"
+          :disabled="continuingSourceReview"
+          @click="continueSourceReview"
+        >
+          重试继续来源复核
+        </button>
+        <RouterLink
+          :to="sourceReviewListTarget(projectId, sourceReviewScope)"
+          class="btn btn-quiet btn-sm"
+          >返回来源复核列表</RouterLink
+        >
+      </div>
     </template>
 
     <template #default="{ inputMode }">
@@ -88,7 +116,23 @@
       <div v-else-if="error" class="alert alert-error" role="alert">{{ error }}</div>
 
       <template v-else-if="caseData && !submitted">
-        <section v-if="verificationData" class="alert" role="note">
+        <details
+          v-if="verificationData"
+          class="arbitration-source-context verification-details"
+          :open="
+            verificationData.completion?.needs_review ||
+            verificationData.context.policy_compatible === false ||
+            !verificationData.context.source_approved
+          "
+        >
+          <summary class="verification-summary">
+            <strong>来源与核验依据</strong
+            ><span class="verification-status">{{
+              verificationData.completion?.needs_review
+                ? '旧判断需要复核'
+                : '采用与来源正误分别记录'
+            }}</span>
+          </summary>
           <strong
             >来源 PDF：{{ verificationData.context.source?.name || '未记录' }} · 物理第
             {{ verificationData.context.pdf_page }} 页</strong
@@ -104,8 +148,10 @@
               verificationData.context.policy_id || '旧版／未记录'
             }}。采用最终值不代表其他合法提交错误；未核实字段不自动记为正确。
           </p>
-          <p v-if="verificationData.completion?.needs_review">来源或约定已变化，旧判断需要复核。</p>
-        </section>
+          <p v-if="verificationData.completion?.needs_review" role="alert">
+            来源或约定已变化，旧判断需要复核。
+          </p>
+        </details>
         <p v-if="progressMessage" class="alert alert-success" role="status">
           {{ progressMessage }}
         </p>
@@ -127,7 +173,7 @@
               <div class="progress-bar" :style="{ width: `${resolutionPct}%` }"></div>
             </div>
             <p v-if="unresolvedHeaders.length">还需确认：{{ unresolvedHeaders.join('、') }}</p>
-            <p v-else>所有差异字段均已确认，可以检查说明并提交。</p>
+            <p v-else>差异采用已确认；请继续核对来源，未记录判断仍保持未核实。</p>
           </div>
         </section>
 
@@ -165,7 +211,7 @@
             </div>
           </header>
 
-          <details :open="!mobile" class="bulk-actions-menu">
+          <details class="bulk-actions-menu">
             <summary>批量处理</summary>
             <div
               v-if="differingHeaders.length"
@@ -321,7 +367,7 @@
               <strong v-if="unresolvedHeaders.length"
                 >还有 {{ unresolvedHeaders.length }} 个差异字段未确认</strong
               >
-              <strong v-else>最终结果已准备好</strong>
+              <strong v-else>差异采用已确认</strong>
               <span>提交后将完成条目，并永久保留全部校对结果与本次仲裁记录。</span>
             </p>
             <button
@@ -432,7 +478,16 @@ import {
   submitArbitration
 } from '@/services/arbitrationService'
 import { useArbitrationQueue } from '@/composables/useArbitrationQueue'
-import { getVerification, saveSourceJudgments } from '@/services/verificationService'
+import {
+  getVerification,
+  getVerificationSummary,
+  saveSourceJudgments
+} from '@/services/verificationService'
+import {
+  nextSourceReviewItem,
+  sourceReviewListTarget,
+  sourceReviewTarget
+} from '@/lib/sourceReviewQueue'
 import { getPbMessage } from '@/utils/pbErrors'
 
 const route = useRoute()
@@ -447,6 +502,9 @@ const {
   positionLabel: queuePositionLabel
 } = useArbitrationQueue(getArbitrationQueue)
 const queueMessage = ref('')
+const sourceQueueError = ref('')
+const continuingSourceReview = ref(false)
+const sourceReviewScope = computed(() => (route.query.reviewScope === 'all' ? 'all' : 'todo'))
 const loadQueue = () => refreshQueue(projectId.value, pageId.value)
 let caseVersion = 0
 const verificationMode = computed(
@@ -568,6 +626,42 @@ async function continueAfterSubmit() {
   await router.push(`/admin/projects/${requestedProjectId}/arbitration/${next.id}`)
 }
 
+async function continueSourceReview() {
+  if (continuingSourceReview.value) return
+  const version = caseVersion
+  const requestedPageId = pageId.value
+  const requestedProjectId = projectId.value
+  const requestedPath = route.fullPath
+  const requestedUserId = getCurrentUserId()
+  const scope = sourceReviewScope.value
+  const isCurrent = () =>
+    version === caseVersion &&
+    requestedPageId === pageId.value &&
+    requestedProjectId === projectId.value &&
+    requestedPath === route.fullPath &&
+    requestedUserId === getCurrentUserId()
+  continuingSourceReview.value = true
+  sourceQueueError.value = ''
+  try {
+    const result = await getVerificationSummary(requestedProjectId)
+    if (!isCurrent()) return
+    const next = nextSourceReviewItem(result.items, requestedPageId, scope)
+    await router.push(
+      next
+        ? sourceReviewTarget(requestedProjectId, next, scope)
+        : sourceReviewListTarget(requestedProjectId, scope)
+    )
+  } catch (error) {
+    if (isCurrent())
+      sourceQueueError.value = getPbMessage(
+        error,
+        '本条核验已保存，加载后续来源复核失败，请重试继续。'
+      )
+  } finally {
+    if (isCurrent()) continuingSourceReview.value = false
+  }
+}
+
 async function loadCase() {
   const version = ++caseVersion
   const requestedPageId = pageId.value
@@ -590,6 +684,8 @@ async function loadCase() {
   reviewingSubmission.value = false
   reviewSourceChecked.value = false
   queueMessage.value = ''
+  sourceQueueError.value = ''
+  continuingSourceReview.value = false
   submitting.value = false
   try {
     const results = await Promise.allSettled([
@@ -648,7 +744,7 @@ async function loadCase() {
       note.value = progress.payload.note || ''
       lastSavedNote.value = note.value
     }
-    showAllFields.value = true
+    showAllFields.value = result.mode === 'verification' || differingHeaders.value.length === 0
     for (const field of headers.value)
       for (const target of ['final', ...attemptRows.value.map((item) => item.attempt.id)])
         judgmentFor(target, field)
@@ -986,8 +1082,7 @@ async function submitFinal() {
     if (!isCurrent()) return
     submitted.value = true
     reviewingSubmission.value = false
-    if (verificationMode.value)
-      await router.push(`/admin/projects/${requestedProjectId}/verification`)
+    if (verificationMode.value) await continueSourceReview()
     else await continueAfterSubmit()
   } catch (e) {
     if (!isCurrent()) return

@@ -18,74 +18,87 @@
 
     <div class="card">
       <div v-if="checkingPermission" class="text-muted">正在检查创建权限…</div>
-      <div v-else-if="!auth.canCreateProjects" class="alert alert-error" role="alert">
+      <div
+        v-else-if="!auth.canCreateProjects && !createdProject"
+        class="alert alert-error"
+        role="alert"
+      >
         你当前没有可用的项目创建额度。请联系平台管理员授权或调整额度。
       </div>
       <form v-else @submit.prevent="handleSubmit">
-        <div v-if="auth.accessContext?.projectLimit != null" class="alert mb-4" role="status">
-          当前拥有 {{ auth.accessContext.ownedProjectCount }} 个项目，还可创建
-          {{ auth.accessContext.remainingProjects }} 个。
-        </div>
-        <AppField
-          ><template #label
-            >项目名称 <span class="required-mark" aria-hidden="true">*</span></template
-          >
-          <input
-            id="new-project-name"
-            v-model="form.name"
-            type="text"
-            class="form-control"
-            placeholder="如：《莆田方言词典》校对项目"
-            required
-          />
-        </AppField>
-        <fieldset class="access-mode-grid mb-4">
-          <legend class="form-label">访问方式</legend>
-          <label
-            v-for="mode in accessModes"
-            :key="mode.value"
-            class="access-mode-option"
-            :class="{ 'is-selected': form.accessMode === mode.value }"
-          >
-            <input v-model="form.accessMode" type="radio" :value="mode.value" />
-            <span
-              ><strong>{{ mode.label }}</strong
-              ><small>{{ mode.description }}</small></span
+        <fieldset :disabled="loading || Boolean(createdProject)" class="creation-fields">
+          <div v-if="auth.accessContext?.projectLimit != null" class="alert mb-4" role="status">
+            当前拥有 {{ auth.accessContext.ownedProjectCount }} 个项目，还可创建
+            {{ auth.accessContext.remainingProjects }} 个。
+          </div>
+          <AppField
+            ><template #label
+              >项目名称 <span class="required-mark" aria-hidden="true">*</span></template
             >
-          </label>
+            <input
+              id="new-project-name"
+              v-model="form.name"
+              type="text"
+              class="form-control"
+              placeholder="如：《莆田方言词典》校对项目"
+              required
+            />
+          </AppField>
+          <fieldset class="access-mode-grid mb-4">
+            <legend class="form-label">访问方式</legend>
+            <label
+              v-for="mode in accessModes"
+              :key="mode.value"
+              class="access-mode-option"
+              :class="{ 'is-selected': form.accessMode === mode.value }"
+            >
+              <input v-model="form.accessMode" type="radio" :value="mode.value" />
+              <span
+                ><strong>{{ mode.label }}</strong
+                ><small>{{ mode.description }}</small></span
+              >
+            </label>
+          </fieldset>
+          <div v-if="form.accessMode === 'password'" class="form-group">
+            <label for="new-project-password" class="form-label">项目口令</label>
+            <input
+              id="new-project-password"
+              v-model="form.password"
+              type="password"
+              class="form-control"
+              minlength="8"
+              maxlength="72"
+              required
+              autocomplete="new-password"
+              placeholder="至少 8 个字符，UTF-8 编码最多 72 字节"
+            />
+          </div>
+          <AppField
+            ><template #label>项目简介</template>
+            <textarea
+              id="new-project-description"
+              v-model="form.description"
+              class="form-control"
+              placeholder="简要介绍本项目的背景、目标等（可选）"
+            ></textarea>
+          </AppField>
         </fieldset>
-        <div v-if="form.accessMode === 'password'" class="form-group">
-          <label for="new-project-password" class="form-label">项目口令</label>
-          <input
-            id="new-project-password"
-            v-model="form.password"
-            type="password"
-            class="form-control"
-            minlength="8"
-            maxlength="72"
-            required
-            autocomplete="new-password"
-            placeholder="至少 8 个字符，UTF-8 编码最多 72 字节"
-          />
-        </div>
-        <AppField
-          ><template #label>项目简介</template>
-          <textarea
-            id="new-project-description"
-            v-model="form.description"
-            class="form-control"
-            placeholder="简要介绍本项目的背景、目标等（可选）"
-          ></textarea>
-        </AppField>
-
         <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
         <div v-if="success" class="alert alert-success" role="status">
-          项目创建成功！即将跳转...
+          项目已创建，正在打开材料工作区。
         </div>
 
         <div class="flex gap-3">
           <button type="submit" class="btn btn-primary" :disabled="loading">
-            {{ loading ? '创建中...' : '创建项目' }}
+            {{
+              loading
+                ? createdProject
+                  ? '正在打开…'
+                  : '创建中…'
+                : createdProject
+                  ? '打开材料工作区'
+                  : '创建项目'
+            }}
           </button>
           <RouterLink to="/admin" class="btn btn-secondary">取消</RouterLink>
         </div>
@@ -96,18 +109,35 @@
 
 <script setup>
 import AppField from '@/components/AppField.vue'
-import { onMounted, ref } from 'vue'
-import { useRouter, RouterLink } from 'vue-router'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { createProject } from '@/services/projectsService'
 import { getPbMessage } from '@/utils/pbErrors'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const loading = ref(false)
 const checkingPermission = ref(true)
 const error = ref('')
 const success = ref(false)
+const createdProject = ref(null)
+const createdOwnerId = ref('')
+let active = true
+let submission = 0
+const permissionController = new AbortController()
+function currentSession() {
+  const id = auth.user?.id
+  const token = auth.token
+  const path = route.fullPath
+  return () => active && auth.user?.id === id && auth.token === token && route.fullPath === path
+}
+onBeforeUnmount(() => {
+  active = false
+  submission++
+  permissionController.abort()
+})
 
 const form = ref({ name: '', description: '', accessMode: 'members_only', password: '' })
 const accessModes = [
@@ -121,32 +151,62 @@ const accessModes = [
 ]
 
 onMounted(async () => {
+  const isCurrent = currentSession()
   try {
-    await auth.loadAccessContext({ force: true })
+    await auth.loadAccessContext({ force: true, signal: permissionController.signal })
   } catch (e) {
-    error.value = getPbMessage(e, '无法检查项目创建权限。')
+    if (isCurrent()) error.value = getPbMessage(e, '无法检查项目创建权限。')
   } finally {
-    checkingPermission.value = false
+    if (isCurrent()) checkingPermission.value = false
   }
 })
 
 async function handleSubmit() {
+  if (
+    loading.value ||
+    checkingPermission.value ||
+    (!createdProject.value && !auth.canCreateProjects)
+  )
+    return
+  if (createdProject.value && createdOwnerId.value !== auth.user?.id) return
+  const generation = ++submission
+  const sessionCurrent = currentSession()
+  const isCurrent = () => generation === submission && sessionCurrent()
   loading.value = true
   error.value = ''
   try {
-    const project = await createProject({
-      name: form.value.name,
-      description: form.value.description,
-      accessMode: form.value.accessMode,
-      password: form.value.password
+    if (!createdProject.value) {
+      const project = await createProject({ ...form.value })
+      if (!isCurrent()) return
+      createdProject.value = project
+      createdOwnerId.value = auth.user?.id
+      success.value = true
+      // Store-owned publication already checks the originating session. A
+      // failed permission refresh must not turn a created project into a
+      // failed creation or delay entry to its material workspace.
+      void auth.loadAccessContext({ force: true }).catch(() => {})
+    }
+    if (!isCurrent()) return
+    await router.replace({
+      path: `/admin/projects/${createdProject.value.id}`,
+      query: { section: 'materials', view: 'import' }
     })
-    await auth.loadAccessContext({ force: true })
-    success.value = true
-    setTimeout(() => router.push(`/admin/projects/${project.id}`), 1200)
   } catch (e) {
-    error.value = getPbMessage(e, '创建失败，请重试')
+    if (!isCurrent()) return
+    error.value = createdProject.value
+      ? '项目已创建，但材料工作区尚未打开。请重试打开，无需重新创建。'
+      : getPbMessage(e, '创建失败，请重试')
   } finally {
-    loading.value = false
+    if (isCurrent()) loading.value = false
   }
 }
 </script>
+
+<style scoped>
+.creation-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+</style>

@@ -10,7 +10,7 @@ import pb from '../../src/lib/pocketbase'
 import '../../src/style.css'
 pb.authStore.save('synthetic-token', { id: 'owner', role: 'platform_admin' })
 const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/projects/:id', component: Settings }] })
-await router.push('/projects/project1')
+await router.push('/projects/project1?view=members')
 globalThis.fixtureRouter = router
 createApp({ render: () => h(RouterView) }).use(createPinia()).use(router).mount('#app')
 </script>

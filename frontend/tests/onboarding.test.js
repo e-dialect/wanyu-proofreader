@@ -65,24 +65,14 @@ test('treats missing storage and privacy-mode errors as unseen without throwing'
   resetOnboarding(throwingStorage(), 'user-1')
 })
 
-test('desktop onboarding names the four-screen path and editor docks', () => {
+test('three optional tips cover source, exact input, recovery and submission', () => {
   const steps = onboardingSteps(false)
   const text = steps
     .map((step) => `${step.id} ${step.title} ${step.target} ${step.body}`)
     .join('\n')
   assert.deepEqual(
     steps.map((step) => step.id),
-    [
-      'workspace',
-      'claim',
-      'pdf',
-      'fields',
-      'correction-paths',
-      'keyboard',
-      'draft-lease',
-      'research-notice',
-      'submit'
-    ]
+    ['source', 'fields', 'submit']
   )
   assert.match(text, /工作台/)
   assert.match(text, /发现项目/)
@@ -140,15 +130,19 @@ test('profile offers a way to replay the tour and the editor starts it after loa
   assert.match(editor, /shouldIgnoreEditorShortcut/)
   assert.match(editor, /<AppModal/)
   assert.match(layout, /ProofreaderOnboarding/)
-  assert.match(onboarding, /defineExpose\(\{ startIfUnseen, reopen, open \}\)/)
+  assert.match(onboarding, /defineExpose\(\{ startIfUnseen, reopen, open, blocking \}\)/)
+  assert.match(onboarding, /<details[\s\S]*?v-if="open"/)
+  assert.doesNotMatch(onboarding, /<AppModal/)
 })
 
-test('editor shortcuts yield while the onboarding tour is open', () => {
+test('optional tips keep shortcuts available while blocking dialogs retain precedence', () => {
   const enter = { key: 'Enter', defaultPrevented: false }
   assert.equal(shouldIgnoreEditorShortcut(enter, { open: true }), true)
   assert.equal(shouldIgnoreEditorShortcut(enter, { open: false }), false)
   assert.equal(shouldIgnoreEditorShortcut({ defaultPrevented: true }, { open: false }), true)
   assert.equal(shouldIgnoreEditorShortcut(enter, null), false)
+  assert.equal(shouldIgnoreEditorShortcut(enter, { open: true, blocking: false }), false)
+  assert.equal(shouldIgnoreEditorShortcut(enter, { open: false, blocking: true }), true)
 })
 
 test('PDF reuse browser fixture opts out of the first-run tour', () => {

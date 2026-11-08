@@ -9,7 +9,7 @@ import * as pbErrors from '../src/utils/pbErrors.js'
 // (Windows defaults to core.autocrlf=true) instead of depending on them.
 const source = projectDetailSource().replace(/\r\n/g, '\n')
 const imports = source.match(/import \{([^}]+)\} from '@\/utils\/pbErrors'/)
-const mounted = source.match(/onMounted\((async \(\) => \{[\s\S]*?)\n\}\)\n/)
+const mounted = source.match(/async function loadProject\(\) \{[\s\S]*?\n\}/)
 assert.ok(imports, 'component must declare its error helper imports')
 assert.ok(mounted, 'component must register a mounted callback')
 const helpers = Object.fromEntries(
@@ -42,9 +42,10 @@ for (const { name, error, message } of [
       },
       loadPages: () => assert.fail('must not load pages after a project request fails')
     }
-    const callback = new Function(...Object.keys(bindings), `return (${mounted[1]}\n})`)(
-      ...Object.values(bindings)
-    )
+    const callback = new Function(
+      ...Object.keys(bindings),
+      `let projectLoadGeneration = 0; const disposed = false; return (${mounted[0]})`
+    )(...Object.values(bindings))
     await callback()
     assert.equal(loadingProject.value, false)
     assert.equal(projectError.value, message)

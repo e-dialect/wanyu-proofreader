@@ -39,8 +39,8 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1080 }, acceptDownloads: true })
     const errors = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.addInitScript(({ token, record }) => localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record })), fixture.admin)
-    const open = async (id) => { await page.goto(`${host.origin}/admin/projects/${id}`); await page.locator('#project-export').waitFor(); await page.locator('#project-export').scrollIntoViewIfNeeded() }
+    await page.addInitScript(({ token, record }) => { globalThis.__FANGJI_BACKEND_URL__ = window.location.origin; localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record })) }, fixture.admin)
+    const open = async (id) => { await page.goto(`${host.origin}/admin/projects/${id}?section=delivery&view=exports`); await page.locator('#project-export').waitFor(); await page.locator('#project-export').scrollIntoViewIfNeeded() }
     const section = page.locator('#project-export')
     const button = section.getByRole('button', { name: '下载服务端导出文件' })
     const download = async (trigger = button) => {

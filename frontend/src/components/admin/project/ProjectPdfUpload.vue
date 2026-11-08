@@ -58,14 +58,19 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   createProjectPdf,
   getProjectFile,
   listProjectPdfUploads,
   cancelProjectPdfUpload
 } from '@/services/projectFilesService'
-import { validatePdfFile, loadPdfUploadResume, clearPdfUploadResume } from '@/lib/chunkedPdfUpload'
+import {
+  validatePdfFile,
+  loadPdfUploadResume,
+  clearPdfUploadResume,
+  PDF_UPLOAD_PAUSED
+} from '@/lib/chunkedPdfUpload'
 import { currentUserId } from '@/services/authService'
 import { getPbStatus, getUploadErrorMessage, isRetryablePdfUploadError } from '@/utils/pbErrors'
 const props = defineProps({ projectId: { type: String, required: true } })
@@ -239,8 +244,9 @@ function pollDelay(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 onBeforeUnmount(() => {
-  pdfUploadController?.abort()
+  pdfUploadController?.abort(PDF_UPLOAD_PAUSED)
   pdfPollGeneration += 1
 })
-defineExpose({ loadPdfResume })
+onMounted(loadPdfResume)
+defineExpose({ loadPdfResume, uploadingPdf })
 </script>

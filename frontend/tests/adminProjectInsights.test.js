@@ -122,6 +122,7 @@ test('Dashboard 保留路由历史、300ms 防抖和过期响应保护', async (
     useRoute: () => ({ query: {} }),
     useRouter: () => ({ replace: () => {}, push: () => {} }),
     useAuthStore: () => ({}),
+    useQueueReturnPosition: () => {},
     onMounted: () => {},
     onBeforeUnmount: () => {},
     watch: () => {},

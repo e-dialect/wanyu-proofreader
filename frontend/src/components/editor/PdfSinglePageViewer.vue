@@ -1,6 +1,7 @@
 <template>
   <div ref="viewerRef" class="pdf-viewer">
-    <div class="pdf-toolbar">
+    <div class="pdf-toolbar" role="toolbar" aria-label="原文工具">
+      <slot name="navigation" />
       <div class="pdf-toolbar-group">
         <button
           type="button"

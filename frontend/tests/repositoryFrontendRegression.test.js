@@ -20,6 +20,7 @@ function evaluate(path, names, overrides = {}) {
     reactive,
     computed,
     watch: () => {},
+    onMounted: () => {},
     onBeforeUnmount: (callback) => cleanup.push(callback),
     getPbMessage: (error) => error.message,
     ...normalizationDraft,

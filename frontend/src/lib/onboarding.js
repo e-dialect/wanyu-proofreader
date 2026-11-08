@@ -25,11 +25,14 @@ export function hasCompletedOnboarding(storage, userId) {
 export function markOnboardingSeen(storage, userId, completedAt = new Date().toISOString()) {
   if (!storage || !userId) return false
   try {
-    storage.setItem(onboardingKey(userId), JSON.stringify({
-      version: 1,
-      completed: true,
-      completedAt
-    }))
+    storage.setItem(
+      onboardingKey(userId),
+      JSON.stringify({
+        version: 1,
+        completed: true,
+        completedAt
+      })
+    )
     return true
   } catch {
     return false
@@ -54,5 +57,5 @@ export function browserLocalStorage() {
 }
 
 export function shouldIgnoreEditorShortcut(event, onboardingApi) {
-  return Boolean(event?.defaultPrevented || onboardingApi?.open)
+  return Boolean(event?.defaultPrevented || (onboardingApi?.blocking ?? onboardingApi?.open))
 }

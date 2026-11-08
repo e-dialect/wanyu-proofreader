@@ -24,6 +24,11 @@ const pdf = Buffer.from(
   'base64'
 )
 async function installReviewRoutes(page, { keyboard = () => null } = {}) {
+  // The mounted fixture owns its intercepted API; do not inherit a developer's
+  // cross-origin VITE_PB_URL (whose CORS header exposure would alter PDF checks).
+  await page.addInitScript(() => {
+    globalThis.__FANGJI_BACKEND_URL__ = location.origin
+  })
   const state = { drafts: [], failLease: false }
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url()).pathname

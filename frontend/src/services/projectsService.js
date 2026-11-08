@@ -19,6 +19,7 @@ export async function getProject(projectId, { signal } = {}) {
 export async function listProjects(options = {}) {
   const scope = options.scope || 'all'
   return pb.send(`/api/fangji/projects?scope=${encodeURIComponent(scope)}`, {
+    signal: options.signal,
     requestKey: null
   })
 }
