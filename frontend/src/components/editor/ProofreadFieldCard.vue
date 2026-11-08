@@ -9,7 +9,7 @@
   >
     <header class="proofread-field__header">
       <button v-if="mobile && overview" class="btn btn-secondary" @click="emit('select')">
-        修改此字段
+        {{ ownReview ? '查看此字段' : '修改此字段' }}
       </button>
       <div>
         <span class="sr-only">字段 {{ index + 1 }}</span>

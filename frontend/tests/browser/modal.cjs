@@ -63,12 +63,12 @@ async function main() {
         if (mobile) {
           const navigation = page.getByRole('navigation', { name: '字段导航' })
           await navigation.getByRole('combobox').selectOption('2')
-          await navigation.getByRole('button', { name: '整条总览', exact: true }).click()
+          await navigation.getByRole('button', { name: '总览/提交', exact: true }).click()
         }
         const triggers = mobile
           ? page
               .getByRole('navigation', { name: '字段导航' })
-              .getByRole('button', { name: '检查并提交', exact: true })
+              .getByRole('button', { name: admin ? '检查并仲裁' : '检查并提交', exact: true })
           : page.getByRole('button', { name: admin ? '检查并完成仲裁' : '检查并提交', exact: true })
         // Exercise both desktop arbitration entry points and the mobile entry point.
         for (let index = 0; index < (await triggers.count()); index += 1) {

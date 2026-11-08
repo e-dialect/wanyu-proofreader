@@ -1,0 +1,17 @@
+{
+  "synthetic": true,
+  "total": 206,
+  "imported": 1,
+  "failed": 205,
+  "downloaded": 205,
+  "checks": {
+    "historical": true,
+    "allFivePages": true,
+    "currentCsvReplay": true,
+    "failedPageNoFile": true,
+    "cancelledNoFile": true,
+    "originalStoredValues": true,
+    "mobileNoOverflow": true
+  },
+  "pageErrors": []
+}

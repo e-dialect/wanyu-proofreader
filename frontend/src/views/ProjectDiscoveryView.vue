@@ -1,10 +1,8 @@
 <template>
-  <main class="container page workspace-page project-hub">
-    <ProjectHubTabs :active="view" />
+  <main class="container page workspace-page project-hub work-catalog">
     <header class="page-heading">
       <div>
-        <div class="page-eyebrow">项目</div>
-        <h1>{{ view === 'mine' ? '我的项目' : '找到一项可以参与的工作' }}</h1>
+        <h1>项目</h1>
         <p>
           {{
             view === 'mine'
@@ -14,13 +12,14 @@
         </p>
       </div>
       <div class="page-heading-actions">
-        <button class="btn btn-quiet" :disabled="loading" @click="loadProjects">
-          <AppIcon name="refresh" />刷新</button
+        <AppButton variant="ghost" :loading="loading" @click="loadProjects">
+          <AppIcon name="refresh" />刷新</AppButton
         ><RouterLink v-if="auth.canCreateProjects" to="/admin/projects/new" class="btn btn-primary"
           ><AppIcon name="plus" />创建项目</RouterLink
         >
       </div>
     </header>
+    <ProjectHubTabs :active="view" />
     <AppStatusPanel
       v-if="loadError"
       state="error"
@@ -73,7 +72,7 @@
             <h2>{{ project.name }}</h2>
           </div>
         </header>
-        <p class="project-description">{{ project.description || '该项目暂未填写简介。' }}</p>
+        <p v-if="project.description" class="project-description">{{ project.description }}</p>
         <label
           v-if="
             !project.capabilities.isMember &&
@@ -112,9 +111,15 @@
             :to="`/tasks?project=${project.id}`"
             class="btn btn-primary"
             >进入校对</RouterLink
-          ><button v-else type="submit" class="btn btn-primary" :disabled="Boolean(joining)">
+          ><AppButton
+            v-else
+            type="submit"
+            variant="primary"
+            :loading="joining === project.id"
+            :disabled="Boolean(joining)"
+          >
             {{ joining === project.id ? '正在加入…' : '加入项目' }}
-          </button>
+          </AppButton>
         </footer>
       </form>
     </section>
@@ -125,7 +130,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import ProjectHubTabs from '@/components/ProjectHubTabs.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import '@/styles/work-catalog.css'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import { joinProject, listProjects } from '@/services/projectsService'
 import { useAuthStore } from '@/stores/auth'

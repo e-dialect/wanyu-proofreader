@@ -39,11 +39,11 @@
         v-if="!ownReview && !mobile"
         variant="primary"
         size="sm"
-        :loading="saving"
-        :disabled="saving || loadingPage || !hasPage || leaseLost || !leaseToken"
+        :loading="saving || (submittedHere && retryingClaim)"
+        :disabled="submittedHere || saving || loadingPage || !hasPage || leaseLost || !leaseToken"
         @click="emit('submit')"
       >
-        {{ saving ? '提交中…' : '检查并提交' }}
+        {{ submitLabel }}
       </AppButton>
       <details class="task-actions-menu">
         <summary>更多操作</summary>
@@ -67,7 +67,9 @@
             </button>
           </div>
           <p v-if="leaseStatus" class="text-sm text-muted">{{ leaseStatus }}</p>
-          <p class="text-sm text-muted">⌘/Ctrl+S 草稿 · ⌘/Ctrl+Enter 提交 · Alt+←/→ 切换</p>
+          <p v-if="shortcutHints.length" class="text-sm text-muted editor-shortcuts">
+            {{ shortcutHints.join(' · ') }}
+          </p>
           <RouterLink :to="returnTarget" class="btn btn-quiet btn-sm">返回任务</RouterLink>
           <span v-if="navigationHint" class="text-sm text-muted" role="status">{{
             navigationHint
@@ -99,14 +101,19 @@
       </details>
     </div>
     <p
-      v-if="feedback.kind !== 'editing'"
       class="editor-task-feedback"
-      :class="{ 'draft-indicator': feedback.kind === 'draft' }"
       role="status"
       aria-live="polite"
+      aria-atomic="true"
       :data-task-feedback="feedback.kind"
     >
-      {{ feedback.text }}
+      <span class="editor-feedback-label">{{ feedback.label }}</span>
+      <span
+        :key="`${feedback.kind}:${feedback.label}`"
+        class="editor-feedback-copy"
+        :title="feedback.detail || feedback.text"
+        >{{ feedback.text }}</span
+      >
     </p>
     <p v-if="activeField" class="text-sm text-muted editor-active-field">
       当前字段：{{ activeField }}<span v-if="!ownReview"> · 字符键盘会插入这里</span>
@@ -115,10 +122,10 @@
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import AppButton from '@/components/AppButton.vue'
 const returnTarget = inject('workReturnTarget', '/tasks')
-defineProps({
+const props = defineProps({
   projectName: String,
   ownReview: Boolean,
   pageNumber: [String, Number],
@@ -131,6 +138,8 @@ defineProps({
   navigationHint: String,
   neighborsState: String,
   submittedHere: Boolean,
+  retryingClaim: Boolean,
+  submitLabel: { type: String, default: '检查并提交' },
   canSwitchPrev: Boolean,
   canSwitchNext: Boolean,
   hasPage: Boolean,
@@ -141,6 +150,16 @@ defineProps({
   loadingPage: Boolean,
   activeField: String,
   feedback: { type: Object, required: true }
+})
+const shortcutHints = computed(() => {
+  const hints = []
+  if (!props.ownReview && props.hasPage && !props.loadingPage && !props.submittedHere) {
+    hints.push('⌘/Ctrl+S 本机草稿')
+    if (!props.saving && !props.leaseLost && props.leaseToken) hints.push('⌘/Ctrl+Enter 检查并提交')
+  }
+  if (props.canSwitchPrev) hints.push('Alt+← 上一条')
+  if (props.canSwitchNext) hints.push('Alt+→ 下一条')
+  return hints
 })
 const emit = defineEmits([
   'previous',
@@ -154,10 +173,50 @@ const emit = defineEmits([
 </script>
 <style scoped>
 .editor-task-feedback {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   flex-basis: 100%;
+  min-width: 0;
+  min-height: 1.75rem;
   margin: 0;
   font-size: var(--text-sm);
+}
+.editor-feedback-label {
+  flex-shrink: 0;
+  color: var(--ink);
   font-weight: 600;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.editor-feedback-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  animation: editor-feedback-reveal var(--motion-fast) var(--ease-out);
+}
+[data-task-feedback='error'] .editor-feedback-label {
+  color: var(--danger-ink);
+}
+[data-task-feedback='submitted'] .editor-feedback-label {
+  color: var(--success-ink-deep);
+}
+@keyframes editor-feedback-reveal {
+  from {
+    opacity: 0.72;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-feedback-copy {
+    animation: none;
+  }
+  .editor-feedback-label {
+    transition: none;
+  }
 }
 .editor-active-field {
   flex-basis: 100%;

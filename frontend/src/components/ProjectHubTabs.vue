@@ -1,5 +1,5 @@
 <template>
-  <nav class="project-hub-tabs" aria-label="项目视图">
+  <nav class="project-hub-tabs catalog-tabs" aria-label="项目视图">
     <RouterLink
       to="/projects?view=mine"
       :class="{ 'is-active': active === 'mine' }"

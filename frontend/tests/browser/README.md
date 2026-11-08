@@ -1,5 +1,21 @@
 # Review workspace browser regression
 
+`mobile-field-flow.cjs` runs with the `editor` group. It mounts the real editor
+and arbitration workspace at 320×844, 390×844 and 640×400, checks the first-field
+overview entry, visible next-field action, one-row footer, original textarea
+identity and caret insertion, and verifies that overview/confirmation alone
+never submits. Read-only review has no submission entry; arbitration keeps its
+unresolved-field gate. Receipts and screenshots are in
+`output/playwright/mobile-field-flow/`. These viewport checks do not verify
+native phone keyboards or IMEs.
+
+`editor-states.cjs` also checks stable task-header feedback for local drafts,
+storage failure, offline/online signals and server failures. A held claim request
+after a successful submit confirms that server submission and next-task claiming
+remain distinct. The full-App `workbench.cjs` and discovery regression verify
+the shared task/project directory geometry, retained results on refresh failure,
+permission links and existing join/claim behavior.
+
 `run_frontend_quality_browser.py --only components` runs `reka-controls.cjs`
 against the real public components: empty-string and numeric values, reordered
 options, an asynchronous disabled change while open, disabled/busy actions,
@@ -110,6 +126,14 @@ two use the real App and disposable backend: workbench journeys cover task and
 queue restoration, while bundle import covers read-only validation, malformed
 packages, unknown rights references, human confirmation, exact original values,
 and idempotent replay. Use `--only workbench` to run this group locally.
+
+`import-errors.cjs` also runs in the `workbench` group against the real disposable
+backend. A mixed CSV creates one valid row and 205 error records. The script
+visits every error page from the historical batch, downloads the complete JSON
+report, checks exact stored values and counts, refuses a failed later page,
+cancels an in-flight report without producing a file, and reopens the same CSV
+through the current import UI. Screenshots and its receipt are saved to
+`output/playwright/import-errors`; the mobile check covers whole-page overflow.
 
 CI's existing `backend-unicode` job invokes the unified runner without `--only`,
 so both `editor` and `workbench` execute. It explicitly selects the installed

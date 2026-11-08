@@ -85,7 +85,19 @@ async function api(path, token, body) {
     await page.reload()
     await field.waitFor()
     assert.equal(await field.inputValue(), value)
-    assert.match(await page.locator('.draft-indicator').innerText(), /已恢复/)
+    const draftFeedback = page.locator('[data-task-feedback="draft"]')
+    await draftFeedback.waitFor()
+    assert.match(await draftFeedback.innerText(), /本机草稿[\s\S]*已存本机，尚未提交/)
+    assert.match(await draftFeedback.getByTitle(/^已恢复 /).getAttribute('title'), /的本地草稿$/)
+    const restoredDraft = await page.evaluate((id) => {
+      const storageKey = Object.keys(localStorage).find(
+        (name) => name.includes('task-draft') && name.endsWith(id)
+      )
+      return storageKey ? JSON.parse(localStorage.getItem(storageKey)) : null
+    }, pageId)
+    assert.equal(restoredDraft.userId, users[i].record.id)
+    assert.equal(restoredDraft.pageId, pageId)
+    assert.deepEqual(restoredDraft.row, { [key]: value, 释义: sample })
     await page.evaluate(() => document.fonts.ready)
     if (i === 0) await page.screenshot({ path: `${output}/rare-editor.png`, fullPage: true })
     await page.getByRole('button', { name: '检查并提交', exact: true }).click()

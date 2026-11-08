@@ -50,15 +50,15 @@ with harness.temporary_root() as temporary:
                 checks = {
                     'components': ['frontend/tests/browser/reka-controls.cjs'],
                     'repository': ['frontend/tests/browser/repository-review.cjs', 'frontend/tests/browser/source-fidelity.cjs', 'frontend/tests/browser/normalization-draft.cjs'],
-                    'review': ['frontend/tests/browser/review.cjs'],
+                    'review': ['frontend/tests/browser/review.cjs', 'frontend/tests/browser/arbitration-queue.cjs'],
                     'modal': ['frontend/tests/browser/modal.cjs'],
                     'members': ['frontend/tests/browser/member-candidates.cjs'],
-                    'editor': ['frontend/tests/browser/font-feedback.cjs', 'frontend/tests/browser/editor-keyboard-flow.cjs', 'frontend/tests/browser/editor-states.cjs', 'frontend/tests/browser/editor-experience.cjs'],
+                    'editor': ['frontend/tests/browser/font-feedback.cjs', 'frontend/tests/browser/editor-keyboard-flow.cjs', 'frontend/tests/browser/editor-states.cjs', 'frontend/tests/browser/editor-experience.cjs', 'frontend/tests/browser/mobile-field-flow.cjs'],
                     'fonts': ['frontend/scripts/test-rare-fonts.cjs'],
                     'profile': ['frontend/scripts/test-profile-session.cjs'],
                     'pagination': ['frontend/scripts/test-pagination.cjs'],
                     'unicode': ['backend/tests/rare_characters_integration.mjs', 'frontend/scripts/test-rare-workflow.cjs'],
-                    'workbench': ['frontend/tests/browser/auth-navigation.cjs', 'frontend/tests/browser/discovery.cjs', 'backend/tests/seed_demo.mjs', 'frontend/tests/browser/workbench.cjs', 'frontend/tests/browser/entry-list-experience.cjs', 'frontend/tests/browser/review-bundle.cjs'],
+                    'workbench': ['frontend/tests/browser/auth-navigation.cjs', 'frontend/tests/browser/discovery.cjs', 'backend/tests/seed_demo.mjs', 'frontend/tests/browser/workbench.cjs', 'frontend/tests/browser/entry-list-experience.cjs', 'frontend/tests/browser/review-bundle.cjs', 'frontend/tests/browser/import-errors.cjs'],
                 }
                 for name, scripts in checks.items():
                     if selected and name not in selected:

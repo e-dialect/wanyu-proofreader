@@ -29,6 +29,24 @@ async function main() {
       const publicProject = page.getByRole('form', { name: '公开体验项目', exact: true })
       const password = passwordProject.getByLabel('项目口令')
       const requests = page.locator('#requests')
+      const pageWidth = mobile ? 390 : 1440
+      assert.ok(
+        await page
+          .locator('.work-catalog')
+          .evaluate((element) => element.getBoundingClientRect().width <= 1200)
+      )
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true
+      )
+      assert.ok(
+        (await passwordProject.boundingBox()).y < (mobile ? 360 : 300),
+        'Projects remain visible without scrolling past a large heading'
+      )
+      await page.screenshot({
+        path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-normal.png`),
+        fullPage: true
+      })
 
       await password.fill('wrong-passphrase')
       await password.press('Enter')
@@ -38,6 +56,15 @@ async function main() {
       await passwordProject.getByRole('alert').waitFor()
       assert.match(await passwordProject.getByRole('alert').innerText(), /项目口令不正确/)
       assert.equal(await password.inputValue(), 'wrong-passphrase', 'Failure cleared the input')
+      assert.equal(
+        await passwordProject.getByRole('button', { name: '加入项目', exact: true }).isEnabled(),
+        true
+      )
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+        `${pageWidth}px error feedback must not widen the page`
+      )
       await page.screenshot({
         path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-error.png`),
         fullPage: true

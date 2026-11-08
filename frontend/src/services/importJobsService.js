@@ -73,10 +73,11 @@ export async function listImportLedger(projectId) {
   })
 }
 
-export async function listImportJobErrors(jobId, page = 1, perPage = 100) {
+export async function listImportJobErrors(jobId, page = 1, perPage = 100, options = {}) {
   return pb.collection('import_job_errors').getList(page, perPage, {
-    filter: `job="${jobId}"`,
-    sort: 'row_number,created',
+    ...options,
+    filter: pb.filter('job={:job}', { job: jobId }),
+    sort: 'row_number,created,id',
     requestKey: null
   })
 }

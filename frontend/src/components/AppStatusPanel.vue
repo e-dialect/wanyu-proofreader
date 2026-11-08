@@ -16,20 +16,22 @@
         <slot>{{ presentation.message }}</slot>
       </div>
       <slot v-else>{{ presentation.message }}</slot>
-      <button
+      <AppButton
         v-if="retryLabel"
         type="button"
-        class="btn btn-secondary btn-sm ml-2"
-        :disabled="busy"
+        class="ml-2"
+        size="sm"
+        :loading="busy"
         @click="$emit('retry')"
       >
         {{ retryLabel }}
-      </button>
+      </AppButton>
     </template>
   </div>
 </template>
 <script setup>
 import { computed } from 'vue'
+import AppButton from '@/components/AppButton.vue'
 import { statusPresentation } from '@/lib/asyncResource'
 const props = defineProps({
   state: { type: String, required: true },

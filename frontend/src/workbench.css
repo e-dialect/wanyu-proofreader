@@ -78,6 +78,9 @@
   color: var(--gray-600);
   border-radius: var(--radius-sm);
   font-size: var(--text-md);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 .shell-nav-link:hover {
   background: var(--gray-100);
@@ -167,6 +170,24 @@
   box-shadow: var(--shadow-lg);
   z-index: var(--z-dropdown);
 }
+.shell-account[open] > .shell-account__menu {
+  animation: shell-panel-in var(--motion-fast) var(--ease-out);
+}
+@keyframes shell-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell-account[open] > .shell-account__menu {
+    animation: none;
+  }
+}
 .shell-account__menu a,
 .shell-account__menu button {
   display: block;
@@ -220,7 +241,7 @@
 }
 /* Workbench: one current action, then quiet lists of decisions and projects. */
 .app-page .workbench-home {
-  max-width: 1200px;
+  max-width: var(--page-width);
 }
 .workbench-home .workbench-heading {
   align-items: center;
@@ -230,7 +251,7 @@
 }
 .workbench-home .workbench-heading h1 {
   font-family: var(--font-ui);
-  font-size: var(--text-xl);
+  font-size: var(--text-2xl);
   font-weight: 600;
   color: var(--ink);
 }
@@ -331,7 +352,7 @@
   min-height: 76px;
   padding: var(--space-4) 0;
   color: var(--ink);
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 .workbench-row:hover,
 .workbench-project:hover {

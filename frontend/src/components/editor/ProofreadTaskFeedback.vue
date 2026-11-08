@@ -1,26 +1,27 @@
 <template>
-  <div v-if="saved" class="alert alert-success" role="status">{{ saved }}</div>
-  <div v-if="claimNextFailure" class="alert alert-error" role="alert">
+  <details v-if="saved && !claimNextFailure" class="editor-result-note" role="note">
+    <summary>最近一次操作结果</summary>
+    <p>{{ saved }}</p>
+  </details>
+  <div v-if="claimNextFailure" class="editor-recovery-note" role="alert">
     <p>{{ claimNextFailureNotice }}</p>
     <div class="claim-next-actions">
       <RouterLink to="/tasks" class="btn btn-secondary btn-sm">返回大厅</RouterLink>
-      <button
-        type="button"
-        class="btn btn-primary btn-sm"
-        :disabled="retryingClaim"
-        @click="emit('retry-claim')"
-      >
+      <AppButton size="sm" variant="primary" :loading="retryingClaim" @click="emit('retry-claim')">
         {{ retryingClaim ? '正在领取…' : '重试领取' }}
-      </button>
+      </AppButton>
     </div>
   </div>
-  <div v-if="leaseLost" class="alert alert-error lease-lost-alert" role="alert">
-    <span>{{ saveError || '任务租约已失效，本地草稿仍然保留。' }}</span>
-    <button class="btn btn-secondary btn-sm" :disabled="reclaiming" @click="emit('reclaim')">
+  <div v-if="leaseLost" class="editor-recovery-note lease-lost-alert" role="alert">
+    <span>{{ saveError || '任务租约已失效，请保留本页输入。' }}</span>
+    <AppButton size="sm" :loading="reclaiming" @click="emit('reclaim')">
       {{ reclaiming ? '重新领取中…' : '重新领取任务' }}
-    </button>
+    </AppButton>
   </div>
-  <div v-else-if="saveError" class="alert alert-error" role="alert">{{ saveError }}</div>
+  <div v-else-if="saveError" class="editor-recovery-note" role="alert">
+    <p>{{ saveError }}</p>
+    <p class="text-sm text-muted">输入仍在本页，请核对原因后按原操作重试。</p>
+  </div>
 
   <details v-if="staleLocalDrafts.length" class="alert" role="note">
     <summary>本人旧版／失配本机草稿（{{ staleLocalDrafts.length }}）</summary>
@@ -36,6 +37,7 @@
 <script setup>
 import { RouterLink } from 'vue-router'
 import AppFieldValue from '@/components/AppFieldValue.vue'
+import AppButton from '@/components/AppButton.vue'
 defineProps({
   saved: String,
   claimNextFailure: Boolean,
@@ -48,3 +50,27 @@ defineProps({
 })
 const emit = defineEmits(['retry-claim', 'reclaim'])
 </script>
+<style scoped>
+.editor-recovery-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--danger-ink);
+  color: var(--ink);
+  background: var(--surface);
+}
+.editor-recovery-note p {
+  margin: 0;
+}
+.editor-result-note {
+  margin-bottom: var(--space-3);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.editor-result-note summary {
+  cursor: pointer;
+}
+</style>

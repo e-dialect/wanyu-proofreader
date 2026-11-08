@@ -710,14 +710,34 @@
     position: static;
     padding: var(--space-1) 0;
     gap: var(--space-1);
+    flex-wrap: nowrap;
+    min-width: 0;
   }
   .editor-layout.experience-workspace .mobile-field-navigation label {
     min-width: 0;
+    flex: 1 1 0;
   }
-  .editor-layout.experience-workspace .field-step {
-    flex: 0 0 44px;
-    width: 44px;
-    padding-inline: 0;
+  .editor-layout.experience-workspace .mobile-field-navigation select {
+    padding-inline: var(--space-2);
+    font-size: var(--text-sm);
+  }
+  .editor-layout.experience-workspace .mobile-field-navigation .btn {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding-inline: var(--space-2);
+    font-size: var(--text-sm);
+    white-space: nowrap;
+  }
+  .editor-layout.experience-workspace .field-navigation-stage {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: var(--text-sm);
+  }
+  .editor-layout.experience-workspace .field-navigation-stage span {
+    display: block;
+    color: var(--ink-muted);
+    font-size: var(--text-xs);
+    font-weight: 400;
   }
   .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open) {
     grid-template-columns: minmax(0, 1fr) 44px;

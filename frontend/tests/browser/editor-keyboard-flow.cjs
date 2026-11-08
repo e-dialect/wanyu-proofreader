@@ -73,6 +73,19 @@ async function main() {
         return input && !input.readOnly
       })
       const input = page.locator('.proofread-textarea').first()
+      const menu = page.locator('.task-actions-menu > summary')
+      await menu.focus()
+      await page.keyboard.press('Enter')
+      const shortcuts = page.locator('.editor-shortcuts')
+      assert.match(await shortcuts.innerText(), /Ctrl\+S 本机草稿/)
+      assert.match(await shortcuts.innerText(), /Ctrl\+Enter 检查并提交/)
+      assert.doesNotMatch(await shortcuts.innerText(), /Alt\+/)
+      assert.equal(
+        await page.getByRole('button', { name: '下一条', exact: true }).first().isDisabled(),
+        true
+      )
+      await menu.focus()
+      await page.keyboard.press('Enter')
       await input.focus()
       for (const key of ['Tab', 'Shift+Tab'])
         for (let i = 0; i < 10; i++) {
@@ -106,7 +119,7 @@ async function main() {
       if (width === 390) {
         const nav = page.getByRole('navigation', { name: '字段导航' })
         await nav.getByRole('combobox').selectOption('2')
-        await nav.getByRole('button', { name: '整条总览', exact: true }).focus()
+        await nav.getByRole('button', { name: '总览/提交', exact: true }).focus()
         await page.keyboard.press('Enter')
       }
       const trigger =
@@ -165,7 +178,8 @@ async function main() {
         helpViaKeyboard: true,
         submitEscapeRestoresTrigger: true,
         returnFailurePreservesInputAndFocus: true,
-        returnRetryNext: true
+        returnRetryNext: true,
+        unavailableNavigationShortcutHidden: true
       })
       await page.close()
     }
@@ -176,15 +190,18 @@ async function main() {
     })
     await installReviewRoutes(page)
     const writes = []
+    let showReviewedNeighbor = false
     await page.route('**/api/fangji/**', async (route) => {
       const request = route.request(),
         url = new URL(request.url())
       if (request.method() !== 'GET') writes.push(url.pathname)
+      if (url.pathname.endsWith('/tasks/reviewed') && showReviewedNeighbor)
+        return route.fulfill({ json: { items: [record('page1'), record('page2')], total: 2 } })
       if (url.pathname.endsWith('/task'))
         return url.searchParams.get('mode') === 'review'
           ? route.fulfill({
               json: {
-                ...record('page1'),
+                ...record(url.pathname.split('/').at(-2)),
                 readonly: true,
                 proofread_row_json: JSON.stringify({ ...row, 字词: '本人已提交' })
               }
@@ -203,6 +220,9 @@ async function main() {
     )
     const value = await page.locator('.proofread-textarea').first().inputValue()
     assert.equal(value, '本人已提交')
+    await page.locator('.task-actions-menu > summary').focus()
+    await page.keyboard.press('Enter')
+    assert.equal(await page.locator('.editor-shortcuts').count(), 0)
     await page.locator('.proofread-textarea').first().focus()
     await page.keyboard.type('x')
     await page.keyboard.press('ControlOrMeta+s')
@@ -219,8 +239,27 @@ async function main() {
       noWrites: true,
       noLease: true,
       noKeyboard: true,
-      immutableText: true
+      immutableText: true,
+      unavailableEditingShortcutsHidden: true
     })
+    showReviewedNeighbor = true
+    await page.reload()
+    await page.getByRole('button', { name: '下一条', exact: true }).waitFor()
+    await page.waitForFunction(() =>
+      document.querySelector('.editor-shortcuts')?.textContent.includes('Alt+→ 下一条')
+    )
+    assert.doesNotMatch(await page.locator('.editor-shortcuts').innerText(), /Ctrl|Alt\+←/)
+    await page.locator('.proofread-textarea').first().focus()
+    await page.keyboard.press('Alt+ArrowRight')
+    await page.waitForFunction(() =>
+      document.querySelector('#task-panel-title')?.textContent.includes('2')
+    )
+    await page.waitForFunction(() =>
+      document.querySelector('.editor-shortcuts')?.textContent.includes('Alt+← 上一条')
+    )
+    assert.doesNotMatch(await page.locator('.editor-shortcuts').innerText(), /Ctrl|Alt\+→/)
+    assert.deepEqual(writes, [])
+    results.push({ ownReviewNavigation: true, onlyAvailableDirectionShown: true, noWrites: true })
     await fs.writeFile(
       path.join(output, 'results.json'),
       JSON.stringify({ synthetic: true, results }, null, 2)

@@ -64,7 +64,17 @@
           <td>{{ batch.total_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
           <td>{{ batch.inserted_count }} 行</td>
           <td>{{ batch.skipped_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
-          <td>{{ batch.failed_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
+          <td>
+            {{ batch.failed_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}
+            <AppButton
+              v-if="batch.failed_count > 0 || ['failed', 'error'].includes(batch.status)"
+              size="sm"
+              variant="ghost"
+              :aria-label="`查看 ${batch.original_filename || batch.id} 的错误记录`"
+              @click="selectedErrorJob = selectedErrorJob === batch.id ? '' : batch.id"
+              >{{ selectedErrorJob === batch.id ? '收起错误' : '查看错误' }}</AppButton
+            >
+          </td>
           <td>
             {{ batch.counts_label
             }}<span v-if="batch.counts_note" class="text-muted">（{{ batch.counts_note }}）</span>
@@ -81,6 +91,12 @@
           <td colspan="10" class="text-muted">还没有导入批次。</td>
         </tr>
       </AppDataTable>
+      <ImportErrorsPanel
+        v-if="selectedErrorJob"
+        :key="`${props.projectId}:${selectedErrorJob}`"
+        :project-id="props.projectId"
+        :job-id="selectedErrorJob"
+      />
       <ul v-if="ledger.errors && ledger.errors.length" class="text-sm mt-3">
         <li
           v-for="item in ledger.errors"
@@ -100,29 +116,49 @@
 
 <script setup>
 import AppDataTable from '@/components/AppDataTable.vue'
-import { onMounted, ref } from 'vue'
+import AppButton from '@/components/AppButton.vue'
+import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { listImportLedger } from '@/services/importJobsService'
 import { getPbMessage } from '@/utils/pbErrors'
 const props = defineProps({ projectId: { type: String, required: true } })
-const projectId = props.projectId
 const ledger = ref(null)
+const selectedErrorJob = ref('')
+let generation = 0,
+  disposed = false
 
 const ledgerError = ref('')
 
 const loadingLedger = ref(false)
 
 async function loadLedger() {
+  const version = ++generation
   loadingLedger.value = true
   ledgerError.value = ''
   try {
-    ledger.value = await listImportLedger(projectId)
+    const value = await listImportLedger(props.projectId)
+    if (disposed || version !== generation) return
+    ledger.value = value
   } catch (e) {
+    if (disposed || version !== generation) return
     ledger.value = null
     ledgerError.value = getPbMessage(e, '批次台账加载失败。')
   } finally {
-    loadingLedger.value = false
+    if (!disposed && version === generation) loadingLedger.value = false
   }
 }
-onMounted(loadLedger)
+watch(
+  () => props.projectId,
+  () => {
+    ledger.value = null
+    selectedErrorJob.value = ''
+    loadLedger()
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  disposed = true
+  generation++
+})
 defineExpose({ loadLedger })
 </script>
