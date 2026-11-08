@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Disposable mixed-load protocol probe. Never accepts production URL/data-dir."""
 import argparse
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -20,7 +21,7 @@ from capacity_resources import ResourceSampler
 
 def clone_fixture(db, project, entries, pdf_file=None):
     """Clone actual workflow templates offline, preserving attempt/event references."""
-    with sqlite3.connect(db) as sql:
+    with closing(sqlite3.connect(db)) as sql, sql:
         sql.row_factory = sqlite3.Row
         pages = [dict(r) for r in sql.execute('SELECT * FROM pages WHERE project=? ORDER BY page_number', (project,))]
         complete = next(p for p in pages if p['status'] in ('approved','proofread'))
@@ -67,7 +68,7 @@ def clone_fixture(db, project, entries, pdf_file=None):
 
 
 def snapshot_counts(db, project):
-    with sqlite3.connect(db) as sql:
+    with closing(sqlite3.connect(db)) as sql:
         return {
             'proofreads': sql.execute("SELECT COUNT(*) FROM proofreading_attempts WHERE project=? AND kind='proofread'", (project,)).fetchone()[0],
             'submissions': sql.execute("SELECT COUNT(*) FROM verification_events WHERE project=? AND kind='submission'", (project,)).fetchone()[0]
@@ -109,7 +110,7 @@ def reconcile_fixture(root, state, config, http):
     project,secondary,before,actor_ids,actor_baseline=(state[key] for key in ("project","secondary","before","actor_ids","actor_baseline"))
     after=snapshot_counts(db, project['id'])
     acknowledged=sum(r['operation']=='submit' and r.get('status')==200 and r.get('ok') for r in http)
-    with sqlite3.connect(db) as sql:
+    with closing(sqlite3.connect(db)) as sql:
         reconciliation={'integrity':sql.execute('PRAGMA integrity_check').fetchone()[0],
             'duplicate_attempts':sql.execute("SELECT COUNT(*) FROM (SELECT page,proofreader,pass_no,kind,COUNT(*) n FROM proofreading_attempts WHERE project=? GROUP BY page,proofreader,pass_no,kind HAVING n>1)",(project['id'],)).fetchone()[0],
             'before':before,'after':after,'acknowledged_submissions':acknowledged,

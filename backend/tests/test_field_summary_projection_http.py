@@ -1,4 +1,5 @@
 """Real HTTP must fall back when read-model maintenance is disabled or missing."""
+from contextlib import closing
 import json
 import sqlite3
 import subprocess
@@ -19,7 +20,7 @@ class FieldSummaryProjectionHTTPTests(unittest.TestCase):
                 fixture = json.loads(fixture_path.read_text())
                 token, project = fixture['admin']['token'], fixture['project']['id']
                 path = f'/api/fangji/projects/{project}/field-error-summary?perPage=100'
-                with sqlite3.connect(root / 'data/data.db') as db:
+                with closing(sqlite3.connect(root / 'data/data.db')) as db, db:
                     params = {'project': project, 'limit': 100, 'offset': 0}
                     columns = [row[1] for row in db.execute('PRAGMA table_info(verification_events)')]
                     template = dict(zip(columns, db.execute("SELECT * FROM verification_events WHERE project=? AND kind='judgment' AND ref!='final' ORDER BY created DESC LIMIT 1", (project,)).fetchone()))

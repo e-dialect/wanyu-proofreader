@@ -1,4 +1,5 @@
 """Read-only server resource sampling; missing budgets are never invented."""
+from contextlib import closing
 import json
 import math
 import shutil
@@ -96,7 +97,7 @@ class ResourceSampler:
         except OSError as error:
             row['errors']['storage'] = type(error).__name__
         try:
-            with sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=.5) as sql:
+            with closing(sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=.5)) as sql:
                 row['unfinished_jobs'] = sum(sql.execute(f"SELECT COUNT(*) FROM {table} WHERE status IN ({statuses})").fetchone()[0]
                     for table, statuses in [('import_jobs', "'queued','processing','inspecting'"), ('conversion_jobs', "'queued','processing'"), ('project_files', "'processing'")])
         except sqlite3.Error as error:
