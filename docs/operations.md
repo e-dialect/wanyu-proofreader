@@ -520,9 +520,14 @@ file_name 与受保护下载路由。下载必须用 Authorization header，只�
 
 worker 退出/OOM/超时会使该作业失败，已生成条目保持 importing 并在失败时清除，不会
 把半本书送入校对。完成时才在事务中发布为 pending。backend 重启会重放 queued 或
-processing 作业的同一 PDF 快照，先清旧暂存行和旧工件，避免重复；故障后也可重新
-发起新作业。`run_ocr_runtime_integration.py` 用真实迁移/API、受控本地故障 worker
-验证这些状态与 CSV 隔离；真实引擎数字另见 benchmark，二者不混为同一质量证据。
+processing 作业的同一 PDF 快照，先清旧暂存行和旧工件，避免重复。backend 正常关停
+取消中的识别请求时，作业保留 processing 和已有暂存证据，排队作业保留 queued；
+不会把关停取消记作识别失败。重启后沿用原作业和请求编号恢复，无需新发起一批。
+清理完成后，重放会清零上一轮的已处理、成功和失败页数及结果摘要，再从所选页段的起始页重建；
+即使关停发生在失败页进度落库之后，成功重放也不会沿用旧失败数或旧工件引用。
+真实识别故障后仍可重新发起新作业。`run_ocr_runtime_integration.py` 用真实迁移/API、
+受控本地故障 worker 验证这些状态与 CSV 隔离；真实引擎数字另见 benchmark，
+二者不混为同一质量证据。
 
 停用/回退：先设置 `OCR_ENGINE_ENABLED=false` 并重建 backend，再停止 OCR worker；
 保留已经完成的 pages 与工件。回滚应用镜像时通常保留新增可选字段；若必须回退迁移，

@@ -640,7 +640,29 @@ func init() {
 func (s *importService) runWorker() { s.runWorkQueue(s.queue) }
 
 func (s *importService) runWorkQueue(queue <-chan importWork) {
-	for work := range queue {
+	// OCR shares the image worker's shutdown context. Leave its durable backlog
+	// queued for recovery instead of draining it with an already-cancelled client.
+	var stopped <-chan struct{}
+	if queue == s.ocrQueue && s.imageContext != nil {
+		stopped = s.imageContext.Done()
+	}
+	for {
+		var work importWork
+		select {
+		case <-stopped:
+			return
+		case next, open := <-queue:
+			if !open {
+				return
+			}
+			work = next
+		}
+		// A buffered job and cancellation can both be ready in the select above.
+		select {
+		case <-stopped:
+			return
+		default:
+		}
 		func() {
 			startedAt := time.Now()
 			logUpload("info", "work_started", map[string]any{
