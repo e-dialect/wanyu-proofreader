@@ -14,7 +14,10 @@ async function main() {
   const { sleep, phaseAt, randomFor } = await import('./capacity_profile.mjs')
   const actors = config.actors.filter((actor) => actor.transport === 'browser')
   assert.equal(actors.length, 2)
-  const host = await startHost(config.base)
+  if (config.browser_origin) assert.match(config.browser_origin, /^http:\/\/127\.0\.0\.1:\d+$/)
+  const host = config.browser_origin
+    ? { origin: config.browser_origin, close: async () => {} }
+    : await startHost(config.base)
   const browser = await chromium.launch({
     headless: true,
     ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {})

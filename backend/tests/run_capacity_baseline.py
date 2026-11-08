@@ -73,7 +73,7 @@ def snapshot_counts(db, project):
         }
 
 
-def run_once(binary, root, args, output, repeat):
+def prepare_fixture(binary, root, args):
     fixture_file=root/'fixture.json'; db=root/'data/data.db'
     with harness.server(binary,root,extra_env={'FIDELITY_BROWSER_FIXTURE':str(fixture_file)}) as env:
         subprocess.run(['node',str(harness.BACKEND/'tests/source_fidelity_integration.mjs')],env=harness.with_research_notice_preload(env),check=True,stdout=subprocess.DEVNULL)
@@ -100,6 +100,32 @@ def run_once(binary, root, args, output, repeat):
     before=snapshot_counts(db, project['id'])
     actor_ids=tuple(actor['record']['id'] for actor in actors)
     actor_baseline=snapshot_actor_records(db, actor_ids)
+    return {"fixture_meta":fixture_meta,"pdf_meta":pdf_meta,"storage_gate":storage_gate,"project":project,"secondary":secondary,"actors":actors,"before":before,"actor_ids":actor_ids,"actor_baseline":actor_baseline}
+
+
+def reconcile_fixture(root, state, config, http):
+    db=root/"data/data.db"
+    project,secondary,before,actor_ids,actor_baseline=(state[key] for key in ("project","secondary","before","actor_ids","actor_baseline"))
+    after=snapshot_counts(db, project['id'])
+    acknowledged=sum(r['operation']=='submit' and r.get('status')==200 and r.get('ok') for r in http)
+    with sqlite3.connect(db) as sql:
+        reconciliation={'integrity':sql.execute('PRAGMA integrity_check').fetchone()[0],
+            'duplicate_attempts':sql.execute("SELECT COUNT(*) FROM (SELECT page,proofreader,pass_no,kind,COUNT(*) n FROM proofreading_attempts WHERE project=? GROUP BY page,proofreader,pass_no,kind HAVING n>1)",(project['id'],)).fetchone()[0],
+            'before':before,'after':after,'acknowledged_submissions':acknowledged,
+            'expected_parallel_rows':config['parallel_import_rows'],
+            'actual_parallel_rows':sql.execute('SELECT COUNT(*) FROM pages WHERE project=?',(secondary['id'],)).fetchone()[0]}
+    reconciliation['submission_evidence']=reconcile_submissions(db, project['id'], actor_ids, actor_baseline, http)
+    reconciliation['pass']=(reconciliation['submission_evidence']['pass'] and reconciliation['integrity']=='ok' and reconciliation['duplicate_attempts']==0 and
+        after['proofreads']-before['proofreads']==acknowledged==after['submissions']-before['submissions'] and
+        reconciliation['actual_parallel_rows']==reconciliation['expected_parallel_rows'])
+    return reconciliation
+
+
+def run_once(binary, root, args, output, repeat):
+    state=prepare_fixture(binary,root,args)
+    db=root/"data/data.db"
+    project,secondary,actors=(state[key] for key in ("project","secondary","actors"))
+    fixture_meta,pdf_meta,storage_gate=(state[key] for key in ("fixture_meta","pdf_meta","storage_gate"))
     with harness.server(binary,root) as env:
         config={'disposable':True,'base':env['PB_URL'],'project':project['id'],'secondary_project':secondary['id'],
                 'actors':actors,'duration':args.duration,'profile':args.profile,'phases':fixture_helpers.phases(args.duration),
@@ -122,19 +148,8 @@ def run_once(binary, root, args, output, repeat):
             for process in processes:
                 if process.poll() is None: process.terminate(); process.wait(timeout=10)
             resources=sampler.stop()
-    after=snapshot_counts(db, project['id'])
     http=capacity_report.lines(output/'requests.jsonl')+capacity_report.lines(output/'browser-http.jsonl')
-    acknowledged=sum(r['operation']=='submit' and r.get('status')==200 and r.get('ok') for r in http)
-    with sqlite3.connect(db) as sql:
-        reconciliation={'integrity':sql.execute('PRAGMA integrity_check').fetchone()[0],
-            'duplicate_attempts':sql.execute("SELECT COUNT(*) FROM (SELECT page,proofreader,pass_no,kind,COUNT(*) n FROM proofreading_attempts WHERE project=? GROUP BY page,proofreader,pass_no,kind HAVING n>1)",(project['id'],)).fetchone()[0],
-            'before':before,'after':after,'acknowledged_submissions':acknowledged,
-            'expected_parallel_rows':config['parallel_import_rows'],
-            'actual_parallel_rows':sql.execute('SELECT COUNT(*) FROM pages WHERE project=?',(secondary['id'],)).fetchone()[0]}
-    reconciliation['submission_evidence']=reconcile_submissions(db, project['id'], actor_ids, actor_baseline, http)
-    reconciliation['pass']=(reconciliation['submission_evidence']['pass'] and reconciliation['integrity']=='ok' and reconciliation['duplicate_attempts']==0 and
-        after['proofreads']-before['proofreads']==acknowledged==after['submissions']-before['submissions'] and
-        reconciliation['actual_parallel_rows']==reconciliation['expected_parallel_rows'])
+    reconciliation=reconcile_fixture(root,state,config,http)
     (output/'reconciliation.json').write_text(json.dumps(reconciliation,indent=2))
     safe=[]
     for line in (root/'server.log').read_text().splitlines():
@@ -194,7 +209,8 @@ def main():
     (args.output/'manifest.json').write_text(json.dumps(manifest,indent=2))
     results=[]
     with harness.temporary_root() as build:
-        binary=harness.build_binary(build/'pocketbase')
+        binary=harness.build_binary(build/'pocketbase', build_sha=manifest['baseline_sha'])
+        manifest['binary_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
         for repeat in range(args.repeats):
             output=args.output/f'run-{repeat+1}';output.mkdir()
             with harness.temporary_root() as root:

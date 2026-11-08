@@ -1,0 +1,130 @@
+{
+  "synthetic": true,
+  "acceptance_scope": "local_transport_functional_validation",
+  "runs": [
+    {
+      "run": 1,
+      "baseline_sha": "03a3a3c85d504e652806a2c2a28d7f476e6501b8",
+      "dirty_diff_sha256": "2d702a9e288d0c51e855553c28b76459ea5d97791958bb8706e618c799a81404",
+      "runner_source_sha256": {
+        "backend/tests/capacity_browser.cjs": "d9520024e20b654497c34114cdd96267e85857d5c6d3c6ef8a0bfbb4e58912b0",
+        "backend/tests/capacity_fixture.py": "22714279c06cd512bc9a5c4c2cf13234c6ce301bbf7575735bc45d48e2dbe365",
+        "backend/tests/capacity_profile.mjs": "bed854e4fc959c15ef735bbb9fc9905b6782c670b3254b61623e0b048a2549f3",
+        "backend/tests/capacity_reconciliation.py": "7e711648d9a145ff5dfc76f764ab436a67e5537bb7b052e746c6bd0b409dc8a0",
+        "backend/tests/capacity_remote_contract.py": "b064fba2635e0b61bbcb32a71699461c4e18c029fb67b9a862ae857daea2a639",
+        "backend/tests/capacity_report.py": "63b605f595fdc10784aa6e8cc946eaebc91184c1ddef757379ef4d8ebfe8e105",
+        "backend/tests/capacity_resources.py": "435be799ed90edd10bad571d6caf9476a054814c8dc890f6e4a86623b74cd743",
+        "backend/tests/capacity_scenarios.mjs": "07b3d14fa243b77b390ae94ab34592b1f0ef47edb67919c9ee78a2b74f74eade",
+        "backend/tests/capacity_submission.cjs": "587296abd085666c245fc5774e2c2768000a3fa55348f22a67656b4f354a020f",
+        "backend/tests/capacity_target.py": "bf14acfe519b6f71ed796a61a38c69af6815f8b017f71ea1c8801801dab40afc",
+        "backend/tests/capacity_target_frontend.cjs": "1d257704e905d33eced4e988474d0ef241db68a2381a36d05095fb97736259c2",
+        "backend/tests/harness.py": "72c7bc35c2fce258620a9227b8d7f3a8e024143bec5a3436f23da59cc51cfd77",
+        "backend/tests/run_capacity_baseline.py": "981edfff1c3e37300c961797a32cdc57cc260df0349b991ca18e7b1f2b9c23d8",
+        "backend/tests/run_capacity_remote.py": "23da373dae558fa8071eba4093b5ffe76afca8089da3e51d9c4875a5c06377d6"
+      },
+      "entries": 20,
+      "users": 8,
+      "duration": 12,
+      "overall_status": "fail",
+      "mixed_status": "fail",
+      "full_acceptance": false,
+      "gates": {
+        "separate_generator_host": "fail",
+        "reference_hardware": "incomplete",
+        "clock_alignment": "incomplete",
+        "resource_sampling": "pass",
+        "resource_budget": "incomplete",
+        "cooldown_recovery": "incomplete",
+        "formal_reference_profile": "pass",
+        "runtime_budgets": "incomplete",
+        "source_unchanged": "pass",
+        "target_identity_unchanged": "pass",
+        "target_cleanup": "incomplete",
+        "mixed_runs": "fail",
+        "three_full_repeats": "incomplete",
+        "fifteen_minute_faults": "incomplete",
+        "budget_unchanged": "pass"
+      },
+      "ui_submissions": [
+        2,
+        3
+      ],
+      "acknowledged_submissions": 5,
+      "reconciliation_pass": true,
+      "resource_samples": 13,
+      "target_exit_code": null,
+      "binary_sha256": null,
+      "frontend_engine": "node-http/export_browser_host.cjs",
+      "not_tested": [
+        "external_ssh",
+        "separate_hosts",
+        "production_nginx_stack",
+        "colocated_contention",
+        "container_hard_limits"
+      ]
+    },
+    {
+      "run": 2,
+      "baseline_sha": "03a3a3c85d504e652806a2c2a28d7f476e6501b8",
+      "dirty_diff_sha256": "037567a9c745661df5a8d60dfa2320d6069cf75952aa0af2b2c033f091f06407",
+      "runner_source_sha256": {
+        "backend/tests/capacity_browser.cjs": "d9520024e20b654497c34114cdd96267e85857d5c6d3c6ef8a0bfbb4e58912b0",
+        "backend/tests/capacity_fixture.py": "22714279c06cd512bc9a5c4c2cf13234c6ce301bbf7575735bc45d48e2dbe365",
+        "backend/tests/capacity_profile.mjs": "bed854e4fc959c15ef735bbb9fc9905b6782c670b3254b61623e0b048a2549f3",
+        "backend/tests/capacity_reconciliation.py": "7e711648d9a145ff5dfc76f764ab436a67e5537bb7b052e746c6bd0b409dc8a0",
+        "backend/tests/capacity_remote_contract.py": "2a9565e3ee66389380deda551ec44724746fafda23e9d51726f6f337d0316e9d",
+        "backend/tests/capacity_report.py": "63b605f595fdc10784aa6e8cc946eaebc91184c1ddef757379ef4d8ebfe8e105",
+        "backend/tests/capacity_resources.py": "435be799ed90edd10bad571d6caf9476a054814c8dc890f6e4a86623b74cd743",
+        "backend/tests/capacity_scenarios.mjs": "07b3d14fa243b77b390ae94ab34592b1f0ef47edb67919c9ee78a2b74f74eade",
+        "backend/tests/capacity_submission.cjs": "587296abd085666c245fc5774e2c2768000a3fa55348f22a67656b4f354a020f",
+        "backend/tests/capacity_target.py": "e810e1ff014a7ef1d5d4af5d95fff7e6bdca8f53fd7352d80bfb260469b91ec6",
+        "backend/tests/capacity_target_frontend.cjs": "1d257704e905d33eced4e988474d0ef241db68a2381a36d05095fb97736259c2",
+        "backend/tests/harness.py": "949e4cb93167096013b4ac3216c3283cb14f2c25533d93d242e5651697fe959e",
+        "backend/tests/run_capacity_baseline.py": "81932fe11278007726b3c76ca5cf6b8e294e436f25fdae85e824f8e1ac626d23",
+        "backend/tests/run_capacity_remote.py": "54f15376f8746d5a3fd2a85c7e0b339fe58273cada08c49e6cc030d8d25a9c8b"
+      },
+      "entries": 200,
+      "users": 8,
+      "duration": 12,
+      "overall_status": "fail",
+      "mixed_status": "pass",
+      "full_acceptance": false,
+      "gates": {
+        "separate_generator_host": "fail",
+        "reference_hardware": "incomplete",
+        "clock_alignment": "incomplete",
+        "resource_sampling": "pass",
+        "resource_budget": "incomplete",
+        "cooldown_recovery": "incomplete",
+        "formal_reference_profile": "pass",
+        "runtime_budgets": "incomplete",
+        "binary_build_identity": "pass",
+        "source_unchanged": "pass",
+        "target_identity_unchanged": "pass",
+        "target_cleanup": "pass",
+        "mixed_runs": "pass",
+        "three_full_repeats": "incomplete",
+        "fifteen_minute_faults": "incomplete",
+        "budget_unchanged": "pass"
+      },
+      "ui_submissions": [
+        13,
+        14
+      ],
+      "acknowledged_submissions": 27,
+      "reconciliation_pass": true,
+      "resource_samples": 13,
+      "target_exit_code": 0,
+      "binary_sha256": "9572dc4f7014c2587a1aee9286c362877f77f179280b5522fbca6be07c7d730d",
+      "frontend_engine": "node-http/export_browser_host.cjs",
+      "not_tested": [
+        "external_ssh",
+        "separate_hosts",
+        "production_nginx_stack",
+        "colocated_contention",
+        "container_hard_limits"
+      ]
+    }
+  ],
+  "post_run_changes": "After run 2, detached generator process-group cleanup and strict nonfinite/duplicate-key protocol rejection were tightened and separately regression-tested; the mixed workload was not repeated for those failure-only changes."
+}
