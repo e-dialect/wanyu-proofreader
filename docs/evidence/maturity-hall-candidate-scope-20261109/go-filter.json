@@ -1,0 +1,533 @@
+{
+  "filtered": {
+    "actors": 26,
+    "all_fields_equal": true,
+    "complete_result_sha256": "8ba492c810b1dcbab69dac35224ba98473076eae3f141dcf83d28c2bff7ea6b5",
+    "max_ms": 81.975,
+    "p50_ms": 81.048,
+    "plan": [
+      {
+        "detail": "MATERIALIZE queue_summary",
+        "id": 3,
+        "notused": 0,
+        "parent": 0
+      },
+      {
+        "detail": "MATERIALIZE queues",
+        "id": 6,
+        "notused": 0,
+        "parent": 3
+      },
+      {
+        "detail": "MATERIALIZE page_stats",
+        "id": 9,
+        "notused": 0,
+        "parent": 6
+      },
+      {
+        "detail": "MATERIALIZE classified",
+        "id": 12,
+        "notused": 0,
+        "parent": 9
+      },
+      {
+        "detail": "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+        "id": 19,
+        "notused": 34,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+        "id": 26,
+        "notused": 27,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH p USING COVERING INDEX idx_pages_queue_projection (project=?)",
+        "id": 33,
+        "notused": 104,
+        "parent": 12
+      },
+      {
+        "detail": "SCAN l LEFT-JOIN",
+        "id": 42,
+        "notused": 26,
+        "parent": 12
+      },
+      {
+        "detail": "CORRELATED SCALAR SUBQUERY 2",
+        "id": 119,
+        "notused": 0,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH a USING COVERING INDEX idx_attempt_page_round_user_kind (page=? AND round=? AND proofreader=? AND kind=?)",
+        "id": 123,
+        "notused": 41,
+        "parent": 119
+      },
+      {
+        "detail": "CORRELATED SCALAR SUBQUERY 3",
+        "id": 150,
+        "notused": 0,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH a USING COVERING INDEX idx_attempts_page_round_kind_user (page=? AND round=? AND kind=?)",
+        "id": 155,
+        "notused": 43,
+        "parent": 150
+      },
+      {
+        "detail": "SCAN c",
+        "id": 198,
+        "notused": 104,
+        "parent": 9
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR GROUP BY",
+        "id": 200,
+        "notused": 0,
+        "parent": 9
+      },
+      {
+        "detail": "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+        "id": 365,
+        "notused": 34,
+        "parent": 6
+      },
+      {
+        "detail": "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+        "id": 372,
+        "notused": 27,
+        "parent": 6
+      },
+      {
+        "detail": "SEARCH s USING AUTOMATIC COVERING INDEX (id=?) LEFT-JOIN",
+        "id": 401,
+        "notused": 47,
+        "parent": 6
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 459,
+        "notused": 66,
+        "parent": 3
+      },
+      {
+        "detail": "SCALAR SUBQUERY 8",
+        "id": 482,
+        "notused": 0,
+        "parent": 3
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 489,
+        "notused": 216,
+        "parent": 482
+      },
+      {
+        "detail": "MATERIALIZE paged_queues",
+        "id": 516,
+        "notused": 0,
+        "parent": 0
+      },
+      {
+        "detail": "SCALAR SUBQUERY 11",
+        "id": 524,
+        "notused": 0,
+        "parent": 516
+      },
+      {
+        "detail": "SCAN queue_summary",
+        "id": 529,
+        "notused": 216,
+        "parent": 524
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 548,
+        "notused": 216,
+        "parent": 516
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR ORDER BY",
+        "id": 578,
+        "notused": 0,
+        "parent": 516
+      },
+      {
+        "detail": "SCAN queue_summary",
+        "id": 590,
+        "notused": 16,
+        "parent": 0
+      },
+      {
+        "detail": "SCAN p LEFT-JOIN",
+        "id": 594,
+        "notused": 52,
+        "parent": 0
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR ORDER BY",
+        "id": 678,
+        "notused": 0,
+        "parent": 0
+      }
+    ]
+  },
+  "filtered_min": {
+    "actors": 26,
+    "all_fields_equal": true,
+    "complete_result_sha256": "8ba492c810b1dcbab69dac35224ba98473076eae3f141dcf83d28c2bff7ea6b5",
+    "max_ms": 82.293,
+    "p50_ms": 81.161,
+    "plan": [
+      {
+        "detail": "MATERIALIZE queue_summary",
+        "id": 3,
+        "notused": 0,
+        "parent": 0
+      },
+      {
+        "detail": "MATERIALIZE queues",
+        "id": 6,
+        "notused": 0,
+        "parent": 3
+      },
+      {
+        "detail": "MATERIALIZE page_stats",
+        "id": 9,
+        "notused": 0,
+        "parent": 6
+      },
+      {
+        "detail": "MATERIALIZE classified",
+        "id": 12,
+        "notused": 0,
+        "parent": 9
+      },
+      {
+        "detail": "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+        "id": 19,
+        "notused": 34,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+        "id": 26,
+        "notused": 27,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH p USING COVERING INDEX idx_pages_queue_projection (project=?)",
+        "id": 33,
+        "notused": 104,
+        "parent": 12
+      },
+      {
+        "detail": "SCAN l LEFT-JOIN",
+        "id": 42,
+        "notused": 26,
+        "parent": 12
+      },
+      {
+        "detail": "CORRELATED SCALAR SUBQUERY 2",
+        "id": 119,
+        "notused": 0,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH a USING COVERING INDEX idx_attempt_page_round_user_kind (page=? AND round=? AND proofreader=? AND kind=?)",
+        "id": 123,
+        "notused": 41,
+        "parent": 119
+      },
+      {
+        "detail": "CORRELATED SCALAR SUBQUERY 3",
+        "id": 150,
+        "notused": 0,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH a USING COVERING INDEX idx_attempts_page_round_kind_user (page=? AND round=? AND kind=?)",
+        "id": 155,
+        "notused": 43,
+        "parent": 150
+      },
+      {
+        "detail": "SCAN c",
+        "id": 198,
+        "notused": 104,
+        "parent": 9
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR GROUP BY",
+        "id": 200,
+        "notused": 0,
+        "parent": 9
+      },
+      {
+        "detail": "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+        "id": 363,
+        "notused": 34,
+        "parent": 6
+      },
+      {
+        "detail": "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+        "id": 370,
+        "notused": 27,
+        "parent": 6
+      },
+      {
+        "detail": "SEARCH s USING AUTOMATIC COVERING INDEX (id=?) LEFT-JOIN",
+        "id": 399,
+        "notused": 47,
+        "parent": 6
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 457,
+        "notused": 66,
+        "parent": 3
+      },
+      {
+        "detail": "SCALAR SUBQUERY 8",
+        "id": 480,
+        "notused": 0,
+        "parent": 3
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 487,
+        "notused": 216,
+        "parent": 480
+      },
+      {
+        "detail": "MATERIALIZE paged_queues",
+        "id": 514,
+        "notused": 0,
+        "parent": 0
+      },
+      {
+        "detail": "SCALAR SUBQUERY 11",
+        "id": 522,
+        "notused": 0,
+        "parent": 514
+      },
+      {
+        "detail": "SCAN queue_summary",
+        "id": 527,
+        "notused": 216,
+        "parent": 522
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 546,
+        "notused": 216,
+        "parent": 514
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR ORDER BY",
+        "id": 576,
+        "notused": 0,
+        "parent": 514
+      },
+      {
+        "detail": "SCAN queue_summary",
+        "id": 588,
+        "notused": 16,
+        "parent": 0
+      },
+      {
+        "detail": "SCAN p LEFT-JOIN",
+        "id": 592,
+        "notused": 52,
+        "parent": 0
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR ORDER BY",
+        "id": 676,
+        "notused": 0,
+        "parent": 0
+      }
+    ]
+  },
+  "new": {
+    "actors": 26,
+    "all_fields_equal": true,
+    "complete_result_sha256": "8ba492c810b1dcbab69dac35224ba98473076eae3f141dcf83d28c2bff7ea6b5",
+    "max_ms": 96.156,
+    "p50_ms": 92.139,
+    "plan": [
+      {
+        "detail": "MATERIALIZE queue_summary",
+        "id": 3,
+        "notused": 0,
+        "parent": 0
+      },
+      {
+        "detail": "MATERIALIZE queues",
+        "id": 6,
+        "notused": 0,
+        "parent": 3
+      },
+      {
+        "detail": "MATERIALIZE page_stats",
+        "id": 9,
+        "notused": 0,
+        "parent": 6
+      },
+      {
+        "detail": "MATERIALIZE classified",
+        "id": 12,
+        "notused": 0,
+        "parent": 9
+      },
+      {
+        "detail": "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+        "id": 19,
+        "notused": 34,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+        "id": 26,
+        "notused": 27,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH p USING COVERING INDEX idx_pages_queue_projection (project=?)",
+        "id": 33,
+        "notused": 104,
+        "parent": 12
+      },
+      {
+        "detail": "SCAN l LEFT-JOIN",
+        "id": 42,
+        "notused": 26,
+        "parent": 12
+      },
+      {
+        "detail": "CORRELATED SCALAR SUBQUERY 2",
+        "id": 119,
+        "notused": 0,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH a USING COVERING INDEX idx_attempt_page_round_user_kind (page=? AND round=? AND proofreader=? AND kind=?)",
+        "id": 123,
+        "notused": 41,
+        "parent": 119
+      },
+      {
+        "detail": "CORRELATED SCALAR SUBQUERY 3",
+        "id": 150,
+        "notused": 0,
+        "parent": 12
+      },
+      {
+        "detail": "SEARCH a USING COVERING INDEX idx_attempts_page_round_kind_user (page=? AND round=? AND kind=?)",
+        "id": 155,
+        "notused": 43,
+        "parent": 150
+      },
+      {
+        "detail": "SCAN c",
+        "id": 198,
+        "notused": 104,
+        "parent": 9
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR GROUP BY",
+        "id": 200,
+        "notused": 0,
+        "parent": 9
+      },
+      {
+        "detail": "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+        "id": 393,
+        "notused": 34,
+        "parent": 6
+      },
+      {
+        "detail": "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+        "id": 400,
+        "notused": 27,
+        "parent": 6
+      },
+      {
+        "detail": "SEARCH s USING AUTOMATIC COVERING INDEX (id=?) LEFT-JOIN",
+        "id": 429,
+        "notused": 47,
+        "parent": 6
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 487,
+        "notused": 66,
+        "parent": 3
+      },
+      {
+        "detail": "SCALAR SUBQUERY 8",
+        "id": 510,
+        "notused": 0,
+        "parent": 3
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 517,
+        "notused": 216,
+        "parent": 510
+      },
+      {
+        "detail": "MATERIALIZE paged_queues",
+        "id": 544,
+        "notused": 0,
+        "parent": 0
+      },
+      {
+        "detail": "SCALAR SUBQUERY 11",
+        "id": 552,
+        "notused": 0,
+        "parent": 544
+      },
+      {
+        "detail": "SCAN queue_summary",
+        "id": 557,
+        "notused": 216,
+        "parent": 552
+      },
+      {
+        "detail": "SCAN queues",
+        "id": 576,
+        "notused": 216,
+        "parent": 544
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR ORDER BY",
+        "id": 606,
+        "notused": 0,
+        "parent": 544
+      },
+      {
+        "detail": "SCAN queue_summary",
+        "id": 618,
+        "notused": 16,
+        "parent": 0
+      },
+      {
+        "detail": "SCAN p LEFT-JOIN",
+        "id": 622,
+        "notused": 52,
+        "parent": 0
+      },
+      {
+        "detail": "USE TEMP B-TREE FOR ORDER BY",
+        "id": 706,
+        "notused": 0,
+        "parent": 0
+      }
+    ]
+  }
+}

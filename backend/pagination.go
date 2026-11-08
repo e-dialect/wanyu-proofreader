@@ -288,32 +288,50 @@ func (s *importService) projectPages(e *core.RequestEvent) error {
 	return e.JSON(http.StatusOK, result)
 }
 
-// One database aggregation replaces the old page-by-page record/lease/attempt queries.
+// Base counters and active pointers need only page metadata. Only state/lease-
+// eligible candidates need correlated attempt checks and tier aggregation.
+// Materialize their classification once; inlining repeats checks in every bucket.
+// A false/NULL eligibility cannot contribute to claimable counts or next_key,
+// but its page still contributes to the independent base counters below.
+// SQL boolean COUNT FILTER preserves SUM/COALESCE's 0/1/NULL counting semantics.
 const queueCTE = `WITH accessible AS (
  SELECT p.* FROM projects p JOIN project_memberships m ON m.project=p.id
  WHERE m.user={:user} AND m.role='proofreader' AND p.admin != {:user}
-), classified AS (
+), classified AS MATERIALIZED (
  SELECT p.project,p.id,p.page_number,p.pdf_page,p.status,COALESCE(p.difficulty_tier,'') AS tier,p.missing_glyph,
   (p.status IN ('claimed','proofreading') AND p.proofreader={:user}) AS active_mine,
-  (p.status IN ('pending','proofread') OR (p.status IN ('claimed','proofreading') AND (l.id IS NULL OR l.expires_at <= {:now})))
-  AND NOT (p.status IN ('claimed','proofreading') AND p.proofreader={:user})
-  AND NOT EXISTS (SELECT 1 FROM proofreading_attempts a WHERE a.page=p.id AND a.round=COALESCE(NULLIF(p.proofread_round,0),1) AND a.kind='proofread' AND a.proofreader={:user})
+  NOT EXISTS (SELECT 1 FROM proofreading_attempts a WHERE a.page=p.id AND a.round=COALESCE(NULLIF(p.proofread_round,0),1) AND a.kind='proofread' AND a.proofreader={:user})
   AND (SELECT COUNT(*) FROM proofreading_attempts a WHERE a.page=p.id AND a.round=COALESCE(NULLIF(p.proofread_round,0),1) AND a.kind='proofread') < MAX(2,pr.required_proofreads) AS claimable
  FROM accessible pr JOIN pages p ON p.project=pr.id AND p.status!='importing'
  LEFT JOIN task_leases l ON l.page=p.id
+ WHERE (p.status IN ('pending','proofread') OR (p.status IN ('claimed','proofreading') AND (l.id IS NULL OR l.expires_at <= {:now})))
+  AND NOT (p.status IN ('claimed','proofreading') AND p.proofreader={:user})
+), page_stats AS (
+ SELECT c.project AS id,COUNT(c.id) AS total,
+ COUNT(*) FILTER (WHERE c.status='approved') AS completed,
+ COUNT(*) FILTER (WHERE c.status IN ('claimed','proofreading') AND c.proofreader={:user}) AS active_mine,
+ COALESCE(MIN(CASE WHEN c.status IN ('claimed','proofreading') AND c.proofreader={:user} THEN printf('%020d%020d',c.page_number,c.pdf_page)||c.id END),'') AS active_key
+ FROM accessible pr JOIN pages c ON c.project=pr.id AND c.status!='importing' GROUP BY c.project
+), claimable_stats AS (
+ SELECT c.project AS id,COUNT(*) AS claimable,
+ COUNT(*) FILTER (WHERE c.tier='A') AS tier_a,
+ COUNT(*) FILTER (WHERE c.tier='B') AS tier_b,
+ COUNT(*) FILTER (WHERE c.tier='C') AS tier_c,
+ COUNT(*) FILTER (WHERE c.tier NOT IN ('A','B','C','')) AS tier_other,
+ COUNT(*) FILTER (WHERE c.tier='') AS tier_unlabeled,
+ COUNT(*) FILTER (WHERE c.missing_glyph) AS missing_glyph,
+ COALESCE(MIN(printf('%020d%020d',c.page_number,c.pdf_page)||c.id),'') AS next_key
+ FROM classified c WHERE c.claimable GROUP BY c.project
 ), queues AS MATERIALIZED (
- SELECT pr.id,pr.name,pr.description,COUNT(c.id) AS total,
- COALESCE(SUM(c.status='approved'),0) AS completed,COALESCE(SUM(c.active_mine),0) AS active_mine,
- COALESCE(SUM(c.claimable),0) AS claimable,
- COALESCE(SUM(c.claimable AND c.tier='A'),0) AS tier_a,
- COALESCE(SUM(c.claimable AND c.tier='B'),0) AS tier_b,
- COALESCE(SUM(c.claimable AND c.tier='C'),0) AS tier_c,
- COALESCE(SUM(c.claimable AND c.tier NOT IN ('A','B','C','')),0) AS tier_other,
- COALESCE(SUM(c.claimable AND c.tier=''),0) AS tier_unlabeled,
- COALESCE(SUM(c.claimable AND c.missing_glyph),0) AS missing_glyph,
- COALESCE(MIN(CASE WHEN c.active_mine THEN printf('%020d%020d',c.page_number,c.pdf_page)||c.id END),'') AS active_key,
- COALESCE(MIN(CASE WHEN c.claimable THEN printf('%020d%020d',c.page_number,c.pdf_page)||c.id END),'') AS next_key
- FROM accessible pr LEFT JOIN classified c ON c.project=pr.id GROUP BY pr.id
+ SELECT pr.id,pr.name,pr.description,COALESCE(s.total,0) AS total,
+ COALESCE(s.completed,0) AS completed,COALESCE(s.active_mine,0) AS active_mine,
+ COALESCE(cs.claimable,0) AS claimable,COALESCE(cs.tier_a,0) AS tier_a,
+ COALESCE(cs.tier_b,0) AS tier_b,COALESCE(cs.tier_c,0) AS tier_c,
+ COALESCE(cs.tier_other,0) AS tier_other,COALESCE(cs.tier_unlabeled,0) AS tier_unlabeled,
+ COALESCE(cs.missing_glyph,0) AS missing_glyph,
+ COALESCE(s.active_key,'') AS active_key,COALESCE(cs.next_key,'') AS next_key
+ FROM accessible pr LEFT JOIN page_stats s ON s.id=pr.id
+ LEFT JOIN claimable_stats cs ON cs.id=pr.id
 ) `
 
 func queuePage(key string) any {

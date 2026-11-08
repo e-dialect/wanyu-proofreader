@@ -1,0 +1,51 @@
+{
+  "before": {
+    "http_200": 75,
+    "actor_full_response_equivalence": 24,
+    "complete_result_sha256": "fb0e993c9f4b4f1bd496db2e4c4697d1134aa705912dea06c3646979f6493048",
+    "sequential": {
+      "samples": 11,
+      "p50_ms": 119.42262900993228,
+      "p95_ms": 120.22566702216864,
+      "max_ms": 120.22566702216864
+    },
+    "eight_concurrent_readers": {
+      "samples": 40,
+      "p50_ms": 455.38727898383513,
+      "p95_ms": 673.1317120138556,
+      "max_ms": 818.3260299847461
+    }
+  },
+  "after": {
+    "http_200": 75,
+    "actor_full_response_equivalence": 24,
+    "complete_result_sha256": "fb0e993c9f4b4f1bd496db2e4c4697d1134aa705912dea06c3646979f6493048",
+    "sequential": {
+      "samples": 11,
+      "p50_ms": 93.32888899371028,
+      "p95_ms": 94.39797099912539,
+      "max_ms": 94.39797099912539
+    },
+    "eight_concurrent_readers": {
+      "samples": 40,
+      "p50_ms": 395.37266397383064,
+      "p95_ms": 551.628414017614,
+      "max_ms": 566.4801830425858
+    }
+  },
+  "scope": {
+    "synthetic": true,
+    "main_entries": 20000,
+    "same_fixture": true,
+    "protocol": "24 actor full-response equality; 11 sequential GETs; 40 GETs with 8 client threads",
+    "production_runtime": "explicit --dev=false",
+    "runtime_env": {
+      "GOMAXPROCS": "2",
+      "GOMEMLIMIT": "768MiB"
+    },
+    "write_load": false,
+    "full_mixed_acceptance": false,
+    "source_difference": "pagination.go grouped classifier only; before is single-pass 2546607, same remaining application source",
+    "services_stopped": true
+  }
+}

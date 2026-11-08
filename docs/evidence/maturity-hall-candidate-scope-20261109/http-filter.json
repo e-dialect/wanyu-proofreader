@@ -1,0 +1,51 @@
+{
+  "before": {
+    "http_200": 75,
+    "actor_full_response_equivalence": 24,
+    "complete_result_sha256": "fb0e993c9f4b4f1bd496db2e4c4697d1134aa705912dea06c3646979f6493048",
+    "sequential": {
+      "samples": 11,
+      "p50_ms": 93.57178100617602,
+      "p95_ms": 97.09037496941164,
+      "max_ms": 97.09037496941164
+    },
+    "eight_concurrent_readers": {
+      "samples": 40,
+      "p50_ms": 352.7277130051516,
+      "p95_ms": 531.6146860131994,
+      "max_ms": 556.877515045926
+    }
+  },
+  "after": {
+    "http_200": 75,
+    "actor_full_response_equivalence": 24,
+    "complete_result_sha256": "fb0e993c9f4b4f1bd496db2e4c4697d1134aa705912dea06c3646979f6493048",
+    "sequential": {
+      "samples": 11,
+      "p50_ms": 82.36163400579244,
+      "p95_ms": 83.08144600596279,
+      "max_ms": 83.08144600596279
+    },
+    "eight_concurrent_readers": {
+      "samples": 40,
+      "p50_ms": 340.81706503639,
+      "p95_ms": 505.57294400641695,
+      "max_ms": 520.7583559677005
+    }
+  },
+  "scope": {
+    "synthetic": true,
+    "main_entries": 20000,
+    "same_fixture": true,
+    "protocol": "24 actor full-response equality; 11 sequential GETs; 40 GETs with 8 client threads",
+    "production_runtime": "explicit --dev=false",
+    "runtime_env": {
+      "GOMAXPROCS": "2",
+      "GOMEMLIMIT": "768MiB"
+    },
+    "write_load": false,
+    "full_mixed_acceptance": false,
+    "source_difference": "COUNT FILTER replaces boolean SUM only; before uses grouped classifier, same remaining application source",
+    "services_stopped": true
+  }
+}
