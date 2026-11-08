@@ -1,12 +1,14 @@
 # Read snapshots without occupying the only writer
 
+Runtime-mode correction (2026-11-09): all historical HTTP runs in this directory used PocketBase's default **development runtime**, because `DefaultDev = osutils.IsProbablyGoRun()` classifies binaries under the temporary directory as development. Emitted SQL debug logs corroborate that mode. “Plain build” here means without capacityprobe; it does not mean production runtime. Comparisons within the same historical mode remain useful, but absolute latency/memory includes development instrumentation and is not production-runtime acceptance. Later runs explicitly use `--dev=false` and observe `runtime_sample.dev_mode`; their mode change must be disclosed separately. No raw SQL logs or credentials are committed.
+
 The preceding CPU diagnostic attributed 33.75 CPU seconds to the queue route. `projectPages`, `proofreadingQueues`, and `projectInsights` used PocketBase `RunInTransaction`, which takes its nonconcurrent writer even when all statements are reads. This patch pins one concurrent reader, enforces `PRAGMA query_only`, and performs count, list and relation expansion inside one SQLite WAL snapshot. It restores the original pragma before releasing the pinned connection; request cancellation uses independent cleanup and a failed reset discards the connection. Schema/query metadata is prepared before pinning so a one-reader pool does not recursively borrow a connection.
 
 ## Validation
 
 `GOCACHE=/tmp/wanyu-delivery-go-cache GOMAXPROCS=2 go test -C backend -race ./... -run '^TestReadSnapshot|^TestReadPagination|^TestPagination|^TestProjectInsights|^TestQueue' -count=1 -timeout=60s` passed (backend 13.049 s). New tests cover actual write rejection, write-locked concurrent reads of all three routes, a one-reader pool, count/list/expanded-user consistency across a concurrent commit, hidden auth fields, request cancellation and preservation of an existing query-only setting.
 
-The unchanged accelerated mixed workload ran 20,000 fictional entries and 30 actors (including 2 Chrome actors) for 180 seconds: 15 s warmup, 15 s ramp, 120 s steady, 30 s cooldown. Same synthetic pacing, thresholds, GOMAXPROCS=2 and GOMEMLIMIT=768MiB as the preceding run. Plain production build, no profiler. Actual load window was approximately 2026-11-08 18:22:50–18:25:50 UTC. Source fingerprint was unchanged during the run.
+The unchanged accelerated mixed workload ran 20,000 fictional entries and 30 actors (including 2 Chrome actors) for 180 seconds: 15 s warmup, 15 s ramp, 120 s steady, 30 s cooldown. Same synthetic pacing, thresholds, GOMAXPROCS=2 and GOMEMLIMIT=768MiB as the preceding run. Plain build without profiler, using the historical development runtime noted above. Actual load window was approximately 2026-11-08 18:22:50–18:25:50 UTC. Source fingerprint was unchanged during the run.
 
 | p95 | Before | After | Frozen limit |
 |---|---:|---:|---:|
@@ -28,3 +30,5 @@ GOCACHE=/tmp/wanyu-delivery-go-cache GOMAXPROCS=2 GOMEMLIMIT=768MiB GOFLAGS='' p
 ```
 
 `comparison.json` contains sanitized exact measurements. Raw local reports remain under `output/maturity/capacity-read-snapshot-20k`; they are not committed. No application body, credentials or raw profiles are included here.
+
+The reproduction command now uses the corrected harness (`--dev=false`); it does not recreate the historical development-mode runtime.

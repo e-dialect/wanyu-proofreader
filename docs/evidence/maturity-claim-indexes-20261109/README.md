@@ -1,5 +1,7 @@
 # Ordered claim indexes: measured fixes and remaining failures
 
+Runtime-mode correction (2026-11-09): all historical HTTP runs in this directory used PocketBase's default **development runtime**, because `DefaultDev = osutils.IsProbablyGoRun()` classifies binaries under the temporary directory as development. Emitted SQL debug logs corroborate that mode. “Plain build” here means without capacityprobe; it does not mean production runtime. Comparisons within the same historical mode remain useful, but absolute latency/memory includes development instrumentation and is not production-runtime acceptance. Later runs explicitly use `--dev=false` and observe `runtime_sample.dev_mode`; their mode change must be disclosed separately. No raw SQL logs or credentials are committed.
+
 All runs use fictional data, local generators, plain backend builds, GOMAXPROCS=2 and GOMEMLIMIT=768MiB. The unchanged accelerated protocol has 20,000 primary entries / 30 actors including 2 Chrome actors / 180 seconds (15 warmup + 15 ramp + 120 steady + 30 cooldown). No pacing, timeouts or thresholds were changed. This local macOS 64 GiB host is not the shared production machine; no hard cgroup limit was applied. Full acceptance remains false.
 
 | p95 | Read snapshots | Tier filter columns | Active reader order | Limit |
@@ -36,3 +38,5 @@ GOCACHE=/tmp/wanyu-delivery-go-cache GOMAXPROCS=2 GOMEMLIMIT=768MiB GOFLAGS='' p
 ```
 
 Raw local reports are under output/maturity/capacity-read-snapshot-20k, capacity-claim-covering-20k and capacity-active-covering-20k. No production data or services were used. Temporary services have exited; stopped synthetic fixtures retained for follow-up analysis must be removed afterwards.
+
+The reproduction command now uses the corrected harness (`--dev=false`); it does not recreate the historical development-mode runtime.
