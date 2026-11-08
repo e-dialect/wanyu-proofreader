@@ -1,6 +1,11 @@
 import { computed, onBeforeUnmount, onMounted, shallowRef, toValue, watch } from 'vue'
 import pb from '@/lib/pocketbase'
-import { createJobObserverRegistry, emptyJobObservation, jobObserverKey } from '@/lib/jobObserver'
+import {
+  createJobObserverRegistry,
+  emptyJobObservation,
+  jobObserverKey,
+  normalizeJob
+} from '@/lib/jobObserver'
 
 const registry = createJobObserverRegistry()
 const session = shallowRef({
@@ -33,6 +38,8 @@ function disconnectBrowser() {
   document.removeEventListener('visibilitychange', syncEnvironment)
 }
 
+// Inputs retain the existing projectId/kind/job/read/panel adapter. Identity
+// stays internal so consumers cannot accidentally reuse another auth epoch.
 // `job` holds only the selected identity / accepted POST response. GET responses
 // arrive through `snapshot`, so replacing the snapshot cannot resubscribe a job.
 export function useJobObserver({ projectId, kind, job, read, panel }) {
@@ -98,10 +105,26 @@ export function useJobObserver({ projectId, kind, job, read, panel }) {
     subscription?.unsubscribe()
     disconnectBrowser()
   })
+  const refresh = () => subscription?.retry()
+  const connection = computed(() => {
+    if (!session.value.userId || selectedSession.value !== session.value) return 'auth_lost'
+    return (
+      {
+        live: 'fresh',
+        offline: 'offline',
+        unauthorized: 'auth_lost',
+        unavailable: 'unavailable'
+      }[observation.value.state] || 'stale'
+    )
+  })
   return {
+    job: computed(() => normalizeJob(kind, observation.value.snapshot)),
+    connection,
+    lastFetchedAt: computed(() => observation.value.lastSuccessAt),
+    refresh,
     observation,
     snapshot: computed(() => observation.value.snapshot),
-    retry: () => subscription?.retry(),
+    retry: refresh,
     seed: (value) => subscription?.seed(value)
   }
 }
