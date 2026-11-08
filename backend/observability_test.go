@@ -30,6 +30,11 @@ func TestTelemetryAuthenticationProjectionAndBudget(t *testing.T) {
 	if err := app.OnServe().Trigger(&core.ServeEvent{App: app, Router: r}); err != nil {
 		t.Fatal(err)
 	}
+	for _, middleware := range r.Middlewares {
+		if middleware.Id == apis.DefaultActivityLoggerMiddlewareId {
+			t.Fatal("raw-URI PocketBase request logger is still bound")
+		}
+	}
 	mux, err := r.BuildMux()
 	if err != nil {
 		t.Fatal(err)
@@ -37,9 +42,11 @@ func TestTelemetryAuthenticationProjectionAndBudget(t *testing.T) {
 	sample := `{"metrics":[{"schemaVersion":1,"buildSha":"test","pageViewId":"page","metricId":"id","name":"INP","value":1,"navigationType":"navigate","entryRoute":"TaskHall","viewportClass":"desktop"}]}`
 	request := func(auth, body string, status int) {
 		t.Helper()
-		req := httptest.NewRequest(http.MethodPost, "/api/fangji/telemetry/web-vitals", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/fangji/telemetry/web-vitals?token=PRIVATE_LOG_SENTINEL", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", auth)
+		req.Header.Set("Referer", "https://example.test/private?token=PRIVATE_LOG_SENTINEL")
+		req.Header.Set("User-Agent", "PRIVATE_LOG_SENTINEL")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 		if rec.Code != status {
@@ -54,7 +61,7 @@ func TestTelemetryAuthenticationProjectionAndBudget(t *testing.T) {
 	log.SetOutput(&output)
 	defer log.SetOutput(previous)
 	request(token, sample, 204)
-	if strings.Contains(output.String(), token) || strings.Contains(output.String(), user.Id) {
+	if strings.Contains(output.String(), token) || strings.Contains(output.String(), user.Id) || strings.Contains(output.String(), "PRIVATE_LOG_SENTINEL") {
 		t.Fatal("telemetry leaked account data")
 	}
 	for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {

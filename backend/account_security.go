@@ -364,6 +364,10 @@ func listSecurityEvents(e *core.RequestEvent) error {
 			item["actorId"] = r.GetString("actor_id")
 			item["subjectUserId"] = r.GetString("subject_user_id")
 			item["requestId"] = r.GetString("request_id")
+			item["source"] = r.GetString("source")
+			item["resourceType"] = r.GetString("resource_type")
+			item["resourceId"] = r.GetString("resource_id")
+			item["reasonCode"] = r.GetString("reason_code")
 			var details map[string]any
 			_ = json.Unmarshal([]byte(r.GetString("details")), &details)
 			item["details"] = details

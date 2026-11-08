@@ -776,6 +776,11 @@ jobs:
           done
           FRONTEND_URL=http://127.0.0.1:18080 node frontend/scripts/test-font-cache.mjs
           FRONTEND_URL=http://127.0.0.1:18080 node frontend/scripts/test-account-http.mjs
+          docker logs "$container" > "$RUNNER_TEMP/fangji-nginx-contract.log" 2>&1
+          if grep -q 'NGINX_LOG_SECRET_SENTINEL' "$RUNNER_TEMP/fangji-nginx-contract.log"; then
+            echo 'Nginx logged a token-bearing test URL' >&2
+            exit 1
+          fi
 
       - name: Scan built images and generate CycloneDX SBOMs
         run: |

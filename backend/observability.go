@@ -19,6 +19,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/hook"
 	"github.com/pocketbase/pocketbase/tools/router"
 )
 
@@ -69,8 +70,12 @@ func (r *measuredResponse) Unwrap() http.ResponseWriter { return r.ResponseWrite
 
 func registerObservability(app core.App, importer *importService) {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		e.Router.BindFunc(func(c *core.RequestEvent) error {
-			if strings.HasPrefix(c.Request.URL.Path, "/api/realtime") {
+		// PocketBase's default activity logger persists the raw URI, referrer and
+		// error details into logs.db. Replace that request logger (not system or
+		// business logs) so file tokens and search text cannot enter a second sink.
+		e.Router.Unbind(apis.DefaultActivityLoggerMiddlewareId)
+		e.Router.Bind(&hook.Handler[*core.RequestEvent]{Id: "fangjiOperationLogger", Priority: apis.DefaultActivityLoggerMiddlewarePriority, Func: func(c *core.RequestEvent) error {
+			if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/api/realtime") {
 				return c.Next()
 			}
 			started := time.Now()
@@ -105,7 +110,7 @@ func registerObservability(app core.App, importer *importService) {
 			}
 			writeOperation("info", "http", "http_completed", map[string]any{"request_id": requestID, "route_template": pattern, "method": c.Request.Method, "status": status, "duration_ms": float64(time.Since(started).Microseconds()) / 1000, "response_bytes": writer.bytes, "error_code": errorCode})
 			return err
-		})
+		}})
 		limiter := &telemetryLimiter{buckets: map[string]telemetryBucket{}}
 		e.Router.POST("/api/fangji/telemetry/web-vitals", func(c *core.RequestEvent) error {
 			if os.Getenv("FANGJI_TELEMETRY_ENABLED") != "1" {

@@ -88,3 +88,8 @@ GOMAXPROCS=2 python3 backend/tests/run_capacity_baseline.py --profile full --fau
 
 
 派生读模型和权限代际补丁集成后，已实际通过完整常规门禁、41个默认集成套件与账户/Bundle/转换重启生命周期。后续新增的退出保护、例外URL兼容、Nginx默认关闭与备份运行证据会在最终集成证据中分别列出，不能沿用早期测试数量冒充最终检查。
+
+
+HTTP观测替代PocketBase默认请求activity logger：新请求以路由模板、状态、时延、字节和request_id写JSONL，不再把原始URI/query/Referer写入logs.db；PocketBase系统/业务日志与已有历史不改写。Nginx访问日志同样只写固定路由类别和数值字段，实际容器已用token查询哨兵验证。原生管理UI两种生产入口均默认关闭，API权限边界单独验收。
+
+失败审计的三个账户/权限入口及导出流失败共用来源与时间窗预算，固定词表的汇总日志可见；成功事件不走失败预算。37号迁移序列中的1794201200增加保留查询索引，清理按failed/denied/success独立每批至多500条，不能删除原校勘审计。管理员安全记录投影保留资源和原因码，mine继续限制字段。

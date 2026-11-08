@@ -129,6 +129,11 @@ func logSecurityFailureSummary(app core.App, summary *securityFailureSummary) {
 		"observed", summary.observed, "write_attempts", summary.attempted,
 		"duplicate_suppressed", summary.duplicates, "source_suppressed", summary.sourceLimited,
 		"global_suppressed", summary.globalLimited, "event_counts", summary.kinds)
+	writeOperation("warn", "security", "security_failure_aggregate", map[string]any{
+		"observed": summary.observed, "write_attempts": summary.attempted,
+		"duplicate_suppressed": summary.duplicates, "source_suppressed": summary.sourceLimited,
+		"global_suppressed": summary.globalLimited, "event_counts": summary.kinds,
+	})
 }
 
 func flushSecurityFailureSummary(app core.App) {
@@ -139,7 +144,7 @@ func flushSecurityFailureSummary(app core.App) {
 	logSecurityFailureSummary(app, summary)
 }
 
-func recordSecurityFailureForProject(app core.App, e *core.RequestEvent, kind, subject, project string) {
+func recordSecurityFailureForProject(app core.App, e *core.RequestEvent, kind, subject, project string, details ...map[string]any) {
 	// All callers run after the business transaction has returned/rolled back.
 	allowed, summary := accountFailureGate(app).allow(securityFailureSource(e), kind)
 	logSecurityFailureSummary(app, summary)
@@ -150,11 +155,16 @@ func recordSecurityFailureForProject(app core.App, e *core.RequestEvent, kind, s
 	if e != nil && e.Auth != nil {
 		actor = e.Auth.Id
 	}
-	if err := appendSecurityEvent(app, e, kind, "failed", actor, subject, project, nil); err != nil {
+	var metadata map[string]any
+	if len(details) > 0 {
+		metadata = details[0]
+	}
+	if err := appendSecurityEvent(app, e, kind, "failed", actor, subject, project, metadata); err != nil {
 		requestID := ""
 		if e != nil {
 			requestID = securityRequestID(e)
 		}
 		app.Logger().Error("security_audit_persist_failed", "event_type", securityFailureKind(kind), "request_id", requestID)
+		writeOperation("error", "security", "security_audit_persist_failed", map[string]any{"event_type": securityFailureKind(kind), "request_id": requestID})
 	}
 }

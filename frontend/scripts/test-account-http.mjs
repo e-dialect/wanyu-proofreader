@@ -42,6 +42,8 @@ assert.ok(
   [400, 401, 429, 502].includes(adminApi.status),
   `unexpected admin API proxy status ${adminApi.status}`
 )
+await fetch(base + '/account/recover?token=NGINX_LOG_SECRET_SENTINEL')
+await fetch(base + '/api/files/private/record/source.pdf?token=NGINX_LOG_SECRET_SENTINEL')
 console.log(
   JSON.stringify({
     status: 'pass',
