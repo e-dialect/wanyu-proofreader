@@ -54,3 +54,5 @@ EOF、SIGINT、SIGTERM、协议错误和进程超时均进入 finally，关闭�
 复验：200条/8 actors/12秒，两名浏览器分别提交13/14次，27次成功确认与DB摘要/审计链对账一致；mixed_runs、资源采样、源码冻结、目标身份保持、binary_build_identity、target_cleanup均通过，目标辅助进程退出码0。总结果仍fail：同机不满足分机要求，未填预算和旧基线缺少实际runtime预算字段保持incomplete。这是本地传输功能证据，不是正式参考硬件结果。修复后另有13项协议/清理/预算单测、5项报告和13项对账测试通过；Playwright采用detached浏览器进程组，超时清理已增加对已确认后代组的终止回归。
 
 协议 JSON 对 NaN、Infinity、指数溢出和重复字段显式拒绝；预算只接受有限数或明确 null，版本和运行人数/时长使用严格整数。异常消息不包含原始 frame、ready config、token 或子进程环境。脱敏本地回执见 [验证记录](evidence/maturity-remote-capacity-20261109/README.md)。
+
+失败回执仅保留允许列表内的 `error_phase` 和 `error_code`，区分后端构建、前端构建、夹具、启动、观察、对账及清理等阶段；命令错误和中断不回显异常消息、stderr 或环境。远端传入未知阶段/原因、额外消息字段统一拒绝为 protocol/invalid_error_frame。硬件 gate 先判断可观测的 CPU/内存是否已违反冻结规格：已知不符为 fail；规格匹配但 SSD 无法确认仍为 incomplete。

@@ -20,7 +20,8 @@ import harness
 import capacity_fixture as fixture
 import capacity_report
 from capacity_remote_contract import (VERSION, MAX_LINE, ARTIFACTS, canonical_hash, clean_environment,
-    host_identity, validate_budget, validate_init, evaluate_evidence, same_source, observation_seconds, strict_json_loads)
+    host_identity, validate_budget, validate_init, evaluate_evidence, same_source, observation_seconds, strict_json_loads,
+    CapacityFailure, failure_from_frame, safe_failure)
 from capacity_target import stop_process
 
 
@@ -102,8 +103,10 @@ class Transport:
         deadline = time.monotonic()+timeout
         while True:
             response = self.queue.get(timeout=max(.01, deadline-time.monotonic()))
-            if not isinstance(response, dict) or 'error' in response:
-                raise RuntimeError('target_protocol_failed')
+            if not isinstance(response, dict):
+                raise CapacityFailure('protocol', 'protocol_failed')
+            if 'error' in response:
+                raise failure_from_frame(response)
             if 'artifact' not in response:
                 return response
             name, data = response.get('artifact'), response.get('data')
@@ -172,9 +175,13 @@ def run_once(args, output, source, budget):
     nonce = secrets.token_hex(16)
     command = ([sys.executable, str(harness.BACKEND/'tests/capacity_target.py')]
                if args.transport == 'local' else ssh_command(args.ssh_target, args.target_repo))
-    transport = Transport(command, output)
+    try:
+        transport = Transport(command, output)
+    except (Exception, KeyboardInterrupt) as error:
+        raise safe_failure('connect', error) from None
     tunnel, processes = None, []
     result = None
+    phase = 'prepare'
     try:
         ready = transport.request({'op': 'init', 'version': VERSION, 'nonce': nonce,
             'profile': args.profile, 'entries': args.entries, 'users': args.users, 'duration': args.duration,
@@ -187,6 +194,7 @@ def run_once(args, output, source, budget):
         config = ready['config']
         backend_port, frontend_port = loopback_port(config['base']), loopback_port(config['browser_origin'])
         if args.transport == 'ssh':
+            phase = 'tunnel'
             local_backend, local_frontend = harness.free_port(), harness.free_port()
             tunnel = subprocess.Popen(['ssh', '-N', '-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
                 '-o', 'ForwardAgent=no', '-o', 'SendEnv=-*',
@@ -203,11 +211,13 @@ def run_once(args, output, source, budget):
                     with urllib.request.urlopen(config['base']+'/api/health', timeout=1): break
                 except OSError: time.sleep(.1)
             else: raise RuntimeError('tunnel_not_ready')
+        phase = 'observation'
         clock = clock_probe(transport)
         armed = transport.request({'op': 'arm'}, timeout=700)
         if armed.get('ok') != 'armed': raise ValueError('invalid_arm')
         config.update(start_epoch_ms=armed['start_epoch_ms']-clock['offset_ms'], output=str(output))
         config.pop('observation', None)
+        phase = 'generate'
         # mkstemp starts 0600; credentials are never written into output or argv.
         with tempfile.TemporaryDirectory(prefix='wanyu-capacity-generator-') as temporary:
             path = Path(temporary)/'load.json'
@@ -230,11 +240,14 @@ def run_once(args, output, source, budget):
                 stop_generator_group(process)
         http = capacity_report.lines(output/'requests.jsonl')+capacity_report.lines(output/'browser-http.jsonl')
         submissions = [row for row in http if row.get('operation') == 'submit' and row.get('status') == 200 and row.get('ok')]
+        phase = 'observation'
         after_clock = clock_probe(transport)
         clock['after_load'] = after_clock
         clock['drift_bound_ms'] = abs(after_clock['offset_ms']-clock['offset_ms'])+after_clock['uncertainty_ms']+clock['uncertainty_ms']
+        phase = 'observation'
         finished = transport.request({'op': 'finish', 'submissions': submissions}, timeout=observation_seconds(budget, 'observe_seconds')+120)
         if finished.get('ok') != 'finished': raise ValueError('invalid_finish')
+        phase = 'finish'
         rows = [strict_json_loads(line) for line in (output/'resources.jsonl').read_text().splitlines() if line]
         generator = host_identity()
         gates = evaluate_evidence(rows, budget, evidence, generator, clock, args.transport)
@@ -256,13 +269,18 @@ def run_once(args, output, source, budget):
             (output/name).write_text(json.dumps(value, indent=2))
         result = report
         return report
+    except (Exception, KeyboardInterrupt) as error:
+        raise safe_failure(phase, error) from None
     finally:
         try:
-            for process in processes:
-                stop_generator_group(process)
-        finally:
-            stop_process(tunnel)
-            code = transport.close()
+            try:
+                for process in processes:
+                    stop_generator_group(process)
+            finally:
+                stop_process(tunnel)
+                code = transport.close()
+        except (Exception, KeyboardInterrupt) as error:
+            raise safe_failure('cleanup', error) from None
         if result is not None:
             result['target_exit_code'] = code
             result['remote_gates']['target_cleanup'] = 'pass' if code == 0 else 'incomplete'
@@ -322,8 +340,9 @@ def main():
         status = 'fail' if 'fail' in gates.values() else 'pass' if full else 'incomplete'
         if any(r['status'] == 'invalid_generator' for r in results): status = 'invalid_generator'
         manifest.update(status=status, gates=gates, full_acceptance=full)
-    except (Exception, KeyboardInterrupt):
-        manifest.update(status='incomplete', error_code='remote_run_interrupted_or_failed', full_acceptance=False)
+    except (Exception, KeyboardInterrupt) as error:
+        failure = safe_failure('protocol', error)
+        manifest.update(status='incomplete', error_code=failure.reason_code, error_phase=failure.phase, full_acceptance=False)
     finally:
         (args.output/'manifest.json').write_text(json.dumps(manifest, indent=2))
     print(json.dumps({'status': manifest['status'], 'full_acceptance': manifest['full_acceptance']}))

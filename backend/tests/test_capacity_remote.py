@@ -13,8 +13,10 @@ from unittest.mock import patch
 
 import capacity_fixture
 import harness
+import run_capacity_remote
 from capacity_remote_contract import (canonical_hash, clean_environment, evaluate_evidence, host_identity,
-                                      validate_budget, validate_init, strict_json_loads)
+                                      validate_budget, validate_init, strict_json_loads, CapacityFailure,
+                                      safe_failure, failure_from_frame)
 from capacity_target import OwnedTarget
 from run_capacity_remote import Transport, loopback_port, ssh_command, transport_environment, stop_generator_group
 
@@ -34,6 +36,55 @@ def init():
 
 
 class CapacityRemoteTest(unittest.TestCase):
+    def test_known_hardware_mismatch_fails_even_when_ssd_unknown(self):
+        target = {'workload': {'duration':10}, 'host':{'machine_sha256':'target'},
+                  'hardware':{'effective_cpu_cores':4, 'effective_memory_bytes':3800000000, 'storage_medium_verified':False}}
+        def status():
+            return evaluate_evidence(self.rows(), budget(), target, {'machine_sha256':'generator'}, None, 'ssh')['reference_hardware']
+        self.assertEqual(status(), 'incomplete')
+        target['hardware']['effective_cpu_cores'] = 8
+        self.assertEqual(status(), 'fail')
+        target['hardware']['effective_cpu_cores'] = None
+        target['hardware']['effective_memory_bytes'] = 8000000000
+        self.assertEqual(status(), 'fail')
+        target['hardware']['effective_memory_bytes'] = None
+        self.assertEqual(status(), 'incomplete')
+
+    def test_safe_failure_metadata_drops_messages_and_rejects_malicious_frames(self):
+        error = subprocess.CalledProcessError(1, ['secret-command'], stderr='secret-token-and-environment')
+        frame = safe_failure('build_backend', error).frame()
+        self.assertEqual(frame, {'error':'target_session_failed', 'phase':'build_backend', 'reason_code':'command_failed'})
+        for phase in ('secret-token', ['build_backend'], {'token':'secret-token'}, None):
+            rejected = failure_from_frame({**frame, 'phase':phase})
+            self.assertEqual(rejected.frame(), {'error':'target_session_failed','phase':'protocol','reason_code':'invalid_error_frame'})
+        for malformed in ({**frame,'message':'secret-token'}, {**frame,'reason_code':'secret-token'}, {**frame,'error':'secret-token'}):
+            self.assertEqual(failure_from_frame(malformed).reason_code, 'invalid_error_frame')
+        self.assertNotIn('secret', json.dumps(frame))
+
+    def test_safe_failure_phase_is_persisted_in_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)/'result'
+            args = ['remote', '--transport','local','--entries','20','--users','8','--duration','12','--output',str(output)]
+            with patch.object(sys, 'argv', args), patch.object(run_capacity_remote, 'run_once', side_effect=CapacityFailure('fixture','command_failed')), patch('sys.stdout', new_callable=io.StringIO):
+                self.assertEqual(run_capacity_remote.main(), 2)
+            manifest = json.loads((output/'manifest.json').read_text())
+            self.assertEqual((manifest['error_phase'],manifest['error_code']), ('fixture','command_failed'))
+
+    def test_target_error_phase_survives_cleanup_without_secret_output(self):
+        program = ('import subprocess,capacity_target as t;'
+                   't.CURRENT_PHASE="build_frontend";'
+                   't.run=lambda channel:(_ for _ in ()).throw(subprocess.CalledProcessError(1,["secret-token"],stderr="secret-environment"));'
+                   'raise SystemExit(t.main())')
+        process = subprocess.Popen([sys.executable,'-c',program], cwd=harness.BACKEND/'tests',
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            self.assertEqual(process.wait(timeout=5), 1)
+            self.assertEqual(json.loads(process.stdout.readline()), {'error':'target_session_failed','phase':'build_frontend','reason_code':'command_failed'})
+            self.assertEqual(process.stderr.read(), b'')
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid,signal.SIGKILL);process.wait()
+            process.stdin.close();process.stdout.close();process.stderr.close()
     def test_protocol_rejects_nonfinite_and_ambiguous_json(self):
         for raw in ('{"value":NaN}', '{"value":Infinity}', '{"value":-Infinity}', '{"value":1e309}', '{"version":1,"version":2}'):
             with self.assertRaises(ValueError): strict_json_loads(raw)
@@ -178,7 +229,7 @@ class CapacityRemoteTest(unittest.TestCase):
                        'print(\'{"ok":"ready","config":{"actors":[{"token":"synthetic-secret-sentinel"}]},"value":NaN}\',flush=True)')
             transport = Transport([sys.executable, '-c', program], Path(root))
             try:
-                with self.assertRaisesRegex(RuntimeError, '^target_protocol_failed$'):
+                with self.assertRaisesRegex(RuntimeError, '^capacity_run_failed$'):
                     transport.request({'op':'test'}, timeout=3)
                 self.assertEqual(list(Path(root).iterdir()), [])
             finally:

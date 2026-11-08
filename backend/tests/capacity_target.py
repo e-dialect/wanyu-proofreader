@@ -18,15 +18,17 @@ from types import SimpleNamespace
 import harness
 import capacity_fixture as fixture
 from capacity_remote_contract import (VERSION, MAX_LINE, SOURCE_KEYS, canonical_hash, clean_environment,
-                                      host_identity, observation_seconds, same_source, validate_init, strict_json_loads)
+                                      host_identity, observation_seconds, same_source, validate_init, strict_json_loads,
+                                      CapacityFailure, safe_failure)
 from capacity_resources import ResourceSampler
 from run_capacity_baseline import prepare_fixture, reconcile_fixture
 
 
 SHUTTING_DOWN = threading.Event()
+CURRENT_PHASE = 'protocol'
 
 
-class Interrupted(Exception):
+class Interrupted(KeyboardInterrupt):
     pass
 
 
@@ -108,25 +110,33 @@ def stream_artifact(name, path):
 
 
 def run(channel):
+    global CURRENT_PHASE
     initial = validate_init(channel.get(timeout=30))
+    CURRENT_PHASE = 'source'
     if not same_source(initial['source'], source()):
-        raise ValueError('target_source_mismatch')
+        raise CapacityFailure('source', 'source_mismatch')
+    CURRENT_PHASE = 'prepare'
     owned = OwnedTarget(initial['nonce'])
     # Preparation logs may contain synthetic credentials; never place them on
     # stdout/stderr (the protocol and operator report channels).
-    log = (owned.root/'prepare.log').open('w')
+    log = None
     try:
+        log = (owned.root/'prepare.log').open('w')
         args = SimpleNamespace(**initial)
         budget = initial['budget']
         if budget:
             for key, environment_key in [('gomaxprocs', 'GOMAXPROCS'), ('gomemlimit_bytes', 'GOMEMLIMIT')]:
                 if budget['runtime'][key] is not None:
                     os.environ[environment_key] = str(int(budget['runtime'][key]))
+        CURRENT_PHASE = 'build_backend'
         binary = harness.build_binary(owned.root/'pocketbase', build_sha=initial['source']['baseline_sha'])
+        CURRENT_PHASE = 'build_frontend'
         subprocess.run(['npm', 'run', 'build', '--', '--outDir', str(owned.root/'dist')],
                        cwd=harness.BACKEND.parent/'frontend', stdout=log, stderr=log, check=True)
+        CURRENT_PHASE = 'fixture'
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             state = prepare_fixture(binary, owned.root, args)
+        CURRENT_PHASE = 'start'
         env = owned.stack.enter_context(harness.server(binary, owned.root))
         owned.frontend = subprocess.Popen(['node', str(harness.BACKEND/'tests/capacity_target_frontend.cjs'),
             env['PB_URL'], str(owned.root/'dist')], stdout=subprocess.PIPE, stderr=log, text=True)
@@ -154,6 +164,7 @@ def run(channel):
         # Secrets exist only in this response, the pipe and generator's 0600 temp
         # file. The orchestrator writes only the evidence object to its manifest.
         emit({'ok': 'ready', 'version': VERSION, 'evidence': evidence, 'config': config})
+        CURRENT_PHASE = 'observation'
         armed = False
         while True:
             command = channel.get(timeout=args.duration+600)
@@ -185,6 +196,7 @@ def run(channel):
                 time.sleep(observation_seconds(budget, 'observe_seconds'))
                 resources = owned.sampler.stop()
                 owned.sampler = None
+                CURRENT_PHASE = 'finish'
                 stop_process(owned.frontend)
                 owned.stack.close()
                 reconciliation = reconcile_fixture(owned.root, state, config, submissions)
@@ -208,13 +220,17 @@ def run(channel):
                 return
             else:
                 raise ValueError('invalid_protocol_state')
+    except (Exception, KeyboardInterrupt) as error:
+        raise safe_failure(CURRENT_PHASE, error) from None
     finally:
+        CURRENT_PHASE = 'cleanup'
         SHUTTING_DOWN.set()
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         os.killpg(os.getpid(), signal.SIGTERM)
         owned.close()
-        log.close()
+        if log is not None:
+            log.close()
 
 
 def main():
@@ -236,11 +252,11 @@ def main():
     try:
         run(incoming)
         result = 0
-    except (Exception, KeyboardInterrupt):
+    except (Exception, KeyboardInterrupt) as error:
         # Exception messages and traceback can contain secret child environment
         # or configuration values. Fixed code only on this channel.
         try:
-            emit({'error': 'target_session_failed'})
+            emit(safe_failure(CURRENT_PHASE, error).frame())
         except (BrokenPipeError, OSError):
             pass
     finally:

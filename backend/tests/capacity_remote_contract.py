@@ -6,6 +6,7 @@ import os
 import platform
 import re
 import subprocess
+import queue
 import time
 from pathlib import Path
 
@@ -13,6 +14,48 @@ VERSION = 1
 MAX_LINE = 16 * 1024 * 1024
 ARTIFACTS = frozenset(('resources.jsonl', 'runtime.jsonl'))
 SOURCE_KEYS = ('baseline_sha', 'dirty_diff_sha256', 'source_sha256')
+FAILURE_PHASES = frozenset(('protocol', 'connect', 'prepare', 'source', 'build_backend', 'build_frontend',
+                            'fixture', 'start', 'tunnel', 'generate', 'observation', 'finish', 'cleanup'))
+FAILURE_REASONS = frozenset(('invalid_request', 'invalid_error_frame', 'source_mismatch', 'command_failed',
+                             'timed_out', 'interrupted', 'protocol_failed', 'io_failed', 'operation_failed'))
+
+
+class CapacityFailure(RuntimeError):
+    def __init__(self, phase, reason_code):
+        if not isinstance(phase, str) or not isinstance(reason_code, str) or phase not in FAILURE_PHASES or reason_code not in FAILURE_REASONS:
+            phase, reason_code = 'protocol', 'invalid_error_frame'
+        self.phase, self.reason_code = phase, reason_code
+        super().__init__('capacity_run_failed')
+
+    def frame(self):
+        return {'error': 'target_session_failed', 'phase': self.phase, 'reason_code': self.reason_code}
+
+
+def safe_failure(phase, error):
+    if isinstance(error, CapacityFailure):
+        return error
+    if isinstance(error, (TimeoutError, subprocess.TimeoutExpired, queue.Empty)):
+        reason = 'timed_out'
+    elif isinstance(error, KeyboardInterrupt):
+        reason = 'interrupted'
+    elif isinstance(error, subprocess.CalledProcessError):
+        reason = 'command_failed'
+    elif isinstance(error, OSError):
+        reason = 'io_failed'
+    elif isinstance(error, ValueError):
+        reason = 'invalid_request'
+    else:
+        reason = 'operation_failed'
+    return CapacityFailure(phase, reason)
+
+
+def failure_from_frame(frame):
+    if (not isinstance(frame, dict) or set(frame) != {'error', 'phase', 'reason_code'} or
+            frame.get('error') != 'target_session_failed' or not isinstance(frame.get('phase'), str) or
+            not isinstance(frame.get('reason_code'), str) or frame['phase'] not in FAILURE_PHASES or
+            frame['reason_code'] not in FAILURE_REASONS):
+        return CapacityFailure('protocol', 'invalid_error_frame')
+    return CapacityFailure(frame['phase'], frame['reason_code'])
 
 
 def canonical_hash(value):
@@ -135,10 +178,15 @@ def evaluate_evidence(rows, budget, target, generator, clock, transport):
     if clock and c is not None:
         gates['clock_alignment'] = 'pass' if max(clock['uncertainty_ms'], clock.get('drift_bound_ms', float('inf'))) <= c else 'fail'
     hardware, envelope = target['hardware'], budget['target']
-    if all(v is not None for v in envelope.values()):
-        if hardware.get('storage_medium_verified'):
-            gates['reference_hardware'] = 'pass' if (hardware['effective_cpu_cores'] == envelope['cpu_cores'] and
-                envelope['memory_min_bytes'] <= hardware['effective_memory_bytes'] <= envelope['memory_max_bytes']) else 'fail'
+    cpu, memory = hardware.get('effective_cpu_cores'), hardware.get('effective_memory_bytes')
+    known_cpu = type(cpu) in (int, float) and math.isfinite(cpu) and cpu > 0 and envelope['cpu_cores'] is not None
+    known_memory = (type(memory) in (int, float) and math.isfinite(memory) and memory > 0 and
+                    envelope['memory_min_bytes'] is not None and envelope['memory_max_bytes'] is not None)
+    if ((known_cpu and cpu != envelope['cpu_cores']) or
+            (known_memory and not envelope['memory_min_bytes'] <= memory <= envelope['memory_max_bytes'])):
+        gates['reference_hardware'] = 'fail'
+    elif known_cpu and known_memory and hardware.get('storage_medium_verified') is True:
+        gates['reference_hardware'] = 'pass'
     runtime = budget['runtime']
     runtime_rows = [r for r in rows if type(r.get('gomaxprocs')) is int and type(r.get('go_memory_limit_bytes')) is int]
     if runtime_rows and all(value is not None for value in runtime.values()):
