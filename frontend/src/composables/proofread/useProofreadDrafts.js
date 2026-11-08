@@ -21,6 +21,8 @@ export function useProofreadDrafts({
   replaceEditedRow,
   originalRow
 }) {
+  // This editor belongs to its mounting account even during forced auth teardown.
+  const ownerUserId = currentUserId.value
   let draftTimer = null
 
   function scheduleDraftSave() {
@@ -30,38 +32,45 @@ export function useProofreadDrafts({
     draftTimer = window.setTimeout(() => flushDraft(), 500)
   }
 
-  function flushDraft() {
+  function flushDraft({ preserveExisting = false } = {}) {
     clearDraftTimer()
-    if (ownReview.value) return
-    if (!draftReady.value || !page.value || !currentUserId.value || !initialRowJson.value) return
+    if (ownReview.value) return { ok: true, saved: false }
+    if (!draftReady.value || !page.value || !ownerUserId || !initialRowJson.value)
+      return { ok: !hasUnsavedChanges.value, saved: false }
     try {
       if (!hasUnsavedChanges.value) {
+        // Logout/teardown must not remove a copy written by another tab or a
+        // historical source just because this mounted editor is unchanged.
+        if (preserveExisting) return { ok: true, saved: false }
         // An incompatible draft can still occupy the current storage key. Keep
         // its old values before clearing an otherwise unchanged current row.
         for (const draft of staleLocalDrafts.value) archiveTaskDraft(window.localStorage, draft)
         clearTaskDraft(window.localStorage, {
-          userId: currentUserId.value,
+          userId: ownerUserId,
           pageId: page.value.id
         })
         draftStatus.value = ''
-        return
+        return { ok: true, saved: false }
       }
       const draft = saveTaskDraft(window.localStorage, {
-        userId: currentUserId.value,
+        userId: ownerUserId,
         pageId: page.value.id,
         sourceSignature: initialRowJson.value,
         contextBasis: verificationContext.value?.basis,
         row: JSON.parse(stringifyEditedRow())
       })
-      draftStatus.value = draft ? `草稿已保存于 ${formatDraftTime(draft.savedAt)}` : ''
+      if (!draft) throw new Error('draft not saved')
+      draftStatus.value = `草稿已保存于 ${formatDraftTime(draft.savedAt)}`
+      return { ok: true, saved: true }
     } catch {
       draftStatus.value = '草稿保存失败，请勿关闭页面'
+      return { ok: false, saved: false }
     }
   }
 
   function restoreDraft() {
     const draft = loadTaskDraft(window.localStorage, {
-      userId: currentUserId.value,
+      userId: ownerUserId,
       pageId: page.value?.id,
       sourceSignature: initialRowJson.value,
       onStale: (draft) => {
@@ -74,7 +83,7 @@ export function useProofreadDrafts({
     replaceEditedRow(draft.row)
     if (stringifyEditedRow() === initialRowJson.value) {
       clearTaskDraft(window.localStorage, {
-        userId: currentUserId.value,
+        userId: ownerUserId,
         pageId: page.value.id
       })
       return
@@ -92,7 +101,7 @@ export function useProofreadDrafts({
       draftStatus.value = '本机草稿的来源或约定已变化，旧值保留，未套用到当前来源'
     }
     const history = loadTaskDraftHistory(window.localStorage, {
-      userId: currentUserId.value,
+      userId: ownerUserId,
       pageId: page.value?.id
     })
     staleLocalDrafts.value.push(
