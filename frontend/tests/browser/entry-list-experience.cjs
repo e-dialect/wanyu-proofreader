@@ -138,9 +138,16 @@ async function api(endpoint, token, body, method = 'POST') {
     )
     const originals = firstEntry.locator('.entry-original-values')
     assert.equal(await originals.getAttribute('data-state'), 'closed')
+    assert.equal(
+      await section.locator('.entry-original-text').count(),
+      0,
+      'Closed original values are not mounted before first use'
+    )
+    assert.equal(await section.locator('.entry-original-values [data-field-value-text]').count(), 0)
     await originals.getByRole('button', { name: '查看原值', exact: true }).click()
     await originals.locator('.entry-original-text').waitFor({ state: 'visible' })
     assert.equal(await originals.locator('.entry-original-text').textContent(), expected)
+    const originalTextNode = await originals.locator('.entry-original-text').elementHandle()
     for (const [name, value] of Object.entries(expectedRow)) {
       assert.equal(
         await originals
@@ -151,6 +158,25 @@ async function api(endpoint, token, body, method = 'POST') {
         value
       )
     }
+    await originals.getByRole('button', { name: '查看原值', exact: true }).click()
+    await originals.locator('.entry-original-text').waitFor({ state: 'hidden' })
+    assert.equal(
+      await originals
+        .locator('.entry-original-text')
+        .evaluate((node, saved) => node === saved, originalTextNode),
+      true,
+      'First-open original values remain the same DOM after closing'
+    )
+    await originals.getByRole('button', { name: '查看原值', exact: true }).click()
+    await originals.locator('.entry-original-text').waitFor({ state: 'visible' })
+    assert.equal(
+      await originals
+        .locator('.entry-original-text')
+        .evaluate((node, saved) => node === saved, originalTextNode),
+      true,
+      'Reopening retains the original DOM'
+    )
+    assert.equal(await originals.locator('.entry-original-text').textContent(), expected)
     await originals.getByRole('button', { name: '查看原值', exact: true }).click()
     await originals.locator('.entry-original-text').waitFor({ state: 'hidden' })
     assert.equal(
@@ -191,6 +217,15 @@ async function api(endpoint, token, body, method = 'POST') {
       'table-cell'
     )
     await page.screenshot({ path: path.join(output, 'desktop-list.png'), fullPage: true })
+    await page.evaluate(async () => {
+      await document.fonts.ready
+      const originalLoad = document.fonts.load.bind(document.fonts)
+      window.__entryUnchangedTextFontLoads = 0
+      document.fonts.load = (...args) => {
+        window.__entryUnchangedTextFontLoads++
+        return originalLoad(...args)
+      }
+    })
     await section.getByRole('button', { name: '批量选择', exact: true }).click()
     await section.getByRole('button', { name: '全选待校对', exact: true }).click()
     await page.waitForFunction(
@@ -198,6 +233,11 @@ async function api(endpoint, token, body, method = 'POST') {
     )
     await section.getByRole('button', { name: '退出批量', exact: true }).click()
     assert.equal(await section.locator('input[type=checkbox]').count(), 0)
+    assert.equal(
+      await page.evaluate(() => window.__entryUnchangedTextFontLoads),
+      0,
+      'Unchanged list content does not restart font checks during batch selection'
+    )
     await section.getByRole('button', { name: '查看第 1 条详情与修正', exact: true }).click()
     await page.getByRole('dialog').getByRole('heading', { name: '修正识别结果' }).waitFor()
     assert.equal(
@@ -366,7 +406,8 @@ async function api(endpoint, token, body, method = 'POST') {
           mobileFirstRowY: mobileRow.y,
           checks: [
             'structured field roles from authorized API with neutral failure and retry',
-            'exact structured values and full original disclosure',
+            'exact structured values and lazy original disclosure retaining DOM after first open',
+            'batch controls do not restart unchanged font checks',
             'unstructured raw fallback retains whitespace and full text without splitting',
             'compact desktop rows with shared location/action and word/reading/meaning line',
             'neutral pending',

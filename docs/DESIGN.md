@@ -30,7 +30,7 @@ UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_base
 | --- | --- | --- |
 | `AppErrorBoundary` | 渲染异常时给可见错误与恢复入口 | `App.vue` |
 | `AppButton` | 原生 button，variant=primary/secondary/ghost/danger，size=md/sm；loading 同时禁用并标记 aria-busy，属性与事件透传 | 四个精修样板的操作；链接仍保持 RouterLink 语义 |
-| `AppDisclosure` | Reka Collapsible；label / #summary、defaultOpen、可选 v-model、disabled；关闭立即禁止内容聚焦，保留原 DOM，受控收起时将内容内焦点送回触发器 | 仲裁依据/历史/批量工具、项目状态、条目原值、难度选择、字符帮助与旧稿详情 |
+| `AppDisclosure` | Reka Collapsible；label / #summary、defaultOpen、可选 v-model、disabled、lazy=false；关闭立即禁止内容聚焦，保留原 DOM，受控收起时将内容内焦点送回触发器 | 仲裁依据/历史/批量工具、项目状态、条目原值、难度选择、字符帮助与旧稿详情 |
 | `AppSelect` | Reka Select；v-model 保留空字符串和数值类型，options 为 label/value/disabled；id/aria-label 等传给触发器，Portal 弹层避让视口 | 条目列表筛选；真实字段编辑器继续保留原 textarea 与 IME/选区逻辑 |
 | `AppDropdown` | Reka DropdownMenu；items 为 label/action/disabled/danger（可选 to）；select(action)，上下文 aria-label 透传 | 条目次要操作；菜单先关闭并回到触发器，再打开确认框 |
 | `AppShell` / `AppNavigation` / `UserAvatar` | 统一侧栏、页眉、账户菜单、移动导航；作业态隐藏侧栏 | 受保护路由，账号切换重建 |
@@ -71,6 +71,10 @@ UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_base
 工作台当前事项使用紧凑横向组合，项目、事项与唯一主操作相邻，手机自然上下排列。`AppButton` 的可选 `loading-label` 预留正常与忙碌文案的自然尺寸；不提供时 spinner 不增加按钮宽度。正常内容不能由调用方在 loading 时改成长文案再期待尺寸保持，刷新／领取等样板使用固定 slot 和 `loading-label`。按钮继续保留可访问名称、原生 disabled、属性/事件透传与 focus 方法。
 
 条目列表按 `ocr_row_json` / `row_headers_json` 与已有列用途接口组织词目、记音、释义和备注；显式用途优先。用途暂不可用时显示原列名与重试，不猜测语义。无结构记录直接显示完整 `ocr_text`，不按空格拆词。原始字段、合法空白和完整导入文本可展开查看；展示分组不修改原值、搜索或导出。项目管理在手机用同一份表格行排成摘要，项目、待仲裁和主操作无需横滚；状态与创建信息按需展开，桌面保持语义表格。
+
+条目原值与字符说明使用 `AppDisclosure lazy`，首次打开才创建内容，之后关闭/重开保留同一DOM。容器与ARIA关联始终存在，来源阻塞区保持默认即时挂载；默认打开和受控展开也立即呈现内容。列表复用当前账号/项目的列角色对象，每条不再反复序列化/解析同一角色；字段和原值仍独立按保存顺序读取。聚合字体输入使用稳定computed，相同字符集不重复检测或闪回加载态；新增字符与显式重试继续检查，迟到响应仍被隔离。
+
+字体范围仅在初始化时合并相邻区间，不改字库、字体优先级、覆盖或Unicode值；全码点分类与原始manifest核对。校对输入立即更新模型及change/草稿事件，普通输入在DOM更新后自动增高一次；IME组合输入尚未提交模型时仍按其可见文字增高，不等到组合结束才响应。性能量测与边界见[性能验收](evidence/ui-performance-20261108/README.md)。
 
 仲裁按差异字段组织紧凑候选行，最终值为主要编辑区，各份结果和最终值的来源判断在独立区域维护。采用结果不能自动设置来源正误；未决门槛与原确认框保持。来源变化、规则不兼容和来源未批准分别显示并自动展开；手机保留紧凑原文/队列头和底部总览入口，桌面主检查入口位于顶部。依据、批量工具及历史共用 `AppDisclosure` 的短时过渡，不延迟路由/身份/权限失效时的卸载。
 

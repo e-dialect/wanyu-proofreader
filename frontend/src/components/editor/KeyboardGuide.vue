@@ -1,5 +1,5 @@
 <template>
-  <AppDisclosure class="keyboard-guide" label="字符用法与读音说明">
+  <AppDisclosure class="keyboard-guide" label="字符用法与读音说明" lazy>
     <p>
       先把光标放到字段，再点字符键。说明不改变插入内容；读法只引用已登记的方案，不能把不同资料的同形符号混用。
     </p>

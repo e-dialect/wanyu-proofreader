@@ -34,14 +34,7 @@
       {{ pageStatsError }}
       <AppButton variant="ghost" size="sm" @click="loadPageStats">重试统计</AppButton>
     </p>
-    <RareCharacterNotice
-      :texts="
-        presentedPages.flatMap(({ content }) => [
-          content.rawText,
-          ...content.fields.map((field) => field.value)
-        ])
-      "
-    />
+    <RareCharacterNotice :texts="fontTexts" />
     <p v-if="columnRolesError" class="entry-list-error" role="alert">
       列用途暂时无法读取，当前按原列名展示。
       <AppButton variant="ghost" size="sm" :loading="loadingColumnRoles" @click="loadColumnRoles"
@@ -311,7 +304,7 @@
                 empty-label="—"
                 :font-notice="false"
               />
-              <AppDisclosure class="entry-original-values">
+              <AppDisclosure class="entry-original-values" lazy>
                 <template #summary>查看原值</template>
                 <dl v-if="content.structured">
                   <div v-for="field in content.fields" :key="field.name">
@@ -589,17 +582,16 @@ const hasCurrentColumnRoles = computed(
     columnRoleView.value?.projectId === props.projectId &&
     columnRoleView.value?.actorId === auth.user?.id
 )
+const entryPresentationOptions = computed(() => {
+  const available = hasCurrentColumnRoles.value && !columnRolesError.value
+  return {
+    roles: available ? columnRoleView.value.roles : {},
+    inferFromHeaders: available
+  }
+})
 const presentedPages = computed(() =>
   displayedPages.value.map((page) => {
-    const content = entryListPresentation(
-      page,
-      {
-        column_roles_json: JSON.stringify(
-          hasCurrentColumnRoles.value && !columnRolesError.value ? columnRoleView.value.roles : {}
-        )
-      },
-      { inferFromHeaders: hasCurrentColumnRoles.value && !columnRolesError.value }
-    )
+    const content = entryListPresentation(page, undefined, entryPresentationOptions.value)
     const core = [...content.primary, ...content.meanings]
     const notes = content.secondary.filter((field) => field.role === 'note' && field.value !== '')
     const visibleFields = core.length
@@ -611,6 +603,13 @@ const presentedPages = computed(() =>
       visibleFields
     }
   })
+)
+
+const fontTexts = computed(() =>
+  presentedPages.value.flatMap(({ content }) => [
+    content.rawText,
+    ...content.fields.map((field) => field.value)
+  ])
 )
 
 const showAdvanced = ref(false)

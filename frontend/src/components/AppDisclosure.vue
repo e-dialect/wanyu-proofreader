@@ -17,7 +17,7 @@
       :inert="!open || undefined"
       :aria-hidden="!open || undefined"
     >
-      <div class="app-disclosure__body"><slot /></div>
+      <div v-if="contentVisited" class="app-disclosure__body"><slot /></div>
     </CollapsibleContent>
   </CollapsibleRoot>
 </template>
@@ -31,7 +31,8 @@ const props = defineProps({
   label: { type: String, default: '' },
   modelValue: { type: Boolean, default: undefined },
   defaultOpen: { type: Boolean, default: false },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  lazy: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:modelValue'])
 const localOpen = ref(props.defaultOpen)
@@ -44,6 +45,14 @@ const open = computed({
     emit('update:modelValue', value)
   }
 })
+const contentVisited = ref(!props.lazy || open.value)
+watch(
+  [open, () => props.lazy],
+  ([value, lazy]) => {
+    if (value || !lazy) contentVisited.value = true
+  },
+  { flush: 'sync' }
+)
 watch(open, (value) => {
   if (!value && content.value?.$el?.contains(document.activeElement)) trigger.value?.$el?.focus()
 })

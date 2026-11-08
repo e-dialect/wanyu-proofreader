@@ -1,0 +1,135 @@
+{
+  "label": "final",
+  "dist": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-ui-followup/frontend/dist",
+  "browser": "157.0.4341.42",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "repetitions": 5,
+  "dataset": {
+    "rows": 100,
+    "columns": 20,
+    "sha256": "2610cd0977c333fcdd508755648d44f40fd9fb9c6e65d541c73809d5e9dfe208"
+  },
+  "timingMethod": "Fresh context each run; navigation start to 100 table rows plus two animation frames; first expansion plus two animation frames. Local routed assets and real loopback backend, no network throttling. Descriptive only.",
+  "medianInitialRenderMs": 852.5,
+  "medianExpandFirstMs": 40.10000002384186,
+  "results": [
+    {
+      "iteration": 1,
+      "initialRenderMs": 902.6000000238419,
+      "expandFirstMs": 43.69999998807907,
+      "before": {
+        "documentElements": 4362,
+        "listElements": 4239,
+        "rows": 100,
+        "fieldValues": 400,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 0
+      },
+      "opened": {
+        "documentElements": 4446,
+        "listElements": 4323,
+        "rows": 100,
+        "fieldValues": 421,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 21
+      },
+      "exactOriginalValues": true,
+      "retainedOriginalDom": true
+    },
+    {
+      "iteration": 2,
+      "initialRenderMs": 857.2000000476837,
+      "expandFirstMs": 48.10000002384186,
+      "before": {
+        "documentElements": 4362,
+        "listElements": 4239,
+        "rows": 100,
+        "fieldValues": 400,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 0
+      },
+      "opened": {
+        "documentElements": 4446,
+        "listElements": 4323,
+        "rows": 100,
+        "fieldValues": 421,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 21
+      },
+      "exactOriginalValues": true,
+      "retainedOriginalDom": true
+    },
+    {
+      "iteration": 3,
+      "initialRenderMs": 852.5,
+      "expandFirstMs": 37.10000002384186,
+      "before": {
+        "documentElements": 4362,
+        "listElements": 4239,
+        "rows": 100,
+        "fieldValues": 400,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 0
+      },
+      "opened": {
+        "documentElements": 4446,
+        "listElements": 4323,
+        "rows": 100,
+        "fieldValues": 421,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 21
+      },
+      "exactOriginalValues": true,
+      "retainedOriginalDom": true
+    },
+    {
+      "iteration": 4,
+      "initialRenderMs": 826.2000000476837,
+      "expandFirstMs": 39.59999996423721,
+      "before": {
+        "documentElements": 4362,
+        "listElements": 4239,
+        "rows": 100,
+        "fieldValues": 400,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 0
+      },
+      "opened": {
+        "documentElements": 4446,
+        "listElements": 4323,
+        "rows": 100,
+        "fieldValues": 421,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 21
+      },
+      "exactOriginalValues": true,
+      "retainedOriginalDom": true
+    },
+    {
+      "iteration": 5,
+      "initialRenderMs": 819.1999999880791,
+      "expandFirstMs": 40.10000002384186,
+      "before": {
+        "documentElements": 4362,
+        "listElements": 4239,
+        "rows": 100,
+        "fieldValues": 400,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 0
+      },
+      "opened": {
+        "documentElements": 4446,
+        "listElements": 4323,
+        "rows": 100,
+        "fieldValues": 421,
+        "closedOriginalFieldValues": 0,
+        "originalFieldValues": 21
+      },
+      "exactOriginalValues": true,
+      "retainedOriginalDom": true
+    }
+  ]
+}

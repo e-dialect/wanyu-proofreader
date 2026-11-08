@@ -21,10 +21,19 @@ function fieldRole(name, roles, inferFromHeaders) {
 
 // Presentation only: fields retain their saved order and exact string values.
 // Unstructured OCR text remains one value and is never split into guessed fields.
-export function entryListPresentation(page, project, { inferFromHeaders = true } = {}) {
+export function entryListPresentation(
+  page,
+  project,
+  { inferFromHeaders = true, roles: preparedRoles } = {}
+) {
   const row = safeParseRowJson(page?.ocr_row_json)
   const headers = orderedRowHeaders(page, row)
-  const roles = safeParseRowJson(project?.column_roles_json) || {}
+  // Lists already have the authorized role object. Reuse it directly; older
+  // single-row callers can still pass the project's stored JSON as before.
+  const roles =
+    preparedRoles && typeof preparedRoles === 'object' && !Array.isArray(preparedRoles)
+      ? preparedRoles
+      : safeParseRowJson(project?.column_roles_json) || {}
   const fields = headers.map((name) => ({
     name,
     value: String(row[name] ?? ''),

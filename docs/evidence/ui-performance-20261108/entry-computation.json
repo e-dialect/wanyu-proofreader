@@ -1,0 +1,68 @@
+{
+  "baseline": "f3834f5",
+  "measurement": "Production helper and extracted production Vue computed, 100 synthetic rows; Node timings do not represent browser mount time.",
+  "sampleValues": "Exact whitespace, protected Han, combining marks and superscript tone digits",
+  "runs": 40,
+  "results": [
+    {
+      "variant": "baseline",
+      "rows": 100,
+      "fields": 4,
+      "parseCalls": 300,
+      "stringifyCalls": 100,
+      "medianMs": 1.3782190000000014,
+      "p95Ms": 2.1570839999999976,
+      "visibleFields": 400
+    },
+    {
+      "variant": "optimized",
+      "rows": 100,
+      "fields": 4,
+      "parseCalls": 200,
+      "stringifyCalls": 0,
+      "medianMs": 0.7563759999999888,
+      "p95Ms": 1.5732340000000136,
+      "visibleFields": 400
+    },
+    {
+      "variant": "baseline",
+      "rows": 100,
+      "fields": 50,
+      "parseCalls": 300,
+      "stringifyCalls": 100,
+      "medianMs": 11.109340999999972,
+      "p95Ms": 17.69885899999997,
+      "visibleFields": 400
+    },
+    {
+      "variant": "optimized",
+      "rows": 100,
+      "fields": 50,
+      "parseCalls": 200,
+      "stringifyCalls": 0,
+      "medianMs": 6.427488000000039,
+      "p95Ms": 9.788073000000168,
+      "visibleFields": 400
+    },
+    {
+      "variant": "baseline",
+      "rows": 100,
+      "fields": 200,
+      "parseCalls": 300,
+      "stringifyCalls": 100,
+      "medianMs": 46.281919000000016,
+      "p95Ms": 59.237090999999964,
+      "visibleFields": 400
+    },
+    {
+      "variant": "optimized",
+      "rows": 100,
+      "fields": 200,
+      "parseCalls": 200,
+      "stringifyCalls": 0,
+      "medianMs": 27.875760999999784,
+      "p95Ms": 34.21701600000006,
+      "visibleFields": 400
+    }
+  ]
+}

@@ -113,3 +113,49 @@ test('missing, empty and invalid structured data fall back to exact raw OCR text
     assert.deepEqual(result.primary, [])
   }
 })
+
+test('prepared roles preserve legacy output and override stale stored roles without JSON round trips', () => {
+  const row = { 词条: ' 𠮷 ', 记音: '\ta̤̍⁵³³\n', 释义: '  原值\u00a0', 备注: '' }
+  const roles = { 词条: 'headword', 记音: 'reading', 释义: 'meaning', 备注: 'note' }
+  const page = {
+    ocr_row_json: JSON.stringify(row),
+    row_headers_json: JSON.stringify(Object.keys(row)),
+    ocr_text: '\n 𠮷 a̤̍⁵³³  '
+  }
+  const expected = entryListPresentation(page, { column_roles_json: JSON.stringify(roles) })
+  // Accessing the old JSON would reparse or materialize the role map per row.
+  const project = {
+    get column_roles_json() {
+      throw new Error('Stored roles must not be read when prepared roles are supplied')
+    }
+  }
+  assert.deepEqual(entryListPresentation(page, project, { roles }), expected)
+  assert.deepEqual(roles, { 词条: 'headword', 记音: 'reading', 释义: 'meaning', 备注: 'note' })
+  assert.deepEqual(
+    entryListPresentation(page, project, { roles: {}, inferFromHeaders: false }).fields.map(
+      ({ role }) => role
+    ),
+    Array(4).fill('unspecified')
+  )
+})
+
+test('prepared roles follow new metadata and corrected row contents without caching stale values', () => {
+  const page = {
+    ocr_row_json: '{"自定列":" 旧值 ","读音":"a̤"}',
+    row_headers_json: '["自定列","读音"]'
+  }
+  const original = entryListPresentation(page, undefined, { roles: { 自定列: 'headword' } })
+  assert.equal(original.primary[0].value, ' 旧值 ')
+  page.ocr_row_json = JSON.stringify({ 自定列: '\t新𠮷值 ', 读音: 'a̤̍⁵³³' })
+  page.row_headers_json = '["读音","自定列"]'
+  const changed = entryListPresentation(page, undefined, {
+    roles: { 自定列: 'note', 读音: 'reading' }
+  })
+  assert.deepEqual(
+    changed.fields.map(({ name }) => name),
+    ['读音', '自定列']
+  )
+  assert.equal(changed.primary[0].value, 'a̤̍⁵³³')
+  assert.equal(changed.secondary[0].value, '\t新𠮷值 ')
+  assert.equal(original.primary[0].value, ' 旧值 ')
+})
