@@ -1,0 +1,338 @@
+{
+  "status": "fail",
+  "profile": "smoke",
+  "threshold_scope": "accelerated smoke phases",
+  "gates": [
+    {
+      "gate": "claim",
+      "status": "pass"
+    },
+    {
+      "gate": "submit",
+      "status": "fail"
+    },
+    {
+      "gate": "arbitrate",
+      "status": "fail"
+    },
+    {
+      "gate": "field_summary",
+      "status": "fail"
+    },
+    {
+      "gate": "pdf_descriptor",
+      "status": "pass"
+    },
+    {
+      "gate": "task",
+      "status": "pass"
+    },
+    {
+      "gate": "admin_pages",
+      "status": "fail"
+    },
+    {
+      "gate": "verification",
+      "status": "pass"
+    },
+    {
+      "gate": "unexpected_http_responses",
+      "status": "pass"
+    },
+    {
+      "gate": "unexpected_5xx_timeout_rate",
+      "status": "pass",
+      "actual": 0.0,
+      "limit": 0.001
+    },
+    {
+      "gate": "two_ui_actors_submit",
+      "status": "pass"
+    },
+    {
+      "gate": "two_ui_actors_read_source",
+      "status": "pass"
+    },
+    {
+      "gate": "submit_ack",
+      "status": "pass"
+    },
+    {
+      "gate": "LCP",
+      "status": "pass"
+    },
+    {
+      "gate": "INP",
+      "status": "pass"
+    },
+    {
+      "gate": "CLS",
+      "status": "fail"
+    },
+    {
+      "gate": "csv",
+      "status": "pass"
+    },
+    {
+      "gate": "slow_export",
+      "status": "pass"
+    },
+    {
+      "gate": "reconciliation",
+      "status": "pass"
+    },
+    {
+      "gate": "generators_exited",
+      "status": "pass"
+    },
+    {
+      "gate": "browser_errors",
+      "status": "pass"
+    }
+  ],
+  "http": [
+    {
+      "operation": "claim",
+      "samples": 199,
+      "p50_ms": 155.213,
+      "p95_ms": 779.5975269999999,
+      "p99_ms": 1498.4110359999977,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "submit",
+      "samples": 190,
+      "p50_ms": 301.7506479999993,
+      "p95_ms": 1148.2004830000005,
+      "p99_ms": 1815.344,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "fail"
+    },
+    {
+      "operation": "arbitrate",
+      "samples": 68,
+      "p50_ms": 432.324082000001,
+      "p95_ms": 1212.387330999998,
+      "p99_ms": 2731.6955789999993,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "fail"
+    },
+    {
+      "operation": "field_summary",
+      "samples": 24,
+      "p50_ms": 959.4488359999996,
+      "p95_ms": 1783.44279,
+      "p99_ms": 1942.0927579999998,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "fail"
+    },
+    {
+      "operation": "pdf_descriptor",
+      "samples": 200,
+      "p50_ms": 3.553262999999788,
+      "p95_ms": 27.718518000001495,
+      "p99_ms": 52.07729299999846,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "task",
+      "samples": 201,
+      "p50_ms": 3.788,
+      "p95_ms": 35.044519000000946,
+      "p99_ms": 77.75042799999937,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "admin_pages",
+      "samples": 92,
+      "p50_ms": 130.08483699999852,
+      "p95_ms": 707.5223079999996,
+      "p99_ms": 1034.5050739999988,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "fail"
+    },
+    {
+      "operation": "verification",
+      "samples": 268,
+      "p50_ms": 12.70179300000018,
+      "p95_ms": 51.993296000000555,
+      "p99_ms": 107.2038300000022,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    }
+  ],
+  "http_samples": 1491,
+  "source_visible": [
+    {
+      "operation": "source_visible",
+      "samples": 4,
+      "p50_ms": 860.0679879999998,
+      "p95_ms": 1198.3977009999999,
+      "p99_ms": 1198.3977009999999,
+      "p95_limit_ms": 3000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "cold_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 2,
+      "p50_ms": 116.73949200000061,
+      "p95_ms": 116.84418899999946,
+      "p99_ms": 116.84418899999946,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "hot_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 41,
+      "p50_ms": 849.8946180000003,
+      "p95_ms": 1389.1238680000006,
+      "p99_ms": 1712.9649499999978,
+      "p95_limit_ms": null,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "unknown"
+    }
+  ],
+  "editor_ready_report_only": {
+    "operation": "editor_ready",
+    "samples": 43,
+    "p50_ms": 814.0402429999995,
+    "p95_ms": 1355.8042139999998,
+    "p99_ms": 1679.6604469999984,
+    "p95_limit_ms": null,
+    "p99_limit_ms": null,
+    "status": "pass"
+  },
+  "submit_ack": {
+    "operation": "submit_ack",
+    "samples": 42,
+    "p50_ms": 148.2251529999994,
+    "p95_ms": 767.346416999997,
+    "p99_ms": 1849.8348490000008,
+    "p95_limit_ms": 800,
+    "p99_limit_ms": null,
+    "status": "pass"
+  },
+  "web_vitals": [
+    {
+      "name": "LCP",
+      "samples": 6,
+      "p95": 1128,
+      "limit": 2500,
+      "status": "pass"
+    },
+    {
+      "name": "INP",
+      "samples": 4,
+      "p95": 72,
+      "limit": 200,
+      "status": "pass"
+    },
+    {
+      "name": "CLS",
+      "samples": 6,
+      "p95": 0.1416720357510288,
+      "limit": 0.1,
+      "status": "fail"
+    }
+  ],
+  "generators": [
+    {
+      "kind": "summary.json",
+      "event_loop_p95_ms": 11.124735,
+      "cpu_percent_one_core": 5.785627896878518,
+      "errors": []
+    },
+    {
+      "kind": "browser-generator.json",
+      "event_loop_p95_ms": 11.083775,
+      "cpu_percent_one_core": 10.452135649450174,
+      "errors": []
+    }
+  ],
+  "background": {
+    "csv": {
+      "status": "pass",
+      "expected": 200,
+      "imported": 200,
+      "failed": 0
+    },
+    "slow_export": {
+      "status": "pass",
+      "bytes": 2144879,
+      "elapsed_ms": 2045.0163629999997,
+      "bytes_per_second": 1048832.1946008801,
+      "limit_bytes_per_second": 1048576,
+      "sha256": "e309e2d9c6e7c2af7f1ba4ce26c226d9c1a3cc18750611afa90178e2012c6c99",
+      "method": "stream reader paced at 1 MiB/s; no material retained"
+    }
+  },
+  "cache_note": "Cold/hot identify evidenced browser resource-cache state only. Unknown requests are reported and cannot satisfy the hot/cold full gates.",
+  "fixture": {
+    "entries_added": 1998,
+    "integrity": "ok",
+    "counts": {
+      "approved": 1001,
+      "arbitration": 401,
+      "pending": 298,
+      "proofreading": 300
+    },
+    "method": "offline cloning of real HTTP workflow templates; bulk setup is not submission throughput"
+  },
+  "pdf": {
+    "pages": 200,
+    "bytes": 21109735,
+    "sha256": "885df31a7ecace2f8c5e88c139e2afa7b92aa75c3184122817295c61cb700d5e",
+    "synthetic": true,
+    "payload": "200 separately embedded grayscale page images and visible fictional labels"
+  },
+  "storage_rollback_gate": {
+    "event_failure_rolls_back_attempt_events_and_page": true,
+    "retry_after_removing_failure_succeeds_once": true,
+    "eight_fields_trace_original_and_submitted_values": true,
+    "ordinary_response_hides_manager_event_history": true,
+    "nonmember_denied": true,
+    "two_actors_all_eight_fields_recorded": true,
+    "arbitration_attempt_A_attempt_B_and_custom_trace": true,
+    "arbitration_preserves_original_submissions": true,
+    "ordinary_response_hides_other_submission_and_final_values": true
+  },
+  "database_bytes": 288096256,
+  "repeat": 1,
+  "duration": 30,
+  "users": 30,
+  "browser_users": 2,
+  "phases": [
+    {
+      "name": "warmup",
+      "seconds": 2.5
+    },
+    {
+      "name": "ramp",
+      "seconds": 2.5
+    },
+    {
+      "name": "steady",
+      "seconds": 20.0
+    },
+    {
+      "name": "cooldown",
+      "seconds": 5.0
+    }
+  ]
+}
