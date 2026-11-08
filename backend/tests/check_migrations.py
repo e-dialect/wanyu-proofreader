@@ -41,6 +41,11 @@ SPECS = {
         'plans': [('security_events', "SELECT id FROM security_events WHERE subject_user_id=? ORDER BY created DESC,id DESC LIMIT 25", ('u',), 'idx_security_subject')],
     },
     '1794201100_account_mail_pages.js': {'mail_links': True},
+    '1794201200_security_retention_index.js': {
+        'indexes': ['idx_security_outcome_created'],
+        'collection_indexes': ('security_events', 'idx_security_outcome_created'),
+        'plans': [('security_events', "SELECT id FROM security_events WHERE outcome=? AND created<? ORDER BY created,id LIMIT 500", ('failed', '2026-01-01'), 'idx_security_outcome_created')],
+    },
     '1793926800_ocr_runtime.js': {
         'indexes': ['idx_import_jobs_ocr_request'],
         'collection_indexes': ('import_jobs', 'idx_import_jobs_ocr_request'),
