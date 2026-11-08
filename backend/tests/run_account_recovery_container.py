@@ -135,12 +135,15 @@ class OwnedResources:
         self.image = image
         self.containers = []
         self.volume = None
+        self.unconfirmed_creations = 0
 
     def create(self):
+        self.unconfirmed_creations += 1
         volume = docker(['volume', 'create', '--label', LABEL + '=' + self.nonce, self.prefix]).stdout.strip()
         metadata = inspect('volume', volume, '{{json .Labels}}')
         require(volume == self.prefix and metadata.get(LABEL) == self.nonce, 'volume_ownership_mismatch')
         self.volume = volume
+        self.unconfirmed_creations -= 1
 
     def container(self, name, command, env=None, peer=False):
         args = ['create', '--pull=never', '--name', self.prefix + '-' + name,
@@ -157,14 +160,19 @@ class OwnedResources:
                      '--env', 'PB_ADMIN_EMAIL', '--env', 'PB_ADMIN_PASSWORD',
                      '--env', 'GOMAXPROCS=2', '--env', 'GOMEMLIMIT=268435456',
                      '--env', 'ACCOUNT_EMAIL_ACTIONS_ENABLED=false']
+        self.unconfirmed_creations += 1
         identity = docker([*args, self.image, *command], env=env).stdout.strip()
         require(re.fullmatch('[a-f0-9]{64}', identity) is not None, 'invalid_container_identity')
         self.containers.append(identity)
+        self.unconfirmed_creations -= 1
         docker(['container', 'start', identity])
         return identity
 
     def cleanup(self):
-        ok = True
+        # A successful create followed by a failed inspection/ID parse (or a
+        # timed-out create command) may leave a resource we cannot safely own.
+        # Report that uncertainty; never delete a guessed name or whole prefix.
+        ok = self.unconfirmed_creations == 0
         # A timed-out wrapper may leave its deterministic one-shot container.
         # Only an exact image + this newly generated volume establishes ownership.
         if self.volume:
