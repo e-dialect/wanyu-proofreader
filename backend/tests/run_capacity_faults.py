@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import tempfile
 import subprocess
 import sys
@@ -18,14 +19,44 @@ import harness
 import capacity_fixture
 
 
+def stop_owned_process(process):
+    if process.poll() is None:
+        # SIGINT permits Python finally blocks to remove temporary containers.
+        try:
+            if os.name == 'posix':
+                os.killpg(process.pid, signal.SIGINT)
+            else:
+                process.terminate()
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+    if os.name == 'posix':
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    elif process.poll() is None:
+        process.kill()
+    process.wait()
+
+
 def controlled_run(command, cwd, log_path, timeout=1800):
     # Test suites can print fixture passwords/tokens. Keep diagnostic output but
     # redact credentials before copying it out of the temporary capture file.
     with tempfile.TemporaryFile(mode='w+', encoding='utf-8') as capture:
+        process = subprocess.Popen(command, cwd=cwd, stdout=capture, stderr=subprocess.STDOUT,
+                                   start_new_session=os.name == 'posix')
         try:
-            code = subprocess.run(command, cwd=cwd, stdout=capture, stderr=subprocess.STDOUT, timeout=timeout).returncode
+            code = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             code = 124
+        finally:
+            # No child backend may survive into the next fault gate.
+            stop_owned_process(process)
+        if code == 124:
             capture.write('\nFAULT_GATE_TIMEOUT\n')
         capture.seek(0)
         text = capture.read()
