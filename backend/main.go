@@ -7,7 +7,6 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/plugins/jsvm"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
-	"github.com/pocketbase/pocketbase/tools/osutils"
 )
 
 // Injected by -ldflags; docs/operations.md asks operators to record the build revision.
@@ -29,9 +28,10 @@ func main() {
 		"aux_max_open": poolConfig.AuxMaxOpenConns, "aux_max_idle": poolConfig.AuxMaxIdleConns,
 		"separate_writer_connections": 2,
 	})
-	// Preserve pocketbase.New() development defaults when invoked with go run.
-	poolConfig.DefaultDev = osutils.IsProbablyGoRun()
+	// Temporary/go-run executables must retain the same log privacy as releases.
+	poolConfig.DefaultDev = false
 	app := pocketbase.NewWithConfig(poolConfig)
+	registerBootstrapPrivacy(app)
 
 	var hooksDir string
 	app.RootCmd.PersistentFlags().StringVar(&hooksDir, "hooksDir", "", "the directory with the JS app hooks")
