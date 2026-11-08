@@ -19,6 +19,15 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204410_claim_active_order.js': {
+        'replacement_predecessor': '1794204200_claim_queue_indexes.js',
+        'index_replacements': [('idx_pages_claim_active',
+            ('project','proofreader','page_number','id','status','source_empty'),
+            ('project','proofreader','status','page_number','id'))],
+        'collection_indexes': ('pages', 'idx_pages_claim_active'),
+        'plans': [('pages', "SELECT * FROM pages WHERE project=? AND source_empty IS NOT 1 AND proofreader=? AND (status='claimed' OR status='proofreading') ORDER BY page_number LIMIT 1", ('p','u'), 'idx_pages_claim_active'),
+                  ('pages', "SELECT * FROM pages WHERE project=? AND proofreader=? AND (status='claimed' OR status='proofreading') ORDER BY page_number LIMIT 100000", ('p','u'), 'idx_pages_claim_active')],
+    },
     '1794204400_claim_tier_filter_cover.js': {
         'replacement_predecessor': '1794204200_claim_queue_indexes.js',
         'index_replacements': [('idx_pages_claim_tier_order',
