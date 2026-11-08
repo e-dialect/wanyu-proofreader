@@ -28,7 +28,9 @@ async function main() {
   const token = admin.token
   const project = await api('/api/fangji/projects', { method: 'POST', token, body: { name: '本地 OCR 浏览器合成验收' }, status: 201 })
   const prefix = `/api/fangji/projects/${project.id}`
-  const host = await startHost(base)
+  const nginx = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf'), 'utf8')
+  const csp = nginx.match(/add_header\s+Content-Security-Policy\s+"([^"]+)"/)[1]
+  const host = await startHost(base, { headers: { 'Content-Security-Policy': csp } })
   const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || (process.platform === 'darwin' ? 'msedge' : undefined), headless: true })
   const out = path.resolve(process.env.OCR_BROWSER_OUTPUT || 'output/playwright/ocr')
   fs.mkdirSync(out, { recursive: true })
@@ -46,12 +48,18 @@ async function main() {
     assert.equal(pdf.status, 'ready')
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 }, acceptDownloads: true })
     const errors = []
+    const cspViolations = []
     page.on('pageerror', error => errors.push(error.message))
+    await page.addInitScript(() => {
+      window.__ocrCspViolations = []
+      document.addEventListener('securitypolicyviolation', event => window.__ocrCspViolations.push(event.violatedDirective))
+    })
     await page.addInitScript(({ token, record }) => {
       globalThis.__FANGJI_BACKEND_URL__ = window.location.origin
       localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record }))
     }, admin)
-    await page.goto(host.origin + `/admin/projects/${project.id}?section=materials&view=import&method=ocr`)
+    const document = await page.goto(host.origin + `/admin/projects/${project.id}?section=materials&view=import&method=ocr`)
+    assert.equal(document.headers()['content-security-policy'], csp)
     const panel = page.getByRole('region', { name: 'OCR 识别', exact: true })
     await panel.getByRole('button', { name: '发起识别', exact: true }).waitFor()
     await panel.getByLabel('OCR 结束页').fill('201')
@@ -66,6 +74,7 @@ async function main() {
     assert.equal(await panel.getByLabel('OCR 结束页').inputValue(), '1')
     await panel.getByRole('button', { name: '确认本次请求状态', exact: true }).click()
     await panel.getByText('识别完成', { exact: true }).waitFor({ timeout: 60000 })
+    await panel.getByText('本次作业页段：PDF 物理第 1 页。', { exact: true }).waitFor()
     await page.getByRole('navigation', { name: '项目工作区' }).getByRole('link', { name: '校勘', exact: true }).click()
     await page.locator('#project-entries tbody tr').first().waitFor()
     assert.equal(await page.locator('#project-entries tbody tr').count(), 2)
@@ -118,9 +127,30 @@ async function main() {
     assert.equal(jobs.items.filter(job => job.id === lostJobId).length, 1)
     const afterRetry = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`project="${project.id}"`)}`, { token })
     assert.equal(afterRetry.totalItems, 4, 'each explicit intent produced exactly its two rows')
+    // Unsupported mixed material is rejected by the real local worker; locate
+    // the physical failure and prove no rows from that intent were published.
+    const mixed = new FormData()
+    mixed.set('file', new Blob([fs.readFileSync(path.resolve(__dirname, '../../docs/evidence/issue-122-310/mixed-native-title-plus-scan-image.pdf'))], { type: 'application/pdf' }), 'synthetic-mixed-ocr.pdf')
+    const mixedFile = await api(`${prefix}/files/pdf`, { method: 'POST', token, body: mixed, status: 202 })
+    for (let i = 0; i < 200; i++) {
+      const current = await api(`/api/collections/project_files/records/${mixedFile.id}`, { token })
+      if (current.status === 'ready') break
+      assert.notEqual(current.status, 'error', current.error_message)
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    await panel.getByRole('button', { name: '发起识别', exact: true }).click()
+    await panel.getByText('识别失败', { exact: true }).waitFor({ timeout: 60000 })
+    await panel.getByText(/^PDF 物理第 1 页：扫描页难字安全未达标/).waitFor()
+    const rejectedJobs = await api(`/api/collections/import_jobs/records?filter=${encodeURIComponent(`project="${project.id}" && mode="ocr" && status="failed"`)}`, { token })
+    assert.equal(rejectedJobs.totalItems, 1)
+    assert.equal(rejectedJobs.items[0].error_code, 'OCR_SCANNED_UNSUPPORTED')
+    const rejectedRows = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`import_job="${rejectedJobs.items[0].id}"`)}`, { token })
+    assert.equal(rejectedRows.totalItems, 0)
+    cspViolations.push(...await page.evaluate(() => window.__ocrCspViolations))
+    assert.deepEqual(cspViolations, [])
     assert.deepEqual(errors, [])
-    fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify({ realLocalWorker: true, syntheticOnly: true, rows: 2, checks: ['range validation', 'transport failure recovery', 'native text extraction', 'job progress', 'protected raw artifact download', 'manual correction exact Unicode', 'immutable original cells', 'reload recovery', 'mobile layout', 'lost 202 restores same request/job across reload'], pageErrors: errors }, null, 2))
-    console.log('PASS real OCR browser: local worker → progress → preview → exact correction → raw artifact → reload/mobile')
+    fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify({ realLocalWorker: true, syntheticOnly: true, productionCsp: true, rows: 2, checks: ['range validation', 'transport failure recovery', 'native text extraction', 'saved physical page range', 'job progress', 'protected raw artifact download', 'manual correction exact Unicode', 'immutable original cells', 'reload recovery', 'mobile layout', 'lost 202 restores same request/job across reload', 'real mixed-page rejection names physical page and publishes no rows'], cspViolations, pageErrors: errors }, null, 2))
+    console.log('PASS real OCR browser: production CSP, local worker → progress → preview → exact correction → raw artifact → reload/mobile, mixed-page rejection with physical failure location')
   } finally {
     await browser.close(); await host.close()
     await api(`/api/collections/projects/records/${project.id}`, { method: 'DELETE', token: superAuth.token, status: 204 })
