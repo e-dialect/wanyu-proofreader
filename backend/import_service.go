@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"path"
@@ -65,7 +64,7 @@ func newRequestID() string {
 
 func ensureRequestID(c *core.RequestEvent) string {
 	requestID := strings.TrimSpace(c.Request.Header.Get("X-Request-ID"))
-	if requestID == "" {
+	if !safeRequestID.MatchString(requestID) {
 		requestID = newRequestID()
 	}
 	c.Response.Header().Set("X-Request-ID", requestID)
@@ -73,23 +72,7 @@ func ensureRequestID(c *core.RequestEvent) string {
 }
 
 func logUpload(level, event string, fields map[string]any) {
-	payload := map[string]any{
-		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
-		"level":     level,
-		"component": "upload_service",
-		"event":     event,
-	}
-	for key, value := range fields {
-		if value != nil && value != "" {
-			payload[key] = value
-		}
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("upload log marshal failed event=%s: %v", event, err)
-		return
-	}
-	log.Print(string(encoded))
+	writeOperation(level, "upload_service", event, fields)
 }
 
 func errorText(err error) string {
@@ -991,13 +974,21 @@ func (s *importService) processPDF(work importWork) {
 }
 
 func validatePDFStructure(reader io.ReadSeeker) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	return validatePDFStructureContext(ctx, reader)
+}
+func validatePDFStructureContext(workCtx context.Context, reader io.ReadSeeker) (int, error) {
+	if err := workCtx.Err(); err != nil {
+		return 0, err
+	}
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
 		return 0, err
 	}
 	pdfapi.DisableConfigDir()
 	configuration := pdfmodel.NewDefaultConfiguration()
 	configuration.ValidationMode = pdfmodel.ValidationRelaxed
-	document, err := pdfapi.ReadAndValidate(context.Background(), reader, configuration)
+	document, err := pdfapi.ReadAndValidate(workCtx, reader, configuration)
 	if err != nil {
 		return 0, err
 	}

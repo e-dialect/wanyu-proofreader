@@ -143,7 +143,9 @@ func (s *importService) taskPDF(c *core.RequestEvent) error {
 	}
 	started := time.Now()
 	descriptor := describePDF(file, start, end, started)
-	output, err := s.cachedTaskPDF(file, descriptor)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	output, err := s.cachedTaskPDFContext(ctx, file, descriptor)
 	if err != nil {
 		return apis.NewBadRequestError("PDF 分页或水印生成失败，请联系项目管理员。", err)
 	}
@@ -165,29 +167,45 @@ func (s *importService) taskPDF(c *core.RequestEvent) error {
 // This is the documented degradation path: bounded by the two pages a task
 // shows, never the whole book.
 func buildTaskPDF(reader io.ReadSeeker, start, end int, stamp string, stages *previewStages) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return buildTaskPDFContext(ctx, reader, start, end, stamp, stages)
+}
+func buildTaskPDFContext(workCtx context.Context, reader io.ReadSeeker, start, end int, stamp string, stages *previewStages) ([]byte, error) {
+	if err := workCtx.Err(); err != nil {
+		return nil, err
+	}
 	pdfapi.DisableConfigDir()
 	config := pdfmodel.NewDefaultConfiguration()
 	config.ValidationMode = pdfmodel.ValidationRelaxed
 	var excerpt bytes.Buffer
 	extractStart := time.Now()
-	err := pdfapi.Trim(context.Background(), reader, &excerpt, []string{fmt.Sprintf("%d-%d", start, end)}, config)
+	err := pdfapi.Trim(workCtx, reader, &excerpt, []string{fmt.Sprintf("%d-%d", start, end)}, config)
 	stages.markExtract(extractStart)
 	if err != nil {
 		return nil, err
 	}
 	watermarkStart := time.Now()
-	output, err := watermarkTaskPDF(bytes.NewReader(excerpt.Bytes()), stamp)
+	output, err := watermarkTaskPDFContext(workCtx, bytes.NewReader(excerpt.Bytes()), stamp)
 	stages.markWatermark(watermarkStart)
 	return output, err
 }
 
 func watermarkTaskPDF(reader io.ReadSeeker, stamp string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return watermarkTaskPDFContext(ctx, reader, stamp)
+}
+func watermarkTaskPDFContext(workCtx context.Context, reader io.ReadSeeker, stamp string) ([]byte, error) {
+	if err := workCtx.Err(); err != nil {
+		return nil, err
+	}
 	var output bytes.Buffer
-	watermark, err := pdfapi.TextWatermark(context.Background(), stamp, "fontname:Helvetica, points:11, scale:1 abs, rotation:25, opacity:0.18", true, false, pdftypes.POINTS, pdfConfig())
+	watermark, err := pdfapi.TextWatermark(workCtx, stamp, "fontname:Helvetica, points:11, scale:1 abs, rotation:25, opacity:0.18", true, false, pdftypes.POINTS, pdfConfig())
 	if err != nil {
 		return nil, err
 	}
-	if err := pdfapi.AddWatermarks(context.Background(), reader, &output, nil, watermark, pdfConfig()); err != nil {
+	if err := pdfapi.AddWatermarks(workCtx, reader, &output, nil, watermark, pdfConfig()); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
