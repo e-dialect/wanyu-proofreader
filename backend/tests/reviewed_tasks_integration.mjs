@@ -348,6 +348,28 @@ try {
   await request(`/api/fangji/pages/${stalePage.id}/task?mode=review`, { token: first.token, expected: 403 })
   await request(`/api/fangji/pages/${stalePage.id}/pdf/descriptor`, { token: first.token, expected: 403 })
 
+  // Histories are complete, ordered and body-free beyond a typical 100-row
+  // pagination boundary. Synthetic raw attempts keep this a cursor regression,
+  // not a throughput benchmark or a replacement for real submit cases above.
+  const historyPages = []
+  for (let index = 0; index < 105; index++) {
+    const history = await createPage(project.id, 100 + index, 'PRIVATE_HISTORY_BODY')
+    historyPages.push(history)
+    await request('/api/collections/proofreading_attempts/records', {
+      method: 'POST', token: superAuth.token,
+      body: { page: history.id, project: project.id, proofreader: first.id,
+        round: 1, pass_no: 1, kind: 'proofread', row_json: '{"词条":"PRIVATE_HISTORY_BODY"}',
+        text: 'PRIVATE_HISTORY_BODY', outcome: 'waiting', submitted_at: '2026-01-01 00:00:00.000Z' }
+    })
+  }
+  const completeHistory = await request(`/api/fangji/projects/${project.id}/tasks/reviewed?pageId=${historyPages[104].id}`, { token: first.token })
+  assert.equal(completeHistory.total, 108)
+  assert.equal(completeHistory.position, 108)
+  assert.deepEqual(completeHistory.items.slice(3).map(item => item.id), historyPages.map(item => item.id))
+  assert.equal(completeHistory.items[107].submitted_at, '2026-01-01 00:00:00.000Z')
+  assert.equal(JSON.stringify(completeHistory).includes('PRIVATE_HISTORY_BODY'), false)
+  assertBlindCursor(completeHistory, 'complete own history')
+
   console.log('Reviewed tasks cursor integration test passed.')
 } finally {
   for (const projectId of projectIds.reverse()) {

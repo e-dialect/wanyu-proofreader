@@ -1,0 +1,429 @@
+{
+  "protocol": {
+    "entries": 20000,
+    "users": 30,
+    "browser_actors": 2,
+    "duration_seconds": 180,
+    "profile": "accelerated smoke",
+    "gomaxprocs": 2,
+    "gomemlimit": "768MiB",
+    "hard_resource_limit_applied": false
+  },
+  "runs": {
+    "before": {
+      "baseline_sha": "efbb4aca42cdfa533614a1ff26cafbaeed9ed8cb",
+      "dirty_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 680,
+          "p50_ms": 449.087947,
+          "p95_ms": 2492.692,
+          "p99_ms": 3974.339942999999,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 678,
+          "p50_ms": 1108.760929000011,
+          "p95_ms": 3937.2050489999965,
+          "p99_ms": 6264.3648379999795,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 165,
+          "p50_ms": 1304.4781739999999,
+          "p95_ms": 4302.924664000006,
+          "p99_ms": 5717.404029999998,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 163,
+          "p50_ms": 37.783791000001656,
+          "p95_ms": 191.5911899999992,
+          "p99_ms": 373.81851800000004,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 683,
+          "p50_ms": 2.952,
+          "p95_ms": 45.653587000007974,
+          "p99_ms": 80.1096120000002,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 682,
+          "p50_ms": 3.3139740000042366,
+          "p95_ms": 40.56340199999977,
+          "p99_ms": 81.23446400000103,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 331,
+          "p50_ms": 591.5455420000071,
+          "p95_ms": 3237.1899139999878,
+          "p99_ms": 4258.783095000021,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "fail"
+        },
+        {
+          "operation": "verification",
+          "samples": 849,
+          "p50_ms": 11.54996299999766,
+          "p95_ms": 59.935,
+          "p99_ms": 125.49698199999693,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 5125,
+      "rss_peak_bytes": 1246883840,
+      "heap_alloc_peak_bytes": 562975416,
+      "reviewed": {
+        "samples": 81,
+        "p50_ms": 2026.075,
+        "p95_ms": 2732.704,
+        "min_response_bytes": 35,
+        "max_response_bytes": 3428
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 678,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 31682,
+          "submissions": 31682
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "admin_pages",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        },
+        {
+          "gate": "LCP",
+          "status": "fail"
+        }
+      ]
+    },
+    "diagnostic": {
+      "baseline_sha": "efbb4aca42cdfa533614a1ff26cafbaeed9ed8cb",
+      "dirty_diff_sha256": "3653d91082d28bea25239281995b8b35218490f5d70bad63d2ca223055e694c6",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 659,
+          "p50_ms": 518.96054,
+          "p95_ms": 2725.443800000008,
+          "p99_ms": 4177.185692999999,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 657,
+          "p50_ms": 1093.4934740000026,
+          "p95_ms": 4397.454976000001,
+          "p99_ms": 6988.211337999994,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 149,
+          "p50_ms": 1713.0159619999977,
+          "p95_ms": 4916.053655000003,
+          "p99_ms": 6508.08064700001,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 155,
+          "p50_ms": 43.4550950000048,
+          "p95_ms": 149.1970990000118,
+          "p99_ms": 347.5521840000001,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 662,
+          "p50_ms": 3.597262999996019,
+          "p95_ms": 42.29625899999519,
+          "p99_ms": 76.90227400000003,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 661,
+          "p50_ms": 3.4653830000024755,
+          "p95_ms": 39.91648400001577,
+          "p99_ms": 84.22270300000673,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 308,
+          "p50_ms": 637.8647429999837,
+          "p95_ms": 2671.8873180000082,
+          "p99_ms": 3997.283454000004,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "fail"
+        },
+        {
+          "operation": "verification",
+          "samples": 813,
+          "p50_ms": 12.706610000000182,
+          "p95_ms": 62.2516270000051,
+          "p99_ms": 97.89088200000697,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 4927,
+      "rss_peak_bytes": 1241210880,
+      "heap_alloc_peak_bytes": 566772424,
+      "reviewed": {
+        "samples": 78,
+        "p50_ms": 1979.251,
+        "p95_ms": 2651.618,
+        "min_response_bytes": 35,
+        "max_response_bytes": 3254
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 657,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 31661,
+          "submissions": 31661
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "admin_pages",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        },
+        {
+          "gate": "LCP",
+          "status": "fail"
+        }
+      ]
+    },
+    "own_review_join": {
+      "baseline_sha": "efbb4aca42cdfa533614a1ff26cafbaeed9ed8cb",
+      "dirty_diff_sha256": "d3f5d9a57bfa13cb0cd1863ce37c4a506df543888d3d6e6e24a527b8d46c77e3",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 925,
+          "p50_ms": 274.739,
+          "p95_ms": 1518.5254140000034,
+          "p99_ms": 2839.3714880000043,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 923,
+          "p50_ms": 570.0199089999951,
+          "p95_ms": 2822.977979999996,
+          "p99_ms": 4428.603629000005,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 232,
+          "p50_ms": 898.6969959999988,
+          "p95_ms": 2681.206938000003,
+          "p99_ms": 4013.239011999991,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 217,
+          "p50_ms": 29.3425789999892,
+          "p95_ms": 76.72334799999953,
+          "p99_ms": 103.51153299999714,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 929,
+          "p50_ms": 1.848958999995375,
+          "p95_ms": 17.582,
+          "p99_ms": 43.867,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 927,
+          "p50_ms": 2.44,
+          "p95_ms": 9.118228999999701,
+          "p99_ms": 28.211,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 449,
+          "p50_ms": 377.62107399999513,
+          "p95_ms": 1825.9633109999995,
+          "p99_ms": 3162.5751070000115,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "fail"
+        },
+        {
+          "operation": "verification",
+          "samples": 1159,
+          "p50_ms": 8.718361000006553,
+          "p95_ms": 30.866475000002538,
+          "p99_ms": 47.36117400001967,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 6848,
+      "rss_peak_bytes": 406716416,
+      "heap_alloc_peak_bytes": 63422640,
+      "reviewed": {
+        "samples": 213,
+        "p50_ms": 2.718,
+        "p95_ms": 16.414,
+        "min_response_bytes": 35,
+        "max_response_bytes": 9345
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 923,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 31927,
+          "submissions": 31927
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "admin_pages",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        }
+      ]
+    }
+  },
+  "limits": [
+    "All runs are native macOS with same-host generators, not production shared-host acceptance.",
+    "Each candidate was measured once; profiling run includes diagnostic overhead and cannot certify acceptance.",
+    "Read-only snapshot optimization was not present in these measurements."
+  ]
+}

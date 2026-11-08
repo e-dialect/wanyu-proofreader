@@ -25,41 +25,19 @@ function ownProofreadAttempt(dao, page, userId) {
   return attempts.length ? attempts[0] : null
 }
 
+// A reviewed-task cursor needs only this user's current-round attempt and the
+// page identity/order. Loading every project page here copied private corpus
+// bodies into the JS VM on each editor navigation, even for an empty history.
+// The unique (page,round,proofreader,kind) index guarantees one result per page.
+// Return the complete own history; no arbitrary 100k/100-row truncation.
 function reviewedProofreads(dao, projectId, userId) {
-  const pages = dao.findRecordsByFilter(
-    "pages",
-    `project = "${projectId}"`,
-    "page_number",
-    100000,
-    0
-  )
-  const attempts = dao.findRecordsByFilter(
-    "proofreading_attempts",
-    `project = "${projectId}" && proofreader = "${userId}" && kind = "proofread"`,
-    "",
-    100000,
-    0
-  )
-  const attemptsByPage = Object.create(null)
-  for (const attempt of attempts) {
-    const pageId = attempt.getString("page")
-    if (!attemptsByPage[pageId]) attemptsByPage[pageId] = []
-    attemptsByPage[pageId].push(attempt)
-  }
-  const items = []
-  for (const page of pages) {
-    if (page.getString("project") !== projectId) continue
-    const round = currentRound(page)
-    const attempt = (attemptsByPage[page.id] || []).find((row) => row.getInt("round") === round)
-    if (!attempt) continue
-    items.push({ page, attempt })
-  }
-  items.sort((a, b) => {
-    const byNumber = a.page.getInt("page_number") - b.page.getInt("page_number")
-    if (byNumber !== 0) return byNumber
-    return String(a.page.id).localeCompare(String(b.page.id))
-  })
-  return items
+  const rows = arrayOf(new DynamicModel({ id: "", page_number: 0, submitted_at: "" }))
+  dao.db().newQuery(`SELECT p.id,p.page_number,a.submitted_at
+    FROM proofreading_attempts a JOIN pages p ON p.id=a.page AND p.project=a.project
+    WHERE a.proofreader={:user} AND a.project={:project} AND a.kind='proofread'
+      AND a.round=COALESCE(NULLIF(p.proofread_round,0),1)
+    ORDER BY p.page_number,p.id`).bind({ user: userId, project: projectId }).all(rows)
+  return rows.map(row => ({ id: row.id, page_number: Number(row.page_number), submitted_at: String(row.submitted_at || "") }))
 }
 
 function arbitrationAttempt(dao, page) {

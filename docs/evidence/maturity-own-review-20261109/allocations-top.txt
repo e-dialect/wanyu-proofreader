@@ -1,0 +1,27 @@
+File: pocketbase
+Type: alloc_space
+Time: 2026-11-09 01:56:24 CST
+Showing nodes accounting for 44.08GB, 86.81% of 50.78GB total
+Dropped 1549 nodes (cum <= 0.25GB)
+Showing top 20 nodes out of 187
+      flat  flat%   sum%        cum   cum%
+   22.14GB 43.61% 43.61%    22.15GB 43.63%  github.com/pocketbase/dbx.(*Rows).ScanMap
+    7.83GB 15.42% 59.03%     9.08GB 17.87%  github.com/pocketbase/pocketbase/core.NewRecord
+    3.47GB  6.84% 65.87%     3.47GB  6.84%  modernc.org/sqlite.(*conn).columnText
+    2.94GB  5.79% 71.66%     2.94GB  5.79%  github.com/dop251/goja.(*baseObject)._put
+    1.18GB  2.32% 73.98%     1.37GB  2.69%  github.com/pocketbase/pocketbase/tools/list.ToUniqueStringSlice
+    0.73GB  1.45% 75.43%     2.44GB  4.81%  github.com/dop251/goja.(*Runtime).newWrappedFunc
+    0.73GB  1.43% 76.86%    11.08GB 21.83%  github.com/pocketbase/pocketbase/core.newRecordFromNullStringMap
+    0.67GB  1.32% 78.18%     0.67GB  1.32%  internal/bytealg.MakeNoZero
+    0.66GB  1.30% 79.48%     0.66GB  1.30%  github.com/pocketbase/pocketbase/core.(*DateField).PrepareValue
+    0.57GB  1.12% 80.60%     4.04GB  7.96%  modernc.org/sqlite.(*rows).Next
+    0.54GB  1.07% 81.67%     0.54GB  1.07%  github.com/dop251/goja.(*baseObject).init (inline)
+    0.50GB  0.99% 82.66%     1.30GB  2.55%  github.com/dop251/goja.(*Runtime).newArray
+    0.47GB  0.92% 83.58%     3.03GB  5.97%  github.com/dop251/goja.(*Runtime).toValue
+    0.39GB  0.77% 84.35%     0.46GB   0.9%  regexp.(*Regexp).replaceAll
+    0.36GB  0.71% 85.06%     1.03GB  2.03%  github.com/dop251/goja.(*Runtime).newArrowFunc
+    0.32GB  0.63% 85.69%     0.68GB  1.34%  regexp.(*Regexp).ReplaceAllString
+    0.28GB  0.55% 86.24%     0.28GB  0.55%  bytes.growSlice
+    0.11GB  0.22% 86.46%     0.93GB  1.83%  github.com/pocketbase/pocketbase/core.(*RelationField).normalizeValue
+    0.09GB  0.18% 86.63%    40.47GB 79.71%  reflect.Value.call
+    0.09GB  0.18% 86.81%     0.34GB  0.66%  encoding/json.(*Decoder).Token

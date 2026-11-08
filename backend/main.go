@@ -75,6 +75,7 @@ func main() {
 
 	importer := newImportService(app)
 	registerObservability(app, importer)
+	registerCapacityProbe(app)
 	importer.register()
 	importer.registerOCR()
 	importer.registerPDFPreview()

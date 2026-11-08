@@ -242,11 +242,7 @@ routerAdd("GET", `${FANGJI_API}/projects/{projectId}/tasks/reviewed`, (c) => {
   const cursorPageId = String(c.request.url.query().get("pageId") || "")
   if (cursorPageId) proofAssertId(cursorPageId, "条目")
 
-  const items = proofReviewed(dao, projectId, auth.id).map(({ page, attempt }) => ({
-    id: page.id,
-    page_number: page.getInt("page_number"),
-    submitted_at: String(attempt.get("submitted_at") || "")
-  }))
+  const items = proofReviewed(dao, projectId, auth.id)
   const index = cursorPageId ? items.findIndex((item) => item.id === cursorPageId) : -1
   return c.json(200, {
     items,
