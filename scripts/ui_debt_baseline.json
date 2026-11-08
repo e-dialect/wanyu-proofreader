@@ -1,7 +1,7 @@
 {
   "version": 1,
   "captured_from": "feat/ui-refinement-20261108 (2026-11-08)",
-  "reason": "All literal inline styles use named CSS; seven runtime dimensions/progress styles remain after removing the hidden arbitration progress bar. Native tables exist only in AppDataTable. Every category is a failing ratchet and limits only decrease.",
+  "reason": "All literal inline styles use named CSS; six runtime dimensions/progress styles remain after moving CSV progress to the shared semantic progress control. Native tables exist only in AppDataTable. Every category is a failing ratchet and limits only decrease.",
   "kinds": {
     "hardcoded_colors": {
       "limit": 0,
@@ -16,7 +16,7 @@
       "mode": "fail"
     },
     "inline_styles": {
-      "limit": 7,
+      "limit": 6,
       "mode": "fail"
     },
     "bare_tables": {

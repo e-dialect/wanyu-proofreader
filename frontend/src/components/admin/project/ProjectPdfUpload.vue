@@ -1,10 +1,10 @@
 <template>
   <!-- PDF upload -->
-  <div>
+  <div ref="panelElement">
     <h4 class="font-semibold mb-2">上传 PDF 文件</h4>
     <p class="text-sm text-muted mb-3">
-      上传 PDF 作为校对原文预览。上传本身不生成条目。可通过 CSV 导入，或在本地 OCR
-      已启用时按页发起识别并修正结果。
+      上传 PDF 作为校对原文预览。上传本身不生成条目。可通过 CSV 导入；本地文字层提取已启用时，
+      也可提取无图像单栏页面的文字后再核对。扫描页与含图像页面暂不支持自动生成条目。
     </p>
     <div v-if="pdfResume && !uploadingPdf" class="alert mt-2" role="status">
       <p>
@@ -13,12 +13,12 @@
         <span v-else>。请重新选择同一文件继续；不能只靠文件名和大小匹配。</span>
       </p>
       <div class="mt-3 flex gap-2">
-        <button type="button" class="btn btn-primary" @click="pdfInput.click()">
+        <AppButton type="button" variant="primary" @click="pdfInput.click()">
           重新选择同一 PDF
-        </button>
-        <button type="button" class="btn btn-quiet" @click="abandonPdfResume">
+        </AppButton>
+        <AppButton type="button" variant="ghost" @click="abandonPdfResume">
           放弃未完成上传
-        </button>
+        </AppButton>
       </div>
     </div>
     <input
@@ -29,26 +29,35 @@
       ref="pdfInput"
       class="file-input-hidden"
     />
-    <button
+    <AppButton
       v-if="!pdfResume || uploadingPdf"
-      class="btn btn-secondary"
+      variant="secondary"
       @click="pdfInput.click()"
       :disabled="uploadingPdf"
     >
       选择 PDF 文件
-    </button>
+    </AppButton>
     <span v-if="pdfFile" class="text-sm ml-2">{{ pdfFile.name }}</span>
     <div v-if="pdfError && pdfRetryable && pdfFile && !uploadingPdf" class="mt-3">
-      <button class="btn btn-primary" @click="uploadPdf">重试上传 PDF</button>
+      <AppButton variant="primary" @click="uploadPdf">重试上传 PDF</AppButton>
     </div>
     <div v-if="uploadingPdf && !pdfProcessing" class="mt-2" role="status">
       <progress :value="pdfUploadProgress" max="100" aria-label="PDF 上传进度"></progress>
       <span
         >已上传 {{ pdfUploadProgress }}%{{ pdfUploadProgress === 100 ? '，正在保存…' : '' }}</span
       >
-      <button class="btn btn-quiet btn-sm" @click="pdfUploadController?.abort()">取消上传</button>
+      <AppButton variant="ghost" size="sm" @click="pdfUploadController?.abort()"
+        >取消上传</AppButton
+      >
     </div>
     <div v-if="pdfProcessing" class="alert mt-2" role="status">PDF 已上传，后端正在校验文件...</div>
+    <JobStatusPanel
+      v-if="pdfJobTarget"
+      label="PDF 校验"
+      kind="pdf"
+      :observation="pdfObservation"
+      @retry="retryPdfJob"
+    />
     <div v-if="pdfSuccess" class="alert alert-success mt-2" role="status">
       PDF 深度校验完成，共 {{ pdfMetadata?.page_count || 0 }} 页，已设为项目主
       PDF，可在校对编辑器中预览。
@@ -58,7 +67,10 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import AppButton from '@/components/AppButton.vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import JobStatusPanel from '@/components/admin/project/JobStatusPanel.vue'
+import { useJobObserver } from '@/composables/useJobObserver'
 import {
   createProjectPdf,
   getProjectFile,
@@ -76,6 +88,20 @@ import { getPbStatus, getUploadErrorMessage, isRetryablePdfUploadError } from '@
 const props = defineProps({ projectId: { type: String, required: true } })
 const projectId = props.projectId
 const pdfInput = ref(null)
+const panelElement = ref(null)
+const pdfJobTarget = ref(null)
+const {
+  snapshot: pdfJob,
+  observation: pdfObservation,
+  retry: retryPdfJob,
+  seed: seedPdfJob
+} = useJobObserver({
+  projectId: () => props.projectId,
+  kind: 'pdf',
+  job: pdfJobTarget,
+  panel: panelElement,
+  read: getProjectFile
+})
 
 const pdfFile = ref(null)
 
@@ -101,6 +127,31 @@ let pdfPollGeneration = 0
 
 const pdfResumeExpired = computed(() => Boolean(pdfResume.value?.expired))
 
+watch(
+  () => [pdfJob.value?.id, pdfJob.value?.status, pdfObservation.value.state],
+  ([id, status, state]) => {
+    if (['unauthorized', 'unavailable'].includes(state)) {
+      pdfProcessing.value = uploadingPdf.value = pdfSuccess.value = false
+      pdfMetadata.value = null
+      return
+    }
+    if (!id) return
+    pdfProcessing.value = status === 'processing'
+    if (!['ready', 'failed'].includes(status)) return
+    uploadingPdf.value = false
+    pdfFile.value = pdfResume.value = null
+    if (pdfInput.value) pdfInput.value.value = ''
+    if (status === 'ready') {
+      pdfSuccess.value = true
+      pdfMetadata.value = pdfJob.value
+      pdfError.value = ''
+    } else {
+      pdfError.value = `${pdfJob.value.error_message || 'PDF 后端校验失败'}，请重新选择 PDF 文件。`
+      pdfRetryable.value = false
+    }
+  }
+)
+
 async function onPdfSelected(e) {
   if (uploadingPdf.value) return
   const selectedFile = e.target.files[0]
@@ -109,6 +160,7 @@ async function onPdfSelected(e) {
   pdfSuccess.value = false
   pdfMetadata.value = null
   pdfProcessing.value = false
+  pdfJobTarget.value = null
   pdfError.value = ''
   pdfRetryable.value = false
   pdfUploadProgress.value = 0
@@ -191,7 +243,7 @@ async function uploadPdf() {
   try {
     pdfUploadController = new AbortController()
     const signal = pdfUploadController.signal
-    let record = await createProjectPdf({
+    const record = await createProjectPdf({
       projectId,
       file: pdfFile.value,
       signal,
@@ -202,25 +254,8 @@ async function uploadPdf() {
     })
     if (generation !== pdfPollGeneration) return
     pdfProcessing.value = record.status === 'processing'
-    while (record.status === 'processing' && generation === pdfPollGeneration) {
-      await pollDelay(1000)
-      record = await getProjectFile(record.id)
-    }
-    if (generation !== pdfPollGeneration) return
-    pdfProcessing.value = false
-    if (record.status === 'ready') {
-      pdfSuccess.value = true
-      pdfMetadata.value = record
-      pdfFile.value = null
-      pdfResume.value = null
-      if (pdfInput.value) pdfInput.value.value = ''
-    } else {
-      pdfError.value = `${record.error_message || 'PDF 后端校验失败'}，请重新选择 PDF 文件。`
-      pdfFile.value = null
-      pdfResume.value = null
-      pdfRetryable.value = false
-      if (pdfInput.value) pdfInput.value.value = ''
-    }
+    pdfJobTarget.value = record
+    seedPdfJob(record)
   } catch (e) {
     if (generation !== pdfPollGeneration) return
     pdfError.value = pdfUploadController?.signal.aborted
@@ -236,12 +271,8 @@ async function uploadPdf() {
     pdfProcessing.value = false
     await loadPdfResume()
   } finally {
-    if (generation === pdfPollGeneration) uploadingPdf.value = false
+    if (generation === pdfPollGeneration) uploadingPdf.value = pdfProcessing.value
   }
-}
-
-function pollDelay(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 onBeforeUnmount(() => {
   pdfUploadController?.abort(PDF_UPLOAD_PAUSED)

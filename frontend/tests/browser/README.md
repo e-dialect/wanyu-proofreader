@@ -145,3 +145,9 @@ passing. The `frontend-quality-browser` artifact contains all of
 these comparison files exist; it does not recreate the historical baseline
 screenshots or turn them into a new comparison run. Partial runtime evidence is
 uploaded even if a browser regression fails.
+
+`components` also runs `job-observer.cjs` against the mounted production observer,
+status panel and CSV controls with intercepted synthetic responses. It verifies shared
+GETs, stale snapshots, hidden/offline recovery, token refresh/logout fencing, conversion
+progress without a fabricated denominator, read-only CSV20 and 390/1440px layout.
+Screenshots and the numeric receipt are in `output/playwright/job-observer/`.

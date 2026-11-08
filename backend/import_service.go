@@ -1037,15 +1037,25 @@ type csvCounters struct {
 }
 
 type csvInspection struct {
-	Encoding     string              `json:"encoding"`
-	Headers      []string            `json:"headers"`
-	PDFPageField string              `json:"pdf_page_field"`
-	TotalRows    int                 `json:"total_rows"`
-	ValidRows    int                 `json:"valid_rows"`
-	InvalidRows  int                 `json:"invalid_rows"`
-	MinPDFPage   int                 `json:"min_pdf_page"`
-	MaxPDFPage   int                 `json:"max_pdf_page"`
-	Preview      []map[string]string `json:"preview"`
+	Encoding         string               `json:"encoding"`
+	Headers          []string             `json:"headers"`
+	PDFPageField     string               `json:"pdf_page_field"`
+	TotalRows        int                  `json:"total_rows"`
+	ValidRows        int                  `json:"valid_rows"`
+	InvalidRows      int                  `json:"invalid_rows"`
+	MinPDFPage       int                  `json:"min_pdf_page"`
+	MaxPDFPage       int                  `json:"max_pdf_page"`
+	Preview          []map[string]string  `json:"preview"`
+	PreviewLocations []csvPreviewLocation `json:"preview_locations"`
+	PreviewLimit     int                  `json:"preview_limit"`
+	PreviewKind      string               `json:"preview_kind"`
+}
+
+const csvInspectionPreviewLimit = 20
+
+type csvPreviewLocation struct {
+	CSVLine int `json:"csv_line"`
+	PDFPage int `json:"pdf_page"`
 }
 
 func (s *importService) processCSVInspection(work importWork) {
@@ -1111,10 +1121,13 @@ func (s *importService) processCSVInspection(work importWork) {
 	}
 
 	inspection := csvInspection{
-		Encoding:     encodingName,
-		Headers:      headers,
-		PDFPageField: pdfPageField,
-		Preview:      make([]map[string]string, 0, 5),
+		Encoding:         encodingName,
+		Headers:          headers,
+		PDFPageField:     pdfPageField,
+		Preview:          make([]map[string]string, 0, csvInspectionPreviewLimit),
+		PreviewLocations: make([]csvPreviewLocation, 0, csvInspectionPreviewLimit),
+		PreviewLimit:     csvInspectionPreviewLimit,
+		PreviewKind:      "first_valid_rows",
 	}
 	for {
 		values, readErr := csvReader.Read()
@@ -1150,7 +1163,7 @@ func (s *importService) processCSVInspection(work importWork) {
 		if page.pdfPage > inspection.MaxPDFPage {
 			inspection.MaxPDFPage = page.pdfPage
 		}
-		if len(inspection.Preview) < 5 {
+		if len(inspection.Preview) < csvInspectionPreviewLimit {
 			row := make(map[string]string, len(headers))
 			for index, header := range headers {
 				if index < len(values) {
@@ -1158,6 +1171,7 @@ func (s *importService) processCSVInspection(work importWork) {
 				}
 			}
 			inspection.Preview = append(inspection.Preview, row)
+			inspection.PreviewLocations = append(inspection.PreviewLocations, csvPreviewLocation{CSVLine: line, PDFPage: page.pdfPage})
 		}
 	}
 	encodedInspection, err := json.Marshal(inspection)

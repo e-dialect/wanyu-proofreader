@@ -23,14 +23,18 @@ export async function listProjectPdfUploads(projectId) {
 }
 
 export async function cancelProjectPdfUpload(projectId, uploadId) {
-  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pdf-uploads/${encodeURIComponent(uploadId)}`, {
-    method: 'DELETE',
-    requestKey: null
-  })
+  return pb.send(
+    `/api/fangji/projects/${encodeURIComponent(projectId)}/pdf-uploads/${encodeURIComponent(uploadId)}`,
+    {
+      method: 'DELETE',
+      requestKey: null
+    }
+  )
 }
 
-export async function getProjectFile(recordId) {
+export async function getProjectFile(recordId, { signal } = {}) {
   return pb.collection('project_files').getOne(recordId, {
+    signal,
     requestKey: null
   })
 }

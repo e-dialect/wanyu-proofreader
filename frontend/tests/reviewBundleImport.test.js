@@ -1,3 +1,4 @@
+import { jobObserverScope } from './helpers/jobObserverScope.js'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
@@ -27,7 +28,8 @@ function archive(manifest, method) {
 test('stored and deflated ZIP declarations display the exact original source and requested fields', async () => {
   const declaration = {
     source_system: '资料系统',
-    source_id: ' ɕʰ ã ',
+    source_project: 'project-a',
+    id: ' ɕʰ ã ',
     source_version: 'v2',
     rights_ref: 'src-test',
     requested_fields: ['词', '音标']
@@ -46,19 +48,10 @@ const script = source
   .match(/<script setup>([\s\S]*?)<\/script>/)[1]
   .replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"]\s*\n/g, '')
 function component(overrides = {}) {
-  let unmount
+  const cleanup = []
   const events = []
   const scope = {
-    ref: (value) => ({ value }),
-    computed: (get) => ({
-      get value() {
-        return get()
-      }
-    }),
-    watch: () => {},
-    onBeforeUnmount: (callback) => {
-      unmount = callback
-    },
+    ...jobObserverScope(cleanup),
     defineProps: () => ({ projectId: 'project-a' }),
     defineEmits: () => (value) => events.push(value),
     defineExpose: () => {},
@@ -66,8 +59,13 @@ function component(overrides = {}) {
     bundleTerminal,
     readBundleDeclaration: async () => ({ rights_ref: 'src-test' }),
     validateReviewBundle: async () => ({ ok: true, entry_count: 2 }),
-    createBundleImport: async () => ({ id: 'job-a', status: 'completed', success_count: 2 }),
-    getImportJob: async () => ({ id: 'job-a', status: 'completed' }),
+    createBundleImport: async () => ({
+      project: 'project-a',
+      id: 'job-a',
+      status: 'completed',
+      success_count: 2
+    }),
+    getImportJob: async () => ({ project: 'project-a', id: 'job-a', status: 'completed' }),
     listImportJobErrors: async () => ({ items: [] }),
     getPbMessage: (cause, fallback) => cause.message || fallback,
     setTimeout: () => 1,
@@ -76,9 +74,9 @@ function component(overrides = {}) {
   }
   const instance = new Function(
     ...Object.keys(scope),
-    `${script}\nreturn { chooseFile, inspect, submit, refreshJob, reset, file, report, declaration, job, busy, error, acknowledged, uncertain, alreadyImported, hasPendingWork }`
+    `${script}\nreturn { chooseFile, inspect, submit, refreshJob, reset, file, report, declaration, job, jobTarget, busy, error, acknowledged, uncertain, alreadyImported, hasPendingWork }`
   )(...Object.values(scope))
-  return { ...instance, events, unmount: () => unmount() }
+  return { ...instance, events, unmount: () => cleanup.forEach((fn) => fn()) }
 }
 const pick = (instance) => {
   const file = { name: 'original.zip', size: 100 }
@@ -103,7 +101,7 @@ test('validation is read-only and refused reports cannot submit', async () => {
   instance.acknowledged.value = true
   await instance.submit()
   assert.equal(writes, 0)
-  assert.equal(instance.file.value, file)
+  assert.deepEqual(instance.file.value, file)
   assert.equal(instance.report.value.errors[0].code, 'manifest_missing')
 })
 
@@ -115,7 +113,7 @@ test('unknown submission retains the exact file and recovers the existing idempo
       if (calls.length === 1) throw Object.assign(new Error('网络中断'), { status: 0 })
       return {
         status: 'already_imported',
-        job: { id: 'existing-job', status: 'completed', success_count: 2 }
+        job: { project: 'project-a', id: 'existing-job', status: 'completed', success_count: 2 }
       }
     }
   })
@@ -127,7 +125,7 @@ test('unknown submission retains the exact file and recovers the existing idempo
   await instance.submit()
   assert.equal(instance.uncertain.value, true)
   assert.equal(instance.hasPendingWork.value, true)
-  assert.equal(instance.file.value, file)
+  assert.deepEqual(instance.file.value, file)
   await instance.submit()
   assert.deepEqual(calls, [file, file])
   assert.equal(instance.job.value.id, 'existing-job')
@@ -152,7 +150,7 @@ test('422 import refusal stays visible and cannot be mistaken for an accepted jo
   await instance.inspect()
   instance.acknowledged.value = true
   await instance.submit()
-  assert.equal(instance.report.value, refusal)
+  assert.deepEqual(instance.report.value, refusal)
   assert.equal(instance.uncertain.value, false)
   assert.equal(instance.job.value, null)
 })
@@ -179,10 +177,11 @@ test('late validation and polling responses cannot replace another project or an
         resolveJob = done
       })
   })
-  other.job.value = { id: 'old-job', status: 'processing' }
+  other.jobTarget.value = { project: 'project-a', id: 'old-job', status: 'processing' }
   const read = other.refreshJob()
+  await Promise.resolve()
   other.unmount()
-  resolveJob({ id: 'old-job', status: 'completed' })
+  resolveJob({ project: 'project-a', id: 'old-job', status: 'completed' })
   await read
   assert.equal(other.job.value.status, 'processing')
   assert.deepEqual(other.events, [])

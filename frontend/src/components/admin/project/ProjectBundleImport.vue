@@ -1,5 +1,5 @@
 <template>
-  <section class="bundle-import" aria-label="资料包导入">
+  <section ref="panelElement" class="bundle-import" aria-label="资料包导入">
     <h3>从资料包导入条目</h3>
     <p class="text-muted">检查 Review Bundle 的内容与来源声明，确认后生成待校对条目。</p>
     <p class="text-sm text-muted">
@@ -14,18 +14,20 @@
       :disabled="busy || uncertain"
       @change="chooseFile"
     />
-    <button class="btn btn-secondary" :disabled="busy || uncertain" @click="bundleInput.click()">
+    <AppButton variant="secondary" :disabled="busy || uncertain" @click="bundleInput.click()">
       选择 ZIP 资料包
-    </button>
+    </AppButton>
     <p v-if="file" class="text-sm bundle-filename">{{ file.name }}</p>
-    <button
+    <AppButton
       v-if="file && !report && !job"
-      class="btn btn-primary"
+      variant="primary"
       :disabled="busy"
       @click="inspect"
+      :loading="busy"
+      loading-label="正在检查"
     >
-      {{ busy ? '正在检查…' : '检查资料包' }}
-    </button>
+      检查资料包
+    </AppButton>
     <div v-if="report && !job" class="bundle-report">
       <h4>{{ report.ok ? '检查通过，等待确认' : '资料包未通过检查' }}</h4>
       <p>资料包包含 {{ report.entry_count }} 条条目。</p>
@@ -77,19 +79,28 @@
         <input v-model="acknowledged" type="checkbox" :disabled="busy || uncertain" />
         我已核对来源声明，确认将这些条目导入当前项目。
       </AppField>
-      <button
+      <AppButton
         v-if="report.ok"
-        class="btn btn-primary"
+        variant="primary"
         :disabled="busy || !acknowledged"
         @click="submit"
+        :loading="busy"
+        loading-label="正在提交"
       >
-        {{ busy ? '正在提交…' : uncertain ? '重试原资料包并查询结果' : '确认导入资料包' }}
-      </button>
+        {{ uncertain ? '重试原资料包并查询结果' : '确认导入资料包' }}
+      </AppButton>
     </div>
     <div v-if="uncertain" class="alert alert-warning" role="alert">
       尚未收到导入结果，资料包可能已被接收。请重试同一个文件，系统将返回同包已有作业，避免重复导入。
     </div>
-    <div v-if="job" class="bundle-result" aria-live="polite">
+    <JobStatusPanel
+      v-if="jobTarget"
+      label="资料包导入"
+      kind="bundle"
+      :observation="observation"
+      @retry="refreshJob"
+    />
+    <div v-if="job" class="bundle-result">
       <h4>{{ jobLabel }}</h4>
       <p v-if="alreadyImported" class="text-sm">
         此资料包已有导入作业，已恢复其进度，没有新建一份。
@@ -99,17 +110,16 @@
       <p v-if="job.error_message" class="alert alert-warning" role="alert">
         {{ job.error_message }}
       </p>
-      <button class="btn btn-secondary" :disabled="busy" @click="refreshJob">
-        {{ bundleTerminal(job) ? '刷新导入结果' : '刷新导入进度' }}
-      </button>
-      <button
+      <AppButton
         v-if="job.status === 'failed'"
-        class="btn btn-primary"
+        variant="primary"
         :disabled="busy"
         @click="submit"
+        :loading="busy"
+        loading-label="正在提交"
       >
         重试原资料包
-      </button>
+      </AppButton>
       <details class="bundle-technical">
         <summary>查看作业详情</summary>
         <p>
@@ -128,9 +138,12 @@
 </template>
 
 <script setup>
+import AppButton from '@/components/AppButton.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import AppField from '@/components/AppField.vue'
 import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
+import JobStatusPanel from '@/components/admin/project/JobStatusPanel.vue'
+import { useJobObserver } from '@/composables/useJobObserver'
 import {
   createBundleImport,
   getImportJob,
@@ -143,18 +156,30 @@ import { getPbMessage } from '@/utils/pbErrors'
 const props = defineProps({ projectId: { type: String, required: true } })
 const emit = defineEmits(['changed'])
 const bundleInput = ref(null)
+const panelElement = ref(null)
 const file = ref(null),
   report = ref(null),
   declaration = ref(null),
-  job = ref(null)
+  jobTarget = ref(null)
+const {
+  snapshot: job,
+  observation,
+  retry: refreshJob,
+  seed: seedJob
+} = useJobObserver({
+  projectId: () => props.projectId,
+  kind: 'bundle',
+  job: jobTarget,
+  panel: panelElement,
+  read: getImportJob
+})
 const busy = ref(false),
   error = ref(''),
   acknowledged = ref(false),
   uncertain = ref(false)
 const alreadyImported = ref(false)
 let generation = 0,
-  disposed = false,
-  timer
+  disposed = false
 const current = (value) => !disposed && generation === value
 const hasPendingWork = computed(
   () => busy.value || uncertain.value || (!!file.value && !bundleTerminal(job.value))
@@ -172,8 +197,7 @@ const jobLabel = computed(
 
 function reset() {
   generation++
-  clearTimeout(timer)
-  file.value = report.value = declaration.value = job.value = null
+  file.value = report.value = declaration.value = jobTarget.value = null
   busy.value = acknowledged.value = uncertain.value = alreadyImported.value = false
   error.value = ''
 }
@@ -205,14 +229,11 @@ async function inspect() {
 }
 async function publishJob(value, version) {
   if (!current(version)) return
-  job.value = value
-  if (bundleTerminal(value)) {
-    emit('changed')
-  } else timer = setTimeout(refreshJob, 1000)
+  jobTarget.value = value
+  seedJob(value)
 }
 async function submit() {
   if (!file.value || !report.value?.ok || !acknowledged.value || busy.value) return
-  clearTimeout(timer)
   const version = ++generation
   busy.value = true
   error.value = ''
@@ -234,27 +255,17 @@ async function submit() {
     if (current(version)) busy.value = false
   }
 }
-async function refreshJob() {
-  if (!job.value || busy.value) return
-  clearTimeout(timer)
-  const version = ++generation
-  busy.value = true
-  error.value = ''
-  try {
-    const value = await getImportJob(job.value.id)
-    await publishJob(value, version)
-  } catch (cause) {
-    if (current(version))
-      error.value = getPbMessage(cause, '进度读取失败，已有作业已保留，请刷新重试。')
-  } finally {
-    if (current(version)) busy.value = false
+watch(
+  () => [job.value?.id, job.value?.status],
+  ([id, status], previous) => {
+    if (id && bundleTerminal({ status }) && (id !== previous?.[0] || status !== previous?.[1]))
+      emit('changed')
   }
-}
+)
 watch(() => props.projectId, reset)
 onBeforeUnmount(() => {
   disposed = true
   generation++
-  clearTimeout(timer)
 })
 defineExpose({ hasPendingWork })
 </script>

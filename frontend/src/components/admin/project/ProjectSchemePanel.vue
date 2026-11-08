@@ -25,28 +25,29 @@
     <template v-else>
       <div class="scheme-view-controls">
         <nav class="scheme-tabs" aria-label="记音整理工作">
-          <button
+          <AppButton
             type="button"
             :aria-current="schemeView === 'jobs' ? 'page' : undefined"
             @click="setView('jobs')"
           >
-            转换作业</button
-          ><button
+            转换作业</AppButton
+          ><AppButton
             type="button"
             :aria-current="schemeView === 'review' ? 'page' : undefined"
             @click="setView('review')"
           >
             人工复核 <span v-if="reviewTotalItems">{{ reviewTotalItems }}</span>
-          </button>
+          </AppButton>
         </nav>
-        <button
+        <AppButton
           type="button"
-          class="btn btn-secondary btn-sm"
+          variant="secondary"
+          size="sm"
           :disabled="schemeBusy || schemeLoading"
           @click="loadSchemeState"
         >
           刷新
-        </button>
+        </AppButton>
       </div>
       <p v-if="schemeError" class="alert alert-error" role="alert">{{ schemeError }}</p>
       <p v-if="schemeSuccess" class="alert alert-success" role="status">{{ schemeSuccess }}</p>
@@ -65,14 +66,14 @@
               </option>
             </select>
           </AppField>
-          <button
+          <AppButton
             type="button"
-            class="btn btn-primary"
+            variant="primary"
             :disabled="schemeBusy || !schemeSourceId"
             @click="runConversion"
           >
             {{ schemeBusy ? '转换中…' : '生成统一拼音' }}
-          </button>
+          </AppButton>
         </div>
         <!-- 规则文件自己声明了能不能跑真实作业。合成夹具在目录里是合法的一等公民
                （引擎需要它），但它建不出真实作业——这句话必须在按钮旁边说。 -->
@@ -89,8 +90,15 @@
           </p>
         </details>
         <h3>最近一次转换</h3>
-        <p v-if="!schemeJob" class="text-muted">还没有跑过转换。</p>
-        <template v-else>
+        <JobStatusPanel
+          v-if="schemeJobTarget"
+          label="拼音转换"
+          kind="conversion"
+          :observation="schemeObservation"
+          @retry="retrySchemeJob"
+        />
+        <p v-else class="text-muted">还没有跑过转换。</p>
+        <template v-if="schemeJob">
           <p class="text-sm text-muted">
             状态：{{ conversionJobStatusLabel(schemeJob.status) }} · 规则版本
             {{ schemeJob.rule_version }} · 方案 {{ schemeJob.source_scheme }} →
@@ -106,14 +114,15 @@
           </p>
         </template>
 
-        <button
+        <AppButton
           v-if="reviewTotalItems"
           type="button"
-          class="btn btn-secondary mt-3"
+          variant="secondary"
+          class="mt-3"
           @click="setView('review')"
         >
           处理 {{ reviewTotalItems }} 条待复核记音
-        </button>
+        </AppButton>
       </section>
       <section v-show="schemeView === 'review'" aria-label="归一复核工作区">
         <h3>复核队列</h3>
@@ -122,30 +131,30 @@
           需要人给出统一方案的写法。结论会记下判定人与依据，重跑时保留，不会被下一次批处理推回机器判断。
         </p>
         <div class="flex gap-2 items-center mb-2" role="group" aria-label="复核队列状态筛选">
-          <button
+          <AppButton
             type="button"
-            class="btn btn-sm"
-            :class="reviewStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'"
+            size="sm"
+            :variant="reviewStatusFilter === 'all' ? 'primary' : 'secondary'"
             @click="setReviewFilter('all')"
           >
             全部待复核
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             type="button"
-            class="btn btn-sm"
-            :class="reviewStatusFilter === 'AMBIGUOUS' ? 'btn-primary' : 'btn-secondary'"
+            size="sm"
+            :variant="reviewStatusFilter === 'AMBIGUOUS' ? 'primary' : 'secondary'"
             @click="setReviewFilter('AMBIGUOUS')"
           >
             需人工确认
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             type="button"
-            class="btn btn-sm"
-            :class="reviewStatusFilter === 'UNSUPPORTED' ? 'btn-primary' : 'btn-secondary'"
+            size="sm"
+            :variant="reviewStatusFilter === 'UNSUPPORTED' ? 'primary' : 'secondary'"
             @click="setReviewFilter('UNSUPPORTED')"
           >
             暂未支持
-          </button>
+          </AppButton>
         </div>
         <details v-if="offPageDrafts.length" class="mb-3">
           <summary>查看暂不在本页的工作区草稿（{{ offPageDrafts.length }}）</summary>
@@ -169,7 +178,7 @@
           <p class="text-sm text-muted">共 {{ reviewTotalItems }} 条待复核。</p>
           <div class="scheme-queue-layout">
             <nav class="scheme-queue" aria-label="选择复核条目">
-              <button
+              <AppButton
                 v-for="row in reviewRows"
                 :key="row.id"
                 type="button"
@@ -179,7 +188,7 @@
                 <strong>第 {{ row.page_number }} 条</strong
                 ><span>{{ normalizationStatusLabel(row.normalization_status) }}</span
                 ><small>{{ row.source_pronunciation || '（空）' }}</small>
-              </button>
+              </AppButton>
             </nav>
             <ul class="assist-list scheme-active-review">
               <li v-for="row in selectedReviewRows" :key="row.id" class="assist-row">
@@ -219,9 +228,10 @@
                     <p v-if="reviewDraft[row.id].requiresReload">
                       当前依据尚未重新加载成功，请先刷新队列；旧稿保留，只供查看。
                     </p>
-                    <button
+                    <AppButton
                       type="button"
-                      class="btn btn-secondary btn-sm"
+                      variant="secondary"
+                      size="sm"
                       :disabled="
                         reviewBusy ||
                         reviewDraft[row.id].requiresReload ||
@@ -231,7 +241,7 @@
                       @click="restartReview(row)"
                     >
                       按当前依据重新填写
-                    </button>
+                    </AppButton>
                   </div>
                   <details v-if="reviewDraft[row.id].history.length" class="mb-3">
                     <summary>查看旧草稿（{{ reviewDraft[row.id].history.length }}）</summary>
@@ -262,14 +272,15 @@
                       :disabled="reviewBusy || reviewDraft[row.id].stale"
                     />
                   </AppField>
-                  <button
+                  <AppButton
                     type="button"
-                    class="btn btn-primary btn-sm"
+                    variant="primary"
+                    size="sm"
                     :disabled="reviewBusy || !canSubmitNormalizationDraft(reviewDraft[row.id], row)"
                     @click="saveReview(row)"
                   >
                     确认结论
-                  </button>
+                  </AppButton>
                 </div>
               </li>
             </ul>
@@ -291,12 +302,16 @@
 </template>
 
 <script setup>
+import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import AppField from '@/components/AppField.vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import JobStatusPanel from '@/components/admin/project/JobStatusPanel.vue'
+import { useJobObserver } from '@/composables/useJobObserver'
 import {
   decideNormalization,
   listConversions,
+  getConversion,
   listNormalizations,
   listSchemeAdapters,
   startConversion
@@ -334,7 +349,19 @@ const schemeNotice = ref('')
 
 const schemeSourceId = ref('')
 
-const schemeJob = ref(null)
+const schemeJobTarget = ref(null)
+const {
+  snapshot: schemeJob,
+  observation: schemeObservation,
+  retry: retrySchemeJob,
+  seed: seedSchemeJob
+} = useJobObserver({
+  projectId: () => props.projectId,
+  kind: 'conversion',
+  job: schemeJobTarget,
+  panel: schemeSection,
+  read: (jobId, options) => getConversion(props.projectId, jobId, options)
+})
 
 const schemeBusy = ref(false)
 
@@ -382,13 +409,28 @@ const reviewEmptyMessage = computed(() => {
   return '当前没有待复核的条目。'
 })
 
-let schemePollGeneration = 0
 let reviewGeneration = 0
 let disposed = false
 
 const schemeSummary = computed(() => conversionSummaryLines(schemeJob.value))
 
 const testOnlySchemes = computed(() => testOnlySchemeIds(schemeOptions.value))
+
+watch(
+  () => [schemeJob.value?.id, schemeJob.value?.status],
+  ([id, status], previous) => {
+    if (
+      id &&
+      ['completed', 'completed_with_errors'].includes(status) &&
+      (id !== previous?.[0] || status !== previous?.[1])
+    ) {
+      void loadReviews().catch((error) => {
+        if (!disposed)
+          schemeError.value = getPbMessage(error, '转换已完成，复核队列暂时无法读取，请刷新重试。')
+      })
+    }
+  }
+)
 
 async function loadReviews() {
   const generation = ++reviewGeneration
@@ -438,12 +480,16 @@ async function loadSchemeState() {
   try {
     const [adapters, conversions] = await Promise.all([
       listSchemeAdapters(),
-      listConversions(projectId),
+      schemeJobTarget.value?.id
+        ? getConversion(projectId, schemeJobTarget.value.id).then((job) => ({ items: [job] }))
+        : listConversions(projectId),
       loadReviews()
     ])
     schemeOptions.value = adapters.schemes || []
     schemeNotice.value = adapterNotice(adapters)
-    schemeJob.value = (conversions.items || [])[0] || null
+    if (disposed) return
+    schemeJobTarget.value = (conversions.items || [])[0] || null
+    if (schemeJobTarget.value) seedSchemeJob(schemeJobTarget.value)
   } catch (e) {
     schemeError.value = getPbMessage(e, '拼音归一状态加载失败。')
   } finally {
@@ -475,38 +521,18 @@ async function runConversion() {
   schemeSuccess.value = ''
   try {
     const job = await startConversion(projectId, schemeSourceId.value)
-    schemeJob.value = job
+    if (disposed) return
+    schemeJobTarget.value = job
+    seedSchemeJob(job)
     // 新作业会把队列重造一遍，退回第一页：留在第三页看一份已经被换掉的清单，
     // 翻页控件上的「第 3 / 5 页」就成了一句没人能核对的话。
     reviewPage.value = 1
     schemeSuccess.value = '转换作业已排队，完成后这里会显示汇总。'
-    pollConversion()
   } catch (e) {
     schemeError.value = getPbMessage(e, '发起转换失败，请稍后重试。')
   } finally {
     schemeBusy.value = false
   }
-}
-
-function pollConversion() {
-  const generation = ++schemePollGeneration
-  const tick = async () => {
-    if (generation !== schemePollGeneration) return
-    try {
-      const conversions = await listConversions(projectId)
-      if (disposed || generation !== schemePollGeneration) return
-      const latest = (conversions.items || [])[0]
-      if (latest) schemeJob.value = latest
-      if (latest && ['queued', 'processing'].includes(latest.status)) {
-        setTimeout(tick, 1500)
-        return
-      }
-      await loadReviews()
-    } catch {
-      // 轮询失败不打扰用户：手动刷新能补上，报错反而会盖住上一次的成功提示。
-    }
-  }
-  setTimeout(tick, 1500)
 }
 
 let reviewSaveGeneration = 0
@@ -559,7 +585,6 @@ onBeforeUnmount(() => {
   disposed = true
   reviewGeneration += 1
   schemeObserver?.disconnect()
-  schemePollGeneration += 1
 })
 onMounted(setupSchemeObserver)
 defineExpose({ setupSchemeObserver, setView })

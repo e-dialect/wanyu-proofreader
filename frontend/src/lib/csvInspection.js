@@ -12,7 +12,21 @@ export function parseCsvInspection(value) {
       invalidRows: Number(parsed.invalid_rows || 0),
       minPdfPage: Number(parsed.min_pdf_page || 0),
       maxPdfPage: Number(parsed.max_pdf_page || 0),
-      preview: Array.isArray(parsed.preview) ? parsed.preview.slice(0, 5) : []
+      preview: Array.isArray(parsed.preview) ? parsed.preview.slice(0, 20) : [],
+      previewLocations: Array.isArray(parsed.preview_locations)
+        ? parsed.preview_locations.slice(0, 20).map((location) => ({
+            csvLine:
+              Number.isSafeInteger(location?.csv_line) && location.csv_line > 0
+                ? location.csv_line
+                : null,
+            pdfPage:
+              Number.isSafeInteger(location?.pdf_page) && location.pdf_page > 0
+                ? location.pdf_page
+                : null
+          }))
+        : [],
+      previewLimit: parsed.preview_limit === 20 ? 20 : 5,
+      previewKind: parsed.preview_kind === 'first_valid_rows' ? 'first_valid_rows' : 'legacy'
     }
   } catch {
     return null
