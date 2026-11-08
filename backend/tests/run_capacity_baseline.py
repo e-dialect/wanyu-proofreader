@@ -13,6 +13,7 @@ import harness
 import field_audit_capacity as audit
 import capacity_fixture as fixture_helpers
 import capacity_report
+from capacity_reconciliation import snapshot_actor_records, reconcile_submissions
 from capacity_resources import ResourceSampler
 
 
@@ -97,6 +98,8 @@ def run_once(binary, root, args, output, repeat):
             actors.append({'vu':i,'role':role,'transport':'browser' if i<2 else 'http','token':auth['token'],'record':auth['record']})
     fixture_meta=clone_fixture(db,project['id'],args.entries,source['id'])
     before=snapshot_counts(db, project['id'])
+    actor_ids=tuple(actor['record']['id'] for actor in actors)
+    actor_baseline=snapshot_actor_records(db, actor_ids)
     with harness.server(binary,root) as env:
         config={'disposable':True,'base':env['PB_URL'],'project':project['id'],'secondary_project':secondary['id'],
                 'actors':actors,'duration':args.duration,'profile':args.profile,'phases':fixture_helpers.phases(args.duration),
@@ -128,7 +131,8 @@ def run_once(binary, root, args, output, repeat):
             'before':before,'after':after,'acknowledged_submissions':acknowledged,
             'expected_parallel_rows':config['parallel_import_rows'],
             'actual_parallel_rows':sql.execute('SELECT COUNT(*) FROM pages WHERE project=?',(secondary['id'],)).fetchone()[0]}
-    reconciliation['pass']=(reconciliation['integrity']=='ok' and reconciliation['duplicate_attempts']==0 and
+    reconciliation['submission_evidence']=reconcile_submissions(db, project['id'], actor_ids, actor_baseline, http)
+    reconciliation['pass']=(reconciliation['submission_evidence']['pass'] and reconciliation['integrity']=='ok' and reconciliation['duplicate_attempts']==0 and
         after['proofreads']-before['proofreads']==acknowledged==after['submissions']-before['submissions'] and
         reconciliation['actual_parallel_rows']==reconciliation['expected_parallel_rows'])
     (output/'reconciliation.json').write_text(json.dumps(reconciliation,indent=2))

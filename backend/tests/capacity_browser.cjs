@@ -5,6 +5,7 @@ const path = require('node:path')
 const { performance, monitorEventLoopDelay } = require('node:perf_hooks')
 const { chromium } = require('playwright')
 const { startHost } = require('./export_browser_host.cjs')
+const { submissionEvidence } = require('./capacity_submission.cjs')
 
 async function main() {
   const config = JSON.parse(fs.readFileSync(process.env.CAPACITY_FIXTURE, 'utf8'))
@@ -113,7 +114,7 @@ async function main() {
         page.on('requestfailed', (request) => {
           const operation = requestOperation(request)
           if (!operation) return
-          append('browser-http.jsonl', {
+          append('requests.jsonl', {
             vu: actor.vu,
             operation,
             duration_ms: Math.max(0, Date.now() - request.timing().startTime),
@@ -130,7 +131,7 @@ async function main() {
           const timing = request.timing(),
             response = await request.response()
           if (!response || timing.responseEnd < 0) return
-          append('browser-http.jsonl', {
+          const record = {
             vu: actor.vu,
             operation,
             duration_ms: timing.responseEnd,
@@ -140,7 +141,17 @@ async function main() {
             ok:
               (response.status() >= 200 && response.status() < 300) ||
               (operation === 'claim' && response.status() === 409)
-          })
+          }
+          if (operation === 'submit' && response.ok()) {
+            try {
+              record.submission = submissionEvidence(
+                new URL(request.url()).pathname, actor.record.id, request.postDataJSON()
+              )
+            } catch {
+              record.submission_evidence_error = 'invalid_submission_evidence'
+            }
+          }
+          append('requests.jsonl', record)
         })
         await page.exposeFunction('__capacityVital', (value) => {
           if (['LCP', 'INP', 'CLS'].includes(value.name))

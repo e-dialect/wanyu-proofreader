@@ -4,6 +4,8 @@ import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
 import assert from 'node:assert/strict'
 import { phaseAt, randomFor, sleep } from './capacity_profile.mjs'
 import { createHash } from 'node:crypto'
+import submissionHelpers from './capacity_submission.cjs'
+const { submissionEvidence } = submissionHelpers
 const fixture = JSON.parse(readFileSync(process.env.CAPACITY_FIXTURE, 'utf8'))
 const { base, project, actors, duration, output, seed } = fixture
 assert.equal(fixture.disposable, true)
@@ -26,15 +28,16 @@ async function request(
   const start = performance.now()
   let status = 0,
     ok = false
+  const form = body instanceof FormData
+  const wireBody = body ? (form ? body : JSON.stringify(body)) : undefined
   try {
-    const form = body instanceof FormData
     const response = await fetch(base + path, {
       method,
       headers: {
         Authorization: actor.token,
         ...(body && !form ? { 'Content-Type': 'application/json' } : {})
       },
-      body: body ? (form ? body : JSON.stringify(body)) : undefined,
+      body: wireBody,
       signal: AbortSignal.timeout(30000)
     })
     status = response.status
@@ -69,6 +72,14 @@ async function request(
       status,
       ok,
       duration_ms: performance.now() - start
+    }
+    if (operation === 'submit' && ok && status >= 200 && status < 300) {
+      try {
+        record.submission = submissionEvidence(path, actor.record.id, JSON.parse(wireBody))
+      } catch {
+        // A missing digest fails reconciliation; never retain the body to diagnose it.
+        record.submission_evidence_error = 'invalid_submission_evidence'
+      }
     }
     samples.push(record)
     appendFileSync(output + '/requests.jsonl', JSON.stringify(record) + '\n')
