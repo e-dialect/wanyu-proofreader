@@ -1,0 +1,12 @@
+{
+  "sharedReads": true,
+  "stalePreserved": true,
+  "offlinePaused": true,
+  "csvPreviewRows": 20,
+  "readonly": true,
+  "widths": [
+    1440,
+    390
+  ],
+  "errors": []
+}
