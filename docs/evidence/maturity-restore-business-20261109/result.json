@@ -1,0 +1,58 @@
+{
+  "status": "pass",
+  "synthetic_only": true,
+  "started_at": "2026-11-08T16:24:57.746121+00:00",
+  "production_rto_verified": false,
+  "rpo_24h_verified": false,
+  "offsite_encryption_verified": false,
+  "production_hardware_verified": false,
+  "source_commit": "7408d406e07dab5fc8d143ef4d185b7c30b39e53",
+  "binary_sha256": "c2a913cfa382317ed549bf19edb3e3f5b6a37a2cc3d3d8ce1e9f940c9c87218f",
+  "build_seconds": 5.209560827002861,
+  "phase": "complete",
+  "source_stopped_before_backup": true,
+  "seed_and_shutdown_seconds": 7.015412340988405,
+  "backup_seconds": 0.04989772796398029,
+  "backup_version": "7408d406e07dab5fc8d143ef4d185b7c30b39e53",
+  "backup_created_at": "2026-11-08T16:25:10.123046+00:00",
+  "manifest_files": 14,
+  "backup_data_bytes": 2271715,
+  "restore_seconds": 0.030703545024152845,
+  "manifest_hashes_verified_by_restore": true,
+  "attachment_count": 2,
+  "all_attachment_sha256_match": true,
+  "restored_startup_seconds": 3.9448777079815045,
+  "fresh_logins_preserve_account_ids": 4,
+  "project_id_and_owner_preserved": true,
+  "original_page_records_preserved": 4,
+  "original_pdf_http_sha256_match": true,
+  "original_pdf_bytes": 699,
+  "local_restore_to_original_business_readable_seconds": 4.715633188025095,
+  "business_suites": [
+    {
+      "suite": "core_logic_integration.mjs",
+      "status": "pass",
+      "seconds": 0.7685794050339609
+    },
+    {
+      "suite": "pdf_access_integration.mjs",
+      "status": "pass",
+      "seconds": 0.8204044820158742
+    },
+    {
+      "suite": "arbitration_queue_integration.mjs",
+      "status": "pass",
+      "seconds": 0.8494309519883245
+    },
+    {
+      "suite": "project_export_integration.mjs",
+      "status": "pass",
+      "seconds": 3.175131259020418
+    }
+  ],
+  "local_restore_to_business_verified_seconds": 10.343098844983615,
+  "local_offline_to_business_verified_seconds": 10.394080856000073,
+  "temporary_servers_stopped": true,
+  "temporary_data_removed": true,
+  "finished_at": "2026-11-08T16:25:21.028202+00:00"
+}
