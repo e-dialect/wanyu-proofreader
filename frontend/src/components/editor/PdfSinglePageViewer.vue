@@ -207,15 +207,16 @@ async function loadPdf(src) {
   }
 
   if (props.pageImage) {
-    if (pdfDocTask) {
+    const previousTask = pdfDocTask
+    if (previousTask) {
       try {
-        await pdfDocTask.destroy()
+        await previousTask.destroy()
       } catch {
         /* already gone */
       }
     }
     if (generation !== loadGeneration) return
-    pdfDocTask = null
+    if (pdfDocTask === previousTask) pdfDocTask = null
     pdfDoc = null
     loading.value = false
     await nextTick()
@@ -232,21 +233,27 @@ async function loadPdf(src) {
     if (generation !== loadGeneration) return
     lib.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js'
 
-    if (pdfDocTask) {
+    const previousTask = pdfDocTask
+    if (previousTask) {
       try {
-        await pdfDocTask.destroy()
+        await previousTask.destroy()
       } catch {
         /* the previous document may already be gone */
       }
     }
-    pdfDocTask = lib.getDocument({
+    // Source replacement/unmount can happen while the previous worker exits.
+    // An obsolete loader must never create or take ownership of a new worker.
+    if (generation !== loadGeneration) return
+    if (pdfDocTask === previousTask) pdfDocTask = null
+    const loadingTask = lib.getDocument({
       url: src,
       cMapUrl: '/pdfjs/cmaps/',
       cMapPacked: true,
       standardFontDataUrl: '/pdfjs/standard_fonts/',
       isEvalSupported: false
     })
-    const document = await pdfDocTask.promise
+    pdfDocTask = loadingTask
+    const document = await loadingTask.promise
     if (generation !== loadGeneration) {
       await document.destroy()
       return
@@ -431,13 +438,14 @@ onBeforeUnmount(async () => {
     resizeObserver.disconnect()
     resizeObserver = null
   }
-  if (pdfDocTask) {
+  const previousTask = pdfDocTask
+  if (previousTask) {
     try {
-      await pdfDocTask.destroy()
+      await previousTask.destroy()
     } catch {
       /* the previous document may already be gone */
     }
-    pdfDocTask = null
+    if (pdfDocTask === previousTask) pdfDocTask = null
   }
   pdfDoc = null
 })

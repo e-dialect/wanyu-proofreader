@@ -25,3 +25,9 @@ BROWSER_CHANNEL=chrome python3 backend/tests/run_frontend_quality_browser.py --o
 ```
 
 需要现有 Playwright 运行时（可通过 NODE_PATH 指定），backend 测试 harness 仅启动一次性本地实例。没有生产数据写入、远程消息或部署。
+
+## PDF 快速离开生命周期补充
+
+退出浏览器测试曾记录一次未处理的 `Worker was terminated`，未加入忽略规则。源码复核确认：`loadPdf` 检查代次后等待旧 worker 销毁，在这个 await 期间可能已经换来源或卸载；原来恢复执行后仍会创建新的 worker。现捕获旧 task，等待后重新校验代次，且只清理仍由该调用拥有的指针；新加载也通过本地 task 等待 promise。
+
+两个执行生产函数的可控回归分别覆盖 pending destroy→unmount 和 pending destroy→新来源：前者不能再调用 `getDocument`，后者只允许当前来源创建 worker。全前端 535 项、lint、production build、49 项测试清单门禁通过；真实浏览器退出七项也在此修复后通过。此修复不吞掉 worker 异常，不更换 PDF.js，也不改变 PDF 内容或访问规则。
