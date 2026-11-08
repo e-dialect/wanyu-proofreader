@@ -16,8 +16,8 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// deliveryHandoff is an explicit, provisional boundary to #315, not a second
-// adoption UI or status model. All rows of ONE completed inbound batch must be
+// deliveryHandoff retains the legacy manual handoff boundary. Native adoption
+// derives this internal input from the confirmed batch instead of trusting client entries. All rows of ONE completed inbound batch must be
 // accounted for. Counts and content are always read from the server.
 type deliveryEntry struct {
 	PageID string `json:"page_id"`
@@ -354,7 +354,7 @@ func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
 		r.Status = "inconsistent"
 		r.Problems = append(r.Problems, buildErr.Error())
 	}
-	return c.JSON(200, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "release_decision": "human_required", "can_generate": buildErr == nil, "dependency_gaps": []string{"#315 原生批次编选尚未接入；当前接受人工核查的交接清单", "#184 独立导出列整合待接入；旧 CSV 不是本交付包", "X 侧真实 dry-run 与双方签字尚待实测"}})
+	return c.JSON(200, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "release_decision": "human_required", "can_generate": buildErr == nil, "dependency_gaps": []string{"当前使用旧人工交接清单兼容模式；建议改用已确认编选批次", "#184 独立导出列整合待接入；旧 CSV 不是本交付包", "X 侧真实 dry-run 与双方签字尚待实测"}})
 }
 
 func (s *importService) createDelivery(c *core.RequestEvent) error {

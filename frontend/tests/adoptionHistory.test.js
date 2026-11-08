@@ -13,8 +13,9 @@ const script = view
   .replace(/^import[\s\S]*? from ['"][^'"]+['"]\r?$/gm, '')
 
 function fixture(services = {}) {
-  const route = { params: { id: 'project-a' } }
-  let resetProject
+  const route = { params: { id: 'project-a' }, query: {} }
+  let routeChanged
+  let watchCount = 0
   const unmount = []
   const bindings = {
     ...adoption,
@@ -28,8 +29,14 @@ function fixture(services = {}) {
       }
     }),
     useRoute: () => route,
+    useRouter: () => ({
+      push: async ({ query }) => {
+        route.query = query
+        await routeChanged()
+      }
+    }),
     watch: (_source, callback) => {
-      resetProject = callback
+      if (++watchCount === 2) routeChanged = callback
     },
     onBeforeUnmount: (callback) => {
       unmount.push(callback)
@@ -50,19 +57,20 @@ function fixture(services = {}) {
     }),
     listAdoptionEvents: async (id) => ({ events: [], stale: false, batch: id }),
     getAdoptionSummary: async (id) => ({ project: id }),
+    getAdoptionBatch: async (id) => ({ id, project: route.params.id, counts: {}, reasons: [] }),
     ...services
   }
   const state = new Function(
     ...Object.keys(bindings),
     `${script}\nreturn {
-    load, selectBatch, batches, currentId, exceptions, batchEvents, summary,
+    resetProject, load, selectBatch, batches, currentId, exceptions, batchEvents, summary,
     historyPage, requestedHistoryPage, historyTotalPages, historyTotalItems,
     loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError
   }`
   )(...Object.values(bindings))
   return {
     ...state,
-    reset: () => resetProject(),
+    reset: () => state.resetProject(),
     route,
     unmount: () => unmount.forEach((callback) => callback())
   }
@@ -107,12 +115,13 @@ test('page failure preserves successful page/details and retry targets the faile
   await state.load()
   assert.deepEqual(requested, [
     ['project-a', 1, 25],
+    ['project-a', 1, 25],
     ['project-a', 2, 25],
     ['project-a', 2, 25]
   ])
   assert.equal(state.historyPage.value, 2)
-  assert.equal(state.currentId.value, '')
-  assert.equal(state.screen.value, 'list')
+  assert.equal(state.currentId.value, 'batch-1')
+  assert.equal(state.screen.value, 'detail')
   assert.equal(state.loadError.value, '')
 })
 
@@ -158,6 +167,7 @@ test('changing projects resets to page one and ignores the old list response', a
   state.createForm.recipient = '旧项目接收方'
   const old = state.load(4)
   state.route.params.id = 'project-b'
+  state.route.query = {}
   await state.reset()
   pending.resolve({ batches: [{ id: 'late-a' }], page: 4, totalPages: 5, totalItems: 101 })
   await old
@@ -181,6 +191,7 @@ test('late old-project summary/details never overwrite the new project', async (
   const old = state.reset()
   await tick()
   state.route.params.id = 'project-b'
+  state.route.query = {}
   await state.reset()
   await state.selectBatch('project-b-1')
   summary.resolve({ project: 'project-a' })
@@ -199,7 +210,9 @@ test('a late selected-batch response and errors are isolated across project swit
   })
   await state.reset()
   const old = state.selectBatch('old-selection')
+  await tick()
   state.route.params.id = 'project-b'
+  state.route.query = {}
   await state.reset()
   await state.selectBatch('project-b-1')
   events.reject(new Error('old failure'))
@@ -231,7 +244,7 @@ test('landing on a project shows the batch list without fetching or exposing an 
   assert.deepEqual(requested, ['project-a-1', 'project-a-1'])
 })
 
-test('exception drafts belong to their batch even when both batches contain the same entry', async () => {
+test('accepted query navigation discards drafts rather than applying them to another batch', async () => {
   const state = fixture()
   await state.reset()
   await state.selectBatch('batch-one')
@@ -240,7 +253,7 @@ test('exception drafts belong to their batch even when both batches contain the 
   assert.equal(state.draftFor('same-entry').note, '')
   state.draftFor('same-entry').note = 'second batch evidence'
   await state.selectBatch('batch-one')
-  assert.equal(state.draftFor('same-entry').note, 'first batch evidence')
+  assert.equal(state.draftFor('same-entry').note, '')
 })
 
 test('preview failure retains the newly created batch and retries without creating a duplicate', async () => {
@@ -297,4 +310,17 @@ test('creating a batch keeps note edits made during the request and does not sub
   await request
   assert.equal(created, 1)
   assert.equal(state.createForm.note, 'new note typed while waiting')
+})
+
+test('an exact decided entry deep link remains visible outside the current exceptions page', async () => {
+  const state = fixture({
+    getAdoptionExceptionByPage: async () => ({
+      entry: { page: 'off-page', pending: false },
+      exception: { page: 'off-page', decision: 'exclude', note: 'retained authority' }
+    })
+  })
+  state.route.query = { batch: 'historical-batch', tab: 'exceptions', entry: 'off-page', page: '1' }
+  await state.reset()
+  assert.equal(state.currentId.value, 'historical-batch')
+  assert.equal(state.exceptions.value.exceptions[0].note, 'retained authority')
 })

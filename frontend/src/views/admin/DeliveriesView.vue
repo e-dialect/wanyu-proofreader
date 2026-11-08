@@ -1,5 +1,6 @@
 <template>
   <main class="container page workspace-page delivery-workspace">
+    <WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false" />
     <ProjectWorkspaceNav :project-id="projectId" active="delivery" />
     <header class="page-heading">
       <div>
@@ -21,11 +22,16 @@
         v-if="view === 'records'"
         class="btn btn-primary"
         :disabled="busy"
-        @click="view = 'prepare'"
+        @click="navigate({ view: 'prepare' })"
       >
         准备新交付
       </button>
-      <button v-else class="btn btn-secondary" :disabled="busy" @click="view = 'records'">
+      <button
+        v-else
+        class="btn btn-secondary"
+        :disabled="busy"
+        @click="navigate({ view: 'records' })"
+      >
         返回交付记录
       </button>
     </header>
@@ -34,7 +40,7 @@
         type="button"
         :disabled="busy"
         :aria-current="['records', 'detail'].includes(view) ? 'page' : undefined"
-        @click="view = 'records'"
+        @click="navigate({ view: 'records' })"
       >
         交付记录
       </button>
@@ -42,7 +48,7 @@
         type="button"
         :disabled="busy"
         :aria-current="view === 'prepare' ? 'page' : undefined"
-        @click="view = 'prepare'"
+        @click="navigate({ view: 'prepare' })"
       >
         准备交付
       </button>
@@ -50,7 +56,7 @@
         type="button"
         :disabled="busy"
         :aria-current="view === 'impacts' ? 'page' : undefined"
-        @click="view = 'impacts'"
+        @click="navigate({ view: 'impacts' })"
       >
         来源变更影响
       </button>
@@ -75,10 +81,54 @@
         使用已确认的编选交接清单。范围外与待处理条目只声明标识和理由，默认不携带正文。
       </p>
       <RouterLink :to="`/admin/projects/${projectId}/adoption`" class="btn btn-quiet btn-sm"
-        >前往用途编选，取得交接清单 →</RouterLink
+        >前往用途编选，确认交付范围 →</RouterLink
       >
+      <label class="form-group mt-3"
+        ><span class="form-label">编选批次</span>
+        <select
+          :value="nativeBatch?.id || ''"
+          class="form-control"
+          :disabled="busy || legacyMode"
+          @change="chooseAdoption($event.target.value)"
+        >
+          <option value="">选择已确认的编选批次</option>
+          <option
+            v-if="nativeBatch && !adoptionChoices.some((item) => item.id === nativeBatch.id)"
+            :value="nativeBatch.id"
+          >
+            {{ nativeBatch.recipient }} · {{ purposeLabel(nativeBatch.purpose) }}
+          </option>
+          <option
+            v-for="batch in adoptionChoices"
+            :key="batch.id"
+            :value="batch.id"
+            :disabled="batch.status !== 'confirmed'"
+          >
+            {{ batch.recipient }} · {{ purposeLabel(batch.purpose) }} ·
+            {{ batch.status === 'confirmed' ? '已确认' : '待确认' }}
+          </option>
+        </select>
+      </label>
+      <AppPagination
+        :page="adoptionPage"
+        :total-pages="adoptionPages"
+        :busy="busy || loading"
+        label="选择编选批次分页"
+        @change="loadAdoptions"
+      />
+      <p v-if="nativeBatch">
+        交给 {{ nativeBatch.recipient }} ·
+        {{ purposeLabel(nativeBatch.purpose) }}；将重新核查完整批次与确认范围。
+      </p>
+      <details class="mt-3">
+        <summary>兼容旧交接清单</summary>
+        <label
+          ><input v-model="legacyMode" type="checkbox" :disabled="busy" /> 使用人工核查过的旧 JSON
+          清单</label
+        >
+      </details>
       <form v-if="!preview" class="settings-form mt-3" @submit.prevent="preflight">
-        <div class="form-group">
+        <div v-if="legacyMode" class="form-group">
           <span class="form-label">批次交接清单</span
           ><input
             ref="handoffInput"
@@ -114,7 +164,22 @@
         <p v-if="handoff" class="text-sm">
           交给 {{ handoff.recipient }} · {{ purposeLabel(handoff.purpose) }}
         </p>
-        <button class="btn btn-primary" :disabled="busy || !handoff">
+        <template v-if="!legacyMode">
+          <label class="form-group"
+            ><span class="form-label">前一版本包标识（首次留空）</span
+            ><input v-model.trim="previous" class="form-control" maxlength="200" :disabled="busy"
+          /></label>
+          <label v-if="previous" class="form-group"
+            ><span class="form-label">重发变更说明</span
+            ><input
+              v-model.trim="changeReason"
+              class="form-control"
+              required
+              maxlength="500"
+              :disabled="busy"
+          /></label>
+        </template>
+        <button class="btn btn-primary" :disabled="busy || (legacyMode ? !handoff : !nativeBatch)">
           {{ busy ? '正在检查…' : '检查本批交付范围' }}
         </button>
       </form>
@@ -185,7 +250,7 @@
       <details class="mt-4">
         <summary class="text-sm text-muted">当前交付方式与范围</summary>
         <p class="text-sm text-muted">
-          当前提供文件往返与人工回执。原生批次编选、独立导出整合、消费方实测与双方签字尚待接入；对账一致不代表可发布。
+          当前提供文件往返与人工回执。采用已确认编选批次，服务端核对范围与来源。消费方实测与双方签字仍须完成；对账一致不代表可发布。
         </p>
       </details>
     </section>
@@ -211,8 +276,17 @@
       <div v-else-if="!items.length" class="empty-state">
         <div class="empty-state-text">还没有交付包</div>
         <p>检查通过并经人工确认后，首个包会显示在这里。</p>
-        <button class="btn btn-secondary mt-3" @click="view = 'prepare'">准备首个交付包</button>
+        <button class="btn btn-secondary mt-3" @click="navigate({ view: 'prepare' })">
+          准备首个交付包
+        </button>
       </div>
+      <AppPagination
+        :page="listPage"
+        :total-pages="listPages"
+        :busy="busy || loading"
+        label="交付记录分页"
+        @change="changePage"
+      />
       <ul class="delivery-records">
         <li v-for="item in items" :key="item.id">
           <div>
@@ -240,6 +314,19 @@
     </section>
 
     <section v-if="view === 'detail'" class="mb-6">
+      <nav class="delivery-tabs" aria-label="交付详情">
+        <button
+          :aria-current="detailTab === 'summary' ? 'page' : undefined"
+          @click="navigate({ package: selectedPackageId, tab: 'summary', page: 1 })"
+        >
+          范围与凭据</button
+        ><button
+          :aria-current="detailTab === 'events' ? 'page' : undefined"
+          @click="navigate({ package: selectedPackageId, tab: 'events', page: 1 })"
+        >
+          回执与处置
+        </button>
+      </nav>
       <article v-for="item in visibleDeliveries" :key="item.id" class="card">
         <div class="section-heading">
           <div>
@@ -295,12 +382,22 @@
               item.import_job
             }}
           </p>
+          <p v-if="item.legacy_cross_job_previous" class="alert alert-warning" role="alert">
+            此历史版本沿用旧的跨导入批次关联；历史凭据保持原样。
+          </p>
           <p v-if="item.previous" class="text-sm">
             前包：{{ item.previous }} · 变更：{{ item.change_reason }}
           </p>
           <p class="text-sm delivery-digest">SHA-256：{{ item.sha256 }}</p>
         </details>
-        <section class="delivery-history mt-4">
+        <section v-if="detailTab === 'events'" class="delivery-history mt-4">
+          <AppPagination
+            :page="eventsPage"
+            :total-pages="eventPages"
+            :busy="busy || loading"
+            label="交付事件分页"
+            @change="changePage"
+          />
           <h3>回执与处置记录</h3>
           <p v-if="!item.events.length" class="text-muted">尚无回执或处置记录。</p>
           <article v-for="event in item.events" :key="event.id">
@@ -399,9 +496,7 @@
           ><select v-model="eventForm.resolves" class="form-control" required>
             <option value="">请选择待办记录</option>
             <option
-              v-for="event in selected.events.filter((event) =>
-                selected.pending_actions.includes(event.id)
-              )"
+              v-for="event in selected.pending_action_events || []"
               :key="event.id"
               :value="event.id"
             >
@@ -415,7 +510,7 @@
             type="button"
             class="btn btn-secondary"
             :disabled="busy"
-            @click="selected = null"
+            @click="navigate({ ...route.query, editor: route.query.editor ? undefined : 'closed' })"
           >
             取消
           </button>
@@ -465,22 +560,64 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
+import AppPagination from '@/components/AppPagination.vue'
+import { getAdoptionBatch, listAdoptionBatches } from '@/services/adoptionService'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
 import ProjectSourcePicker from '@/components/admin/project/ProjectSourcePicker.vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import {
   appendDeliveryEvent,
   checkDelivery,
   createDelivery,
   downloadDelivery,
   findDeliveryImpacts,
-  listDeliveries
+  listDeliveries,
+  getDelivery,
+  listDeliveryEvents,
+  checkAdoptionDelivery,
+  createAdoptionDelivery
 } from '@/services/deliveryService'
 import { USAGE_PURPOSE_LABELS } from '@/constants/sourceRegistry'
 import { getPbMessage } from '@/utils/pbErrors'
 
-const projectId = useRoute().params.id
+const route = useRoute()
+const router = useRouter()
+const projectId = computed(() => String(route.params.id))
+const queryPage = computed(() => Math.max(1, Number.parseInt(route.query.page, 10) || 1))
+const detailTab = computed(() => (route.query.tab === 'events' ? 'events' : 'summary'))
+const listPage = ref(1)
+const eventsPage = ref(1)
+const listPages = ref(1)
+const eventPages = ref(1)
+const currentDelivery = ref(null)
+const nativeBatch = ref(null)
+const adoptionChoices = ref([])
+const adoptionPage = ref(1)
+const adoptionPages = ref(1)
+const legacyMode = ref(false)
+const previous = ref('')
+const changeReason = ref('')
+const requestId = ref('')
+const eventBaseline = ref('')
+function navigate(query) {
+  return router.push({ query })
+}
+function changePage(page) {
+  return navigate({ ...route.query, page })
+}
+async function loadAdoptions(page = 1) {
+  const id = projectId.value
+  const data = await listAdoptionBatches(id, { page })
+  if (disposed || id !== projectId.value) return
+  adoptionChoices.value = data.batches
+  adoptionPage.value = data.page
+  adoptionPages.value = data.totalPages
+}
+function chooseAdoption(id) {
+  return navigate({ view: 'prepare', adoption: id })
+}
 const view = ref('records')
 const selectedPackageId = ref('')
 const loading = ref(true)
@@ -500,36 +637,29 @@ const selected = ref(null)
 const eventEditor = ref(null)
 const sourceRef = ref('')
 const impacts = ref(null)
-const visibleDeliveries = computed(() =>
-  items.value.filter((item) => item.id === selectedPackageId.value)
+const visibleDeliveries = computed(() => (currentDelivery.value ? [currentDelivery.value] : []))
+const dirty = computed(
+  () =>
+    (view.value === 'prepare' &&
+      Boolean(reviewer.value || previous.value || changeReason.value || handoff.value)) ||
+    Boolean(selected.value && JSON.stringify(eventForm) !== eventBaseline.value)
 )
+
 let disposed = false
 let loadGeneration = 0
 let operationGeneration = 0
-let impactSelectionGeneration = 0
-watch(
-  view,
-  () => {
-    impactSelectionGeneration++
-  },
-  { flush: 'sync' }
-)
 onBeforeUnmount(() => {
   disposed = true
   ++loadGeneration
   ++operationGeneration
 })
 function openDelivery(item) {
-  selectedPackageId.value = item.id
-  selected.value = null
-  view.value = 'detail'
+  return navigate({ package: item.id, tab: 'summary', page: 1 })
 }
-async function openImpact(item) {
-  const generation = ++impactSelectionGeneration
-  await load()
-  if (disposed || generation !== impactSelectionGeneration) return
-  openDelivery(item)
+function openImpact(item) {
+  return openDelivery(item)
 }
+
 const eventLabels = {
   receipt: '人工导入回执',
   return: '退回上游',
@@ -579,6 +709,7 @@ const percent = (value) => `${(value * 100).toFixed(1)}%`
 function invalidatePreview() {
   preview.value = null
   confirmed.value = false
+  requestId.value = ''
 }
 async function action(fn) {
   const generation = ++operationGeneration
@@ -600,10 +731,35 @@ async function load() {
   loadError.value = ''
   operationError.value = ''
   try {
-    const data = await listDeliveries(projectId)
-    if (disposed || generation !== loadGeneration) return
+    const id = projectId.value
+    const data = await listDeliveries(id, { page: view.value === 'records' ? queryPage.value : 1 })
+    let detail = null,
+      events = null,
+      adoption = null
+    if (selectedPackageId.value) {
+      ;[detail, events] = await Promise.all([
+        getDelivery(selectedPackageId.value),
+        listDeliveryEvents(selectedPackageId.value, {
+          page: detailTab.value === 'events' ? queryPage.value : 1
+        })
+      ])
+      if (detail.project !== id) throw new Error('交付包不属于当前项目')
+    }
+    if (route.query.adoption) {
+      adoption = await getAdoptionBatch(route.query.adoption)
+      if (adoption.project !== id || adoption.status !== 'confirmed')
+        throw new Error('请选择本项目已确认的编选批次')
+    }
+    if (view.value === 'prepare') await loadAdoptions()
+    if (disposed || generation !== loadGeneration || id !== projectId.value) return
     items.value = data.items
     metrics.value = data.metrics
+    listPage.value = data.page
+    eventsPage.value = events?.page || 1
+    listPages.value = data.totalPages
+    eventPages.value = events?.totalPages || 1
+    currentDelivery.value = detail ? { ...detail, events: events.events } : null
+    nativeBatch.value = adoption
   } catch (e) {
     if (!disposed && generation === loadGeneration)
       loadError.value = getPbMessage(e, '交付记录加载失败')
@@ -627,34 +783,55 @@ async function readHandoff(event) {
     handoff.value = value
   })
 }
-const requestBody = () => ({ ...handoff.value, reviewer: reviewer.value })
+const requestBody = () =>
+  legacyMode.value
+    ? { ...handoff.value, reviewer: reviewer.value }
+    : {
+        adoption_batch_id: nativeBatch.value?.id,
+        expected_scope_digest: nativeBatch.value?.scope_digest,
+        reviewer: reviewer.value,
+        previous: previous.value,
+        change_reason: changeReason.value
+      }
 async function preflight() {
   invalidatePreview()
   await action(async (isCurrent) => {
-    const result = await checkDelivery(projectId, requestBody())
-    if (isCurrent()) preview.value = result
+    const result = await (legacyMode.value ? checkDelivery : checkAdoptionDelivery)(
+      projectId.value,
+      requestBody()
+    )
+    if (isCurrent()) {
+      preview.value = result
+      requestId.value = crypto.randomUUID()
+    }
   })
 }
 async function generate() {
   if (!confirmed.value || !preview.value?.can_generate) return
-  const body = { ...requestBody(), preview_sha256: preview.value.preview_sha256 }
+  const body = {
+    ...requestBody(),
+    preview_sha256: preview.value.preview_sha256,
+    ...(!legacyMode.value ? { request_id: requestId.value } : {})
+  }
   await action(async (isCurrent) => {
-    const delivery = await createDelivery(projectId, body)
+    const delivery = await (legacyMode.value ? createDelivery : createAdoptionDelivery)(
+      projectId.value,
+      body
+    )
     if (!isCurrent()) return
     invalidatePreview()
     handoff.value = null
+    reviewer.value = previous.value = changeReason.value = ''
     success.value = '交付包已生成，尚未收到消费方回执。'
     await load()
     if (!isCurrent()) return
-    selectedPackageId.value = delivery.id || items.value[0]?.id || ''
-    view.value = selectedPackageId.value ? 'detail' : 'records'
+    await openDelivery(delivery)
   })
 }
 async function download(item) {
   await action(() => downloadDelivery(item.id))
 }
 function selectEvent(item) {
-  openDelivery(item)
   selected.value = item
   Object.assign(eventForm, {
     kind: 'receipt',
@@ -667,6 +844,7 @@ function selectEvent(item) {
     evidence: '',
     resolves: ''
   })
+  eventBaseline.value = JSON.stringify(eventForm)
   nextTick(() => eventEditor.value?.scrollIntoView({ block: 'start' }))
 }
 async function saveEvent() {
@@ -682,11 +860,31 @@ async function saveEvent() {
 }
 async function findImpacts() {
   await action(async (isCurrent) => {
-    const result = await findDeliveryImpacts(projectId, sourceRef.value)
+    const result = await findDeliveryImpacts(projectId.value, sourceRef.value)
     if (isCurrent()) impacts.value = result.items
   })
 }
-onMounted(load)
+watch(
+  () => route.fullPath,
+  () => {
+    ++operationGeneration
+    busy.value = false
+    selected.value = null
+    reviewer.value = previous.value = changeReason.value = ''
+    handoff.value = null
+    invalidatePreview()
+    currentDelivery.value = nativeBatch.value = null
+    selectedPackageId.value = typeof route.query.package === 'string' ? route.query.package : ''
+    view.value = selectedPackageId.value
+      ? 'detail'
+      : ['prepare', 'impacts'].includes(route.query.view)
+        ? route.query.view
+        : 'records'
+    load()
+  },
+  { immediate: true }
+)
+watch([previous, changeReason, legacyMode], invalidatePreview)
 </script>
 
 <style scoped>

@@ -21,8 +21,9 @@ export async function createAdoptionBatch(projectId, { purpose, recipient, note 
   })
 }
 
-export async function getAdoptionBatch(batchId) {
+export async function getAdoptionBatch(batchId, { signal } = {}) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}`, {
+    signal,
     requestKey: null
   })
 }
@@ -48,8 +49,12 @@ export async function confirmAdoptionBatch(batchId) {
   })
 }
 
-export async function listAdoptionExceptions(batchId, { signal } = {}) {
+export async function listAdoptionExceptions(
+  batchId,
+  { page = 1, perPage = 25, decidedPage = 1, signal } = {}
+) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/exceptions`, {
+    query: { page, perPage, decidedPage },
     requestKey: null,
     signal
   })
@@ -70,8 +75,12 @@ export async function exportAdoptionManifest(batchId, include = 'select') {
   })
 }
 
-export async function listAdoptionEvents(batchId, { signal } = {}) {
+export async function listAdoptionEvents(
+  batchId,
+  { page = 1, perPage = 25, decidedPage = 1, signal } = {}
+) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/events`, {
+    query: { page, perPage, decidedPage },
     requestKey: null,
     signal
   })
@@ -90,3 +99,9 @@ export async function getAdoptionSummary(projectId, { signal } = {}) {
     signal
   })
 }
+
+export const getAdoptionExceptionByPage = (batchId, pageId, { signal } = {}) =>
+  pb.send(
+    `/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/exceptions/${encodeURIComponent(pageId)}`,
+    { signal, requestKey: null }
+  )
