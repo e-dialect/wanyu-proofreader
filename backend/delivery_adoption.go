@@ -1,0 +1,326 @@
+package main
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"path"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	"fangji/backend/reviewbundle"
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/filesystem"
+	"github.com/pocketbase/pocketbase/tools/router"
+)
+
+// All authority reads use the transaction passed by the caller. Never consult
+// the outer application's connection from inside a snapshot/write transaction.
+func requireAdoptionManagerInApp(app core.App, c *core.RequestEvent, projectID string) (*core.Record, *core.Record, error) {
+	if c.Auth == nil {
+		return nil, nil, apis.NewUnauthorizedError("登录状态已失效，请重新登录。", nil)
+	}
+	auth, err := app.FindRecordById("users", c.Auth.Id)
+	if err != nil {
+		return nil, nil, apis.NewUnauthorizedError("登录状态已失效，请重新登录。", nil)
+	}
+	if auth.GetBool("must_change_password") {
+		return nil, nil, apis.NewForbiddenError("首次登录请先修改密码。", nil)
+	}
+	project, err := app.FindRecordById("projects", projectID)
+	if err != nil {
+		return nil, nil, apis.NewNotFoundError("项目不存在或已被删除。", nil)
+	}
+	if auth.GetString("role") == "platform_admin" || project.GetString("admin") == auth.Id {
+		return auth, project, nil
+	}
+	count, err := app.CountRecords("project_memberships", dbx.HashExp{"project": projectID, "user": auth.Id, "role": "manager"})
+	if err != nil {
+		return nil, nil, err
+	}
+	if count == 0 {
+		return nil, nil, apis.NewForbiddenError("只有项目所有者或管理员可以编选交付范围。", nil)
+	}
+	return auth, project, nil
+}
+
+type adoptionDeliveryInput struct {
+	BatchID             string `json:"adoption_batch_id"`
+	ExpectedScopeDigest string `json:"expected_scope_digest"`
+	Reviewer            string `json:"reviewer"`
+	Previous            string `json:"previous"`
+	ChangeReason        string `json:"change_reason"`
+	PreviewSHA          string `json:"preview_sha256"`
+	RequestID           string `json:"request_id"`
+}
+
+func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, input adoptionDeliveryInput) (deliveryHandoff, error) {
+	var h deliveryHandoff
+	batch, err := app.FindRecordById("adoption_batches", input.BatchID)
+	if err != nil || batch.GetString("project") != projectID {
+		return h, apis.NewNotFoundError("编选批次不存在。", nil)
+	}
+	if batch.GetString("status") != adoptionBatchConfirmed {
+		return h, fmt.Errorf("先确认编选范围再准备交付。")
+	}
+	rule, err := parseAdoptionRule(json.RawMessage(batch.GetString("rule_json")))
+	if err != nil {
+		return h, err
+	}
+	computation, err := s.computeAdoption(app, projectID, batch.GetString("purpose"), batch.Id, rule)
+	if err != nil {
+		return h, err
+	}
+	stored := batch.GetString("scope_digest")
+	if stored == "" || input.ExpectedScopeDigest != stored || stored != adoptionScopeDigest(computation) || adoptionCountsDrifted(batch, computation) != "" {
+		return h, apis.NewApiError(http.StatusConflict, "编选范围已变更或缺少确认摘要，请新建并确认编选批次。", nil)
+	}
+	// The digest covers the ENTIRE project. Only afterwards may the adapter
+	// narrow declarations to a single complete imported bundle, including its
+	// excluded and pending rows. A selected-only manifest is not an authority.
+	rows, err := s.adoptionRows(app, projectID, batch.GetString("purpose"))
+	if err != nil {
+		return h, err
+	}
+	jobs := map[string]bool{}
+	if len(rule.ImportJobs) > 0 {
+		for _, id := range rule.ImportJobs {
+			jobs[id] = true
+		}
+	} else {
+		for _, row := range rows {
+			jobs[row.ImportJob] = true
+		}
+	}
+	if len(jobs) != 1 || jobs[""] {
+		return h, fmt.Errorf("交付仅支持一个完整 ReviewBundle 导入批次，请在编选规则中指定唯一批次。")
+	}
+	for id := range jobs {
+		h.ImportJob = id
+	}
+	belongs := map[string]bool{}
+	for _, row := range rows {
+		if row.ImportJob == h.ImportJob {
+			belongs[row.PageID] = true
+		}
+	}
+	for _, entry := range computation.Entries {
+		if !belongs[entry.PageID] {
+			continue
+		}
+		scope := "excluded"
+		if entry.Pending {
+			scope = "pending"
+			h.Expected.Pending++
+		} else if entry.Decision == adoptionDecisionSelect {
+			scope = "adopted"
+			h.Expected.Adopted++
+		} else {
+			h.Expected.Excluded++
+		}
+		h.Entries = append(h.Entries, deliveryEntry{PageID: entry.PageID, Scope: scope, Reason: entry.Reason})
+	}
+	h.NativeBatch = batch
+	h.SelectionRef = batch.Id
+	h.SelectionRule = "sha256:" + reviewbundle.Digest([]byte(batch.GetString("rule_json")))
+	h.ConfirmedBy = batch.GetString("confirmed_by")
+	h.Recipient = batch.GetString("recipient")
+	h.Purpose = batch.GetString("purpose")
+	h.Reviewer = strings.TrimSpace(input.Reviewer)
+	h.Previous = input.Previous
+	h.ChangeReason = strings.TrimSpace(input.ChangeReason)
+	h.PreviewSHA = input.PreviewSHA
+	return h, nil
+}
+
+func (s *importService) adoptionDeliveryPreflight(c *core.RequestEvent) error {
+	var input adoptionDeliveryInput
+	if err := c.BindBody(&input); err != nil {
+		return apis.NewBadRequestError("请求内容无法解析。", err)
+	}
+	var snap reviewbundle.DeliverySnapshot
+	err := s.app.RunInTransaction(func(app core.App) error {
+		auth, _, err := requireAdoptionManagerInApp(app, c, c.Request.PathValue("projectId"))
+		if err != nil {
+			return err
+		}
+		h, err := s.adoptionDeliveryHandoff(app, c.Request.PathValue("projectId"), input)
+		if err != nil {
+			return err
+		}
+		snap, err = s.readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
+		return err
+	})
+	if err != nil {
+		return deliveryInputError(err)
+	}
+	r := reviewbundle.Reconcile(snap)
+	_, buildErr := reviewbundle.BuildDelivery(snap, "2000-01-01T00:00:00Z")
+	if buildErr != nil {
+		r.Status = "inconsistent"
+		r.Problems = append(r.Problems, buildErr.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "can_generate": buildErr == nil, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_scope_digest": snap.SelectionScopeDigest, "import_job": snap.ImportJob, "version": snap.Version, "dependency_gaps": []string{"X 侧真实 dry-run 与双方签字仍须完成"}})
+}
+
+var deliveryRequestUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+
+func (s *importService) createAdoptionDelivery(c *core.RequestEvent) error {
+	var input adoptionDeliveryInput
+	if err := c.BindBody(&input); err != nil {
+		return apis.NewBadRequestError("请求内容无法解析。", err)
+	}
+	if !deliveryRequestUUID.MatchString(input.RequestID) {
+		return apis.NewBadRequestError("request_id 必须是 UUID；重试须复用同一值。", nil)
+	}
+	input.RequestID = strings.ToLower(input.RequestID)
+	fingerprintJSON, _ := json.Marshal(input)
+	fingerprint := reviewbundle.Digest(fingerprintJSON)
+	var record *core.Record
+	var events []*core.Record
+	replay := false
+	err := s.app.RunInTransaction(func(app core.App) error {
+		projectID := c.Request.PathValue("projectId")
+		auth, _, err := requireAdoptionManagerInApp(app, c, projectID)
+		if err != nil {
+			return err
+		}
+		// Authorization precedes replay. Replay precedes recomputing the latest
+		// version or live selection: a successful request remains retryable.
+		existing, err := app.FindFirstRecordByFilter("release_deliveries", "project = {:project} && operator = {:operator} && request_id = {:request}", dbx.Params{"project": projectID, "operator": auth.Id, "request": input.RequestID})
+		if err == nil {
+			if existing.GetString("request_fingerprint") != fingerprint {
+				return apis.NewApiError(http.StatusConflict, "此 request_id 已用于不同请求。", nil)
+			}
+			record = existing
+			replay = true
+			events, err = deliveryEvents(app, record.Id)
+			return err
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		h, err := s.adoptionDeliveryHandoff(app, projectID, input)
+		if err != nil {
+			return err
+		}
+		snap, err := s.readDeliverySnapshot(app, projectID, auth.Id, h)
+		if err != nil {
+			return err
+		}
+		if input.PreviewSHA == "" || input.PreviewSHA != reviewbundle.SnapshotDigest(snap) {
+			return apis.NewApiError(http.StatusConflict, "检查结果已过期或缺失，请重新检查并由人确认出包。", nil)
+		}
+		record, err = saveDeliveryArchive(app, snap, input.RequestID, fingerprint)
+		return err
+	})
+	if err != nil {
+		return deliveryInputError(err)
+	}
+	status := http.StatusCreated
+	if replay {
+		status = http.StatusOK
+	}
+	return c.JSON(status, deliveryView(record, events))
+}
+
+func deliveryInputError(err error) error {
+	// Preserve typed 401/403/404/409 instead of flattening authority failures.
+	var status interface{ StatusCode() int }
+	if errors.As(err, &status) {
+		return err
+	}
+	var apiErr *router.ApiError
+	if errors.As(err, &apiErr) {
+		return err
+	}
+	return apis.NewBadRequestError(err.Error(), nil)
+}
+
+func saveDeliveryArchive(app core.App, snap reviewbundle.DeliverySnapshot, requestID, fingerprint string) (*core.Record, error) {
+	archive, err := reviewbundle.BuildDelivery(snap, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	collection, err := app.FindCollectionByNameOrId("release_deliveries")
+	if err != nil {
+		return nil, err
+	}
+	record := core.NewRecord(collection)
+	file, err := filesystem.NewFileFromBytes(archive, "ReviewResultBundle.zip")
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(snap)
+	if err != nil {
+		return nil, err
+	}
+	reconciliation, err := json.Marshal(reviewbundle.Reconcile(snap))
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range map[string]any{"reconciliation_json": string(reconciliation), "project": snap.Project, "operator": snap.Operator, "package_id": "delivery-" + reviewbundle.SnapshotDigest(snap)[:32], "sha256": reviewbundle.Digest(archive), "purpose": snap.Purpose, "recipient": snap.Recipient, "source_ref": snap.RightsRef, "import_job": snap.ImportJob, "previous": snap.Previous, "version": snap.Version, "snapshot": string(data), "archive": file, "request_id": requestID, "request_fingerprint": fingerprint} {
+		record.Set(key, value)
+	}
+	if err := app.Save(record); err != nil {
+		// A later model hook can fail after PocketBase has uploaded the file. Its
+		// transactional error interceptor assumes execute handled cleanup; that
+		// assumption does not cover a failure after e.Next() in a model hook.
+		// This record/file is newly allocated by this call, never historical data.
+		if app.IsTransactional() {
+			storage, openErr := app.NewFilesystem()
+			if openErr != nil {
+				return nil, errors.Join(err, openErr)
+			}
+			cleanupErr := storage.Delete(path.Join(record.BaseFilesPath(), file.Name))
+			closeErr := storage.Close()
+			return nil, errors.Join(err, cleanupErr, closeErr)
+		}
+		return nil, err
+	}
+	return record, nil
+}
+
+// Bound expensive snapshot/build requests without a second job system. SQLite
+// already serializes commits; the gate limits work waiting to enter them. Two
+// slots per project allow the common concurrent retry to reach replay lookup.
+var deliveryPreparationSlots = struct {
+	sync.Mutex
+	total    int
+	projects map[string]int
+}{projects: map[string]int{}}
+
+func (s *importService) limitDeliveryPreparation(next func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+	return func(c *core.RequestEvent) error {
+		projectID := c.Request.PathValue("projectId")
+		if _, err := s.deliveryManager(c, projectID); err != nil {
+			return err
+		}
+		key := s.app.DataDir() + "\x00" + projectID
+		deliveryPreparationSlots.Lock()
+		if deliveryPreparationSlots.total >= 8 || deliveryPreparationSlots.projects[key] >= 2 {
+			deliveryPreparationSlots.Unlock()
+			c.Response.Header().Set("Retry-After", "2")
+			return apis.NewApiError(http.StatusTooManyRequests, "本项目正在核查或生成交付包，请稍后重试。", nil)
+		}
+		deliveryPreparationSlots.total++
+		deliveryPreparationSlots.projects[key]++
+		deliveryPreparationSlots.Unlock()
+		defer func() {
+			deliveryPreparationSlots.Lock()
+			defer deliveryPreparationSlots.Unlock()
+			deliveryPreparationSlots.total--
+			deliveryPreparationSlots.projects[key]--
+			if deliveryPreparationSlots.projects[key] == 0 {
+				delete(deliveryPreparationSlots.projects, key)
+			}
+		}()
+		return next(c)
+	}
+}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -307,6 +307,70 @@ assert.equal(failed.receipt_channel, 'manual')
 assert.notEqual(failed.receipt_state, 'awaiting_receipt')
 const returned = await api(eventURL, { token: admin.token, method: 'POST', body: { kind: 'return', reviewer: 'synthetic-reviewer', reason: 'synthetic source needs clarification', target: 'A', responsible: 'synthetic-source-owner' }, status: 201 })
 assert.equal(returned.events.at(-1).payload.target, 'A')
+// Native selection is authoritative over the whole project, then narrows to
+// all rows of the one completed bundle. The overlap job remains outside scope.
+const adoptionRoot = `/api/fangji/projects/${project.id}/adoption-batches`
+const nativeBatch = await api(adoptionRoot, { token: admin.token, method: 'POST', status: 201, body: { purpose: 'public_display', recipient: 'synthetic-native-consumer', rule: { statuses: ['approved'], importJobs: [job.id] } } })
+await api(`/api/fangji/adoption-batches/${nativeBatch.id}/preview`, { token: admin.token, method: 'POST' })
+const confirmedBatch = await api(`/api/fangji/adoption-batches/${nativeBatch.id}/confirm`, { token: admin.token, method: 'POST' })
+assert.ok(confirmedBatch.scope_digest)
+const nativeInput = { adoption_batch_id: nativeBatch.id, expected_scope_digest: confirmedBatch.scope_digest, reviewer: 'synthetic-native-reviewer', previous: '', change_reason: '' }
+const nativeCheck = (body, status = 200, token = admin.token) => api(`${root}/from-adoption/preflight`, { token, method: 'POST', body, status })
+const nativeCreate = (body, status = 201, token = admin.token) => api(`${root}/from-adoption`, { token, method: 'POST', body, status })
+await nativeCheck({ ...nativeInput, expected_scope_digest: 'wrong' }, 409)
+const nativePreview = await nativeCheck(nativeInput)
+assert.equal(nativePreview.selection_authority, 'adoption_batch_v1')
+assert.equal(nativePreview.reconciliation.source_covered, pages.length)
+assert.equal(nativePreview.reconciliation.counts.adopted, 3)
+const nativeRequest = { ...nativeInput, preview_sha256: nativePreview.preview_sha256, request_id: randomUUID() }
+const nativeResponses = await Promise.all([1, 2].map(() => fetch(base + `${root}/from-adoption`, { method: 'POST', headers: { Authorization: admin.token, 'Content-Type': 'application/json' }, body: JSON.stringify(nativeRequest) })))
+assert.deepEqual(nativeResponses.map(r => r.status).sort(), [200, 201])
+const nativeRecords = await Promise.all(nativeResponses.map(r => r.json()))
+assert.equal(nativeRecords[0].id, nativeRecords[1].id)
+const nativeFirst = nativeRecords[0]
+assert.equal((await nativeCreate(nativeRequest, 200)).id, nativeFirst.id)
+await nativeCreate({ ...nativeRequest, reviewer: 'different' }, 409)
+await nativeCreate(nativeRequest, 403, users.nonmember.token)
+const nativeRaw = await api(`/api/collections/release_deliveries/records/${nativeFirst.id}`, { token: superAuth.token })
+const nativeSnapshot = JSON.parse(nativeRaw.snapshot)
+assert.equal(nativeSnapshot.adapter_version, 'adoption-delivery/v1')
+assert.equal(nativeSnapshot.selection_scope_digest, confirmedBatch.scope_digest)
+assert.deepEqual(nativeSnapshot.rule_json, confirmedBatch.rule)
+assert.ok(nativeSnapshot.confirmed_at)
+assert.equal(nativeSnapshot.declarations.length, 3)
+assert.ok(nativeSnapshot.selection_rule.length < 200)
+// Membership/content changes invalidate a new create, yet successful retries
+// still return the already-created evidence before consulting the latest chain.
+await setUsage('public_display', 'deny')
+await nativeCheck(nativeInput, 409)
+assert.equal((await nativeCreate(nativeRequest, 200)).id, nativeFirst.id)
+await setUsage('public_display', 'allow')
+const paged = await api(`${root}?page=2&perPage=2`, { token: admin.token })
+assert.equal(paged.items.length, 2)
+assert.equal(paged.metrics.package_count, paged.totalItems)
+assert.ok(paged.totalItems > 2)
+const detail = await api(`/api/fangji/deliveries/${first.id}`, { token: admin.token })
+assert.equal(detail.id, first.id)
+assert.ok(!Object.hasOwn(detail, 'events'))
+const eventPage = await api(`${eventURL}?page=2&perPage=2`, { token: admin.token })
+assert.equal(eventPage.events.length, 2)
+assert.ok(eventPage.events[0].sequence > eventPage.events[1].sequence)
+console.log('PASS: authoritative native selection, whole-project digest drift, concurrent idempotency, permission-before-replay and independent paged detail/history')
+if (process.env.DELIVERY_BROWSER_SCRIPT) {
+  // Populate later history through real authority routes so the deep-linked
+  // original batch is outside the first list page.
+  for (let i = 0; i < 26; i++) {
+    const batch = await api(adoptionRoot, { token: admin.token, method: 'POST', status: 201, body: { purpose: 'public_display', recipient: `synthetic-later-${i}`, rule: { statuses: ['approved'], importJobs: [job.id] } } })
+    await api(`/api/fangji/adoption-batches/${batch.id}/preview`, { token: admin.token, method: 'POST' })
+    await api(`/api/fangji/adoption-batches/${batch.id}/confirm`, { token: admin.token, method: 'POST' })
+  }
+  const fixture = process.env.DELIVERY_BROWSER_FIXTURE || '/tmp/wanyu-delivery-fixture.json'
+  writeFileSync(fixture, JSON.stringify({ backend: base, admin, project, batch: confirmedBatch, delivery: nativeFirst }))
+  const browser = spawnSync('node', [process.env.DELIVERY_BROWSER_SCRIPT], { stdio: 'inherit', env: { ...process.env, DELIVERY_BROWSER_FIXTURE: fixture } })
+  assert.equal(browser.status, 0, 'delivery workspace browser regression')
+}
+
+
 const beforeRevoke = await api(`/api/collections/release_deliveries/records/${first.id}`, { token: superAuth.token })
 await setUsage('public_display', 'deny')
 const impact = await api(`${root}/impacts?source_ref=${source.logical_id}`, { token: users.owner.token })
@@ -344,7 +408,7 @@ if (process.env.DELIVERY_BROWSER === '1') {
   assert.equal(browser.status, 0, 'browser verification failed')
 }
 await verifyDeliveryBusinessCompletion()
-console.log('PASS integration: E delivery uses only generated synthetic data; #315/#184/X gaps remain explicit')
+console.log('PASS integration: E delivery uses only generated synthetic data; real consumer dry-run and signatures remain pending')
 
 async function verifyDeliveryBusinessCompletion() {
   // Run after the original evidence/browser checks: these source changes are

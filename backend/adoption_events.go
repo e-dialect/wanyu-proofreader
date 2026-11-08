@@ -244,40 +244,55 @@ func (s *importService) listAdoptionEvents(c *core.RequestEvent) error {
 	if err != nil {
 		return err
 	}
-	records, err := s.adoptionEvents(record.Id)
+	page := pageArgument(c.Request.URL.Query().Get("page"), 1, 1000000)
+	perPage := pageArgument(c.Request.URL.Query().Get("perPage"), 25, 100)
+	total, err := s.app.CountRecords("adoption_events", dbx.HashExp{"batch": record.Id})
 	if err != nil {
-		return apis.NewBadRequestError("读取编选事件失败。", err)
+		return err
+	}
+	totalPages := max(1, (int(total)+perPage-1)/perPage)
+	page = min(page, totalPages)
+	records, err := s.app.FindRecordsByFilter("adoption_events", "batch = {:batch}", "-created,-id", perPage, (page-1)*perPage, dbx.Params{"batch": record.Id})
+	if err != nil {
+		return err
 	}
 	events := make([]map[string]any, 0, len(records))
-	stale := false
 	for _, item := range records {
 		events = append(events, adoptionEventView(item))
-		if item.GetString("kind") == adoptionEventRightsChanged &&
-			item.GetString("created") > record.GetString("confirmed_at") {
-			stale = true
-		}
 	}
-	return c.JSON(http.StatusOK, map[string]any{
-		"events": events,
-		// stale 只对已确认批次有意义：权利在这批确认之后变过，采用范围可能需要重评。
-		"stale": stale && record.GetString("status") == adoptionBatchConfirmed,
-	})
+	stale, err := s.app.CountRecords("adoption_events", dbx.And(dbx.HashExp{"batch": record.Id, "kind": adoptionEventRightsChanged}, dbx.NewExp("created > {:confirmed}", dbx.Params{"confirmed": record.GetString("confirmed_at")})))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, map[string]any{"events": events, "stale": stale > 0 && record.GetString("status") == adoptionBatchConfirmed, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages})
 }
 
 // reevaluateAdoptionBatch 按当前数据重算一次，把「确认时」与「现在」两组数写进一条
 // 追加事件，并**不修改批次**。D5.3 的红线是不改写历史；要不要因此撤回这一批由人决定。
 func (s *importService) reevaluateAdoptionBatch(c *core.RequestEvent) error {
-	record, auth, project, err := s.loadAdoptionBatch(c)
+	var result any
+	err := s.app.RunInTransaction(func(app core.App) error {
+		var err error
+		result, err = s.reevaluateAdoptionBatchInApp(app, c)
+		return err
+	})
 	if err != nil {
 		return err
 	}
+	return c.JSON(http.StatusOK, result)
+}
+func (s *importService) reevaluateAdoptionBatchInApp(app core.App, c *core.RequestEvent) (any, error) {
+	record, auth, project, err := s.loadAdoptionBatchInApp(app, c)
+	if err != nil {
+		return nil, err
+	}
 	rule, err := parseAdoptionRule(json.RawMessage(record.GetString("rule_json")))
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+		return nil, apis.NewBadRequestError(err.Error(), nil)
 	}
-	computation, err := s.computeAdoption(project.Id, record.GetString("purpose"), record.Id, rule)
+	computation, err := s.computeAdoption(app, project.Id, record.GetString("purpose"), record.Id, rule)
 	if err != nil {
-		return apis.NewBadRequestError("重算编选范围失败。", err)
+		return nil, apis.NewBadRequestError("重算编选范围失败。", err)
 	}
 	stored := adoptionCountsFromRecord(record)
 	current := adoptionCountsFromComputation(computation)
@@ -286,7 +301,7 @@ func (s *importService) reevaluateAdoptionBatch(c *core.RequestEvent) error {
 	if drifted := adoptionCountsDrifted(record, computation); drifted != "" {
 		note = fmt.Sprintf("%s；差异项：%s", note, drifted)
 	}
-	if err := s.appendAdoptionEvent(s.app, adoptionEventRecord{
+	if err := s.appendAdoptionEvent(app, adoptionEventRecord{
 		BatchID: record.Id,
 		Kind:    adoptionEventReevaluated,
 		ActorID: auth.Id,
@@ -294,13 +309,13 @@ func (s *importService) reevaluateAdoptionBatch(c *core.RequestEvent) error {
 		Stored:  &stored,
 		Current: &current,
 	}); err != nil {
-		return apis.NewBadRequestError("记录重评失败。", err)
+		return nil, apis.NewBadRequestError("记录重评失败。", err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{
+	return map[string]any{
 		"stored":  adoptionCountsView(stored),
 		"current": adoptionCountsView(current),
 		"drift":   adoptionCountsDrifted(record, computation),
-	})
+	}, nil
 }
 
 func adoptionCountsView(counts adoptionCounts) map[string]any {

@@ -241,3 +241,30 @@ assert.equal((await api(listPath, { token: admin.token })).totalItems, 102, 'pro
 
 console.log('PASS: adoption permissions cover all five identities; exceptions cannot override rights or rule prerequisites; unknown-reason exclusions leave pending; member swaps with identical counts are caught as scope drift')
 console.log('PASS: adoption history paginates 102 synthetic batches with stable ordering, reachable oldest details, last/empty pages, bounded input and project permissions')
+
+// More than the former 200-item cap: every pending entry and history event is
+// reachable by pagination, while an exact entry deep link ignores page offset.
+await api(usagePath, { method: 'PUT', token: admin.token, body: { decision: 'unknown', evidence_ref: 'synthetic pending pagination' } })
+for (let number = 4; number <= 208; number++) await page(number)
+const pendingBatch = await api(listPath, { method: 'POST', token: owner.token, status: 201, body: { purpose: 'public_display', recipient: 'synthetic pending pagination', rule: { statuses: ['proofread'] } } })
+const pendingRoot = `/api/fangji/adoption-batches/${pendingBatch.id}`
+const firstPending = await api(`${pendingRoot}/exceptions?perPage=100`, { token: owner.token })
+assert.ok(firstPending.pendingTotal > 200)
+const pendingIDs = []
+for (let p = 1; p <= firstPending.totalPages; p++) {
+  const data = await api(`${pendingRoot}/exceptions?page=${p}&perPage=100`, { token: owner.token })
+  pendingIDs.push(...data.pending.map(item => item.page))
+}
+assert.equal(new Set(pendingIDs).size, firstPending.pendingTotal)
+const exactPending = await api(`${pendingRoot}/exceptions/${pendingIDs.at(-1)}`, { token: owner.token })
+assert.equal(exactPending.entry.page, pendingIDs.at(-1))
+await api(`${pendingRoot}/exceptions/${pendingIDs.at(-1)}`, { token: outsider.token, status: 403 })
+for (let i = 0; i < 205; i++) await api(`${pendingRoot}/reevaluate`, { token: owner.token, method: 'POST' })
+const events = []
+for (let p = 1; p <= 3; p++) {
+  const data = await api(`${pendingRoot}/events?page=${p}&perPage=100`, { token: owner.token })
+  assert.equal(data.totalItems, 205)
+  events.push(...data.events.map(item => item.id))
+}
+assert.equal(new Set(events).size, 205)
+console.log('PASS: pending entries and audit events beyond former 200-item caps are fully reachable with exact-entry deep links and permissions')
