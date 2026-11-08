@@ -260,13 +260,24 @@ const {
 const loading = computed(() => accessPending.value || queuePending.value || managedPending.value)
 const workspaceStartedAt = performance.now()
 let workspaceTimingReported = false
+let workspaceDisposed = false
+onBeforeUnmount(() => {
+  workspaceDisposed = true
+})
 watch(
   () => accessReady.value && !loading.value,
   async (ready) => {
     if (!ready || workspaceTimingReported || accessError.value) return
     await nextTick()
     requestAnimationFrame(() => {
-      if (!accessReady.value || loading.value || workspaceTimingReported) return
+      if (
+        !accessReady.value ||
+        loading.value ||
+        workspaceTimingReported ||
+        workspaceDisposed ||
+        document.hidden
+      )
+        return
       workspaceTimingReported = true
       measureBusiness('workspace_ready', performance.now() - workspaceStartedAt)
     })

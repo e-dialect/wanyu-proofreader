@@ -87,7 +87,7 @@ let sourceReported = false
 function reportSourceVisible() {
   const generation = sourceGeneration
   requestAnimationFrame(() => {
-    if (generation !== sourceGeneration || sourceReported) return
+    if (generation !== sourceGeneration || sourceReported || document.hidden) return
     sourceReported = true
     measureBusiness('source_visible', performance.now() - sourceStartedAt)
   })
