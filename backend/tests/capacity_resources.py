@@ -113,7 +113,7 @@ class ResourceSampler:
             if self.last_runtime:
                 at, runtime = self.last_runtime
                 row['runtime_sample_age_seconds'] = now - at
-                for key in ['heap_bytes', 'goroutines', 'queue_length', 'ocr_queue_length', 'image_queue_length', 'gomaxprocs', 'go_memory_limit_bytes']:
+                for key in ['heap_bytes', 'goroutines', 'queue_length', 'ocr_queue_length', 'image_queue_length', 'gomaxprocs', 'go_memory_limit_bytes', 'dev_mode']:
                     row[key] = runtime.get(key)
         except OSError as error:
             row['errors']['runtime_log'] = type(error).__name__

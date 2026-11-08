@@ -185,7 +185,7 @@ def server(binary, root, extra_env=None, data=None, migrations=MIGRATIONS, hooks
     with (root / 'server.log').open('a', encoding='utf-8') as log:
         process = subprocess.Popen([str(binary), 'serve', f'--http=127.0.0.1:{port}', f'--dir={data}',
                                     f'--hooksDir={hooks}', f'--migrationsDir={migrations}',
-                                    '--hooksWatch=false'], env=env, stdout=log, stderr=log)
+                                    '--hooksWatch=false', '--dev=false'], env=env, stdout=log, stderr=log)
         try:
             for _ in range(100):
                 try:

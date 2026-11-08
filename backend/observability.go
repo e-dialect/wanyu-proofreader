@@ -157,7 +157,7 @@ func registerObservability(app core.App, importer *importService) {
 					writeOperation("info", "runtime", "runtime_sample", map[string]any{
 						"heap_bytes": memory.HeapAlloc, "heap_sys_bytes": memory.HeapSys, "heap_inuse_bytes": memory.HeapInuse,
 						"heap_released_bytes": memory.HeapReleased, "runtime_sys_bytes": memory.Sys,
-						"go_memory_limit_bytes": debug.SetMemoryLimit(-1), "gomaxprocs": runtime.GOMAXPROCS(0),
+						"go_memory_limit_bytes": debug.SetMemoryLimit(-1), "gomaxprocs": runtime.GOMAXPROCS(0), "dev_mode": app.IsDev(),
 						"db_pools": databasePoolSamples(app), "goroutines": runtime.NumGoroutine(),
 						"queue_length": len(importer.queue), "ocr_queue_length": len(importer.ocrQueue), "image_queue_length": len(importer.imageQueue),
 					})
