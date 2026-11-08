@@ -148,8 +148,8 @@ export async function updateProfile({ name }) {
   return result.record
 }
 
-export function accountCapabilities() {
-  return pb.send('/api/fangji/auth/capabilities', { method: 'GET', requestKey: null })
+export function accountCapabilities({ signal } = {}) {
+  return pb.send('/api/fangji/auth/capabilities', { method: 'GET', requestKey: null, signal })
 }
 
 export function requestPasswordReset(email) {
@@ -157,11 +157,17 @@ export function requestPasswordReset(email) {
 }
 
 export function requestEmailChange(newEmail) {
-  return pb.collection('users').requestEmailChange(newEmail, { requestKey: null })
+  return withCurrentSession(
+    () => pb.collection('users').requestEmailChange(newEmail, { requestKey: null }),
+    () => {}
+  )
 }
 
 export function requestEmailVerification(email) {
-  return pb.collection('users').requestVerification(email, { requestKey: null })
+  return withCurrentSession(
+    () => pb.collection('users').requestVerification(email, { requestKey: null }),
+    () => {}
+  )
 }
 
 export function confirmAccountAction(action, token, password, passwordConfirm) {
@@ -191,16 +197,24 @@ export async function changeAccountPassword(oldPassword, password, passwordConfi
 }
 
 export async function logoutAllDevices() {
-  const token = pb.authStore.token
-  try {
-    await pb.send('/api/fangji/auth/logout-all', { method: 'POST', body: {}, requestKey: null })
-  } finally {
-    // A network timeout cannot prove server-side revocation. Still end this
-    // local session, without clearing another account selected in another tab.
-    if (pb.authStore.token === token) pb.authStore.clear()
-  }
+  return withCurrentSession(
+    async () => {
+      try {
+        await pb.send('/api/fangji/auth/logout-all', { method: 'POST', body: {}, requestKey: null })
+        return {}
+      } catch (error) {
+        return { error }
+      }
+    },
+    (result, store) => {
+      // A timeout cannot prove server-side revocation. End this local session,
+      // but never a session selected while the request was pending (even A→B→A).
+      store.clear()
+      if (result.error) throw result.error
+    }
+  )
 }
 
-export function listSecurityEvents(query = {}) {
-  return pb.send('/api/fangji/security-events', { method: 'GET', query, requestKey: null })
+export function listSecurityEvents(query = {}, { signal } = {}) {
+  return pb.send('/api/fangji/security-events', { method: 'GET', query, requestKey: null, signal })
 }

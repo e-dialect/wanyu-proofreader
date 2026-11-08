@@ -83,7 +83,8 @@
   </main>
 </template>
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { createAccountViewScope } from '@/lib/accountViewScope'
 import { useRoute } from 'vue-router'
 import {
   accountCapabilities,
@@ -114,13 +115,20 @@ const busy = ref(false),
   loading = ref(false),
   done = ref(false),
   emailEnabled = ref(false)
+const scope = createAccountViewScope(() => `${action.value}|${route.hash || ''}`)
+onBeforeUnmount(() => scope.dispose())
 watch(
-  action,
+  () => [action.value, route.hash],
   async () => {
+    scope.invalidate()
+    const ticket = scope.capture()
     token.value = takeAccountActionToken(window.location, window.history)
     error.value = ''
     message.value = ''
     done.value = false
+    busy.value = false
+    loading.value = false
+    emailEnabled.value = false
     password.value = ''
     confirmation.value = ''
     if (action.value !== 'recover') {
@@ -129,45 +137,60 @@ watch(
     }
     loading.value = true
     try {
-      emailEnabled.value = Boolean((await accountCapabilities()).emailActionsEnabled)
+      const capabilities = await accountCapabilities({ signal: ticket.signal })
+      if (!scope.isCurrent(ticket)) return
+      emailEnabled.value = Boolean(capabilities.emailActionsEnabled)
       if (!emailEnabled.value) error.value = '本站尚未启用邮箱恢复，请联系项目管理员协助恢复账号。'
     } catch {
-      error.value = '暂时无法检查恢复服务，请稍后重试。'
+      if (scope.isCurrent(ticket)) error.value = '暂时无法检查恢复服务，请稍后重试。'
     } finally {
-      loading.value = false
+      if (scope.isCurrent(ticket)) loading.value = false
     }
   },
-  { immediate: true }
+  { immediate: true, flush: 'sync' }
 )
+
 async function submit() {
   if (busy.value) return
+  const ticket = scope.capture()
+  const submittedAction = action.value
+  const submittedToken = token.value
   error.value = ''
   message.value = ''
-  if (action.value === 'reset-password') {
+  if (submittedAction === 'reset-password') {
     error.value = passwordProblem(password.value, confirmation.value)
     if (error.value) return
   }
   busy.value = true
   try {
-    if (action.value === 'recover') {
+    if (submittedAction === 'recover') {
       await requestPasswordReset(email.value)
+      if (!scope.isCurrent(ticket)) return
       message.value = '如果该邮箱可用于恢复，你将收到邮件。请检查收件箱与垃圾邮件，勿频繁重试。'
     } else {
-      await confirmAccountAction(action.value, token.value, password.value, confirmation.value)
+      await confirmAccountAction(
+        submittedAction,
+        submittedToken,
+        password.value,
+        confirmation.value
+      )
+      if (!scope.isCurrent(ticket)) return
       token.value = ''
       password.value = ''
       confirmation.value = ''
       done.value = true
-      if (action.value !== 'verify-email') await refreshStoredAuth()
+      if (submittedAction !== 'verify-email') await refreshStoredAuth()
+      if (!scope.isCurrent(ticket)) return
       message.value =
-        action.value === 'verify-email'
+        submittedAction === 'verify-email'
           ? '邮箱验证成功。'
           : '账户已更新，现有登录已失效，请重新登录。'
     }
   } catch (e) {
-    error.value = accountErrorMessage(e, '操作未完成。链接可能已过期或已使用，请重新申请。')
+    if (scope.isCurrent(ticket))
+      error.value = accountErrorMessage(e, '操作未完成。链接可能已过期或已使用，请重新申请。')
   } finally {
-    busy.value = false
+    if (scope.isCurrent(ticket)) busy.value = false
   }
 }
 </script>

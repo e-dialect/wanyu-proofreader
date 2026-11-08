@@ -166,7 +166,8 @@
   </main>
 </template>
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { createAccountViewScope } from '@/lib/accountViewScope'
 import { useRouter } from 'vue-router'
 import AppModal from '@/components/AppModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -204,6 +205,11 @@ const drafts = ref([]),
   removalAcknowledged = ref(false)
 let removalUserId = ''
 const oldDraftCount = computed(() => drafts.value.filter((d) => d.old).length)
+const scope = createAccountViewScope(
+  () => `${auth.user?.id || ''}|${auth.token || ''}|${auth.isLoggedIn}`
+)
+onBeforeUnmount(() => scope.dispose())
+let eventsRequest = 0
 const events = ref([]),
   eventsLoading = ref(false),
   eventsError = ref('')
@@ -213,15 +219,16 @@ function formatTime(value) {
 }
 async function perform(operation) {
   if (busy.value) return
+  const ticket = scope.capture()
   busy.value = true
   error.value = ''
   message.value = ''
   try {
-    await operation()
+    await operation(() => scope.isCurrent(ticket))
   } catch (e) {
-    error.value = accountErrorMessage(e, '操作未完成，请稍后重试。')
+    if (scope.isCurrent(ticket)) error.value = accountErrorMessage(e, '操作未完成，请稍后重试。')
   } finally {
-    busy.value = false
+    if (scope.isCurrent(ticket)) busy.value = false
   }
 }
 async function changePassword() {
@@ -229,26 +236,25 @@ async function changePassword() {
   if (error.value) return
   await perform(async () => {
     await changeAccountPassword(oldPassword.value, password.value, confirmation.value)
-    oldPassword.value = ''
-    password.value = ''
-    confirmation.value = ''
-    await router.replace('/login?passwordChanged=1')
+    // The synchronous identity watcher clears fields after this session ends.
+    if (!auth.isLoggedIn) await router.replace('/login?passwordChanged=1')
   })
 }
 async function changeEmail() {
-  await perform(async () => {
+  await perform(async (current) => {
     await requestEmailChange(newEmail.value)
-    message.value = '更换邮箱请求已受理。请在新邮箱打开确认链接并输入当前密码。'
+    if (current()) message.value = '更换邮箱请求已受理。请在新邮箱打开确认链接并输入当前密码。'
   })
 }
 async function verifyEmail() {
-  await perform(async () => {
+  await perform(async (current) => {
     await requestEmailVerification(auth.user.email)
-    message.value = '验证请求已受理，请检查邮箱。'
+    if (current()) message.value = '验证请求已受理，请检查邮箱。'
   })
 }
 async function logoutAll() {
   if (busy.value) return
+  const ticket = scope.capture()
   busy.value = true
   let result = '1'
   try {
@@ -256,10 +262,12 @@ async function logoutAll() {
   } catch {
     result = 'unknown'
   } finally {
-    busy.value = false
-    confirmLogout.value = false
+    if (scope.isCurrent(ticket)) {
+      busy.value = false
+      confirmLogout.value = false
+    }
   }
-  await router.replace({ path: '/login', query: { sessionsEnded: result } })
+  if (!auth.isLoggedIn) await router.replace({ path: '/login', query: { sessionsEnded: result } })
 }
 function loadDrafts() {
   try {
@@ -302,27 +310,61 @@ function removeDrafts() {
   }
 }
 async function loadEvents() {
+  const ticket = scope.capture(),
+    request = ++eventsRequest
   eventsLoading.value = true
   eventsError.value = ''
   try {
-    events.value = (await listSecurityEvents({ scope: 'mine', perPage: 25 })).items
+    const result = await listSecurityEvents(
+      { scope: 'mine', perPage: 25 },
+      { signal: ticket.signal }
+    )
+    if (scope.isCurrent(ticket) && request === eventsRequest) events.value = result.items
   } catch {
-    eventsError.value = '暂时无法读取安全记录。'
+    if (scope.isCurrent(ticket) && request === eventsRequest)
+      eventsError.value = '暂时无法读取安全记录。'
   } finally {
-    eventsLoading.value = false
+    if (scope.isCurrent(ticket) && request === eventsRequest) eventsLoading.value = false
   }
 }
-onMounted(async () => {
-  loadDrafts()
-  loadEvents()
-  try {
-    emailEnabled.value = Boolean((await accountCapabilities()).emailActionsEnabled)
-  } catch {
-    error.value = '暂时无法检查邮箱服务，可稍后刷新页面。'
-  } finally {
+watch(
+  () => [auth.user?.id, auth.isLoggedIn, auth.token],
+  async () => {
+    scope.invalidate()
+    const ticket = scope.capture()
+    drafts.value = []
+    events.value = []
+    eventsError.value = ''
+    eventsLoading.value = false
+    removalSnapshot.value = []
+    removalUserId = ''
+    removalAcknowledged.value = false
+    confirmDraftRemoval.value = false
+    confirmLogout.value = false
+    busy.value = false
+    oldPassword.value = ''
+    password.value = ''
+    confirmation.value = ''
+    newEmail.value = ''
+    error.value = ''
+    message.value = ''
+    emailEnabled.value = false
     capabilityLoading.value = false
-  }
-})
+    if (!auth.isLoggedIn || !auth.user?.id) return
+    loadDrafts()
+    void loadEvents()
+    capabilityLoading.value = true
+    try {
+      const result = await accountCapabilities({ signal: ticket.signal })
+      if (scope.isCurrent(ticket)) emailEnabled.value = Boolean(result.emailActionsEnabled)
+    } catch {
+      if (scope.isCurrent(ticket)) error.value = '暂时无法检查邮箱服务，可稍后刷新页面。'
+    } finally {
+      if (scope.isCurrent(ticket)) capabilityLoading.value = false
+    }
+  },
+  { immediate: true, flush: 'sync' }
+)
 </script>
 <style scoped>
 .account-security {
