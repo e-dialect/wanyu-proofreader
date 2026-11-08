@@ -127,7 +127,7 @@ docker compose -f docker-compose.yml -f docker-compose.named-volume.yml up -d --
 
 - `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD`：万语校坊业务管理员账号。
 - `PB_ADMIN_EMAIL` / `PB_ADMIN_PASSWORD`：需要创建 PocketBase 管理员时再改；生产入口默认不会公开 Admin UI。
-- `ENABLE_POCKETBASE_ADMIN_UI`：Traefik 模式默认 `true`，本地生产入口默认 `false`；可显式设置 `false` 关闭后台入口。后台始终要求独立的 PocketBase 管理员登录。
+- `ENABLE_POCKETBASE_ADMIN_UI`：两种生产入口均默认 `false`；临时维护须显式设为 `true`。关闭时 `/_` 和 `/_/` 仅提供旧邮件静态兼容页，管理 UI 与超管 API 的边界分别验证。
 
 启动后访问：
 
@@ -295,7 +295,7 @@ APP_ADMIN_PASSWORD=请换成强密码
 APP_ADMIN_NAME=管理员
 PB_ADMIN_EMAIL=pb-admin@example.com
 PB_ADMIN_PASSWORD=请换成另一个强密码
-ENABLE_POCKETBASE_ADMIN_UI=true
+ENABLE_POCKETBASE_ADMIN_UI=false
 BACKEND_URL=
 PB_ALLOWED_ORIGINS=
 ```
@@ -326,9 +326,9 @@ docker compose -f docker-compose.traefik.yml logs -f backend frontend
 7. 首次登录应用：
 
 - 使用 `.env` 里的 `APP_ADMIN_EMAIL` 和 `APP_ADMIN_PASSWORD` 登录网站。
-- Traefik 模式默认开放 **`https://你的域名/_/`** 的 PocketBase 管理员登录页；输入 `/_` 会相对跳转到 `/_/`，不会跳向容器地址或降级为 HTTP。
+- 两种生产入口默认关闭 PocketBase 管理 UI；`https://你的域名/_/` 仅处理旧邮件链接。需要临时维护时显式启用 UI，并结合 VPN/IP 边界。
 - 这里使用 **`PB_ADMIN_EMAIL` / `PB_ADMIN_PASSWORD`** 对应的 PocketBase 管理员账号，与万语校坊的 `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` 业务管理员账号不同。
-- 如果旧 `.env` 中有 `ENABLE_POCKETBASE_ADMIN_UI=false`，它会继续覆盖默认值并返回 404。改为 `true` 后执行 `docker compose -f docker-compose.traefik.yml up -d --build --force-recreate frontend`（仅 restart 不会更新容器环境变量）。
+- 旧 `.env` 显式配置会继续覆盖默认值，发布前必须核对。临时改为 `true` 后执行 `docker compose -f docker-compose.traefik.yml up -d --build --force-recreate frontend`（仅 restart 不会更新容器环境变量）。
 - 要关闭后台，显式设置 `ENABLE_POCKETBASE_ADMIN_UI=false` 并重新创建 frontend。backend 仍不发布宿主机端口，不需要给 Traefik 新增 backend 路由。
 - PocketBase collections、字段和 API rules 会由迁移自动应用，不需要进后台手动配置业务规则。
 
@@ -896,7 +896,7 @@ python3 backend/tests/run_rare_characters_integration.py
 前端为支持运行时 BACKEND_URL 和 Admin UI 配置，需要写静态资源、Nginx snippets/conf.d 及缓存目录，
 因此未设整个前端根文件系统只读；其他目录仍归 root 所有。开发镜像保留现有开发用户行为。
 Traefik 的 TLS router 增加一年 HSTS，关闭强制 HTTP HSTS；本机 HTTP 入口不发送 HSTS。
-当前 Traefik Admin UI 默认开启是既有维护入口策略，正式运营应显式设置 `ENABLE_POCKETBASE_ADMIN_UI=false`。
+两种生产入口的 Admin UI 均默认关闭；旧配置中的显式 true 仍须维护者在发布前核对。
 
 ## 许可证
 

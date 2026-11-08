@@ -673,8 +673,8 @@ jobs:
         env:
           TRAEFIK_HOST: fangji.example.com
         run: |
-          env -u ENABLE_POCKETBASE_ADMIN_UI docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "true"'
-          ENABLE_POCKETBASE_ADMIN_UI=false docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "false"'
+          env -u ENABLE_POCKETBASE_ADMIN_UI docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "false"'
+          ENABLE_POCKETBASE_ADMIN_UI=true docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "true"'
           env -u ENABLE_POCKETBASE_ADMIN_UI docker compose config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "false"'
 
       - name: Verify Compose entry point behavior

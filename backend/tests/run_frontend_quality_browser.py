@@ -14,7 +14,7 @@ import time
 import harness
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor', 'repository', 'workbench', 'components'])
+parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor', 'repository', 'workbench', 'components', 'delivery'])
 selected = parser.parse_args().only
 ROOT = harness.BACKEND.parent
 FRONTEND = ROOT / 'frontend'
@@ -56,6 +56,7 @@ with harness.temporary_root() as temporary:
                     'editor': ['frontend/tests/browser/font-feedback.cjs', 'frontend/tests/browser/editor-keyboard-flow.cjs', 'frontend/tests/browser/editor-states.cjs', 'frontend/tests/browser/editor-experience.cjs', 'frontend/tests/browser/mobile-field-flow.cjs'],
                     'fonts': ['frontend/scripts/test-rare-fonts.cjs'],
                     'profile': ['frontend/scripts/test-profile-session.cjs'],
+                    'delivery': ['backend/tests/delivery_integration.mjs'],
                     'pagination': ['frontend/scripts/test-pagination.cjs'],
                     'unicode': ['backend/tests/rare_characters_integration.mjs', 'frontend/scripts/test-rare-workflow.cjs'],
                     'workbench': ['frontend/tests/browser/auth-navigation.cjs', 'frontend/tests/browser/discovery.cjs', 'backend/tests/seed_demo.mjs', 'frontend/tests/browser/workbench.cjs', 'frontend/tests/browser/entry-list-experience.cjs', 'frontend/tests/browser/review-bundle.cjs', 'frontend/tests/browser/import-errors.cjs', 'frontend/tests/browser/tone-batch.cjs'],
@@ -65,7 +66,13 @@ with harness.temporary_root() as temporary:
                         continue
                     for script in scripts:
                         print('RUN mounted browser: ' + script, flush=True)
-                        node(script, env)
+                        script_env = env
+                        if name == 'delivery':
+                            script_env = {**env,
+                                'DELIVERY_BROWSER_SCRIPT': str(FRONTEND / 'scripts/test-delivery-workspace.cjs'),
+                                'DELIVERY_BROWSER_FIXTURE': str(temporary / 'delivery-browser.json'),
+                                'DELIVERY_BROWSER_OUTPUT': str(output / 'delivery')}
+                        node(script, script_env)
             finally:
                 vite.terminate()
                 try:

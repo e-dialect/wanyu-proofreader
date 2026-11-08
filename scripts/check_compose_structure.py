@@ -142,8 +142,8 @@ def main():
           'docker-compose.traefik.yml targets the wrong container port')
     check('fangji-security' in (labels.get('traefik.http.routers.fangji.middlewares') or ''),
           'docker-compose.traefik.yml router has no security middleware')
-    check(mapping(edge['services']['frontend'].get('environment')).get('ENABLE_POCKETBASE_ADMIN_UI') == 'true',
-          'docker-compose.traefik.yml must keep the admin UI reachable through the proxy route')
+    check(mapping(edge['services']['frontend'].get('environment')).get('ENABLE_POCKETBASE_ADMIN_UI') == 'false',
+          'docker-compose.traefik.yml must disable the admin UI by default')
 
     unstamped = []
     for name in ENTRY_POINTS:

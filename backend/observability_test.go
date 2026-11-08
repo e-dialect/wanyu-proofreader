@@ -67,6 +67,14 @@ func TestTelemetryAuthenticationProjectionAndBudget(t *testing.T) {
 		request(token, sample, 204)
 	}
 	request(token, sample, 429)
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	var final map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &final); err != nil {
+		t.Fatal(err)
+	}
+	if final["ts"] == nil || final["error_code"] != "HTTP_429" || final["status"] != float64(429) {
+		t.Fatalf("HTTP completion omitted bounded error metadata: %v", final)
+	}
 }
 
 func TestTelemetryLimiterExpiresAndRequestIDRejectsUntrustedText(t *testing.T) {

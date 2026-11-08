@@ -17,7 +17,7 @@ from pathlib import Path
 from audit_storage import TTLs, walk_entries
 
 RECEIPT_LIMIT = 8192
-DEFAULT_BACKUP_MAX_AGE = 36 * 3600
+DEFAULT_BACKUP_MAX_AGE = 24 * 3600
 
 
 def timestamp(value):
@@ -171,7 +171,7 @@ def main():
     parser.add_argument('--interval', type=int, default=60)
     parser.add_argument('--cache-interval', type=int, default=300, help='seconds between cache directory walks (minimum 60)')
     parser.add_argument('--backup-receipt', type=Path, help='optional local backup receipt.json; does not recheck backup contents')
-    parser.add_argument('--backup-max-age', type=int, default=DEFAULT_BACKUP_MAX_AGE, help='receipt expiry in seconds (default 36 hours)')
+    parser.add_argument('--backup-max-age', type=int, default=DEFAULT_BACKUP_MAX_AGE, help='receipt expiry in seconds (default 24 hours)')
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--max-bytes', type=int, default=10*1024*1024)
     parser.add_argument('--backups', type=int, default=5)
