@@ -17,8 +17,12 @@
           <RouterLink v-if="immersive" :to="returnTarget" class="shell-return"
             ><AppIcon name="back" /><span>返回队列</span></RouterLink
           >
-          <span v-if="immersive" class="shell-header__brand">万语校坊</span
-          ><span v-else class="shell-location">{{ pageTitleFor(route.name) }}</span>
+          <span v-if="immersive" class="shell-header__brand">万语校坊</span>
+          <div v-else class="shell-location-context" aria-label="当前位置">
+            <span class="shell-area">{{ shellArea }}</span>
+            <span class="shell-location-divider" aria-hidden="true">/</span>
+            <span class="shell-location">{{ pageTitleFor(route.name) }}</span>
+          </div>
         </div>
         <div id="workbench-guidance" class="shell-guidance"></div>
         <details ref="accountMenu" class="shell-account" @keydown.esc.prevent="dismissAccountMenu">
@@ -69,7 +73,7 @@ import { computed, onMounted, provide, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { pageTitleFor } from '@/lib/pageTitle'
-import { isImmersiveRoute, rememberWork } from '@/lib/workbenchNavigation'
+import { isImmersiveRoute, navigationArea, rememberWork } from '@/lib/workbenchNavigation'
 import { browserSessionStorage, queueReturnTarget } from '@/lib/queueReturn'
 import { browserLocalStorage } from '@/lib/onboarding'
 import AppNavigation from '@/components/AppNavigation.vue'
@@ -83,6 +87,15 @@ const navigationOpen = ref(false)
 const helpOpen = ref(false)
 const accountMenu = ref(null)
 const immersive = computed(() => isImmersiveRoute(route))
+const shellArea = computed(() => {
+  if (['CreatorGrants', 'GateRules'].includes(route.name)) return '平台管理'
+  if (route.name === 'ProofreaderProfile') return '账户与偏好'
+  return (
+    { workspace: '工作空间', tasks: '校勘工作', projects: '项目空间', sources: '来源资料' }[
+      navigationArea(route)
+    ] || '工作空间'
+  )
+})
 const returnTarget = computed(() =>
   queueReturnTarget(browserSessionStorage(), auth.user?.id, route)
 )

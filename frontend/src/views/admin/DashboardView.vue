@@ -3,6 +3,7 @@
     <header class="page-heading">
       <div>
         <h1>项目管理</h1>
+        <p>查看项目进展，优先处理需要判断的条目。</p>
       </div>
       <div class="page-heading-actions">
         <AppButton
@@ -23,11 +24,11 @@
     <AppStatusPanel
       v-if="error"
       state="error"
+      :title="hasResult ? '更新失败，当前显示上次结果。' : '项目状态暂时无法加载。'"
       retry-label="重新加载"
       :busy="loading"
       @retry="loadDashboard()"
     >
-      <strong>{{ hasResult ? '更新失败，当前显示上次结果。' : '项目状态暂时无法加载。' }}</strong>
       <span>{{ error }}</span>
     </AppStatusPanel>
 
@@ -92,7 +93,7 @@
             :key="option.value"
             type="button"
             size="sm"
-            :variant="dashboardQuery.filter === option.value ? 'primary' : 'ghost'"
+            variant="ghost"
             :aria-pressed="dashboardQuery.filter === option.value"
             @click="setFilter(option.value)"
           >
@@ -413,18 +414,16 @@ function formatDate(value) {
 
 <style scoped>
 .admin-catalog .admin-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-5);
   margin-bottom: var(--space-4);
   padding-bottom: var(--space-4);
 }
 .admin-summary > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-2);
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
 }
 .admin-catalog .admin-summary dt,
 .admin-catalog .admin-summary dd,
@@ -432,7 +431,7 @@ function formatDate(value) {
   margin: 0;
 }
 .admin-catalog .admin-summary dd {
-  font-size: var(--text-md);
+  font-size: var(--text-xl);
 }
 .admin-project-identity {
   width: 44%;
@@ -468,14 +467,19 @@ function formatDate(value) {
     margin-bottom: var(--space-3);
   }
   .admin-catalog .admin-summary {
-    gap: var(--space-1) var(--space-3);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-4);
     margin-bottom: var(--space-3);
     padding-bottom: var(--space-3);
   }
-  .admin-catalog .admin-summary dt,
-  .admin-catalog .admin-summary dd,
-  .admin-catalog .admin-summary dd span {
+  .admin-catalog .admin-summary dt {
     font-size: var(--text-sm);
+  }
+  .admin-catalog .admin-summary dd {
+    font-size: var(--text-lg);
+  }
+  .admin-catalog .admin-summary dd span {
+    font-size: var(--text-xs);
   }
   .admin-catalog .admin-summary > div {
     gap: var(--space-1);
@@ -524,6 +528,9 @@ function formatDate(value) {
     width: auto;
     padding: 0;
     border: 0;
+  }
+  .admin-catalog :deep(.admin-project-table tr:hover td) {
+    background: transparent;
   }
   .admin-project-identity {
     grid-area: identity;

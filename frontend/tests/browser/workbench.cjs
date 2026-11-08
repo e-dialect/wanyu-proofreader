@@ -259,6 +259,20 @@ async function catalogFits(page) {
       .filter({ hasText: project.name })
       .waitFor()
     await page.screenshot({ path: path.join(output, 'desktop-manager-workbench.png') })
+    await page.locator('.app-sidebar').getByRole('link', { name: '我的任务', exact: true }).focus()
+    await page.keyboard.press('Tab')
+    const projectNavigation = page
+      .locator('.app-sidebar')
+      .getByRole('link', { name: '项目', exact: true })
+    assert.equal(
+      await projectNavigation.evaluate((element) => document.activeElement === element),
+      true
+    )
+    assert.equal(
+      await projectNavigation.evaluate((element) => getComputedStyle(element).outlineWidth),
+      '3px',
+      'Sidebar keyboard navigation has a visible focus indicator'
+    )
     await page.goto(base + '/projects?view=mine')
     await page.getByRole('link', { name: '项目管理', exact: true }).click()
     await page.waitForURL('**/admin')
@@ -293,6 +307,12 @@ async function catalogFits(page) {
       .getByRole('alert')
       .filter({ hasText: '合成测试：项目目录暂时不可用' })
       .waitFor({ state: 'hidden' })
+    await page.getByLabel('搜索项目名或简介', { exact: true }).fill('合成验收：不存在的精修项目')
+    await page.getByText('没有符合条件的项目', { exact: true }).waitFor()
+    await noOverflow(page)
+    await page.screenshot({ path: path.join(output, 'desktop-managed-catalog-empty.png') })
+    await page.getByRole('button', { name: '清除搜索与筛选', exact: true }).click()
+    await page.getByRole('region', { name: '项目进展表', exact: true }).waitFor()
     await page.setViewportSize({ width: 390, height: 844 })
     await catalogFits(page)
     const managedTable = page.getByRole('region', { name: '项目进展表', exact: true })
@@ -328,7 +348,26 @@ async function catalogFits(page) {
     await managedDetails.locator('.project-created').waitFor()
     await managedDetails.getByRole('button', { name: '状态与创建信息', exact: true }).click()
     assert.equal(await managedDetails.getAttribute('data-state'), 'closed')
+    await managedDetails.locator('.app-disclosure__content').waitFor({ state: 'hidden' })
     await page.screenshot({ path: path.join(output, 'mobile-managed-catalog.png') })
+    await page.setViewportSize({ width: 320, height: 844 })
+    await page.evaluate(() => scrollTo(0, 0))
+    await catalogFits(page)
+    const narrowAction = await managedAction.boundingBox()
+    assert.ok(
+      narrowAction.x >= 0 &&
+        narrowAction.x + narrowAction.width <= 320 &&
+        narrowAction.y + narrowAction.height <= 845,
+      'Two-column management summary keeps the first project action on the 320px screen'
+    )
+    assert.equal(
+      await page
+        .locator('.admin-summary')
+        .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+      2
+    )
+    await page.screenshot({ path: path.join(output, 'narrow-managed-catalog.png') })
+    await page.setViewportSize({ width: 390, height: 844 })
     await page.getByRole('button', { name: '打开导航', exact: true }).click()
     const drawer = page.getByRole('dialog')
     await drawer.getByRole('link', { name: '工作台', exact: true }).click()
@@ -337,6 +376,17 @@ async function catalogFits(page) {
     await noOverflow(page)
     await primaryWorkFits(page, true)
     await page.screenshot({ path: path.join(output, 'mobile-manager-workbench.png') })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const workbenchProject = page.locator('.workbench-project').first()
+    await workbenchProject.hover()
+    assert.equal(
+      await workbenchProject
+        .locator(':scope > .app-icon')
+        .evaluate((element) => getComputedStyle(element).transform),
+      'none',
+      'Reduced motion disables directional row movement'
+    )
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
     await logout(page)
     await login(page, readerEmail)
     await page.getByRole('link', { name: '继续校对', exact: true }).waitFor()
@@ -354,6 +404,21 @@ async function catalogFits(page) {
       'Mobile catalog exposes the first task without a screen of statistics'
     )
     await page.screenshot({ path: path.join(output, 'mobile-task-catalog.png') })
+    await page.setViewportSize({ width: 320, height: 844 })
+    await page.evaluate(() => scrollTo(0, 0))
+    await catalogFits(page)
+    const narrowTask = await page
+      .getByRole('button', { name: '继续校对', exact: true })
+      .first()
+      .boundingBox()
+    assert.ok(
+      narrowTask.x >= 0 &&
+        narrowTask.x + narrowTask.width <= 320 &&
+        narrowTask.y + narrowTask.height <= 845,
+      'The current task action remains on the first 320px screen'
+    )
+    await page.screenshot({ path: path.join(output, 'narrow-task-catalog.png') })
+    await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(base + '/projects?view=mine')
     await page.getByRole('heading', { name: project.name, exact: true }).waitFor()
     await catalogFits(page)
@@ -408,6 +473,10 @@ async function catalogFits(page) {
           reviewedTabCancellation: true,
           guidanceDoesNotCoverControls: true,
           catalogHierarchyAndMobileFit: true,
+          narrowManagementActionVisible: true,
+          catalogEmptyRecovery: true,
+          workbenchReducedMotion: true,
+          sidebarKeyboardFocus: true,
           managementMenuRoute: true,
           managementRefreshFailureRetention: true,
           compactPrimaryWork: true,
