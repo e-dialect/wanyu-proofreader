@@ -29,8 +29,9 @@ def operation(rows, name, p95_limit=None, p99_limit=None):
 
 def summarize(output, config, reconciliation, returncodes):
     output = Path(output)
-    http = lines(output / 'requests.jsonl') + lines(output / 'browser-http.jsonl')
-    burst = burst_report(config, http, lines(output / 'burst-events.jsonl'))
+    all_http = lines(output / 'requests.jsonl') + lines(output / 'browser-http.jsonl')
+    burst = burst_report(config, all_http, lines(output / 'burst-events.jsonl'))
+    http = all_http
     browser = lines(output / 'browser.jsonl')
     if config['profile'] == 'full':
         http = [r for r in http if r['phase'] == 'steady']
@@ -41,9 +42,12 @@ def summarize(output, config, reconciliation, returncodes):
     operations = [operation(http, name, limit, 2000 if name in ('claim', 'submit', 'arbitrate') else None)
                   for name, limit in HTTP_P95.items()]
     gates.extend({'gate': item['operation'], 'status': item['status']} for item in operations)
-    failures = sum(r.get('status', 0) == 0 or r.get('status', 0) >= 500 for r in http)
-    rate = failures / len(http) if http else None
-    gates.append({'gate': 'unexpected_http_responses', 'status': 'fail' if any(not r.get('ok',False) for r in http) else 'pass'})
+    # Only latency gates exclude warmup/ramp/cooldown. Errors anywhere in the
+    # run must remain visible, including optional browser reads that can fail
+    # without aborting the primary user flow.
+    failures = sum(r.get('status', 0) == 0 or r.get('status', 0) >= 500 for r in all_http)
+    rate = failures / len(all_http) if all_http else None
+    gates.append({'gate': 'unexpected_http_responses', 'status': 'fail' if any(not r.get('ok',False) for r in all_http) else 'pass'})
     gates.append({'gate': 'unexpected_5xx_timeout_rate', 'status': 'incomplete' if rate is None else 'pass' if rate <= .001 else 'fail', 'actual': rate, 'limit': .001})
     source = []
     for cache, limit in [('cold_browser', 3000), ('hot_browser', 1000), ('unknown', None)]:
@@ -85,7 +89,10 @@ def summarize(output, config, reconciliation, returncodes):
     gates.append({'gate': 'generators_exited', 'status': 'pass' if all(code == 0 for code in returncodes) else 'fail'})
     gates.append({'gate': 'browser_errors', 'status': 'fail' if any(g['errors'] for g in generators) else 'pass'})
     status = 'invalid_generator' if saturated or missing else 'fail' if any(g['status'] == 'fail' for g in gates) else 'incomplete' if any(g['status'] != 'pass' for g in gates) else 'pass'
-    return {'status': status, 'profile': config['profile'], 'threshold_scope': 'steady phase only' if config['profile'] == 'full' else 'accelerated smoke phases',
+    latency_scope = 'steady phase only' if config['profile'] == 'full' else 'accelerated smoke phases'
+    return {'status': status, 'profile': config['profile'],
+            'threshold_scope': f'latency: {latency_scope}; HTTP errors: all phases; Web Vitals: full lifecycle',
+            'latency_scope': latency_scope, 'http_error_scope': 'all phases', 'http_error_samples': len(all_http),
             'gates': gates, 'http': operations, 'expected_conflicts': {name: sum(r['operation']==name and r.get('status')==409 and r.get('ok') for r in http) for name in {r['operation'] for r in http}}, 'http_samples': len(http), 'source_visible': source,
             'editor_ready_report_only': operation(browser, 'editor_ready'), 'submit_ack': ack,
             'submit_burst': burst, 'web_vitals': vitals, 'generators': generators, 'background': background,

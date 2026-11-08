@@ -53,6 +53,47 @@ class CapacityReportTest(unittest.TestCase):
             self.assertEqual(result['status'],'fail')
             self.assertEqual(next(row for row in result['http'] if row['operation']=='own_reviewed_tasks')['status'],'fail')
 
+    def test_full_run_checks_http_errors_outside_steady_phase(self):
+        for filename in ('requests.jsonl', 'browser-http.jsonl'):
+            for phase in ('warmup', 'ramp', 'cooldown'):
+                with self.subTest(filename=filename, phase=phase), tempfile.TemporaryDirectory() as directory:
+                    root=Path(directory);config=self.fixture(root)
+                    with (root/filename).open('a') as out:
+                        out.write(json.dumps({'vu':0,'operation':'own_reviewed_tasks','duration_ms':1,
+                                              'phase':phase,'status':503,'ok':False})+'\n')
+                    result=report.summarize(root,config,{'pass':True},[0,0])
+                    gates={row['gate']:row for row in result['gates']}
+                    self.assertEqual(result['status'],'fail')
+                    self.assertEqual(gates['unexpected_http_responses']['status'],'fail')
+                    self.assertEqual(gates['unexpected_5xx_timeout_rate']['status'],'fail')
+                    self.assertEqual(gates['unexpected_5xx_timeout_rate']['actual'],1/result['http_error_samples'])
+                    self.assertEqual(result['http_error_samples'],result['http_samples']+1)
+                    self.assertEqual(result['http_error_scope'],'all phases')
+                    self.assertEqual(result['latency_scope'],'steady phase only')
+
+    def test_full_run_keeps_latency_source_and_ack_gates_steady_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);config=self.fixture(root)
+            with (root/'browser-http.jsonl').open('a') as out:
+                out.write(json.dumps({'vu':0,'operation':'own_reviewed_tasks','duration_ms':9999,
+                                      'phase':'warmup','status':200,'ok':True})+'\n')
+            with (root/'browser.jsonl').open('a') as out:
+                for name,cache in [('source_visible','cold_browser'),('source_visible','hot_browser'),('submit_ack','')]:
+                    out.write(json.dumps({'vu':0,'operation':name,'duration_ms':9999,
+                                          'phase':'cooldown','cache_state':cache})+'\n')
+            result=report.summarize(root,config,{'pass':True},[0,0])
+            history=next(row for row in result['http'] if row['operation']=='own_reviewed_tasks')
+            self.assertEqual(result['status'],'pass')
+            self.assertEqual(history['samples'],1)
+            self.assertEqual(history['p95_ms'],10)
+            self.assertEqual(result['http_error_samples'],result['http_samples']+1)
+            self.assertEqual(result['submit_ack']['samples'],2)
+            self.assertEqual(result['submit_ack']['p95_ms'],100)
+            for source in result['source_visible']:
+                if source['cache_state']!='unknown':
+                    self.assertEqual(source['samples'],2)
+                    self.assertEqual(source['p95_ms'],100)
+
     def test_expected_conflicts_are_not_fast_successes(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);config=self.fixture(root)
