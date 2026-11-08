@@ -11,7 +11,7 @@
         <h2>拼音归一</h2>
         <p class="text-sm text-muted">
           按<strong>声明的</strong>方案把校对后的记音转换成统一方案；系统不会替你判断某批资料用的是哪一套。
-          机器判不出来的条目会进入下面的复核队列。
+          转换作业与人工复核分别处理，原始写法继续保留。
         </p>
       </div>
     </div>
@@ -23,207 +23,269 @@
     <p v-else-if="schemeNotice" class="alert alert-warning" role="alert">{{ schemeNotice }}</p>
 
     <template v-else>
-      <div class="admin-list-filters mb-4">
-        <AppField class="admin-filter-field"
-          ><template #label>本批资料用的是哪套方案</template>
-          <select v-model="schemeSourceId" class="form-control">
-            <option value="">请选择</option>
-            <option
-              v-for="item in schemeOptions"
-              :key="item.source_scheme_id"
-              :value="item.source_scheme_id"
-            >
-              {{ schemeOptionLabel(item) }}
-            </option>
-          </select>
-        </AppField>
+      <div class="scheme-view-controls">
+        <nav class="scheme-tabs" aria-label="记音整理工作">
+          <button
+            type="button"
+            :aria-current="schemeView === 'jobs' ? 'page' : undefined"
+            @click="setView('jobs')"
+          >
+            转换作业</button
+          ><button
+            type="button"
+            :aria-current="schemeView === 'review' ? 'page' : undefined"
+            @click="setView('review')"
+          >
+            人工复核 <span v-if="reviewTotalItems">{{ reviewTotalItems }}</span>
+          </button>
+        </nav>
         <button
           type="button"
-          class="btn btn-primary"
-          :disabled="schemeBusy || !schemeSourceId"
-          @click="runConversion"
-        >
-          {{ schemeBusy ? '转换中…' : '生成统一拼音' }}
-        </button>
-        <button
-          type="button"
-          class="btn btn-secondary"
-          :disabled="schemeBusy"
+          class="btn btn-secondary btn-sm"
+          :disabled="schemeBusy || schemeLoading"
           @click="loadSchemeState"
         >
           刷新
         </button>
       </div>
-      <!-- 规则文件自己声明了能不能跑真实作业。合成夹具在目录里是合法的一等公民
-               （引擎需要它），但它建不出真实作业——这句话必须在按钮旁边说。 -->
-      <p v-if="testOnlySchemes.length" class="text-sm text-muted">
-        {{ testOnlySchemes.join('、') }}
-        声明为「仅测试」（rule_status=test）：可以选中，但服务端会拒绝用它创建真实转换作业。
-        依据不足的登记保持 decline，不会猜成生产规则。
-      </p>
       <p v-if="schemeError" class="alert alert-error" role="alert">{{ schemeError }}</p>
       <p v-if="schemeSuccess" class="alert alert-success" role="status">{{ schemeSuccess }}</p>
-
-      <h3>最近一次转换</h3>
-      <p v-if="!schemeJob" class="text-muted">还没有跑过转换。</p>
-      <template v-else>
-        <p class="text-sm text-muted">
-          状态：{{ conversionJobStatusLabel(schemeJob.status) }} · 规则版本
-          {{ schemeJob.rule_version }} · 方案 {{ schemeJob.source_scheme }} →
-          {{ schemeJob.canonical_scheme }}
-        </p>
-        <div class="flex gap-2 items-center mb-2">
-          <span v-for="line in schemeSummary" :key="line.key" class="badge"
-            >{{ line.label }} · {{ line.count }}</span
-          >
-        </div>
-        <p v-if="schemeJob.error_message" class="alert alert-error" role="alert">
-          {{ schemeJob.error_message }}
-        </p>
-      </template>
-
-      <h3>复核队列（机器判不出来）</h3>
-      <p class="text-muted">
-        这些条目机器判不出来——要么规则给出多个候选（需人工确认），要么规则根本接不住（暂未支持）——
-        需要人给出统一方案的写法。结论会记下判定人与依据，重跑时保留，不会被下一次批处理推回机器判断。
-      </p>
-      <div class="flex gap-2 items-center mb-2" role="group" aria-label="复核队列状态筛选">
-        <button
-          type="button"
-          class="btn btn-sm"
-          :class="reviewStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'"
-          @click="setReviewFilter('all')"
-        >
-          全部待复核
-        </button>
-        <button
-          type="button"
-          class="btn btn-sm"
-          :class="reviewStatusFilter === 'AMBIGUOUS' ? 'btn-primary' : 'btn-secondary'"
-          @click="setReviewFilter('AMBIGUOUS')"
-        >
-          需人工确认
-        </button>
-        <button
-          type="button"
-          class="btn btn-sm"
-          :class="reviewStatusFilter === 'UNSUPPORTED' ? 'btn-primary' : 'btn-secondary'"
-          @click="setReviewFilter('UNSUPPORTED')"
-        >
-          暂未支持
-        </button>
-      </div>
-      <details v-if="offPageDrafts.length" class="mb-3">
-        <summary>查看暂不在本页的工作区草稿（{{ offPageDrafts.length }}）</summary>
-        <div v-for="old in offPageDrafts" :key="old.id">
-          <p>
-            原值：{{ old.context?.source }} · {{ old.context?.sourceScheme }} →
-            {{ old.context?.targetScheme }} · 规则 {{ old.context?.ruleVersion }} / schema
-            {{ old.context?.schemaVersion }}
-          </p>
-          <p>旧写法：{{ old.canonical }}；旧依据：{{ old.basis }}</p>
-          <p v-for="(entry, index) in old.history" :key="index">
-            此前草稿 {{ entry.context?.source }}：{{ entry.canonical }}；{{ entry.basis }}
-          </p>
-          <p>
-            草稿只供查看；返回对应条目并核对当前依据后才能提交。关闭此工作区前请自行保留需要的文字。
-          </p>
-        </div>
-      </details>
-      <p v-if="!reviewRows.length" class="text-muted">{{ reviewEmptyMessage }}</p>
-      <template v-else>
-        <p class="text-sm text-muted">共 {{ reviewTotalItems }} 条待复核。</p>
-        <ul class="assist-list">
-          <li v-for="row in reviewRows" :key="row.id" class="assist-row">
-            <div>
-              <strong>第 {{ row.page_number }} 条</strong>
-              <span :class="normalizationBadgeClass(row.normalization_status)">
-                {{ normalizationStatusLabel(row.normalization_status) }}
-              </span>
-              <p class="text-sm">
-                原值（转换时）：<code>{{ row.source_pronunciation || '（空）' }}</code>
-              </p>
-              <p v-if="row.normalization_trace.length" class="text-sm text-muted">
-                经过规则：{{ row.normalization_trace.join(' → ') }}
-              </p>
-              <p v-if="row.candidates.length" class="text-sm text-muted">
-                候选：{{ row.candidates.join(' / ') }}
-              </p>
-              <div v-if="reviewDraft[row.id].stale" class="alert alert-warning" role="alert">
-                <strong>复核依据已变化，旧草稿不能直接提交。</strong>
-                <p>
-                  来源、方案或规则版本变化后，须重新核对并填写当前结论与依据；旧稿只供查看，不会自动套用。
-                </p>
-                <p v-if="row.source_changed">
-                  当前来源读音或记音列已变化，请先重跑转换，再刷新本队列。
-                </p>
-                <p v-if="reviewDraft[row.id].requiresReload">
-                  当前依据尚未重新加载成功，请先刷新队列；旧稿保留，只供查看。
-                </p>
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-sm"
-                  :disabled="
-                    reviewBusy ||
-                    reviewDraft[row.id].requiresReload ||
-                    row.source_changed ||
-                    !row.expected_basis
-                  "
-                  @click="restartReview(row)"
-                >
-                  按当前依据重新填写
-                </button>
-              </div>
-              <details v-if="reviewDraft[row.id].history.length" class="mb-3">
-                <summary>查看旧草稿（{{ reviewDraft[row.id].history.length }}）</summary>
-                <div v-for="(old, index) in reviewDraft[row.id].history" :key="index">
-                  <p>
-                    原值：{{ old.context?.source }} · {{ old.context?.sourceScheme }} →
-                    {{ old.context?.targetScheme }} · 规则 {{ old.context?.ruleVersion }} / schema
-                    {{ old.context?.schemaVersion }}
-                  </p>
-                  <p>旧写法：{{ old.canonical }}；旧依据：{{ old.basis }}</p>
-                </div>
-              </details>
-              <AppField class="admin-filter-field"
-                ><template #label>统一方案的写法</template>
-                <input
-                  v-model="reviewDraft[row.id].canonical"
-                  class="form-control"
-                  :disabled="reviewBusy || reviewDraft[row.id].stale"
-                />
-              </AppField>
-              <AppField class="admin-filter-field"
-                ><template #label>依据（必填）</template>
-                <input
-                  v-model="reviewDraft[row.id].basis"
-                  class="form-control"
-                  maxlength="500"
-                  :disabled="reviewBusy || reviewDraft[row.id].stale"
-                />
-              </AppField>
-              <button
-                type="button"
-                class="btn btn-primary btn-sm"
-                :disabled="reviewBusy || !canSubmitNormalizationDraft(reviewDraft[row.id], row)"
-                @click="saveReview(row)"
+      <section v-show="schemeView === 'jobs'" aria-label="转换作业">
+        <div class="admin-list-filters mb-4">
+          <AppField class="admin-filter-field"
+            ><template #label>本批资料用的是哪套方案</template>
+            <select v-model="schemeSourceId" class="form-control">
+              <option value="">请选择</option>
+              <option
+                v-for="item in schemeOptions"
+                :key="item.source_scheme_id"
+                :value="item.source_scheme_id"
               >
-                确认结论
+                {{ schemeOptionLabel(item) }}
+              </option>
+            </select>
+          </AppField>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="schemeBusy || !schemeSourceId"
+            @click="runConversion"
+          >
+            {{ schemeBusy ? '转换中…' : '生成统一拼音' }}
+          </button>
+        </div>
+        <!-- 规则文件自己声明了能不能跑真实作业。合成夹具在目录里是合法的一等公民
+               （引擎需要它），但它建不出真实作业——这句话必须在按钮旁边说。 -->
+        <p v-if="testOnlySchemes.length" class="text-sm text-muted">
+          {{ testOnlySchemes.join('、') }}
+          声明为「仅测试」：可以选中，但系统会拒绝用它创建真实转换作业。
+          依据不足的方案不能用于正式转换。
+        </p>
+        <details v-if="testOnlySchemes.length" class="text-sm text-muted mb-3">
+          <summary>查看规则状态说明</summary>
+          <p>
+            仅测试方案的原始状态为 <code>rule_status=test</code>；依据不足的登记保持
+            <code>decline</code>，不会猜成生产规则。
+          </p>
+        </details>
+        <h3>最近一次转换</h3>
+        <p v-if="!schemeJob" class="text-muted">还没有跑过转换。</p>
+        <template v-else>
+          <p class="text-sm text-muted">
+            状态：{{ conversionJobStatusLabel(schemeJob.status) }} · 规则版本
+            {{ schemeJob.rule_version }} · 方案 {{ schemeJob.source_scheme }} →
+            {{ schemeJob.canonical_scheme }}
+          </p>
+          <div class="flex gap-2 items-center mb-2">
+            <span v-for="line in schemeSummary" :key="line.key" class="badge"
+              >{{ line.label }} · {{ line.count }}</span
+            >
+          </div>
+          <p v-if="schemeJob.error_message" class="alert alert-error" role="alert">
+            {{ schemeJob.error_message }}
+          </p>
+        </template>
+
+        <button
+          v-if="reviewTotalItems"
+          type="button"
+          class="btn btn-secondary mt-3"
+          @click="setView('review')"
+        >
+          处理 {{ reviewTotalItems }} 条待复核记音
+        </button>
+      </section>
+      <section v-show="schemeView === 'review'" aria-label="归一复核工作区">
+        <h3>复核队列</h3>
+        <p class="text-muted">
+          这些条目机器判不出来——要么规则给出多个候选（需人工确认），要么规则根本接不住（暂未支持）——
+          需要人给出统一方案的写法。结论会记下判定人与依据，重跑时保留，不会被下一次批处理推回机器判断。
+        </p>
+        <div class="flex gap-2 items-center mb-2" role="group" aria-label="复核队列状态筛选">
+          <button
+            type="button"
+            class="btn btn-sm"
+            :class="reviewStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'"
+            @click="setReviewFilter('all')"
+          >
+            全部待复核
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            :class="reviewStatusFilter === 'AMBIGUOUS' ? 'btn-primary' : 'btn-secondary'"
+            @click="setReviewFilter('AMBIGUOUS')"
+          >
+            需人工确认
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            :class="reviewStatusFilter === 'UNSUPPORTED' ? 'btn-primary' : 'btn-secondary'"
+            @click="setReviewFilter('UNSUPPORTED')"
+          >
+            暂未支持
+          </button>
+        </div>
+        <details v-if="offPageDrafts.length" class="mb-3">
+          <summary>查看暂不在本页的工作区草稿（{{ offPageDrafts.length }}）</summary>
+          <div v-for="old in offPageDrafts" :key="old.id">
+            <p>
+              原值：{{ old.context?.source }} · {{ old.context?.sourceScheme }} →
+              {{ old.context?.targetScheme }} · 规则 {{ old.context?.ruleVersion }} / schema
+              {{ old.context?.schemaVersion }}
+            </p>
+            <p>旧写法：{{ old.canonical }}；旧依据：{{ old.basis }}</p>
+            <p v-for="(entry, index) in old.history" :key="index">
+              此前草稿 {{ entry.context?.source }}：{{ entry.canonical }}；{{ entry.basis }}
+            </p>
+            <p>
+              草稿只供查看；返回对应条目并核对当前依据后才能提交。关闭此工作区前请自行保留需要的文字。
+            </p>
+          </div>
+        </details>
+        <p v-if="!reviewRows.length" class="text-muted">{{ reviewEmptyMessage }}</p>
+        <template v-else>
+          <p class="text-sm text-muted">共 {{ reviewTotalItems }} 条待复核。</p>
+          <div class="scheme-queue-layout">
+            <nav class="scheme-queue" aria-label="选择复核条目">
+              <button
+                v-for="row in reviewRows"
+                :key="row.id"
+                type="button"
+                :aria-current="selectedReviewRows[0]?.id === row.id ? 'page' : undefined"
+                @click="selectedReviewId = row.id"
+              >
+                <strong>第 {{ row.page_number }} 条</strong
+                ><span>{{ normalizationStatusLabel(row.normalization_status) }}</span
+                ><small>{{ row.source_pronunciation || '（空）' }}</small>
               </button>
-            </div>
-          </li>
-        </ul>
-        <!-- 队列也要能翻页：一次转换动辄留下几十上百条待复核，只给前 10 条会让
+            </nav>
+            <ul class="assist-list scheme-active-review">
+              <li v-for="row in selectedReviewRows" :key="row.id" class="assist-row">
+                <div>
+                  <strong>第 {{ row.page_number }} 条</strong>
+                  <span :class="normalizationBadgeClass(row.normalization_status)">
+                    {{ normalizationStatusLabel(row.normalization_status) }}
+                  </span>
+                  <p class="text-sm">
+                    原值（转换时）：<code>{{ row.source_pronunciation || '（空）' }}</code>
+                  </p>
+                  <p class="text-sm text-muted">
+                    当前依据：{{ row.normalization_source_column || '记音' }}字段 · 规则版本
+                    {{ row.normalization_rule_version || '未记录' }}
+                  </p>
+                  <details class="scheme-rule-details">
+                    <summary>查看方案与规则依据</summary>
+                    <p class="text-sm">
+                      {{ row.source_scheme_id || '未记录来源方案' }} →
+                      {{ row.canonical_scheme_id || '未记录目标方案' }}
+                    </p>
+                    <p v-if="row.normalization_trace.length" class="text-sm text-muted">
+                      经过规则：{{ row.normalization_trace.join(' → ') }}
+                    </p>
+                  </details>
+                  <p v-if="row.candidates.length" class="text-sm text-muted">
+                    候选：{{ row.candidates.join(' / ') }}
+                  </p>
+                  <div v-if="reviewDraft[row.id].stale" class="alert alert-warning" role="alert">
+                    <strong>复核依据已变化，旧草稿不能直接提交。</strong>
+                    <p>
+                      来源、方案或规则版本变化后，须重新核对并填写当前结论与依据；旧稿只供查看，不会自动套用。
+                    </p>
+                    <p v-if="row.source_changed">
+                      当前来源读音或记音列已变化，请先重跑转换，再刷新本队列。
+                    </p>
+                    <p v-if="reviewDraft[row.id].requiresReload">
+                      当前依据尚未重新加载成功，请先刷新队列；旧稿保留，只供查看。
+                    </p>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      :disabled="
+                        reviewBusy ||
+                        reviewDraft[row.id].requiresReload ||
+                        row.source_changed ||
+                        !row.expected_basis
+                      "
+                      @click="restartReview(row)"
+                    >
+                      按当前依据重新填写
+                    </button>
+                  </div>
+                  <details v-if="reviewDraft[row.id].history.length" class="mb-3">
+                    <summary>查看旧草稿（{{ reviewDraft[row.id].history.length }}）</summary>
+                    <div v-for="(old, index) in reviewDraft[row.id].history" :key="index">
+                      <p>
+                        原值：{{ old.context?.source }} · {{ old.context?.sourceScheme }} →
+                        {{ old.context?.targetScheme }} · 规则 {{ old.context?.ruleVersion }} /
+                        schema
+                        {{ old.context?.schemaVersion }}
+                      </p>
+                      <p>旧写法：{{ old.canonical }}；旧依据：{{ old.basis }}</p>
+                    </div>
+                  </details>
+                  <AppField class="admin-filter-field"
+                    ><template #label>统一方案的写法</template>
+                    <input
+                      v-model="reviewDraft[row.id].canonical"
+                      class="form-control"
+                      :disabled="reviewBusy || reviewDraft[row.id].stale"
+                    />
+                  </AppField>
+                  <AppField class="admin-filter-field"
+                    ><template #label>依据（必填）</template>
+                    <input
+                      v-model="reviewDraft[row.id].basis"
+                      class="form-control"
+                      maxlength="500"
+                      :disabled="reviewBusy || reviewDraft[row.id].stale"
+                    />
+                  </AppField>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="reviewBusy || !canSubmitNormalizationDraft(reviewDraft[row.id], row)"
+                    @click="saveReview(row)"
+                  >
+                    确认结论
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <!-- 队列也要能翻页：一次转换动辄留下几十上百条待复核，只给前 10 条会让
                管理员以为「队列就这么长」，而剩下的那些没有任何入口能看到。 -->
-        <AppPagination
-          v-if="reviewTotalPages > 1"
-          :page="reviewPage"
-          :total-pages="reviewTotalPages"
-          label="复核队列分页"
-          button-class="btn btn-secondary btn-sm"
-          @change="gotoReviewPage"
-        />
-      </template>
+          <AppPagination
+            v-if="reviewTotalPages > 1"
+            :page="reviewPage"
+            :total-pages="reviewTotalPages"
+            label="复核队列分页"
+            button-class="btn btn-secondary btn-sm"
+            @change="gotoReviewPage"
+          />
+        </template>
+      </section>
     </template>
   </section>
 </template>
@@ -231,7 +293,7 @@
 <script setup>
 import AppPagination from '@/components/AppPagination.vue'
 import AppField from '@/components/AppField.vue'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   decideNormalization,
   listConversions,
@@ -254,9 +316,17 @@ import {
   canSubmitNormalizationDraft,
   restartNormalizationDraft
 } from '@/lib/normalizationDraft'
-const props = defineProps({ projectId: { type: String, required: true } })
+const props = defineProps({
+  projectId: { type: String, required: true },
+  initialView: { type: String, default: 'jobs' }
+})
 const projectId = props.projectId
 const schemeSection = ref(null)
+const schemeView = ref(props.initialView || 'jobs')
+const selectedReviewId = ref('')
+function setView(value) {
+  if (['jobs', 'review'].includes(value)) schemeView.value = value
+}
 
 const schemeOptions = ref([])
 
@@ -279,6 +349,11 @@ const schemeLoaded = ref(false)
 let schemeObserver
 
 const reviewRows = ref([])
+const selectedReviewRows = computed(() => {
+  const current =
+    reviewRows.value.find((row) => row.id === selectedReviewId.value) || reviewRows.value[0]
+  return current ? [current] : []
+})
 
 const reviewDraft = ref({})
 
@@ -322,6 +397,8 @@ async function loadReviews() {
   const queue = await listNormalizations(projectId, { status, perPage: 10, page: reviewPage.value })
   if (disposed || generation !== reviewGeneration) return
   reviewRows.value = queue.items || []
+  if (!reviewRows.value.some((row) => row.id === selectedReviewId.value))
+    selectedReviewId.value = reviewRows.value[0]?.id || ''
   reviewTotalItems.value = queue.totalItems || 0
   reviewTotalPages.value = queue.totalPages || 1
   // 服务端会把越界的 page 夹回最后一页，这里跟回去：不复写的话，界面上写的是
@@ -376,7 +453,7 @@ async function loadSchemeState() {
 }
 
 function setupSchemeObserver() {
-  if (!schemeSection.value) return
+  if (!schemeSection.value || schemeObserver || schemeLoaded.value || schemeLoading.value) return
   if (typeof IntersectionObserver === 'undefined') {
     loadSchemeState()
     return
@@ -484,5 +561,101 @@ onBeforeUnmount(() => {
   schemeObserver?.disconnect()
   schemePollGeneration += 1
 })
-defineExpose({ setupSchemeObserver })
+onMounted(setupSchemeObserver)
+defineExpose({ setupSchemeObserver, setView })
 </script>
+
+<style scoped>
+.scheme-view-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.scheme-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+.scheme-tabs button {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--gray-600);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.scheme-tabs [aria-current='page'] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.scheme-queue-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+  gap: var(--space-4);
+  margin: var(--space-3) 0;
+}
+.scheme-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 36rem;
+  overflow-y: auto;
+}
+.scheme-queue button {
+  display: grid;
+  gap: var(--space-1);
+  text-align: left;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+}
+.scheme-queue button[aria-current='page'] {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+.scheme-queue span,
+.scheme-queue small {
+  color: var(--gray-600);
+  overflow-wrap: anywhere;
+}
+.scheme-active-review {
+  margin: 0;
+  min-width: 0;
+}
+.scheme-active-review .assist-row {
+  margin: 0;
+  padding: var(--space-3);
+}
+.scheme-active-review .form-control {
+  font-family: var(--font-rare), var(--font-ui);
+  font-size: var(--text-lg);
+  line-height: 1.6;
+}
+.scheme-rule-details {
+  margin: var(--space-2) 0;
+  font-size: var(--text-sm);
+  color: var(--gray-600);
+}
+@media (max-width: 768px) {
+  .scheme-queue-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .scheme-queue {
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+  }
+  .scheme-queue button {
+    min-width: 140px;
+  }
+}
+</style>

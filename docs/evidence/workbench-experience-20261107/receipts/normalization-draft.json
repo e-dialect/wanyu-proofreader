@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "checks": {
+    "sameBasisPreserved": true,
+    "changedSourceBlocked": true,
+    "changedBeforeSave409": true,
+    "explicitNewReview": true,
+    "removedDraftVisible": true
+  },
+  "posts": [
+    {
+      "canonical_pronunciation": "de533",
+      "basis": "synthetic si533 fresh evidence",
+      "expected_basis": "basis-2"
+    },
+    {
+      "canonical_pronunciation": "bu533",
+      "basis": "synthetic tu533 new evidence",
+      "expected_basis": "basis-3"
+    }
+  ]
+}

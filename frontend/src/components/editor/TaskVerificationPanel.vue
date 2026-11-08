@@ -4,179 +4,203 @@
     <div v-if="error" class="alert alert-error" role="alert">
       {{ error }} <button class="btn btn-secondary btn-sm" @click="load">重试</button>
     </div>
-    <template v-if="data">
-      <strong
-        >来源 PDF：{{ data.context.source?.name || '尚未配置，请提交来源问题' }} · 物理第
-        {{ data.context.pdf_page }} 页</strong
+    <details
+      v-if="data"
+      class="verification-details"
+      :open="detailsOpen"
+      @toggle="detailsOpen = $event.target.open"
+    >
+      <summary
+        class="verification-summary"
+        :class="{ 'verification-summary--blocked': hasBlocker }"
       >
-      <p>
-        {{
-          data.context.policy?.instructions ||
-          '逐字段对照来源 PDF；原文没有内容时保留空白，无法判断时提交问题。项目约定版本尚未记录。'
-        }}
-      </p>
-      <p class="text-sm text-muted">
-        约定：{{ data.context.policy_id || '旧版／未记录'
-        }}<span v-if="data.context.policy?.tone_equivalence">
-          · 指定记音字段允许声调普通数字与右上标，数字及所属音节须相同</span
+        <span
+          ><strong>来源与约定</strong
+          ><span class="verification-status">{{
+            hasBlocker ? '有事项需要处理' : data.context.policy ? '按当前约定核对' : '约定尚未配置'
+          }}</span></span
         >
-      </p>
-      <p class="text-sm">机器提示只提供核对线索；未提示字段也要逐一对照。下方定位针对导入文本。</p>
-      <p
-        v-if="data.context.policy && !data.context.source_approved"
-        class="alert alert-error"
-        role="alert"
-      >
-        当前来源尚未纳入此版约定，请保存草稿并提交来源问题，待管理员更新约定后继续。
-      </p>
-      <p v-if="data.context.policy_compatible === false" class="alert alert-error" role="alert">
-        记音字段配置已变化，请管理员更新核验约定后再完整提交。
-      </p>
-      <div
-        v-for="notice in routingHelp ? data.announcements : []"
-        :key="notice.id"
-        class="alert"
-        role="status"
-      >
-        {{ PROBLEM_STATES[notice.status] }}：{{ notice.feedback }} {{ notice.impact }}
-        <span v-if="notice.stale">（来源或配置已变更，此处理说明需重新确认适用范围）</span>
-        <span>内容仍须逐字段核对。</span>
-      </div>
-      <div v-if="staleDraft" class="alert alert-error" role="alert">
-        草稿的来源、导入文本或约定已变化，未自动套用。旧草稿仍保留，请对照最新来源重新处理。
-        <details>
-          <summary>查看旧草稿</summary>
-          <dl>
-            <template v-for="(value, field) in staleDraft.row" :key="field"
-              ><dt>{{ field }}</dt>
+        <span class="verification-source-label"
+          >{{ data.context.source?.name || '来源未配置' }} · 第 {{ data.context.pdf_page }} 页</span
+        >
+        <span class="verification-summary-action">约定与问题</span>
+      </summary>
+      <div class="verification-detail-body">
+        <strong
+          >来源 PDF：{{ data.context.source?.name || '尚未配置，请提交来源问题' }} · 物理第
+          {{ data.context.pdf_page }} 页</strong
+        >
+        <p>
+          {{
+            data.context.policy?.instructions ||
+            '逐字段对照来源 PDF；原文没有内容时保留空白，无法判断时提交问题。项目约定版本尚未记录。'
+          }}
+        </p>
+        <p class="text-sm text-muted">
+          约定：{{ data.context.policy_id || '旧版／未记录'
+          }}<span v-if="data.context.policy?.tone_equivalence">
+            · 指定记音字段允许声调普通数字与右上标，数字及所属音节须相同</span
+          >
+        </p>
+        <p class="text-sm">
+          机器提示只提供核对线索；未提示字段也要逐一对照。下方定位针对导入文本。
+        </p>
+        <p
+          v-if="data.context.policy && !data.context.source_approved"
+          class="alert alert-error"
+          role="alert"
+        >
+          当前来源尚未纳入此版约定，请保存草稿并提交来源问题，待管理员更新约定后继续。
+        </p>
+        <p v-if="data.context.policy_compatible === false" class="alert alert-error" role="alert">
+          记音字段配置已变化，请管理员更新核验约定后再完整提交。
+        </p>
+        <div
+          v-for="notice in routingHelp ? data.announcements : []"
+          :key="notice.id"
+          class="alert"
+          role="status"
+        >
+          {{ PROBLEM_STATES[notice.status] }}：{{ notice.feedback }} {{ notice.impact }}
+          <span v-if="notice.stale">（来源或配置已变更，此处理说明需重新确认适用范围）</span>
+          <span>内容仍须逐字段核对。</span>
+        </div>
+        <div v-if="staleDraft" class="alert alert-error" role="alert">
+          草稿的来源、导入文本或约定已变化，未自动套用。旧草稿仍保留，请对照最新来源重新处理。
+          <details>
+            <summary>查看旧草稿</summary>
+            <dl>
+              <template v-for="(value, field) in staleDraft.row" :key="field"
+                ><dt>{{ field }}</dt>
+                <dd>{{ value || '（空白）' }}</dd></template
+              >
+            </dl>
+          </details>
+        </div>
+        <details v-if="data.draft_history?.length">
+          <summary>本人旧版草稿（{{ data.draft_history.length }}）</summary>
+          <dl v-for="event in data.draft_history" :key="event.id">
+            <template v-for="(value, field) in event.payload.row" :key="field"
+              ><dt>{{ event.at }} · {{ field }}</dt>
               <dd>{{ value || '（空白）' }}</dd></template
             >
           </dl>
         </details>
-      </div>
-      <details v-if="data.draft_history?.length">
-        <summary>本人旧版草稿（{{ data.draft_history.length }}）</summary>
-        <dl v-for="event in data.draft_history" :key="event.id">
-          <template v-for="(value, field) in event.payload.row" :key="field"
-            ><dt>{{ event.at }} · {{ field }}</dt>
-            <dd>{{ value || '（空白）' }}</dd></template
-          >
-        </dl>
-      </details>
-      <details v-if="routingHelp">
-        <summary>字段处理记录（保留／修改／暂未完成）</summary>
-        <p class="text-sm">
-          实际修改会随提交保存；需要补充说明或尚未完成时在此记录。这些操作不作为独立来源正误标签。
-        </p>
-        <label class="form-label"
-          >字段
-          <select v-model="selectedField" class="form-control">
-            <option v-for="field in fields" :key="field">{{ field }}</option>
-          </select></label
-        >
-        <template v-if="selectedField">
+        <details v-if="routingHelp">
+          <summary>字段处理记录（保留／修改／暂未完成）</summary>
+          <p class="text-sm">
+            实际修改会随提交保存；需要补充说明或尚未完成时在此记录。这些操作不作为独立来源正误标签。
+          </p>
           <label class="form-label"
-            ><input
-              type="checkbox"
-              :checked="incomplete.includes(selectedField)"
-              @change="setIncomplete(selectedField, $event.target.checked)"
-            />
-            本字段暂未完成</label
+            >字段
+            <select v-model="selectedField" class="form-control">
+              <option v-for="field in fields" :key="field">{{ field }}</option>
+            </select></label
           >
-          <label class="form-label"
-            >简短原因
-            <select
-              v-model="notes[selectedField].reason"
-              class="form-control"
-              @change="scheduleSave"
+          <template v-if="selectedField">
+            <label class="form-label"
+              ><input
+                type="checkbox"
+                :checked="incomplete.includes(selectedField)"
+                @change="setIncomplete(selectedField, $event.target.checked)"
+              />
+              本字段暂未完成</label
             >
-              <option value="source_checked">已对照来源</option>
-              <option value="source_blank">来源无内容，保留空白</option>
-              <option value="source_content">按来源补抄／修正</option>
-              <option value="legal_notation">合法声调形式，保留实际写法</option>
-              <option value="reported">已提交问题，等待处理</option>
-              <option value="other">其他</option>
-            </select>
+            <label class="form-label"
+              >简短原因
+              <select
+                v-model="notes[selectedField].reason"
+                class="form-control"
+                @change="scheduleSave"
+              >
+                <option value="source_checked">已对照来源</option>
+                <option value="source_blank">来源无内容，保留空白</option>
+                <option value="source_content">按来源补抄／修正</option>
+                <option value="legal_notation">合法声调形式，保留实际写法</option>
+                <option value="reported">已提交问题，等待处理</option>
+                <option value="other">其他</option>
+              </select>
+            </label>
+            <label class="form-label"
+              >补充说明（可选）<input
+                v-model="notes[selectedField].note"
+                class="form-control"
+                maxlength="2000"
+                @input="scheduleSave"
+            /></label>
+          </template>
+        </details>
+        <div class="verification-actions">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="!active"
+            @click="reportOpen = !reportOpen"
+          >
+            提交问题
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="saving || !active"
+            @click="saveExplicitDraft"
+          >
+            保存未完成工作
+          </button>
+          <RouterLink to="/tasks/problems" class="btn btn-quiet btn-sm">我的问题与草稿</RouterLink>
+        </div>
+        <form v-if="reportOpen" class="verification-report" @submit.prevent="sendReport">
+          <label class="form-label"
+            >涉及字段<select v-model="report.field" class="form-control">
+              <option value="">整条／来源页</option>
+              <option v-for="field in fields" :key="field">{{ field }}</option>
+            </select></label
+          >
+          <label class="form-label"
+            >问题类型<select v-model="report.category" class="form-control">
+              <option v-for="(label, key) in PROBLEM_TYPES" :key="key" :value="key">
+                {{ label }}
+              </option>
+            </select></label
+          >
+          <label class="form-label"
+            >相关提示（可选）<select v-model="report.finding" class="form-control">
+              <option value="">不针对某条提示</option>
+              <option v-for="hint in matchingHints" :key="hint.id" :value="hint.id">
+                {{ hint.field || '整条' }} · {{ hintKindLabel(hint.kind) }}
+              </option>
+            </select></label
+          >
+          <label class="form-label"
+            >问题说明<textarea
+              v-model="report.description"
+              class="form-control"
+              required
+              maxlength="4000"
+              placeholder="说明看不清、无法输入或需要帮助的位置"
+            ></textarea>
           </label>
           <label class="form-label"
-            >补充说明（可选）<input
-              v-model="notes[selectedField].note"
-              class="form-control"
-              maxlength="2000"
-              @input="scheduleSave"
-          /></label>
-        </template>
-      </details>
-      <div class="verification-actions">
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm"
-          :disabled="!active"
-          @click="reportOpen = !reportOpen"
-        >
-          提交问题
-        </button>
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm"
-          :disabled="saving || !active"
-          @click="saveExplicitDraft"
-        >
-          保存未完成工作
-        </button>
-        <RouterLink to="/tasks/problems" class="btn btn-quiet btn-sm">我的问题与草稿</RouterLink>
-      </div>
-      <form v-if="reportOpen" class="verification-report" @submit.prevent="sendReport">
-        <label class="form-label"
-          >涉及字段<select v-model="report.field" class="form-control">
-            <option value="">整条／来源页</option>
-            <option v-for="field in fields" :key="field">{{ field }}</option>
-          </select></label
-        >
-        <label class="form-label"
-          >问题类型<select v-model="report.category" class="form-control">
-            <option v-for="(label, key) in PROBLEM_TYPES" :key="key" :value="key">
-              {{ label }}
-            </option>
-          </select></label
-        >
-        <label class="form-label"
-          >相关提示（可选）<select v-model="report.finding" class="form-control">
-            <option value="">不针对某条提示</option>
-            <option v-for="hint in matchingHints" :key="hint.id" :value="hint.id">
-              {{ hint.field || '整条' }} · {{ hintKindLabel(hint.kind) }}
-            </option>
-          </select></label
-        >
-        <label class="form-label"
-          >问题说明<textarea
-            v-model="report.description"
-            class="form-control"
-            required
-            maxlength="4000"
-            placeholder="说明看不清、无法输入或需要帮助的位置"
-          ></textarea>
-        </label>
-        <label class="form-label"
-          ><input v-model="report.blocking" type="checkbox" />
-          此问题使本条无法完成；保留草稿，等待处理</label
-        >
-        <button class="btn btn-primary btn-sm" :disabled="saving || !active">
-          {{ saving ? '正在保存…' : '保存草稿并提交问题' }}
-        </button>
-      </form>
-      <p v-if="message" role="status">{{ message }}</p>
-      <p v-if="saveError" class="alert alert-error" role="alert">{{ saveError }}</p>
-      <ul v-if="data.reports.length" class="text-sm">
-        <li v-for="item in data.reports" :key="item.id">
-          {{ item.field || '整条' }}：{{ PROBLEM_STATES[item.issue.status] }} ·
-          {{ item.issue.feedback || '等待管理员受理'
-          }}<span v-if="item.blocking_unresolved"
-            >（阻塞未解决或处理版本已失效，暂不能完整提交）</span
+            ><input v-model="report.blocking" type="checkbox" />
+            此问题使本条无法完成；保留草稿，等待处理</label
           >
-        </li>
-      </ul>
-    </template>
+          <button class="btn btn-primary btn-sm" :disabled="saving || !active">
+            {{ saving ? '正在保存…' : '保存草稿并提交问题' }}
+          </button>
+        </form>
+        <p v-if="message" role="status">{{ message }}</p>
+        <p v-if="saveError" class="alert alert-error" role="alert">{{ saveError }}</p>
+        <ul v-if="data.reports.length" class="text-sm">
+          <li v-for="item in data.reports" :key="item.id">
+            {{ item.field || '整条' }}：{{ PROBLEM_STATES[item.issue.status] }} ·
+            {{ item.issue.feedback || '等待管理员受理'
+            }}<span v-if="item.blocking_unresolved"
+              >（阻塞未解决或处理版本已失效，暂不能完整提交）</span
+            >
+          </li>
+        </ul>
+      </div>
+    </details>
   </section>
 </template>
 
@@ -213,6 +237,25 @@ const selectedField = ref('')
 const incomplete = ref([])
 const notes = reactive({})
 const reportOpen = ref(false)
+const detailsOpen = ref(false)
+const hasBlocker = computed(() =>
+  Boolean(
+    error.value ||
+    incomplete.value.length > 0 ||
+    saveError.value ||
+    staleDraft.value ||
+    (data.value?.context.policy && !data.value.context.source_approved) ||
+    data.value?.context.policy_compatible === false ||
+    data.value?.reports?.some((item) => item.blocking_unresolved)
+  )
+)
+watch(hasBlocker, (blocked) => {
+  if (blocked) detailsOpen.value = true
+})
+watch(reportOpen, (open) => {
+  if (open) detailsOpen.value = true
+})
+
 const report = reactive({
   field: '',
   category: 'input_display',
@@ -267,6 +310,7 @@ async function load() {
   saveError.value = ''
   message.value = ''
   reportOpen.value = false
+  detailsOpen.value = false
   saving.value = false
   if (!pageId) return
   loading.value = true

@@ -1,0 +1,175 @@
+{
+  "capturedAt": "2026-11-07T09:36:26.276227+00:00",
+  "baseline": "80cd5bffe900766ce22ca0857542ade2321c44b5",
+  "branch": "feat/workbench-experience",
+  "status": "implemented-local-candidate-pending-human-and-native-device-acceptance",
+  "environment": {
+    "os": "macOS",
+    "node": "24.11.0",
+    "go": "1.27.3",
+    "browserChannel": "msedge",
+    "remoteCiRun": false
+  },
+  "productionDeployed": false,
+  "pushed": false,
+  "realDataUsed": false,
+  "frontendUnitTests": {
+    "tests": 470,
+    "passed": 470,
+    "failed": 0
+  },
+  "responsive": {
+    "cases": 85,
+    "widths": [
+      320,
+      360,
+      390,
+      430,
+      768
+    ],
+    "pageWideOverflow": 0,
+    "pageErrors": 0
+  },
+  "performanceSamples": [
+    {
+      "label": "after",
+      "readyMs": 531,
+      "pageRequests": 1,
+      "responseBytes": 72717,
+      "jsHeapBytes": 8114668
+    },
+    {
+      "label": "filtered-task-hall",
+      "requests": 3,
+      "responseBytes": 4674,
+      "totalProjects": 14,
+      "summary": {
+        "activeProjects": 0,
+        "availableProjects": 14,
+        "completedItems": 0,
+        "totalItems": 10013
+      }
+    }
+  ],
+  "ocrImage": "sha256:e9595e0eecd7cca7579cb51c32b9d86dcdbb4a1ca76fcffd2d6b248099fb14e7",
+  "checks": [
+    {
+      "name": "repository-gate",
+      "status": "passed",
+      "command": "make check",
+      "localLog": "/private/tmp/wanyu-experience-make-final.log",
+      "logSha256": "eb4c362dba15d6b4a5a5188334fbf089772807af09bc4ce39f88d0e34617b22e"
+    },
+    {
+      "name": "production-build",
+      "status": "passed",
+      "command": "VITE_PB_URL=http://localhost npm --prefix frontend run build",
+      "localLog": "/private/tmp/wanyu-experience-build-final.log",
+      "logSha256": "1d1202901712431b60f98da1d62154e6c8e40e42c3433755a3dd53fffb5425df"
+    },
+    {
+      "name": "all-frontend-browser-groups",
+      "status": "passed",
+      "command": "python3 backend/tests/run_frontend_quality_browser.py",
+      "localLog": "/private/tmp/wanyu-experience-browser-final.log",
+      "logSha256": "74cf40ec234a580e3b46d2e7a7cb98ec4bc25d2b623d0a61712fcd3a66606e29"
+    },
+    {
+      "name": "responsive-and-quality",
+      "status": "passed",
+      "command": "QUALITY_BROWSER_SCRIPT=backend/tests/backlog_browser.cjs python3 backend/tests/run_integration.py quality_state_browser_integration.mjs",
+      "localLog": "/private/tmp/wanyu-backlog-final.log",
+      "logSha256": "d09e2d7dd5dfa269f94f695db8e122c5ab076c088e1a818d8b15e33f457ec361"
+    },
+    {
+      "name": "pdf-upload-and-navigation-resume",
+      "status": "passed",
+      "command": "PDF_UPLOAD_BROWSER_SCRIPT=backend/tests/pdf_upload_browser.cjs python3 backend/tests/run_integration.py pdf_chunks_integration.mjs",
+      "localLog": "/private/tmp/wanyu-pdf-navigation-experience.log",
+      "logSha256": "086b7e73222df25777755ed8c7e033d916d69d1d859c651709643a156ac4fae3"
+    },
+    {
+      "name": "pdf-reuse",
+      "status": "passed",
+      "command": "PDF_REUSE_BROWSER_SCRIPT=backend/tests/pdf_reuse_browser.cjs python3 backend/tests/run_integration.py pdf_reuse_integration.mjs",
+      "localLog": "/private/tmp/wanyu-experience-reuse-final.log",
+      "logSha256": "f684fb382b48905119438ecdecb8cf9b37a0b32374c41cc7ec55366dbeaa0773"
+    },
+    {
+      "name": "protected-page-images",
+      "status": "passed",
+      "command": "PDF_BROWSER_SCRIPT=backend/tests/page_images_browser.cjs python3 backend/tests/run_integration.py pdf_access_integration.mjs --env REQUIRE_PAGE_IMAGES=1",
+      "localLog": "/private/tmp/wanyu-experience-images-final.log",
+      "logSha256": "2018c6a87100ec468435884456d1863a9e73a194faae157a75de654ef71ca4da"
+    },
+    {
+      "name": "assist-and-tier-claim",
+      "status": "passed",
+      "command": "ASSIST_BROWSER_SCRIPT=backend/tests/assist_browser.cjs python3 backend/tests/run_integration.py assist_browser_integration.mjs",
+      "localLog": "/private/tmp/wanyu-experience-assist-final.log",
+      "logSha256": "22dadd3f3545e2fbc6344a769e99e0c89d3f3301587f3991b368964375f124df"
+    },
+    {
+      "name": "source-fidelity-and-process-export",
+      "status": "passed",
+      "command": "FIDELITY_BROWSER_SCRIPT=backend/tests/source_fidelity_browser.cjs python3 backend/tests/run_integration.py source_fidelity_integration.mjs --env FANGJI_RESEARCH_MODE=1",
+      "localLog": "/private/tmp/wanyu-source-fidelity-experience.log",
+      "logSha256": "9159f2f8bdb94eafebf85cac7b6fdf42761330f26d5b0809343932f70922e4f0"
+    },
+    {
+      "name": "project-export",
+      "status": "passed",
+      "command": "PYTHON=python3 PROJECT_EXPORT_BROWSER=1 python3 backend/tests/run_integration.py project_export_integration.mjs",
+      "localLog": "/private/tmp/wanyu-project-export-final.log",
+      "logSha256": "cb6204beeee3d851129fea86f63884c19102d36ad1eb19e367818db208b84ba1"
+    },
+    {
+      "name": "adoption-delivery-receipts",
+      "status": "passed",
+      "command": "PYTHON=python3 DELIVERY_BROWSER=1 python3 backend/tests/run_integration.py delivery_integration.mjs",
+      "localLog": "/private/tmp/wanyu-delivery-final.log",
+      "logSha256": "8c849cf81f96ad919e843b113f2af6af85c7c83b658dc56c262eea38e9851d1b"
+    },
+    {
+      "name": "scheme-conversion-and-review",
+      "status": "passed",
+      "command": "python3 backend/tests/run_scheme_conversion_browser.py",
+      "localLog": "/private/tmp/wanyu-scheme-final.log",
+      "logSha256": "ba6af03f0c5a04b527f027b0e713122ba2279262710462ca9c3a0389a63f7daa"
+    },
+    {
+      "name": "real-ocr-worker",
+      "status": "passed",
+      "command": "OCR_BROWSER_IMAGE=wanyu-ocr-browser:experience python3 backend/tests/run_ocr_browser.py",
+      "localLog": "/private/tmp/wanyu-experience-ocr-final.log",
+      "logSha256": "51a96c6eadd03c637d6f3a9e35cfa9d5bb4527feb2c5b208626de2eb6865f5d7"
+    }
+  ],
+  "reproductionNotes": "Use repository-required runtimes, Playwright with BROWSER_CHANNEL/NODE_PATH, and a temporary writable fixture JSON path in each *_FIXTURE environment variable. Browser scripts resolve to absolute paths. No production credentials or data.",
+  "manualAcceptance": {
+    "proofreaders3AndManagers2": "pending",
+    "iosNativeKeyboard": "pending",
+    "androidNativeKeyboard": "pending",
+    "nativeBrowser200PercentZoom": "pending; 640x400 equivalent reflow passed",
+    "screenReader": "pending"
+  },
+  "artifactSha256": {
+    "before-after/after-desktop-editor.png": "f435c85f263d3845a4629dcb97c4c23ce98d78bd463d8867c350104254b61d1a",
+    "before-after/after-desktop-project.png": "b6d1dc483b19f22d394b8575a0a3205c48dbfe2d867ad34ce877c6be86dbc597",
+    "before-after/after-mobile-editor.png": "484d1c0237604ec089cf634319f21861a1e76512637429374954dc40f3ceca09",
+    "before-after/before-desktop-editor.png": "792f396c3ef5f9cc384875889e91480dab12291b94f29575ad8ec8b316b3b21c",
+    "before-after/before-desktop-project.png": "15fcdf8677b0acfa5838ac104559aa633bf7914de4fd8bb2b35cf269226780a9",
+    "before-after/before-mobile-editor.png": "fcf84e282eab6a911a1e877bf72d9d475d05a2432c9db0a2b08c03124e04fce2",
+    "before-after/comparison.json": "96a3413215796ab5fd7ce7a94b5fdb29d5832f42e39f8ba3d7bb7120d56869d1",
+    "contrast.json": "acf0d93f824a697a5c03d67d4d64387a899e54ea073057770bf5971e1a8786b1",
+    "receipts/bundle-and-csv.json": "2a3e2fad27d6317a03b60cce957fb5456999c41a2dbc4b93299a67c96454ecfc",
+    "receipts/normalization-draft.json": "1f76a8d0e9f4e8748e3ad5aa5777a720051e31d8f9a92009a9305e28ca580d95",
+    "receipts/ocr.json": "0d87cc20fba52e581f4ff8e16a5b253d9eed91d0e19eba93f1f9aa7bd429a71c",
+    "receipts/responsive.json": "657455f4282b7d5d064ef01267a69e7540e00faad68a19e4aef70de1583bd36c",
+    "receipts/session-and-routing.json": "ac450e6c30b9eed05fe4875996ddc81bed7a9d673ac00b2f7b1702c2dac6db15",
+    "receipts/workbench.json": "85d87789f74e7bea1db5c3210ce6eb95b3961fcef4c9ec9f1a0a0ea2f95ea3f2",
+    "reflow-640x400-character-tray.png": "d977ef30d5722cffeb2090633cf944ac31634f9cf3cbfdea9fefc7eb34955270",
+    "reflow-640x400-confirmation.png": "d53cd71dd60dcf079267c89757ed8293837b9bdf95c9b987da68b37550bc24f4",
+    "reflow-640x400.json": "ae9f84befe4b7451f4481b24a41eb55b3c6f1d17443dc2988d219e59a92cd276"
+  }
+}

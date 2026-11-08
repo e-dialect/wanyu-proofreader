@@ -93,6 +93,16 @@ class UiDebtTests(unittest.TestCase):
         self.assertEqual(found['undefined_variables'], [])
         self.assertEqual(found['alerts_without_role'], [])
 
+    def test_reka_runtime_geometry_does_not_hide_misspelled_variables(self):
+        self.write('controls.css', '''.menu {
+ width: var(--reka-select-trigger-width, 180px);
+ max-height: var(--reka-select-content-available-height, 360px);
+ transform-origin: var(--reka-dropdown-menu-content-transform-origin, top);
+ height: var(--reka-select-content-available-heigth);
+}''')
+        self.assertEqual([row['value'] for row in guard.measure(self.source)['undefined_variables']],
+                         ['--reka-select-content-available-heigth'])
+
     def test_warning_then_strict_failure_then_removal_passes(self):
         self.write('View.vue', '<style>.x { color: #fff; }</style>')
         baseline = self.baseline()
@@ -147,7 +157,7 @@ class UiDebtTests(unittest.TestCase):
                      'alerts_without_role', 'custom_modals', 'undefined_variables',
                      'font_family_stacks', 'inline_styles', 'bare_tables'):
             self.assertEqual(baseline['kinds'][kind]['mode'], 'fail', kind)
-        self.assertEqual(baseline['kinds']['inline_styles']['limit'], 9)
+        self.assertEqual(baseline['kinds']['inline_styles']['limit'], 8)
 
     def test_bound_alert_class_and_empty_role_are_detected(self):
         self.write('View.vue', '''<template>

@@ -1,0 +1,43 @@
+{
+  "synthetic": true,
+  "checks": {
+    "headingPrecedesListResponse": true,
+    "emptyProblems": true,
+    "emptyReview": true,
+    "filteredEmptyReview": true,
+    "cleanFormRefreshes": true,
+    "sameVersionDraftPreserved": true,
+    "changedServerBlocksDraft": true,
+    "explicitLatestRecordRecovery": true,
+    "savedBaselineRefreshes": true,
+    "savedFormStaysClean": true,
+    "editDuringSavePreserved": true
+  },
+  "puts": [
+    {
+      "id": "synthetic-issue",
+      "status": "reopened",
+      "cause": "合成输入问题",
+      "owner": "另一位管理员",
+      "external_ref": "",
+      "feedback": "采用最新记录后的明确处理",
+      "impact": "合成报告",
+      "public_note": "",
+      "report_count": 1,
+      "updated": "2026-11-07T00:02:00.000Z"
+    },
+    {
+      "id": "synthetic-issue",
+      "status": "reopened",
+      "cause": "合成输入问题",
+      "owner": "另一位管理员",
+      "external_ref": "",
+      "feedback": "本次提交的反馈",
+      "impact": "合成报告",
+      "public_note": "",
+      "report_count": 1,
+      "updated": "2026-11-07T00:03:00.000Z"
+    }
+  ],
+  "problemGets": 10
+}

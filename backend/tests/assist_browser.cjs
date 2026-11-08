@@ -91,7 +91,7 @@ async function session (browser, auth, tolerated = []) {
 }
 
 async function assistBlockText (page, projectId) {
-  await page.goto(`http://localhost/admin/projects/${projectId}`)
+  await page.goto(`http://localhost/admin/projects/${projectId}?section=work&view=checks`)
   const block = page.locator('section', { has: page.locator('h2', { hasText: '机器疑点' }) }).first()
   await block.waitFor({ timeout: 60000 })
   await block.scrollIntoViewIfNeeded()
@@ -99,8 +99,7 @@ async function assistBlockText (page, projectId) {
 }
 
 async function dismissOnboarding (page) {
-  // 首次进编辑页会弹新手引导，模态层会挡住一切点击。这里是**替校对员点掉它**，
-  // 不是把 DOM 删掉：证据要的是引导关掉之后真实的工作台界面。
+  // 用真实跳过入口关闭非模态新手提示，不删 DOM 或修改完成记录。
   const skip = page.locator('.onboarding-skip')
   if (!await skip.count()) return
   await skip.first().click({ timeout: 20000 })
@@ -116,7 +115,7 @@ async function dismissOnboarding (page) {
 
     // ---------- 1. 正常态：有疑点、有 gate 列与判据数字 ----------
     const manager = await session(browser, fixture.manager)
-    await manager.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}`)
+    await manager.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}?section=work&view=checks`)
     await manager.waitForTimeout(2500)
     if (process.env.ASSIST_BROWSER_DEBUG) {
       console.log('URL:', manager.url())
@@ -145,7 +144,7 @@ async function dismissOnboarding (page) {
 
     // ---------- 2. 空态之一：从没跑过重算（不得暗示"这批干净"） ----------
     const never = await session(browser, fixture.manager)
-    await never.goto(`http://localhost/admin/projects/${fixture.projectNeverRun.id}`)
+    await never.goto(`http://localhost/admin/projects/${fixture.projectNeverRun.id}?section=work&view=checks`)
     await never.locator('section', { has: never.locator('h2', { hasText: '机器疑点' }) }).first().scrollIntoViewIfNeeded()
     const neverText = await never.locator('section', { has: never.locator('h2', { hasText: '机器疑点' }) }).first().innerText()
     assert.match(neverText, /还没跑过项目级重算|不表示资料干净/, `空态文案没区分成因：${neverText.slice(0, 400)}`)
@@ -154,7 +153,7 @@ async function dismissOnboarding (page) {
 
     // ---------- 3. 空态之二：跑过了且真的没有疑点 ----------
     const clean = await session(browser, fixture.manager)
-    await clean.goto(`http://localhost/admin/projects/${fixture.projectClean.id}`)
+    await clean.goto(`http://localhost/admin/projects/${fixture.projectClean.id}?section=work&view=checks`)
     // "跑过了且没有疑点"是**会话内**状态：不点一次重算，界面就只能说"还没跑过"。
     // 这正是 #234 第 6 行要的区分，所以这张图必须先真的点一次。
     await clean.getByRole('button', { name: '按项目重算疑点' }).click({ timeout: 60000 })
@@ -172,7 +171,7 @@ async function dismissOnboarding (page) {
       method: 'POST', headers: { Authorization: fixture.reader.token, 'Content-Type': 'application/json' }
     })
     assert.equal(probe.status, 403, `校对员竟然能触发项目级重算：${probe.status}`)
-    await reader.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}`)
+    await reader.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}?section=work&view=checks`)
     await reader.waitForTimeout(1200)
     await shoot(reader, 'findings-forbidden')
     const readerBody = await reader.innerText('body')
@@ -181,13 +180,14 @@ async function dismissOnboarding (page) {
     // 注入哪天失效，这张会截到登录页而两条负向断言照样全过。钉住预期分支的那句文案。
     assert.equal(/按项目重算疑点/.test(readerBody), false, '重算按钮对非 manager 可见')
     assert.equal(/机器疑点/.test(readerBody), false, '疑点区块对非 manager 可见')
-    assert.match(readerBody, /无权限管理该项目/, `无权限态不是预期分支：${readerBody.slice(0, 300)}`)
+    assert.match(readerBody, /无权限查看该项目/, `无权限态不是预期分支：${readerBody.slice(0, 300)}`)
 
     // ---------- 5. 大厅：层级计数与按层级领取 ----------
     const hall = await session(browser, fixture.hallReader, [/\/pdf\/descriptor/])
     await hall.goto('http://localhost/workspace')
     await hall.waitForTimeout(1500)
-    await hall.goto(`http://localhost/tasks`)
+    await hall.goto(`http://localhost/tasks?view=available`)
+    await hall.locator('.task-options > summary').first().click()
     // 层级计数只在 queue-tiers 那块出现（TaskHallView 的 tierRows），所以等它出现而不是等固定时长
     const strip = hall.locator('.queue-tiers').first()
     await strip.waitFor({ timeout: 60000 })
@@ -287,7 +287,7 @@ async function dismissOnboarding (page) {
     // 有值那张必须由**界面上的表单**写进去（不是夹具预先 UPDATE 库），
     // 无权限那张必须证明这个身份在接口上也拿不到（否则只是"前端藏起来了"）。
     const adminSession = await session(browser, fixture.admin)
-    await adminSession.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}`)
+    await adminSession.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}?section=work&view=checks`)
     const panel = adminSession.locator('.blocked-conclusion')
     await panel.waitFor({ timeout: 60000 })
     await adminSession.getByLabel('选择条目（本页）').selectOption(fixture.blockedPage.id)
@@ -325,7 +325,7 @@ async function dismissOnboarding (page) {
     })
     assert.equal(blockedProbe.status, 403, `项目管理员竟然读得到阻塞结论：${blockedProbe.status}`)
     const managerBlocked = await session(browser, fixture.manager)
-    await managerBlocked.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}`)
+    await managerBlocked.goto(`http://localhost/admin/projects/${fixture.projectWithFindings.id}?section=work&view=checks`)
     const assistSection = managerBlocked.locator('section', { has: managerBlocked.locator('h2', { hasText: '机器疑点' }) }).first()
     await assistSection.waitFor({ timeout: 60000 })
     const sectionText = await assistSection.innerText()

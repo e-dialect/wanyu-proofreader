@@ -1,4 +1,4 @@
-import { projectDetailSource } from './helpers/projectDetailSource.js'
+import { projectWorkspaceSubviews } from '../src/lib/projectWorkspace.js'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
@@ -169,8 +169,15 @@ test('路由与项目页入口都指向编选页', () => {
   const router = read('../src/router/index.js')
   assert.match(router, /path: 'projects\/:id\/adoption'/)
   assert.match(router, /name: 'ProjectAdoption'/)
-  const detail = projectDetailSource()
-  assert.match(detail, /\/adoption`">用途编选（D 工序）/)
+  const links = projectWorkspaceSubviews('project-1', 'delivery')
+  assert.deepEqual(
+    links.find((item) => item.key === 'adoption'),
+    { key: 'adoption', label: '用途编选', to: '/admin/projects/project-1/adoption' }
+  )
+  assert.equal(
+    links.find((item) => item.key === 'deliveries').to,
+    '/admin/projects/project-1/deliveries'
+  )
 })
 
 test('服务层只走 /api/fangji 路由，不直接读集合', () => {

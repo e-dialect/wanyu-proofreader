@@ -1,45 +1,48 @@
 <template>
-  <AppModal
-    :open="open"
-    title-id="proofreader-onboarding-title"
-    mark="导"
-    @close="dismiss"
-  >
-    <div class="page-eyebrow">新手引导 · 第 {{ positionLabel }} 步</div>
-    <h2 id="proofreader-onboarding-title">{{ step?.title }}</h2>
-    <p class="text-sm text-muted">对应位置：{{ step?.target }}</p>
-    <p>{{ step?.body }}</p>
-    <template #actions>
-      <button type="button" class="btn btn-quiet onboarding-skip" @click="dismiss">跳过</button>
-      <button type="button" class="btn btn-secondary" :disabled="isFirst" @click="prev">上一步</button>
-      <button type="button" class="btn btn-primary" autofocus @click="next">
-        {{ isLast ? '完成' : '下一步' }}
-      </button>
-    </template>
-  </AppModal>
+  <Teleport :to="target || 'body'" :disabled="!target">
+    <details
+      v-if="open"
+      ref="tip"
+      class="onboarding-tip"
+      :class="{ 'onboarding-tip--header': target }"
+      @keydown.esc.prevent="closeTip"
+    >
+      <summary :aria-label="`校对小贴士 · ${positionLabel}`">
+        校对提示 <small>{{ positionLabel }}</small>
+      </summary>
+      <div class="onboarding-tip__body">
+        <h2>{{ step?.title }}</h2>
+        <p>{{ step?.body }}</p>
+        <div class="onboarding-tip__actions">
+          <button type="button" class="btn btn-quiet btn-sm" @click="dismiss">跳过</button
+          ><button type="button" class="btn btn-secondary btn-sm" :disabled="isFirst" @click="prev">
+            上一步</button
+          ><button type="button" class="btn btn-primary btn-sm" @click="next">
+            {{ isLast ? '完成' : '下一步' }}
+          </button>
+        </div>
+      </div>
+    </details>
+  </Teleport>
 </template>
-
 <script setup>
-import { toRef } from 'vue'
-import AppModal from '@/components/AppModal.vue'
+import { onMounted, ref, toRef } from 'vue'
 import { useProofreaderOnboarding } from '@/composables/useProofreaderOnboarding'
-
-const props = defineProps({
-  userId: { type: String, default: '' }
+const props = defineProps({ userId: { type: String, default: '' } })
+const { open, step, isFirst, isLast, positionLabel, startIfUnseen, reopen, dismiss, next, prev } =
+  useProofreaderOnboarding(toRef(props, 'userId'))
+// This optional, non-modal hint never takes focus or disables editor shortcuts.
+const target = ref(null),
+  tip = ref(null)
+onMounted(() => {
+  target.value = document.getElementById('workbench-guidance')
 })
-
-const {
-  open,
-  step,
-  isFirst,
-  isLast,
-  positionLabel,
-  startIfUnseen,
-  reopen,
-  dismiss,
-  next,
-  prev
-} = useProofreaderOnboarding(toRef(props, 'userId'))
-
-defineExpose({ startIfUnseen, reopen, open })
+function closeTip() {
+  if (tip.value) {
+    tip.value.open = false
+    tip.value.querySelector('summary')?.focus()
+  }
+}
+const blocking = false
+defineExpose({ startIfUnseen, reopen, open, blocking })
 </script>

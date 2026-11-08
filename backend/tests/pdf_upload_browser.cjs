@@ -9,6 +9,106 @@ const csp=fs.readFileSync(path.resolve(__dirname,'../../frontend/nginx.conf'),'u
 // Update these counts and the assertions below if upload cleanup changes.
 const CREATE_POSTS_PER_VALIDATION_FAILURE=2
 const CREATE_POSTS_PER_TRANSIENT_FAILURE=5
+
+async function navigationResume(page, output, originalRecords) {
+ const { createHash } = require('node:crypto')
+ const source = Buffer.from(fixture.source, 'base64')
+ const label = source.indexOf('SOURCE_PAGE_1')
+ assert.ok(label >= 0)
+ source.write('RESUME_PAGE_1', label, 'ascii') // Same byte length preserves PDF xref offsets.
+ const contentHash = createHash('sha256').update(source).digest('hex')
+ assert.notEqual(contentHash, createHash('sha256').update(Buffer.from(fixture.source, 'base64')).digest('hex'))
+ const url = `/api/fangji/projects/${fixture.project.id}/pdf-uploads`
+ const materialUrl = `http://localhost/admin/projects/${fixture.project.id}?section=materials&view=import&method=pdf`
+ const scopeKey = `fangji:pdf-upload:v1:${fixture.auth.record.id}:${fixture.project.id}`
+ const deletions = [], creates = [], resumedChunks = [], nativeDialogs = []
+ let phase = 'pausing', sessionId, releaseHeld, receivedHeld
+ const held = new Promise(resolve => { receivedHeld = resolve })
+ const released = new Promise(resolve => { releaseHeld = resolve })
+ const pattern = /\/api\/fangji\/projects\/[^/]+\/pdf-uploads(?:\/.*)?$/
+ const handler = async route => {
+  const request = route.request(), pathname = new URL(request.url()).pathname
+  if (request.method() === 'DELETE') deletions.push(pathname)
+  if (request.method() === 'POST' && pathname === url) creates.push(request.postDataJSON())
+  const chunk = pathname.match(/\/pdf-uploads\/([^/]+)\/chunks\/(\d+)$/)
+  if (chunk) {
+   sessionId = chunk[1]
+   const index = Number(chunk[2])
+   if (phase === 'resuming') resumedChunks.push(index)
+   if (phase === 'pausing' && index === 1) {
+    // Chunk zero has already reached the real backend. Hold the next request
+    // before forwarding so SPA unmount can pause a genuinely partial upload.
+    receivedHeld()
+    await released
+    return route.abort('aborted').catch(() => {})
+   }
+  }
+  return route.fallback()
+ }
+ const onDialog = async dialog => { nativeDialogs.push(dialog.type()); await dialog.dismiss() }
+ const read = async pathname => {
+  const response = await fetch(fixture.base + pathname, { headers: { Authorization: fixture.auth.token } })
+  assert.equal(response.status, 200, await response.clone().text())
+  return response.json()
+ }
+ await page.route(pattern, handler)
+ page.on('dialog', onDialog)
+ try {
+  const marker = await page.evaluate(() => globalThis.__pdfSpaMarker = crypto.randomUUID())
+  await page.locator('input[type=file][accept=".pdf"]').setInputFiles({ name: 'resume.pdf', mimeType: 'application/pdf', buffer: source })
+  let timer
+  try {
+   await Promise.race([held, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Second upload did not reach chunk one')), 10000) })])
+  } finally { clearTimeout(timer) }
+  assert.ok(sessionId)
+  assert.deepEqual((await read(url)).items.find(item => item.id === sessionId).received, [0])
+  await page.getByRole('link', { name: '所有项目', exact: true }).click()
+  const leave = page.getByRole('dialog', { name: '离开当前工作区？', exact: true })
+  await leave.waitFor()
+  await leave.getByText('离开会暂停 PDF 上传并保留已有分片', { exact: false }).waitFor()
+  await leave.getByRole('button', { name: '确认离开', exact: true }).click()
+  await page.waitForURL('http://localhost/admin')
+  assert.equal(await page.evaluate(() => globalThis.__pdfSpaMarker), marker, 'this is a SPA departure, without native beforeunload')
+  releaseHeld()
+  await page.waitForLoadState('networkidle')
+  const partial = (await read(url)).items.find(item => item.id === sessionId)
+  assert.ok(partial, 'confirmed navigation preserves the active server upload')
+  assert.deepEqual(partial.received, [0])
+  assert.deepEqual(deletions, [], 'navigation pause must not DELETE the server session')
+  const stored = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), scopeKey)
+  assert.equal(stored.sessionId, sessionId)
+  assert.equal(stored.contentHash, contentHash)
+  assert.deepEqual(stored.received, [0])
+  await page.goto(materialUrl)
+  await page.getByRole('button', { name: '重新选择同一 PDF', exact: true }).waitFor()
+  await page.getByText('有未完成的 PDF 上传：resume.pdf', { exact: false }).waitFor()
+  await page.screenshot({ path: path.join(output, 'upload-navigation-paused.png'), fullPage: true })
+  phase = 'resuming'
+  await page.locator('input[type=file][accept=".pdf"]').setInputFiles({ name: 'resume.pdf', mimeType: 'application/pdf', buffer: source })
+  await page.waitForFunction(() => document.body.textContent.includes('PDF 深度校验完成，共 4 页') && !document.querySelector('progress'), {}, { timeout: 30000 })
+  assert.deepEqual(resumedChunks, [1, 2], 'reselection uploads only the two missing chunks, without re-uploading chunk zero')
+  assert.equal(creates.length, 2, 'the original create and resume handshake are the only create requests')
+  assert.equal(creates[0].requestId, creates[1].requestId)
+  assert.equal(creates[1].contentHash, contentHash)
+  assert.deepEqual(deletions, [])
+  assert.deepEqual(nativeDialogs, [], 'SPA navigation uses the reviewable leave modal')
+  assert.equal(await page.evaluate(key => localStorage.getItem(key), scopeKey), null)
+  assert.equal((await read(url)).items.length, 0, 'completion removes the active resume session')
+  const records = await read(`/api/collections/project_files/records?filter=${encodeURIComponent(`project="${fixture.project.id}"`)}`)
+  assert.equal(records.totalItems, originalRecords.totalItems + 1, 'pause and resume produce exactly one additional file')
+  const added = records.items.filter(item => !originalRecords.items.some(original => original.id === item.id))
+  assert.equal(added.length, 1)
+  assert.equal(added[0].status, 'ready')
+  assert.equal(added[0].file_hash, contentHash)
+  assert.equal(added[0].page_count, 4)
+  await page.screenshot({ path: path.join(output, 'upload-navigation-resumed.png'), fullPage: true })
+  console.log('PASS browser: SPA leave confirmation preserves chunk zero and its scoped session; same-hash reselection sends only missing chunks and creates one new ready file')
+ } finally {
+  releaseHeld()
+  await page.unroute(pattern, handler)
+  page.off('dialog', onDialog)
+ }
+}
 ;(async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL?{channel:process.env.BROWSER_CHANNEL}:{})})
  try {
@@ -46,7 +146,7 @@ const CREATE_POSTS_PER_TRANSIENT_FAILURE=5
   return route.fulfill({path:path.join(dist,'index.html'),headers:{'Content-Security-Policy':csp}})
  })
  await page.addInitScript(auth=>localStorage.setItem('pocketbase_auth',JSON.stringify({token:auth.token,record:auth.record,model:auth.record})),fixture.auth)
- await page.goto(`http://localhost/admin/projects/${fixture.project.id}`)
+ await page.goto(`http://localhost/admin/projects/${fixture.project.id}?section=materials&view=import&method=pdf`)
  const input=page.locator('input[type=file][accept=".pdf"]')
  assert.equal(await input.getAttribute('multiple'),null,'PDF selection remains single-file')
  const out=process.env.PDF_BROWSER_OUTPUT||path.resolve(__dirname,'../../output/playwright/pdf-upload')
@@ -85,5 +185,7 @@ const CREATE_POSTS_PER_TRANSIENT_FAILURE=5
  assert.equal(records.items[0].status,'ready')
  assert.deepEqual(errors,[])
  console.log('PASS browser: 1 MiB chunks, progress, temporary 503 retry, lost completion response, exactly one ready file')
+ await navigationResume(page,out,records)
+ assert.deepEqual(errors,[])
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)})

@@ -1,0 +1,18 @@
+{
+  "realLocalWorker": true,
+  "syntheticOnly": true,
+  "rows": 2,
+  "checks": [
+    "range validation",
+    "transport failure recovery",
+    "native text extraction",
+    "job progress",
+    "protected raw artifact download",
+    "manual correction exact Unicode",
+    "immutable original cells",
+    "reload recovery",
+    "mobile layout",
+    "lost 202 restores same request/job across reload"
+  ],
+  "pageErrors": []
+}

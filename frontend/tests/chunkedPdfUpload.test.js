@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   hashPdfFile,
+  PDF_UPLOAD_PAUSED,
   loadPdfUploadResume,
   savePdfUploadResume,
   uploadPdfInChunks,
@@ -226,4 +227,87 @@ test('project detail shows recoverable upload, reselect and abandon states', () 
   assert.match(view, /已过期，请重新选择文件上传/)
   assert.match(view, /A successful empty list means the upload finished/)
   assert.match(view, /pdfResume\.value\?\.expired/)
+})
+
+test('navigation pause preserves the upload session and resumes only its missing chunks', async () => {
+  const storage = memoryStorage(),
+    controller = new AbortController(),
+    calls = []
+  const send = async (path, req) => {
+    calls.push([path, req.method])
+    if (path.endsWith('pdf-uploads'))
+      return { id: 'paused-session', chunkSize: size, received: [], contentHash: hash }
+    if (path.endsWith('/chunks/0')) return
+    if (path.endsWith('/chunks/1')) {
+      controller.abort(PDF_UPLOAD_PAUSED)
+      controller.signal.throwIfAborted()
+    }
+    assert.fail('paused transfer must not complete or delete the session')
+  }
+  await assert.rejects(
+    uploadPdfInChunks({
+      projectId: 'p',
+      userId: 'reader',
+      file: file(),
+      contentHash: hash,
+      signal: controller.signal,
+      storage,
+      sleep,
+      send
+    }),
+    (error) => error === PDF_UPLOAD_PAUSED
+  )
+  const resume = loadPdfUploadResume(storage, 'reader', 'p')
+  assert.equal(resume.sessionId, 'paused-session')
+  assert.equal(resume.contentHash, hash)
+  assert.deepEqual(resume.received, [0])
+  assert.equal(
+    calls.some(([, method]) => method === 'DELETE'),
+    false
+  )
+  const resumedCalls = []
+  await uploadPdfInChunks({
+    projectId: 'p',
+    userId: 'reader',
+    file: file(),
+    contentHash: hash,
+    storage,
+    sleep,
+    send: async (path, req) => {
+      resumedCalls.push(path)
+      if (path.endsWith('pdf-uploads')) {
+        assert.equal(req.body.requestId, resume.requestId)
+        return { id: 'paused-session', chunkSize: size, received: [0], contentHash: hash }
+      }
+      if (path.endsWith('/complete')) return { id: 'completed-file', status: 'ready' }
+    }
+  })
+  assert.equal(
+    resumedCalls.some((path) => path.endsWith('/chunks/0')),
+    false
+  )
+  assert.ok(resumedCalls.some((path) => path.endsWith('/chunks/1')))
+  assert.ok(resumedCalls.some((path) => path.endsWith('/chunks/2')))
+  assert.equal(loadPdfUploadResume(storage, 'reader', 'p'), null)
+})
+
+test('a navigation pause with a lost create response does not delete the server resumable session', async () => {
+  const controller = new AbortController(),
+    calls = []
+  await assert.rejects(
+    uploadPdfInChunks({
+      projectId: 'p',
+      file: file(),
+      contentHash: hash,
+      signal: controller.signal,
+      sleep,
+      send: async (_path, req) => {
+        calls.push(req.method)
+        controller.abort(PDF_UPLOAD_PAUSED)
+        throw Error('lost create response')
+      }
+    }),
+    /lost create response/
+  )
+  assert.deepEqual(calls, ['POST'])
 })

@@ -67,7 +67,7 @@ Windows 开发者模式，否则会表现为环境失败而不是代码失败。
 | `make test-integration` | 全部后端集成套件，共享一次编译 |
 | `make test-integration SUITES=pdf_` | 只跑名字包含 `pdf_` 的套件 |
 | `make coverage` | Go 与前端覆盖率报告 |
-| `python3 scripts/check_ui_debt.py` | UI 债务九类计数、基线上限与逐项源码位置（初始为 warn） |
+| `python3 scripts/check_ui_debt.py` | UI 债务九类计数、基线上限与逐项源码位置；全部类别为 fail 棘轮，上限只降不升 |
 | `make seed` | 向运行中的实例灌入可复核的演示项目 |
 | `make ci` | `check` + 集成套件 + 前端构建 + 镜像构建 |
 
@@ -157,9 +157,9 @@ blob 里存了 CR（`i/crlf`、`i/mixed`）就失败。`make verify-static` 与 
 `Frontend` 是阻断模式的落点：将某类基线的 `mode` 从 `warn` 改为 `fail` 后，增加该类债务
 会让这个 context 失败；实际 required contexts 仍以仓库保护规则为真源。
 
-稳定为 0 的类别已转 `fail`：`hardcoded_colors`、`border_radius_literals`、`z_index_literals`、
-`alerts_without_role`、`custom_modals`、`undefined_variables`、`font_family_stacks`，以及修到
-27 后的 `inline_styles`。`bare_tables` 暂留 `warn`，待 #331/#332 合入后按实测值转 `fail`。
+当前九类均为 `fail`。静态颜色、圆角、层级、缺角色提示、自制模态框、未定义变量与字体栈
+字面值的上限为0；原生表格仅保留 `AppDataTable` 内1处。2026-11-07工作台改版移除了
+装饰进度环，将运行时内联尺寸/进度绑定的上限从9降到8。
 `fail` 类只有超出上限才退出 1，存量不阻断；超出上限即失败。
 无法读取基线、非法策略或没有源码始终退出 1，避免误报成功。可重复传 `--only` 聚焦类别：
 

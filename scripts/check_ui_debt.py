@@ -21,6 +21,14 @@ KINDS = (
     'undefined_variables', 'font_family_stacks',
 )
 DISTINCT = {'border_radius_literals', 'z_index_literals'}
+# Geometry is supplied inline by the installed Reka primitives, not by our CSS.
+# Keep this explicit: a misspelled dependency variable must still fail the guard.
+EXTERNAL_VARIABLES = {
+    '--reka-dropdown-menu-content-transform-origin',
+    '--reka-select-trigger-width',
+    '--reka-select-content-available-height',
+    '--reka-select-content-transform-origin',
+}
 BLOCKS = re.compile(r'<(script|style)\b[^>]*>(.*?)</\1\s*>', re.S | re.I)
 HEX = re.compile(r'#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})(?![\w-])', re.I)
 FUNCTION_COLOR = re.compile(r'\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^)]*\)', re.I)
@@ -192,7 +200,7 @@ def measure(source_root):
             template = BLOCKS.sub(blank, cleaned)
             TemplateParser(template, record, css, defined.add).feed(template)
     for name, file, line in references:
-        if name not in defined:
+        if name not in defined and name not in EXTERNAL_VARIABLES:
             found['undefined_variables'].append({'file': file, 'line': line, 'value': name})
     return found
 

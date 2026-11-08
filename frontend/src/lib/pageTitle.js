@@ -8,16 +8,18 @@ const PAGE_TITLES = {
   ProjectFilesGuide: '文件准备说明',
   ProjectDetail: '项目详情',
   ProjectSettings: '项目设置',
+  ProjectDeliveries: '交付包与回执',
+  ProjectAdoption: '用途编选',
   SourceFidelity: '来源核验与问题处理',
   CreatorGrants: '创建权限',
-  SourceRegistry: '来源登记',
+  SourceRegistry: '来源库',
   GateRules: '规则门控',
   Arbitration: '条目仲裁',
-  TaskHall: '校对项目',
+  TaskHall: '我的任务',
   MyProblems: '我的问题与草稿',
   ProofreaderProfile: '个人中心',
   ProofreadEditor: '校对任务',
-  ProjectDiscovery: '发现项目'
+  ProjectDiscovery: '项目'
 }
 
 const BRAND = '万语校坊'

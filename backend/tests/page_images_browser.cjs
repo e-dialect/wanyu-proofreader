@@ -8,7 +8,7 @@ const dist = path.resolve(__dirname, '../../frontend/dist')
 const out = process.env.PDF_BROWSER_OUTPUT || path.resolve(__dirname, '../../output/playwright/page-images')
 const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf'), 'utf8').match(/add_header Content-Security-Policy "([^"]+)"/)[1]
 ;(async () => {
- const browser = await chromium.launch({headless:true, ...(process.env.BROWSER_EXECUTABLE ? {executablePath:process.env.BROWSER_EXECUTABLE} : {})})
+ const browser = await chromium.launch({headless:true, ...(process.env.BROWSER_EXECUTABLE ? {executablePath:process.env.BROWSER_EXECUTABLE} : {}), ...(process.env.BROWSER_CHANNEL ? {channel:process.env.BROWSER_CHANNEL} : {})})
  fs.mkdirSync(out,{recursive:true})
  const evidence = {}
  try {
@@ -41,6 +41,7 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
    const started=Date.now()
    let initialMs
    await page.goto(`http://localhost/tasks/${fixture.claim.id}/edit`)
+   if(mobile) await page.getByRole('button',{name:'查看原文',exact:true}).click()
    if(fallback) {
     await page.waitForFunction(()=>document.querySelector('.pdf-canvas')?.width>10 && !document.querySelector('.pdf-loading-mask') && !document.querySelector('.pdf-transition-mask'))
     initialMs=Date.now()-started
@@ -79,10 +80,8 @@ const csp = fs.readFileSync(path.resolve(__dirname, '../../frontend/nginx.conf')
    await page.screenshot({path:path.join(out,`${mode}.png`),fullPage:true})
    if(!fallback) {
     const before=network.filter(p=>p.endsWith('/asset')).length
-    if(mobile) await page.locator('.source-actions-menu > summary').click()
-    await page.getByRole('button',{name:'下一页',exact:true}).click()
+    await page.getByRole('button',{name:'下一页原文',exact:true}).click()
     await page.waitForFunction(()=>document.querySelector('.pdf-page-input')?.value==='3' && document.querySelector('.pdf-page-image')?.naturalWidth>10 && !document.querySelector('.pdf-transition-mask'))
-    if(mobile) await page.locator('.source-actions-menu > summary').click()
     assert.equal(network.filter(p=>p.endsWith('/asset')).length,before,'adjacent page should reuse prefetched asset')
     stamp=await watermark.locator('span').first().textContent()
     await page.getByRole('button',{name:'旋转 90°',exact:true}).click()

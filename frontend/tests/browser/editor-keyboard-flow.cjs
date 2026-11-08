@@ -79,11 +79,13 @@ async function main() {
           await page.keyboard.press(key)
           await visibleFocus(page)
         }
-      if (width === 390) {
+      {
         await page.getByRole('button', { name: '字符键盘', exact: true }).focus()
         await page.keyboard.press('Enter')
-        await page.getByRole('button', { name: '钉住', exact: true }).focus()
-        await page.keyboard.press('Enter')
+        if (width === 390) {
+          await page.getByRole('button', { name: '钉住', exact: true }).focus()
+          await page.keyboard.press('Enter')
+        }
       }
       const help = page.getByText('字符用法与读音说明', { exact: true })
       await help.focus()
@@ -127,7 +129,7 @@ async function main() {
       await dialog.waitFor({ state: 'hidden' })
       assert.equal(await trigger.evaluate((el) => el === document.activeElement), true)
       assert.equal(await input.inputValue(), '测ɑ试')
-      if (width === 390) {
+      {
         const summary = page.locator('.task-actions-menu > summary')
         await summary.focus()
         await page.keyboard.press('Enter')

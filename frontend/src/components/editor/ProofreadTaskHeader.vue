@@ -2,63 +2,106 @@
   <header class="editor-panel-header editor-panel-header--task">
     <div class="editor-context">
       <span>{{ projectName }} · {{ ownReview ? '回看已提交' : '独立校对' }}</span>
-      <strong id="task-panel-title">第 {{ pageNumber || '—' }} 条</strong>
+      <strong id="task-panel-title">当前第 {{ pageNumber || '—' }} 条</strong>
     </div>
-    <details class="task-actions-menu" :open="!mobile">
-      <summary>任务操作</summary>
-      <RouterLink v-if="mobile" to="/tasks" class="btn btn-quiet">返回大厅</RouterLink>
-      <div class="editor-toolbar" aria-label="校对任务导航">
+    <div class="task-primary-actions">
+      <div v-if="!mobile" class="task-inline-navigation" aria-label="校对任务导航">
+        <button
+          class="btn btn-quiet btn-sm"
+          aria-label="上一条"
+          :disabled="!canSwitchPrev"
+          @click="emit('previous')"
+        >
+          ‹
+        </button>
         <span class="task-position" aria-label="当前任务位置" aria-live="polite">{{
           navigationLabel
         }}</span>
-        <span v-if="navigationHint" class="text-sm text-muted" role="status">{{
-          navigationHint
-        }}</span>
         <button
-          v-if="neighborsState === 'error' && !submittedHere"
           class="btn btn-quiet btn-sm"
-          @click="emit('retry-position')"
+          aria-label="下一条"
+          :disabled="!canSwitchNext"
+          @click="emit('next')"
         >
-          重试获取位置
-        </button>
-        <button
-          class="btn btn-secondary btn-sm"
-          @click="emit('previous')"
-          :disabled="!canSwitchPrev"
-        >
-          上一条
-        </button>
-        <button class="btn btn-secondary btn-sm" @click="emit('next')" :disabled="!canSwitchNext">
-          下一条
-        </button>
-        <button
-          v-if="hasPage && !leaseLost && !ownReview"
-          class="btn btn-quiet btn-sm"
-          :disabled="saving || releasing || !leaseToken"
-          @click="emit('release')"
-        >
-          {{ releasing ? '释放中…' : '释放任务' }}
-        </button>
-        <button
-          v-if="hasPage && !submittedHere && !leaseLost && !ownReview"
-          class="btn btn-quiet btn-sm"
-          :disabled="saving || !leaseToken"
-          @click="emit('return')"
-        >
-          退回
-        </button>
-        <button
-          v-if="!ownReview"
-          class="btn btn-success btn-sm"
-          @click="emit('submit')"
-          :disabled="saving || loadingPage || !hasPage || leaseLost || !leaseToken"
-        >
-          {{ saving ? '提交中…' : '检查并提交' }}
+          ›
         </button>
       </div>
-    </details>
+      <button
+        v-if="sourceToggleVisible"
+        class="btn btn-secondary btn-sm task-source-toggle"
+        :aria-expanded="!sourceCollapsed"
+        aria-controls="review-source"
+        @click="emit('source-toggle')"
+      >
+        {{ sourceCollapsed ? '查看原文' : '收起原文' }}
+      </button>
+      <AppButton
+        v-if="!ownReview && !mobile"
+        variant="primary"
+        size="sm"
+        :loading="saving"
+        :disabled="saving || loadingPage || !hasPage || leaseLost || !leaseToken"
+        @click="emit('submit')"
+      >
+        {{ saving ? '提交中…' : '检查并提交' }}
+      </AppButton>
+      <details class="task-actions-menu">
+        <summary>更多操作</summary>
+        <div class="editor-toolbar task-secondary-actions">
+          <div v-if="mobile" class="task-inline-navigation" aria-label="校对任务导航">
+            <button
+              class="btn btn-quiet btn-sm"
+              aria-label="上一条"
+              :disabled="!canSwitchPrev"
+              @click="emit('previous')"
+            >
+              ‹</button
+            ><span class="task-position" aria-label="当前任务位置">{{ navigationLabel }}</span
+            ><button
+              class="btn btn-quiet btn-sm"
+              aria-label="下一条"
+              :disabled="!canSwitchNext"
+              @click="emit('next')"
+            >
+              ›
+            </button>
+          </div>
+          <p v-if="leaseStatus" class="text-sm text-muted">{{ leaseStatus }}</p>
+          <p class="text-sm text-muted">⌘/Ctrl+S 草稿 · ⌘/Ctrl+Enter 提交 · Alt+←/→ 切换</p>
+          <RouterLink :to="returnTarget" class="btn btn-quiet btn-sm">返回任务</RouterLink>
+          <span v-if="navigationHint" class="text-sm text-muted" role="status">{{
+            navigationHint
+          }}</span>
+          <button
+            v-if="neighborsState === 'error' && !submittedHere"
+            class="btn btn-quiet btn-sm"
+            @click="emit('retry-position')"
+          >
+            重试获取位置
+          </button>
+          <button
+            v-if="hasPage && !leaseLost && !ownReview"
+            class="btn btn-quiet btn-sm"
+            :disabled="saving || releasing || !leaseToken"
+            @click="emit('release')"
+          >
+            {{ releasing ? '释放中…' : '释放任务' }}
+          </button>
+          <button
+            v-if="hasPage && !submittedHere && !leaseLost && !ownReview"
+            class="btn btn-quiet btn-sm"
+            :disabled="saving || !leaseToken"
+            @click="emit('return')"
+          >
+            退回
+          </button>
+        </div>
+      </details>
+    </div>
     <p
+      v-if="feedback.kind !== 'editing'"
       class="editor-task-feedback"
+      :class="{ 'draft-indicator': feedback.kind === 'draft' }"
       role="status"
       aria-live="polite"
       :data-task-feedback="feedback.kind"
@@ -72,11 +115,18 @@
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
+import { inject } from 'vue'
+import AppButton from '@/components/AppButton.vue'
+const returnTarget = inject('workReturnTarget', '/tasks')
 defineProps({
   projectName: String,
   ownReview: Boolean,
   pageNumber: [String, Number],
   mobile: Boolean,
+  overview: Boolean,
+  sourceToggleVisible: Boolean,
+  sourceCollapsed: Boolean,
+  leaseStatus: String,
   navigationLabel: String,
   navigationHint: String,
   neighborsState: String,
@@ -92,7 +142,15 @@ defineProps({
   activeField: String,
   feedback: { type: Object, required: true }
 })
-const emit = defineEmits(['previous', 'next', 'retry-position', 'release', 'return', 'submit'])
+const emit = defineEmits([
+  'previous',
+  'next',
+  'retry-position',
+  'release',
+  'return',
+  'submit',
+  'source-toggle'
+])
 </script>
 <style scoped>
 .editor-task-feedback {

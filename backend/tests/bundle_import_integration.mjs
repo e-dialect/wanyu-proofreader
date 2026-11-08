@@ -218,7 +218,7 @@ const FIELDS = ['headword', 'reading']
 
 // ---------- 1. 正常导入：键落库、行序与列序保持 ----------
 const entriesA = [
-  { entry_id: 'e-1', headword: '甲', reading: 'kah' },
+  { entry_id: 'e-1', headword: ' 甲 ', reading: '\tɕʰ  a\u0303\u00a0' },
   { entry_id: 'e-2', headword: '乙', reading: 'it' },
   { entry_id: 'e-3', headword: '丙', reading: 'piaN' }
 ]
@@ -247,6 +247,9 @@ for (const page of pages) {
   // 列顺序等于 requested_fields，不是 Go map 排序后的字母序。
   assert.equal(page.row_headers_json, JSON.stringify(FIELDS))
   assert.deepEqual(Object.keys(JSON.parse(page.ocr_row_json)), FIELDS)
+  const original = entriesA.find((entry) => entry.entry_id === page.source_entry_id)
+  assert.equal(JSON.parse(page.ocr_row_json).headword, original.headword)
+  assert.equal(JSON.parse(page.ocr_row_json).reading, original.reading)
 }
 
 // ---------- 2. 重放：同一 bundle 再来一次，条目数与条目 id 都不变 ----------
