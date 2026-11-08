@@ -67,7 +67,7 @@ def main():
     args=parser.parse_args()
     if not 20<=args.entries<=20000 or not 3<=args.users<=30 or args.duration<5:parser.error('entries 20..20000, users 3..30, duration >=5')
     args.output=args.output.resolve();args.output.mkdir(parents=True,exist_ok=True)
-    manifest={'baseline_sha':subprocess.check_output(['git','rev-parse','HEAD'],cwd=harness.BACKEND,text=True).strip(),'host':platform.platform(),'entries':args.entries,'users':args.users,'duration':args.duration,'seed':1701,'synthetic':True,'reference_hardware_verified':False,'full_acceptance':False}
+    manifest={'source_sha256': {name: hashlib.sha256((harness.BACKEND/'tests'/name).read_bytes()).hexdigest() for name in ['run_capacity_baseline.py','capacity_scenarios.mjs']}, 'baseline_sha':subprocess.check_output(['git','rev-parse','HEAD'],cwd=harness.BACKEND,text=True).strip(),'host':platform.platform(),'entries':args.entries,'users':args.users,'duration':args.duration,'seed':1701,'synthetic':True,'reference_hardware_verified':False,'full_acceptance':False}
     with harness.temporary_root() as root:
         binary=harness.build_binary(root/'pocketbase'); fixture_file=root/'fixture.json';db=root/'data/data.db'
         with harness.server(binary,root,extra_env={'FIDELITY_BROWSER_FIXTURE':str(fixture_file)}) as env:

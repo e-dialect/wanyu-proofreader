@@ -267,7 +267,7 @@ func splitPDFPagesContext(workCtx context.Context, reader io.ReadSeeker, dir str
 			return errPDFPageBudget
 		}
 	}
-	return nil
+	return workCtx.Err()
 }
 
 // cachedTaskPDF renders the couple of pages a task shows. It never does
@@ -353,6 +353,9 @@ func (s *importService) cachedTaskPDFContext(workCtx context.Context, file *core
 		output, err = buildTaskPDFContext(workCtx, reader, start, end, stamp, stages)
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := workCtx.Err(); err != nil {
 		return nil, err
 	}
 	if int64(len(output)) <= pdfBookBudget {

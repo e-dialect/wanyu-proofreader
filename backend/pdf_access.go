@@ -208,5 +208,8 @@ func watermarkTaskPDFContext(workCtx context.Context, reader io.ReadSeeker, stam
 	if err := pdfapi.AddWatermarks(workCtx, reader, &output, nil, watermark, pdfConfig()); err != nil {
 		return nil, err
 	}
+	if err := workCtx.Err(); err != nil {
+		return nil, err
+	}
 	return output.Bytes(), nil
 }
