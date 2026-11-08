@@ -209,7 +209,8 @@
   </main>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { measureBusiness } from '@/lib/businessMetrics'
 import { RouterLink, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import AppButton from '@/components/AppButton.vue'
@@ -257,6 +258,21 @@ const {
   formatError: (cause) => getPbMessage(cause, '暂时无法读取项目待办。')
 })
 const loading = computed(() => accessPending.value || queuePending.value || managedPending.value)
+const workspaceStartedAt = performance.now()
+let workspaceTimingReported = false
+watch(
+  () => accessReady.value && !loading.value,
+  async (ready) => {
+    if (!ready || workspaceTimingReported || accessError.value) return
+    await nextTick()
+    requestAnimationFrame(() => {
+      if (!accessReady.value || loading.value || workspaceTimingReported) return
+      workspaceTimingReported = true
+      measureBusiness('workspace_ready', performance.now() - workspaceStartedAt)
+    })
+  }
+)
+
 const canManage = computed(() => auth.isPlatformAdmin || auth.hasManagedProjects)
 const queues = computed(() => queueData.value?.items || [])
 const attention = computed(() =>

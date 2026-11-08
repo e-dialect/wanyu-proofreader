@@ -1,6 +1,7 @@
 import { onCLS, onINP, onLCP } from 'web-vitals'
 import pb from '@/lib/pocketbase'
 import { createTelemetryQueue } from '@/lib/telemetry'
+import { setBusinessMetricReporter } from '@/lib/businessMetrics'
 
 let queue
 let started = false
@@ -32,6 +33,9 @@ export function startTelemetry(router) {
       }
     })
   queue = createQueue()
+  setBusinessMetricReporter((name, value) =>
+    queue?.record({ id: crypto.randomUUID(), name, value, navigationType: 'business' })
+  )
   const options = { reportSoftNavs: false, reportAllChanges: false }
   const collect = (metric) => queue?.record(metric)
   onCLS(collect, options)
@@ -51,9 +55,4 @@ export function startTelemetry(router) {
     identity = nextIdentity
     queue = nextIdentity ? createQueue() : null
   })
-}
-
-export function measureBusiness(name, duration) {
-  if (!['workspace_ready', 'editor_ready', 'source_visible', 'submit_ack'].includes(name)) return
-  queue?.record({ id: crypto.randomUUID(), name, value: duration, navigationType: 'business' })
 }
