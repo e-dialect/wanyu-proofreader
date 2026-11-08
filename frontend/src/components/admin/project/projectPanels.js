@@ -34,3 +34,7 @@ export const ProjectSchemePanel = lazyPanel(
 export const ProjectBundleImport = lazyPanel(
   () => import('@/components/admin/project/ProjectBundleImport.vue')
 )
+
+export const ProjectToneBatch = lazyPanel(
+  () => import('@/components/admin/project/ProjectToneBatch.vue')
+)

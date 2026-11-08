@@ -1,0 +1,21 @@
+{
+  "synthetic": true,
+  "linguisticAcceptance": false,
+  "checks": [
+    "declared custom53 and registered53 rejection",
+    "reading versus pure tone field",
+    "whole-cell mixed/number/placeholder guards",
+    "approved empty and missing field without OCR fallback",
+    "default withheld/importing exclusion",
+    "same-snapshot ZIP and exact Unicode JSONL",
+    "role/source/keyboard/legal-set/actor conflict",
+    "selected-role409 recovery reloads columns and clears stale preview",
+    "manager and password gates",
+    "real UI initial failure retry and confirmation/download/failure retention",
+    "modal cancellation aborts without late file",
+    "late account response discarded",
+    "390px no overflow",
+    "project records unchanged"
+  ],
+  "pageErrors": []
+}
