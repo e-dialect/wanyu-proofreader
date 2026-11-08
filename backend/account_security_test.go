@@ -142,6 +142,73 @@ func TestMailDisabledUniformAndAuditScopes(t *testing.T) {
 	}
 	accountTestRequest(t, h, "GET", "/api/collections/security_events/records", token, nil, 403)
 }
+
+func TestSecurityEventsMineIncludesFailuresAndKeepsSubjectBoundary(t *testing.T) {
+	service, app := newExternalIdentityTestService(t)
+	user, _, err := service.resolveOrCreateUser("mock", "mine-outcomes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user.SetPassword("OriginalPassword123!")
+	if err := app.Save(user); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := user.NewAuthToken()
+	registerAccountSecurity(app)
+	h := accountTestRouter(t, app)
+	// The actual native HTTP rejection must remain visible to the account owner.
+	accountTestRequest(t, h, "PATCH", "/api/collections/users/records/"+user.Id, token,
+		map[string]any{"oldPassword": "wrong-password", "password": "AnotherPassword123!", "passwordConfirm": "AnotherPassword123!"}, 400)
+	for _, event := range []struct{ kind, outcome, actor, subject, project string }{
+		{"account.email_verified", "success", user.Id, user.Id, ""},
+		{"project.member_changed", "denied", "other-actor", user.Id, "historical-project"},
+		{"project.member_changed", "failed", user.Id, "other-subject", "other-project"},
+		{"account.password_changed", "success", "other-actor", "other-subject", ""},
+		{"auth.login_rejected", "failed", "", "", ""},
+	} {
+		if err := appendSecurityEvent(app, nil, event.kind, event.outcome, event.actor, event.subject, event.project,
+			map[string]any{"old_role": "reader", "new_role": "manager"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	accountTestRequest(t, h, "GET", "/api/fangji/security-events", "", nil, 401)
+	accountTestRequest(t, h, "GET", "/api/fangji/security-events?scope=platform", token, nil, 403)
+	outcomes, ids := map[string]bool{}, map[string]bool{}
+	for page := 1; page <= 2; page++ {
+		response := accountTestRequest(t, h, "GET", fmt.Sprintf("/api/fangji/security-events?scope=mine&perPage=2&page=%d&subject_user_id=other-subject", page), token, nil, 200)
+		var body struct {
+			TotalItems int              `json:"totalItems"`
+			TotalPages int              `json:"totalPages"`
+			Items      []map[string]any `json:"items"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.TotalItems != 3 || body.TotalPages != 2 || len(body.Items) != 3-page {
+			t.Fatalf("incorrect mine pagination: %s", response.Body.String())
+		}
+		for _, item := range body.Items {
+			if len(item) != 5 {
+				t.Fatalf("mine returned private fields: %v", item)
+			}
+			for _, key := range []string{"id", "created", "eventType", "outcome", "projectId"} {
+				if _, ok := item[key]; !ok {
+					t.Fatalf("mine projection missing %s", key)
+				}
+			}
+			id := item["id"].(string)
+			if ids[id] {
+				t.Fatal("mine pagination repeated an event")
+			}
+			ids[id] = true
+			outcomes[item["outcome"].(string)] = true
+		}
+	}
+	if len(outcomes) != 3 {
+		t.Fatalf("mine omitted an outcome: %v", outcomes)
+	}
+}
+
 func TestAccountRateLimitsSharedIPAndBounds(t *testing.T) {
 	l := newAccountRateLimiter()
 	now := time.Now()
