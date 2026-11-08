@@ -14,6 +14,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/subscriptions"
 )
 
 // Unit fixtures import the historical initial snapshot. Migration/schema
@@ -526,5 +527,98 @@ func TestRefreshAfterGenerationGuardCannotResurrectRevokedSession(t *testing.T) 
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("refresh hung")
+	}
+}
+
+func TestAccountRevocationCoversPrivateFilesAndRealtimeClients(t *testing.T) {
+	for _, action := range []string{"password-change", "password-reset", "email-change", "logout-all"} {
+		for _, failAudit := range []bool{false, true} {
+			label := action
+			if failAudit {
+				label += "/audit-rollback"
+			}
+			t.Run(label, func(t *testing.T) {
+				service, app := newExternalIdentityTestService(t)
+				user, _, _ := service.resolveOrCreateUser("mock", "file-realtime-"+action)
+				user.SetEmail("revoke@example.test")
+				user.SetPassword("BeforeRevocation123!")
+				if err := app.Save(user); err != nil {
+					t.Fatal(err)
+				}
+				authToken, err := user.NewAuthToken()
+				if err != nil {
+					t.Fatal(err)
+				}
+				fileToken, err := user.NewFileToken()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := app.FindAuthRecordByToken(fileToken, core.TokenTypeFile); err != nil {
+					t.Fatal("fixture file token invalid")
+				}
+				registerAccountSecurity(app)
+				h := accountTestRouter(t, app)
+				client := subscriptions.NewDefaultClient()
+				app.SubscriptionsBroker().Register(client)
+				t.Cleanup(func() { app.SubscriptionsBroker().Unregister(client.Id()) })
+				accountTestRequest(t, h, "POST", "/api/realtime", authToken, map[string]any{"clientId": client.Id(), "subscriptions": []string{}}, 204)
+				if bound, ok := client.Get(apis.RealtimeClientAuthKey).(*core.Record); !ok || bound.Id != user.Id {
+					t.Fatal("realtime fixture did not authenticate through API")
+				}
+				if failAudit {
+					app.OnRecordCreate("security_events").BindFunc(func(e *core.RecordEvent) error {
+						if e.Record.GetString("outcome") == "success" {
+							return apis.NewBadRequestError("audit unavailable", nil)
+						}
+						return e.Next()
+					})
+				}
+				method, path, status := "POST", "/api/fangji/auth/logout-all", 204
+				body := map[string]any{}
+				switch action {
+				case "password-change":
+					method, path, status = "PATCH", "/api/collections/users/records/"+user.Id, 200
+					body = map[string]any{"oldPassword": "BeforeRevocation123!", "password": "AfterRevocation123!", "passwordConfirm": "AfterRevocation123!"}
+				case "password-reset":
+					token, err := user.NewPasswordResetToken()
+					if err != nil {
+						t.Fatal(err)
+					}
+					path = "/api/collections/users/confirm-password-reset"
+					body = map[string]any{"token": token, "password": "AfterRevocation123!", "passwordConfirm": "AfterRevocation123!"}
+				case "email-change":
+					token, err := user.NewEmailChangeToken("after-revoke@example.test")
+					if err != nil {
+						t.Fatal(err)
+					}
+					path = "/api/collections/users/confirm-email-change"
+					body = map[string]any{"token": token, "password": "BeforeRevocation123!"}
+				}
+				if failAudit {
+					status = 400
+				}
+				accountTestRequest(t, h, method, path, authToken, body, status)
+				_, fileErr := app.FindAuthRecordByToken(fileToken, core.TokenTypeFile)
+				realtimeAuth := client.Get(apis.RealtimeClientAuthKey)
+				if failAudit {
+					if fileErr != nil || realtimeAuth == nil {
+						t.Fatal("rolled-back change revoked file or realtime access")
+					}
+				} else {
+					if fileErr == nil {
+						t.Fatal("old private-file token remained valid")
+					}
+					if realtimeAuth != nil {
+						t.Fatal("committed revocation left realtime client authenticated")
+					}
+					// PB accepts anonymous subscriptions; the revoked bearer must not
+					// restore authentication even though the subscribe response is 204.
+					accountTestRequest(t, h, "POST", "/api/realtime", authToken, map[string]any{"clientId": client.Id(), "subscriptions": []string{}}, 204)
+					if rebound, _ := client.Get(apis.RealtimeClientAuthKey).(*core.Record); rebound != nil {
+						t.Fatal("revoked bearer reauthenticated realtime client")
+					}
+				}
+			})
+		}
 	}
 }
