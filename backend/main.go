@@ -50,6 +50,8 @@ func main() {
 		Dir:          migrationsDir,
 	})
 	registerTrustedClientIP(app)
+	registerAccountSecurity(app)
+	registerAccountRecoveryCommand(app)
 	registerNicknameLogin(app)
 	registerProfile(app)
 	registerBundleValidation(app)

@@ -10,7 +10,8 @@ function append(app, request, eventType, actorId, subjectId, projectId, details 
   record.set("project_id", projectId || "")
   let requestId = request.get("accountSecurityRequestID")
   if (!requestId) {
-    requestId = $security.randomString(24)
+    requestId = request.response.header().get("X-Request-ID")
+    if (!/^[a-zA-Z0-9._:-]{1,80}$/.test(requestId || "")) requestId = $security.randomString(24)
     request.set("accountSecurityRequestID", requestId)
     request.response.header().set("X-Request-ID", requestId)
   }

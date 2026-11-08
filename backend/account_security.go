@@ -12,7 +12,6 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tools/security"
 )
 
 // compare the authentication snapshot, not just the user id. An in-flight
@@ -36,7 +35,10 @@ func securityRequestID(e *core.RequestEvent) string {
 	if value, ok := e.Get("accountSecurityRequestID").(string); ok && value != "" {
 		return value
 	}
-	value := security.RandomString(24)
+	value := strings.TrimSpace(e.Response.Header().Get("X-Request-ID"))
+	if !safeRequestID.MatchString(value) {
+		value = newRequestID()
+	}
 	e.Set("accountSecurityRequestID", value)
 	e.Response.Header().Set("X-Request-ID", value)
 	return value
@@ -57,6 +59,11 @@ func appendSecurityEvent(app core.App, e *core.RequestEvent, kind, outcome, acto
 	event.Set("actor_id", actor)
 	event.Set("subject_user_id", subject)
 	event.Set("project_id", project)
+	for _, key := range []string{"resource_type", "resource_id"} {
+		if value, ok := details[key].(string); ok {
+			event.Set(key, value)
+		}
+	}
 	if e != nil {
 		event.Set("request_id", securityRequestID(e))
 	} else {
