@@ -19,6 +19,11 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204000_field_summary_judgment_index.js': {
+        'indexes': ['idx_verification_judgment_latest'],
+        'collection_indexes': ('verification_events', 'idx_verification_judgment_latest'),
+        'plans': [('verification_events', "SELECT id FROM verification_events WHERE project=? AND kind='judgment' AND ref!='final' AND json_valid(payload_json) AND ref=? AND field_name=? ORDER BY created DESC, CAST(COALESCE(json_extract(payload_json, '$.revision'), 0) AS INTEGER) DESC, id DESC LIMIT 1", ('p','a','field'), 'idx_verification_judgment_latest')],
+    },
     '1794203000_delivery_adoption.js': {
         'indexes': ['idx_delivery_job_version', 'idx_delivery_request'],
         'collection_indexes': ('release_deliveries', 'idx_delivery_job_version'),
