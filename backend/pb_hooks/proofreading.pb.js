@@ -19,6 +19,8 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/claim`, (c) => {
     requiredProofreads: proofRequiredProofreads,
     evaluatePage: proofEvaluatePage
   } = require(`${__hooks}/lib/proofreading_workflow.js`)
+  const { scan: proofScanCandidates } = require(`${__hooks}/lib/claim_candidates.js`)
+  const { canClaimMaterial: proofCanClaimMaterial } = require(`${__hooks}/lib/source_research.js`)
   const auth = c.auth
   if (!auth) throw new ForbiddenError("无权执行此操作")
   if (auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
@@ -108,37 +110,30 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/claim`, (c) => {
     // 也不能悄悄给一条别的层级——那会让大厅上的筛选控件说谎。
     const passes = tier ? [tier] : ["A", ""]
     const seen = new Set()
-    // filters 在外、passes 在内。filters[0] 是 #86 的「同 PDF 页优先」，它必须排在层级之前：
-    // 层级在外层时第一遍会扫遍**全项目**找 A，只要还剩一条 A，同页的兄弟条目就永远轮不到
-    // ——那等于把 #86 这条特性在下一次算出 tier 的项目里直接下线（#232 的评审阻断项）。
-    // 每个 filter 只取一次候选、两层 pass 复用同一份数组：领取是校对员最热的一条路由，
-    // 为"优先 A"再把十万条读一遍不换来任何信息（评审的非阻断性能项）。
+    const required = proofRequiredProofreads(txDao, projectId)
+    // 同 PDF 页先于层级；每层按相同 page_number,id 顺序读取有界批次。
+    // 一次读全项目会长时间占用唯一写事务，使其他领取、提交和一致性读取排队。
     for (const filter of filters) {
       if (response) break
-      const candidates = txDao.findRecordsByFilter("pages", filter, "page_number,id", 100000, 0)
       for (const passTier of passes) {
         if (response) break
-        for (const page of candidates) {
-          // 层级筛选必须在 seen 之前：先记 seen 会让第二层把整批跳过，
-          // 结果"优先 A"变成"只看 A，别的层级一条都领不到"。
-          if (passTier && page.getString("difficulty_tier") !== passTier) continue
-          if (glyph && !page.getBool("missing_glyph")) continue
-          if (seen.has(page.id)) continue
+        proofScanCandidates(txDao, filter, passTier, glyph, (page) => {
+          if (seen.has(page.id)) return false
           seen.add(page.id)
           const status = page.getString("status")
-          if (!require(`${__hooks}/lib/source_research.js`).canClaimMaterial(txDao, page, userId)) continue
+          if (!proofCanClaimMaterial(txDao, page, userId)) return false
           let queueStatus = status
           if (status === "claimed" || status === "proofreading") {
             const existingLease = proofLeaseForPage(txDao, page.id)
-            if (existingLease && !proofLeaseExpired(existingLease)) continue
+            if (existingLease && !proofLeaseExpired(existingLease)) return false
             queueStatus = proofQueueStatusForPage(page, existingLease)
             if (!existingLease) proofClearLease(txDao, page)
           }
           const attempts = proofAttempts(txDao, page)
-          if (attempts.some((attempt) => attempt.getString("proofreader") === userId)) continue
-          if (attempts.length >= proofRequiredProofreads(txDao, projectId)) {
+          if (attempts.some((attempt) => attempt.getString("proofreader") === userId)) return false
+          if (attempts.length >= required) {
             proofEvaluatePage(txDao, page)
-            continue
+            return false
           }
           queueStatus = attempts.length ? "proofread" : "pending"
           const issued = proofIssueLease(txDao, page, userId, queueStatus)
@@ -146,8 +141,8 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/claim`, (c) => {
           page.set("status", "proofreading")
           txDao.save(page)
           response = summarize(page, issued)
-          break
-        }
+          return true
+        })
       }
     }
     if (!response && glyph) throw new NotFoundError("缺字待登记队列暂时没有可领取的条目")
