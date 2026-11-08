@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as pbErrors from '../src/utils/pbErrors.js'
+import { USAGE_PURPOSE_LABELS } from '../src/constants/sourceRegistry.js'
+import { protectedPageScopeFixture } from './helpers/protectedPageScopeFixture.js'
 
 // Execute the shipped SFC callbacks with mocked refs and network, so the
 // assertions cover the component's own code rather than a rewritten copy.
@@ -24,7 +26,6 @@ const receiptEventNoteSource = extract(
   /\nconst receiptEventNote = (\(event\) => \{[\s\S]*?\n\})\n/,
   'receiptEventNote'
 )
-const loadBody = extract(/\nasync function load\(\) \{([\s\S]*?)\n\}\n/, 'load()')
 const errorImports = source.match(/import \{([^}]+)\} from '@\/utils\/pbErrors'/)
 assert.ok(errorImports, 'component must declare its error helper imports')
 const helpers = Object.fromEntries(
@@ -34,41 +35,356 @@ const helpers = Object.fromEntries(
 const receiptLabel = new Function(`return (${receiptLabelSource})`)()
 const receiptEventNote = new Function(`return (${receiptEventNoteSource})`)()
 
-function routeBindings() {
+function fixture(services = {}) {
+  const route = {
+    params: { id: 'project-1' },
+    query: {},
+    fullPath: '/projects/project-1/deliveries'
+  }
+  const unmount = []
+  const protectedScope = protectedPageScopeFixture((callback) => unmount.push(callback))
+  let routeChanged
+  const bindings = {
+    ...helpers,
+    USAGE_PURPOSE_LABELS,
+    useProtectedPageScope: protectedScope.useProtectedPageScope,
+    ref: (value) => ({ value }),
+    reactive: (value) => value,
+    computed: (getter) => ({
+      get value() {
+        return getter()
+      }
+    }),
+    nextTick: (callback) => Promise.resolve().then(() => callback?.()),
+    useRoute: () => route,
+    useRouter: () => ({
+      push: async ({ query }) => {
+        route.query = query
+        route.fullPath = '/projects/project-1/deliveries?' + new URLSearchParams(query)
+        return routeChanged()
+      }
+    }),
+    watch: (getter, callback) => {
+      if (typeof getter === 'function' && getter.toString().includes('route.fullPath'))
+        routeChanged = callback
+    },
+    onBeforeUnmount: (callback) => unmount.push(callback),
+    listDeliveries: async () => ({ items: [], metrics: {}, page: 1, totalPages: 1 }),
+    getDelivery: async (id) => ({
+      id,
+      project: route.params.id,
+      recipient: 'synthetic',
+      reconciliation: { payload_count: 1 }
+    }),
+    listDeliveryEvents: async () => ({ events: [], page: 1, totalPages: 1 }),
+    listAdoptionBatches: async () => ({ batches: [], page: 1, totalPages: 1 }),
+    getAdoptionBatch: async (id) => ({ id, project: route.params.id, status: 'confirmed' }),
+    ...services
+  }
+  const script = source
+    .match(/<script setup>([\s\S]*?)<\/script>/)[1]
+    .replace(/^import[\s\S]*? from ['"][^'"]+['"]\r?$/gm, '')
+  const state = new Function(
+    ...Object.keys(bindings),
+    `${script}\nreturn {
+      load, loadAdoptions, action, navigate, pageScope, accessLost, unavailable,
+      projectId, view, selectedPackageId, currentDelivery, nativeBatch, adoptionChoices,
+      adoptionPage, adoptionPages, loading, busy, loadError, operationError, success,
+      items, metrics, handoff, handoffFilename, handoffInput, reviewer, previous,
+      changeReason, preview, confirmed, requestId, selected, eventForm, eventBaseline,
+      impacts, sourceRef, visibleDeliveries, dirty, clearProtectedData, handleFailure
+    }`
+  )(...Object.values(bindings))
   return {
-    projectId: { value: 'project-1' },
-    view: { value: 'records' },
-    queryPage: { value: 1 },
-    route: { query: {} },
-    selectedPackageId: { value: '' },
-    detailTab: { value: 'summary' },
-    listPages: { value: 1 },
-    listPage: { value: 1 },
-    eventsPage: { value: 1 },
-    eventPages: { value: 1 },
-    currentDelivery: { value: null },
-    nativeBatch: { value: null },
-    nativeDeliveryEnabled: true
+    ...state,
+    route,
+    changeIdentity: protectedScope.changeIdentity,
+    unmount: () => unmount.forEach((callback) => callback())
   }
 }
 
 async function runLoad(listDeliveries, initial = {}) {
-  const bindings = {
-    ...helpers,
-    listDeliveries,
-    ...routeBindings(),
-    loading: { value: true },
-    loadError: { value: '' },
-    operationError: { value: '上一次出包失败' },
-    items: { value: initial.items ?? [] },
-    metrics: { value: initial.metrics ?? null }
+  const state = fixture({ listDeliveries })
+  state.operationError.value = '上一次出包失败'
+  state.items.value = initial.items ?? []
+  state.metrics.value = initial.metrics ?? null
+  await state.load()
+  return state
+}
+
+function deferred() {
+  let resolve, reject
+  const promise = new Promise((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  return { promise, resolve, reject }
+}
+
+function seedPrivateDrafts(state) {
+  state.selected.value = { id: 'package-one' }
+  state.eventForm.reason = 'private reason'
+  state.eventForm.evidence = 'private evidence'
+  state.reviewer.value = 'private reviewer'
+  state.handoff.value = { entries: [{ private: true }] }
+  state.handoffFilename.value = 'private.json'
+  state.preview.value = { can_generate: true, preview_sha256: 'old-sha' }
+  state.requestId.value = 'old-request-id'
+  state.confirmed.value = true
+  state.impacts.value = [{ id: 'private-impact' }]
+  state.sourceRef.value = 'private-source'
+}
+
+function assertProtectedDataCleared(state) {
+  assert.equal(state.accessLost.value, true)
+  assert.equal(state.loading.value, false)
+  assert.equal(state.busy.value, false)
+  assert.deepEqual(state.items.value, [])
+  assert.deepEqual(state.adoptionChoices.value, [])
+  for (const field of [
+    'currentDelivery',
+    'nativeBatch',
+    'metrics',
+    'impacts',
+    'selected',
+    'preview',
+    'handoff'
+  ])
+    assert.equal(state[field].value, null, `${field} must be cleared`)
+  assert.equal(state.eventForm.reason, '')
+  assert.equal(state.eventForm.evidence, '')
+  assert.equal(state.reviewer.value, '')
+  assert.equal(state.handoffFilename.value, '')
+  assert.equal(state.requestId.value, '')
+  assert.equal(state.confirmed.value, false)
+  assert.equal(state.sourceRef.value, '')
+}
+
+for (const status of [401, 403]) {
+  for (const origin of ['list', 'detail', 'action']) {
+    test(`delivery ${origin} ${status} revokes stale detail, drafts and generation authority`, async () => {
+      let denied = false
+      const state = fixture({
+        listDeliveries: async () => {
+          if (denied && origin === 'list') throw { status }
+          return {
+            items: [{ id: 'package-one' }],
+            metrics: { package_count: 1 },
+            page: 1,
+            totalPages: 1
+          }
+        },
+        getDelivery: async (id) => {
+          if (denied && origin === 'detail') throw { response: { status } }
+          return { id, project: 'project-1', reconciliation: { payload_count: 1 } }
+        }
+      })
+      state.selectedPackageId.value = 'package-one'
+      state.view.value = 'detail'
+      await state.load()
+      seedPrivateDrafts(state)
+      const pending = state.pageScope.capture()
+      denied = true
+      if (origin === 'action')
+        await state.action(async () => {
+          throw { status }
+        })
+      else await state.load()
+      assertProtectedDataCleared(state)
+      assert.equal(pending.signal.aborted, true)
+      assert.match(state.loadError.value, status === 401 ? /登录状态已失效/ : /无权/)
+      let attempted = false
+      await state.action(async () => {
+        attempted = true
+      })
+      assert.equal(attempted, false, 'the old page cannot generate or append another event')
+    })
   }
-  const load = new Function(
-    ...Object.keys(bindings),
-    `let loadGeneration = 0, disposed = false; return (async function load() {${loadBody}\n})`
-  )(...Object.values(bindings))
-  await load()
-  return bindings
+}
+
+test('delivery detail 404 revokes the selected record while preserving unrelated list rows', async () => {
+  let missing = false
+  const state = fixture({
+    listDeliveries: async () => ({
+      items: [{ id: 'package-one' }, { id: 'package-two' }],
+      page: 1,
+      totalPages: 1
+    }),
+    getDelivery: async (id) => {
+      if (missing) throw { status: 404 }
+      return { id, project: 'project-1', reconciliation: { payload_count: 1 } }
+    }
+  })
+  state.selectedPackageId.value = 'package-one'
+  state.view.value = 'detail'
+  await state.load()
+  seedPrivateDrafts(state)
+  missing = true
+  await state.load()
+  assert.equal(state.accessLost.value, false)
+  assert.equal(state.unavailable.value, true)
+  assert.equal(state.selectedPackageId.value, 'package-one')
+  assert.deepEqual(
+    state.items.value.map((item) => item.id),
+    ['package-two']
+  )
+  assert.deepEqual(state.visibleDeliveries.value, [])
+  assert.equal(state.selected.value, null)
+  assert.equal(state.preview.value, null)
+  assert.equal(state.requestId.value, '')
+  assert.match(state.loadError.value, /不可用/)
+  let attempted = false
+  await state.action(async () => {
+    attempted = true
+  })
+  assert.equal(attempted, false)
+  missing = false
+  await state.load()
+  assert.equal(state.unavailable.value, false)
+  assert.equal(state.currentDelivery.value.id, 'package-one')
+})
+
+test('temporary delivery detail failure keeps current event drafts and preview rather than revoking access', async () => {
+  let fail = false
+  const state = fixture({
+    getDelivery: async (id) => {
+      if (fail) throw new Error('temporary detail outage')
+      return { id, project: 'project-1', reconciliation: { payload_count: 1 } }
+    }
+  })
+  state.selectedPackageId.value = 'package-one'
+  state.view.value = 'detail'
+  await state.load()
+  seedPrivateDrafts(state)
+  fail = true
+  await state.load()
+  assert.equal(state.accessLost.value, false)
+  assert.equal(state.unavailable.value, false)
+  assert.equal(state.currentDelivery.value.id, 'package-one')
+  assert.equal(state.eventForm.reason, 'private reason')
+  assert.equal(state.preview.value.preview_sha256, 'old-sha')
+  assert.equal(state.requestId.value, 'old-request-id')
+  assert.equal(state.loadError.value, 'temporary detail outage')
+})
+
+test('delivery session replacement aborts requests and ignores a transport that returns late success', async () => {
+  const pending = deferred()
+  let signal
+  const state = fixture({
+    listDeliveries: async (_id, options) => {
+      signal = options.signal
+      return pending.promise
+    }
+  })
+  seedPrivateDrafts(state)
+  const old = state.load()
+  state.changeIdentity({ id: 'account-b', role: 'user' })
+  assertProtectedDataCleared(state)
+  assert.equal(signal.aborted, true)
+  pending.resolve({ items: [{ id: 'private-a' }], metrics: { package_count: 99 } })
+  await old
+  assertProtectedDataCleared(state)
+})
+
+test('a stale delivery denial cannot clear a newer session successful retry', async () => {
+  const pending = deferred()
+  let count = 0
+  const state = fixture({
+    listDeliveries: async () =>
+      ++count === 1
+        ? pending.promise
+        : {
+            items: [{ id: 'current-b' }],
+            page: 1,
+            totalPages: 1
+          }
+  })
+  const old = state.load()
+  state.changeIdentity({ id: 'account-b', role: 'user' })
+  await state.load()
+  pending.reject({ status: 401 })
+  await old
+  assert.equal(state.accessLost.value, false)
+  assert.equal(state.loadError.value, '')
+  assert.equal(state.items.value[0].id, 'current-b')
+})
+
+test('adoption picker pages ignore superseded responses and revoke on current permission failure', async () => {
+  const first = deferred()
+  let firstSignal
+  const state = fixture({
+    listAdoptionBatches: async (_id, { page, signal }) => {
+      if (page === 1) {
+        firstSignal = signal
+        return first.promise
+      }
+      if (page === 3) throw { status: 403 }
+      return { batches: [{ id: 'page-two' }], page, totalPages: 3 }
+    }
+  })
+  const old = state.loadAdoptions(1)
+  await state.loadAdoptions(2)
+  assert.equal(firstSignal.aborted, true)
+  first.resolve({ batches: [{ id: 'stale-page-one' }], page: 1, totalPages: 3 })
+  await old
+  assert.equal(state.adoptionChoices.value[0].id, 'page-two')
+  assert.equal(state.adoptionPage.value, 2)
+  await state.loadAdoptions(3)
+  assertProtectedDataCleared(state)
+})
+
+test('a late adoption picker success cannot repopulate a revoked delivery page', async () => {
+  const pending = deferred()
+  const state = fixture({ listAdoptionBatches: () => pending.promise })
+  const old = state.loadAdoptions()
+  state.changeIdentity(null)
+  pending.resolve({ batches: [{ id: 'private-a-batch' }], page: 1, totalPages: 1 })
+  await old
+  assertProtectedDataCleared(state)
+})
+
+for (const waitingAt of ['list', 'adoption-detail']) {
+  for (const invalidation of ['401', 'identity']) {
+    test(`revoking a prepare load waiting for ${waitingAt} via ${invalidation} prevents a fresh picker request`, async () => {
+      const waiting = deferred()
+      const entered = deferred()
+      let pickerRequests = 0
+      const list = { items: [], page: 1, totalPages: 1 }
+      const adoption = { id: 'batch-one', project: 'project-1', status: 'confirmed' }
+      const state = fixture({
+        listDeliveries: async () => {
+          if (waitingAt !== 'list') return list
+          entered.resolve()
+          return waiting.promise
+        },
+        getAdoptionBatch: async () => {
+          if (waitingAt !== 'adoption-detail') return adoption
+          entered.resolve()
+          return waiting.promise
+        },
+        listAdoptionBatches: async () => {
+          pickerRequests++
+          return { batches: [{ id: 'private-old-picker-option' }], page: 1, totalPages: 1 }
+        }
+      })
+      state.view.value = 'prepare'
+      state.route.query = { view: 'prepare', adoption: 'batch-one' }
+      const old = state.load()
+      await entered.promise
+      if (invalidation === '401')
+        await state.action(async () => {
+          throw { status: 401 }
+        })
+      else state.changeIdentity({ id: 'account-b', role: 'user' })
+      assertProtectedDataCleared(state)
+      // This transport deliberately ignores AbortSignal. Its old outer load
+      // must stop before a child loader can capture a new, valid scope ticket.
+      waiting.resolve(waitingAt === 'list' ? list : adoption)
+      await old
+      assert.equal(pickerRequests, 0, 'an obsolete parent cannot start a newly owned child request')
+      assertProtectedDataCleared(state)
+    })
+  }
 }
 
 test('已处置的冲突不再宣称为待上游处理', () => {
@@ -177,14 +493,7 @@ test('刷新失败保留已加载的交付记录', async () => {
 
 test('late delivery list responses cannot replace a newer successful refresh', async () => {
   let resolveFirst
-  const bindings = {
-    ...helpers,
-    ...routeBindings(),
-    loading: { value: false },
-    loadError: { value: '' },
-    operationError: { value: '' },
-    items: { value: [] },
-    metrics: { value: null },
+  const state = fixture({
     listDeliveries: (() => {
       let calls = 0
       return () =>
@@ -194,45 +503,31 @@ test('late delivery list responses cannot replace a newer successful refresh', a
             })
           : Promise.resolve({ items: [{ id: 'new-package' }], metrics: { package_count: 1 } })
     })()
-  }
-  const load = new Function(
-    ...Object.keys(bindings),
-    `let loadGeneration = 0, disposed = false; return (async function load() {${loadBody}\n})`
-  )(...Object.values(bindings))
-  const first = load()
-  await load()
+  })
+  const first = state.load()
+  await state.load()
   resolveFirst({ items: [{ id: 'old-package' }], metrics: { package_count: 99 } })
   await first
-  assert.equal(bindings.items.value[0].id, 'new-package')
-  assert.equal(bindings.metrics.value.package_count, 1)
-  assert.equal(bindings.loading.value, false)
+  assert.equal(state.items.value[0].id, 'new-package')
+  assert.equal(state.metrics.value.package_count, 1)
+  assert.equal(state.loading.value, false)
 })
 
 test('unmount prevents old delivery data and errors from publishing', async () => {
   let rejectRequest
-  const bindings = {
-    ...helpers,
-    ...routeBindings(),
-    loading: { value: false },
-    loadError: { value: '' },
-    operationError: { value: '' },
-    items: { value: [{ id: 'preserved-package' }] },
-    metrics: { value: null },
+  const state = fixture({
     listDeliveries: () =>
       new Promise((resolve, reject) => {
         rejectRequest = reject
       })
-  }
-  const controller = new Function(
-    ...Object.keys(bindings),
-    `let loadGeneration = 0, disposed = false; return { load: async function load() {${loadBody}\n}, dispose: () => { disposed = true; ++loadGeneration } }`
-  )(...Object.values(bindings))
-  const pending = controller.load()
-  controller.dispose()
+  })
+  state.items.value = [{ id: 'preserved-package' }]
+  const pending = state.load()
+  state.unmount()
   rejectRequest(new Error('old account request failed'))
   await pending
-  assert.equal(bindings.loadError.value, '')
-  assert.equal(bindings.items.value[0].id, 'preserved-package')
+  assert.equal(state.loadError.value, '')
+  assert.equal(state.items.value[0].id, 'preserved-package')
 })
 
 test('impact selection navigates directly by ID without depending on the current list page', async () => {
@@ -243,9 +538,9 @@ test('impact selection navigates directly by ID without depending on the current
   )
   open({ id: 'off-page-package' })
   assert.deepEqual(opened, ['off-page-package'])
-  assert.match(source, /getDelivery\(selectedPackageId.value\)/)
+  assert.match(source, /getDelivery\(selectedPackageId.value, \{ signal: request.signal \}\)/)
   assert.match(source, /detail.project !== id/)
-  assert.match(source, /WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false"/)
+  assert.match(source, /<WorkspaceLeaveGuard[\s\S]*?:dirty="dirty"[\s\S]*?:preserve-query="false"/)
 })
 
 test('native retry keeps its UUID until a preview or input changes', () => {

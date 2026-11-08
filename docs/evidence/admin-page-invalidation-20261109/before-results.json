@@ -1,0 +1,20 @@
+{
+  "synthetic": true,
+  "network": "controlled SDK responses, intentionally ignores abort for stale-result cases",
+  "baseline": true,
+  "results": [
+    {
+      "kind": "adoption",
+      "status": 403,
+      "old_sensitive_content_retained": true,
+      "expected": "reproduced_defect"
+    },
+    {
+      "kind": "deliveries",
+      "status": 403,
+      "old_sensitive_content_retained": true,
+      "expected": "reproduced_defect"
+    }
+  ],
+  "console_errors": []
+}

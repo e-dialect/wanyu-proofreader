@@ -158,9 +158,9 @@ test('批次详情以 URL 和独立 ID 请求恢复，分页历史不决定当�
   const view = read('../src/views/admin/AdoptionView.vue')
   assert.match(view, /function selectBatch\(id\)[\s\S]*?navigate\(\{ batch: id/)
   assert.match(view, /getAdoptionBatch\(batchId, \{ signal \}\)/)
-  assert.match(view, /const nextId = selectedId/)
+  assert.match(view, /const nextId = currentId.value/)
   assert.match(view, /record.project !== projectId.value/)
-  assert.match(view, /WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false"/)
+  assert.match(view, /<WorkspaceLeaveGuard[\s\S]*?:dirty="dirty"[\s\S]*?:preserve-query="false"/)
 })
 
 test('路由与项目页入口都指向编选页', () => {
