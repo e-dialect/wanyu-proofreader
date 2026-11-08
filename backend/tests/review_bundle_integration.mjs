@@ -27,8 +27,8 @@ async function totals(token) {
   return counts
 }
 
-async function postZip(token, fileName, status = 200) {
-  const bytes = await readFile(join(fixtures, fileName))
+async function postZip(token, fileName, status = 200, root = fixtures) {
+  const bytes = await readFile(join(root, fileName))
   const form = new FormData()
   form.set('bundle', new Blob([bytes]), fileName)
   return api('/api/fangji/bundles/validate', { method: 'POST', token, body: form, status })
@@ -78,6 +78,15 @@ assert.equal(missing.ok, false)
 assert.equal(missing.errors[0].code, 'manifest_missing')
 assert.match(missing.errors[0].message, /缺少 manifest.json/)
 assert.match(missing.errors[0].message, /未写入任何数据/)
+// The downloadable public practice material must pass the real v0 validator.
+// Validation remains read-only and grants no source permissions or human approvals.
+const practice = await postZip(token, 'review-bundle-practice-v1.zip', 200,
+  join(dirname(fileURLToPath(import.meta.url)), '../../frontend/public/examples'))
+assert.equal(practice.ok, true)
+assert.equal(practice.schema_version, 'ReviewBundle/v0')
+assert.equal(practice.bundle_id, 'rb-wanyu-fictional-practice-v1')
+assert.equal(practice.entry_count, 3)
+assert.deepEqual(practice.errors, [])
 const after = await totals(superAuth.token)
 assert.deepEqual(after, before)
 console.log('PASS: review bundle validation reports diagnostics and does not change records')

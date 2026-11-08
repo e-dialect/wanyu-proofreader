@@ -103,15 +103,70 @@ async function main() {
       },
       { ...auth, backend: base }
     )
+    // Public practice material: actual browser download + real read-only validator.
+    // No source rights, source-check box or import confirmation is filled for it.
+    await page.goto(`${origin}/admin/guide/project-files#review-bundle-practice`)
+    const practiceSection = page.locator('#review-bundle-practice')
+    await practiceSection.getByRole('heading', { name: '管理员：完整资料包练习' }).waitFor()
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#review-bundle-practice')?.getBoundingClientRect().top <
+        window.innerHeight / 2
+    )
+    const practiceDownload = page.waitForEvent('download')
+    await practiceSection.getByRole('link', { name: '下载虚构 Review Bundle（3 条）' }).click()
+    const practicePath = path.join(out, 'downloaded-fictional-practice.zip')
+    await (await practiceDownload).saveAs(practicePath)
+    const practiceBytes = fs.readFileSync(practicePath)
+    assert.deepEqual(
+      practiceBytes,
+      fs.readFileSync(
+        path.resolve(__dirname, '../../public/examples/review-bundle-practice-v1.zip')
+      )
+    )
+    await practiceSection.screenshot({ path: path.join(out, '05-practice-guide-desktop.png') })
+    await page.setViewportSize({ width: 390, height: 844 })
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true
+    )
+    await practiceSection.evaluate((element) => {
+      window.scrollTo({ top: window.scrollY + element.getBoundingClientRect().top - 110 })
+    })
+    await page.screenshot({ path: path.join(out, '06-practice-guide-mobile.png') })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.getByLabel('账户与帮助', { exact: true }).click()
+    await page.getByRole('button', { name: '使用帮助', exact: true }).click()
+    const help = page.getByRole('dialog')
+    await help.getByRole('link', { name: '下载虚构完整练习包', exact: true }).waitFor()
+    await help.getByRole('link', { name: '查看管理员练习步骤', exact: true }).click()
+    await help.waitFor({ state: 'hidden' })
     await page.goto(
       `${origin}/admin/projects/${project.id}?section=materials&view=import&method=bundle`
     )
     const panel = page.getByRole('region', { name: '资料包导入', exact: true })
     await panel.getByRole('heading', { name: '从资料包导入条目' }).waitFor()
-    const upload = (buffer) =>
+    const upload = (buffer, name = 'synthetic-review-bundle.zip') =>
       panel
         .getByLabel('选择资料包', { exact: true })
-        .setInputFiles({ name: 'synthetic-review-bundle.zip', mimeType: 'application/zip', buffer })
+        .setInputFiles({ name, mimeType: 'application/zip', buffer })
+    await upload(practiceBytes, 'review-bundle-practice-v1.zip')
+    await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
+    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
+    await panel.getByText('资料包包含 3 条条目。', { exact: true }).waitFor()
+    await panel.getByText('practice-wanyu-reviewbundle-v1', { exact: true }).waitFor()
+    assert.equal(
+      await panel
+        .getByLabel('我已核对来源声明，确认将这些条目导入当前项目。', { exact: true })
+        .isChecked(),
+      false
+    )
+    assert.equal(
+      await panel.getByRole('button', { name: '确认导入资料包', exact: true }).isDisabled(),
+      true
+    )
+    assert.equal((await ledger()).batches.length, 0)
+    await panel.screenshot({ path: path.join(out, '07-practice-read-only-preflight.png') })
     await upload(makeZip({ ...args, invalid: true }))
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
     await panel.getByRole('heading', { name: '资料包未通过检查', exact: true }).waitFor()
@@ -281,6 +336,10 @@ async function main() {
       path.join(out, 'report.json'),
       JSON.stringify(
         {
+          practiceDownloadMatchesPublicArtifact: true,
+          practiceReadOnlyValidation: true,
+          practiceHumanConfirmationRemainsUnchecked: true,
+          practiceHelpDeepLink: true,
           readOnlyValidation: true,
           invalidBundleBlocked: true,
           unknownRightsBlocked: true,
