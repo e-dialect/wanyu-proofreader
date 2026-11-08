@@ -72,6 +72,7 @@ func main() {
 	importer.registerAdoptionEvents()
 	importer.registerBundleImports()
 	importer.registerPageContent()
+	importer.registerToneBatch()
 
 	if err := importer.registerSchemeConversion(); err != nil {
 		// 规则文件坏掉就整实例起不来（#189：非法即启动报错，不要静默半生效）。

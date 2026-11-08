@@ -17,6 +17,7 @@ COPY ocrengine/ ./ocrengine/
 COPY cmd/ocrworker/ ./cmd/ocrworker/
 COPY cmd/delivery-replay/ ./cmd/delivery-replay/
 COPY scheme/ ./scheme/
+COPY tone/ ./tone/
 COPY pb_migrations/ ./pb_migrations/
 COPY keyboards/ ./keyboards/
 # 测试的数据依赖，不是运行时代码：backend/adoption_test.go 读 assist_difficulty.js 与

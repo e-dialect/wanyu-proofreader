@@ -1,7 +1,7 @@
 const views = {
   overview: ['summary'],
   materials: ['import', 'batches'],
-  work: ['entries', 'queue', 'checks', 'normalization'],
+  work: ['entries', 'queue', 'checks', 'normalization', 'tone'],
   delivery: ['exports', 'process']
 }
 
@@ -42,7 +42,8 @@ export function projectWorkspaceSubviews(projectId, section) {
         { key: 'entries', label: '条目' },
         { key: 'queue', label: '待办队列' },
         { key: 'checks', label: '质量检查' },
-        { key: 'normalization', label: '拼音整理' }
+        { key: 'normalization', label: '拼音整理' },
+        { key: 'tone', label: '调值上标' }
       ],
       delivery: [
         { key: 'exports', label: '工作文件' },

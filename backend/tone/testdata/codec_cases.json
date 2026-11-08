@@ -1,0 +1,835 @@
+{
+  "synthetic": true,
+  "description": "Cross-language algorithm fixtures derived from existing test_tone codec examples plus conservative product guards. These are not language acceptance evidence.",
+  "superscripts": {
+    "2": "²",
+    "3": "³",
+    "1": "¹",
+    "0": "⁰",
+    "4": "⁴",
+    "5": "⁵",
+    "6": "⁶",
+    "7": "⁷",
+    "8": "⁸",
+    "9": "⁹"
+  },
+  "cases": [
+    {
+      "name": "reading 'qa533'",
+      "input": "qa533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa⁵³³",
+        "status": "EXACT",
+        "tones": [
+          "533"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa453'",
+      "input": "qa453",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa⁴⁵³",
+        "status": "EXACT",
+        "tones": [
+          "453"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'vi21'",
+      "input": "vi21",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "vi²¹",
+        "status": "EXACT",
+        "tones": [
+          "21"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'ju4'",
+      "input": "ju4",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "ju⁴",
+        "status": "EXACT",
+        "tones": [
+          "4"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa0'",
+      "input": "qa0",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa⁰",
+        "status": "EXACT",
+        "tones": [
+          "0"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa55vi21'",
+      "input": "qa55vi21",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa⁵⁵vi²¹",
+        "status": "EXACT",
+        "tones": [
+          "55",
+          "21"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'ã533'",
+      "input": "ã533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "ã⁵³³",
+        "status": "EXACT",
+        "tones": [
+          "533"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading '\\t a̤̍533\\xa0 '",
+      "input": "\t a̤̍533  ",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "\t a̤̍⁵³³  ",
+        "status": "EXACT",
+        "tones": [
+          "533"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'β533'",
+      "input": "β533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "β⁵³³",
+        "status": "EXACT",
+        "tones": [
+          "533"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'θ21'",
+      "input": "θ21",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "θ²¹",
+        "status": "EXACT",
+        "tones": [
+          "21"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'ʔ533'",
+      "input": "ʔ533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "ʔ⁵³³",
+        "status": "EXACT",
+        "tones": [
+          "533"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'ʰ533'",
+      "input": "ʰ533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "ʰ⁵³³",
+        "status": "EXACT",
+        "tones": [
+          "533"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa4213'",
+      "input": "qa4213",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa4213",
+        "status": "AMBIGUOUS",
+        "tones": [],
+        "reason": "tone_run_holds_2_contours_in_2_ways"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa533vi1234'",
+      "input": "qa533vi1234",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa533vi1234",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_run_not_a_legal_value"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa23'",
+      "input": "qa23",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa23",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_run_not_a_legal_value"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa@12345'",
+      "input": "qa@12345",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa@12345",
+        "status": "NO_TONE",
+        "tones": [],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa533@12345vi21'",
+      "input": "qa533@12345vi21",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa⁵³³@12345vi²¹",
+        "status": "EXACT",
+        "tones": [
+          "533",
+          "21"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa@ABCDEF533'",
+      "input": "qa@ABCDEF533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa@ABCDEF533",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "placeholder_out_of_spec_length"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'qa⁵³³'",
+      "input": "qa⁵³³",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa⁵³³",
+        "status": "NO_TONE",
+        "tones": [],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading ''",
+      "input": "",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "",
+        "status": "EMPTY",
+        "tones": [],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading ' \\t\\xa0 '",
+      "input": " \t  ",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": " \t  ",
+        "status": "NO_TONE",
+        "tones": [],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading '@1'",
+      "input": "@1",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "@1",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_digits_without_phonetic_context"
+      }
+    },
+    {
+      "name": "reading '@１２'",
+      "input": "@１２",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "@１２",
+        "status": "NO_TONE",
+        "tones": [],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading 'a５３'",
+      "input": "a５３",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "a５３",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "non_ascii_tone_digits"
+      }
+    },
+    {
+      "name": "reading 'a53'",
+      "input": "a53",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "a53",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_run_not_a_legal_value"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "reading '第13页 qa533'",
+      "input": "第13页 qa533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "第13页 qa533",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_digits_without_phonetic_context"
+      }
+    },
+    {
+      "name": "reading 'a533 (编号21)'",
+      "input": "a533 (编号21)",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "a533 (编号21)",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_digits_without_phonetic_context"
+      }
+    },
+    {
+      "name": "reading 'a⁵3'",
+      "input": "a⁵3",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "a⁵3",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "mixed_tone_notation"
+      }
+    },
+    {
+      "name": "reading 'a²̃3'",
+      "input": "a²̃3",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "a²̃3",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "mixed_tone_notation"
+      }
+    },
+    {
+      "name": "reading '字̃533'",
+      "input": "字̃533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "字̃533",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_digits_without_phonetic_context"
+      }
+    },
+    {
+      "name": "reading '̃533'",
+      "input": "̃533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "̃533",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_digits_without_phonetic_context"
+      }
+    },
+    {
+      "name": "xianyou collision",
+      "input": "qa4213",
+      "mode": "reading",
+      "legal_set": "xianyou",
+      "expected": {
+        "text": "qa4213",
+        "status": "AMBIGUOUS",
+        "tones": [],
+        "reason": "tone_run_holds_2_contours"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "xianyou 23",
+      "input": "qa23",
+      "mode": "reading",
+      "legal_set": "xianyou",
+      "expected": {
+        "text": "qa²³",
+        "status": "EXACT",
+        "tones": [
+          "23"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "xianyou does not have 4",
+      "input": "qa4",
+      "mode": "reading",
+      "legal_set": "xianyou",
+      "expected": {
+        "text": "qa4",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_run_not_a_legal_value"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "custom 53 reading",
+      "input": "a53",
+      "mode": "reading",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "a⁵³",
+        "status": "EXACT",
+        "tones": [
+          "53"
+        ],
+        "reason": ""
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "custom still refuses bare reading digits",
+      "input": "53",
+      "mode": "reading",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "53",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_digits_without_phonetic_context"
+      }
+    },
+    {
+      "name": "missing upper 3",
+      "input": "qa533",
+      "mode": "reading",
+      "legal_set": "putian",
+      "missing_superscripts": [
+        "3"
+      ],
+      "expected": {
+        "text": "qa533",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "superscript_untypeable:33"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "invalid custom leading zero",
+      "input": "qa01",
+      "mode": "reading",
+      "legal_set": "putian",
+      "legal": [
+        "01"
+      ],
+      "expected": {
+        "text": "qa01",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "invalid_legal_values"
+      }
+    },
+    {
+      "name": "capped segmentation",
+      "input": "a1111111",
+      "mode": "reading",
+      "legal_set": "putian",
+      "legal": [
+        "1",
+        "11"
+      ],
+      "expected": {
+        "text": "a1111111",
+        "status": "AMBIGUOUS",
+        "tones": [],
+        "reason": "tone_run_holds_4_contours_in_at_least_4_ways"
+      },
+      "legacy_parity": true
+    },
+    {
+      "name": "tone only '53'",
+      "input": "53",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "53",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_run_not_a_legal_value"
+      }
+    },
+    {
+      "name": "tone only '533'",
+      "input": "533",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "⁵³³",
+        "status": "EXACT",
+        "tones": [
+          "533"
+        ],
+        "reason": ""
+      }
+    },
+    {
+      "name": "tone only '0'",
+      "input": "0",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "⁰",
+        "status": "EXACT",
+        "tones": [
+          "0"
+        ],
+        "reason": ""
+      }
+    },
+    {
+      "name": "tone only '5 3'",
+      "input": "5 3",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "5 3",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_only_requires_single_value"
+      }
+    },
+    {
+      "name": "tone only 'a533'",
+      "input": "a533",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "a533",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_only_requires_single_value"
+      }
+    },
+    {
+      "name": "tone only '第13页'",
+      "input": "第13页",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "第13页",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_only_requires_single_value"
+      }
+    },
+    {
+      "name": "tone only '５３'",
+      "input": "５３",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "５３",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "non_ascii_tone_digits"
+      }
+    },
+    {
+      "name": "tone only '⁵3'",
+      "input": "⁵3",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "⁵3",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "mixed_tone_notation"
+      }
+    },
+    {
+      "name": "tone only '⁵³'",
+      "input": "⁵³",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "⁵³",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "tone_run_not_a_legal_value"
+      }
+    },
+    {
+      "name": "tone only ''",
+      "input": "",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": "",
+        "status": "EMPTY",
+        "tones": [],
+        "reason": ""
+      }
+    },
+    {
+      "name": "tone only ' \\t\\xa0 '",
+      "input": " \t  ",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "expected": {
+        "text": " \t  ",
+        "status": "NO_TONE",
+        "tones": [],
+        "reason": ""
+      }
+    },
+    {
+      "name": "custom bare 53",
+      "input": "53",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "⁵³",
+        "status": "EXACT",
+        "tones": [
+          "53"
+        ],
+        "reason": ""
+      }
+    },
+    {
+      "name": "custom boundary spaces",
+      "input": "\n \t53　 ",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "\n \t⁵³　 ",
+        "status": "EXACT",
+        "tones": [
+          "53"
+        ],
+        "reason": ""
+      }
+    },
+    {
+      "name": "custom existing superscript",
+      "input": " ⁵³\t",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": " ⁵³\t",
+        "status": "NO_TONE",
+        "tones": [],
+        "reason": ""
+      }
+    },
+    {
+      "name": "tone only missing upper 3",
+      "input": "533",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "missing_superscripts": [
+        "3"
+      ],
+      "expected": {
+        "text": "533",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "superscript_untypeable:33"
+      }
+    },
+    {
+      "name": "reading mixed suffix",
+      "input": "a53⁵",
+      "mode": "reading",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "a53⁵",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "mixed_tone_notation"
+      }
+    },
+    {
+      "name": "reading mixed other syllable",
+      "input": "a53 b⁵",
+      "mode": "reading",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "a53 b⁵",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "mixed_tone_notation"
+      }
+    },
+    {
+      "name": "reading raised tone plus protected register",
+      "input": "qa⁵³³@12345",
+      "mode": "reading",
+      "legal_set": "putian",
+      "expected": {
+        "text": "qa⁵³³@12345",
+        "status": "NO_TONE",
+        "tones": [],
+        "reason": ""
+      }
+    },
+    {
+      "name": "tone only mixed suffix",
+      "input": "53⁵",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "53⁵",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "mixed_tone_notation"
+      }
+    },
+    {
+      "name": "tone only mixed spaced values",
+      "input": "53 ⁵",
+      "mode": "tone_only",
+      "legal_set": "putian",
+      "legal": [
+        "53"
+      ],
+      "expected": {
+        "text": "53 ⁵",
+        "status": "UNSUPPORTED",
+        "tones": [],
+        "reason": "mixed_tone_notation"
+      }
+    }
+  ]
+}

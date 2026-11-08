@@ -115,6 +115,12 @@
         :refresh-pages="loadPages"
         @jump-entry="jumpToEntry"
       />
+      <ProjectPanels.ProjectToneBatch
+        v-if="visited.has('tone')"
+        v-show="location.section === 'work' && location.view === 'tone'"
+        :project-id="projectId"
+        :active="location.section === 'work' && location.view === 'tone'"
+      />
       <ProjectPanels.ProjectSchemePanel
         v-if="visited.has('normalization')"
         v-show="location.section === 'work' && location.view === 'normalization'"

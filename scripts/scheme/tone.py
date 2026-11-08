@@ -246,3 +246,183 @@ def _worst(first, second):
 
 def _raise(run, superscripts):
     return "".join(superscripts[digit] for digit in run)
+
+
+def validate_product_legal(values):
+    """Explicit contours: 0 or 1–6 ASCII digits 1–5, at most 64; no inference."""
+    if isinstance(values, (str, bytes)):
+        raise SchemeError("declare a collection of legal tone values")
+    values = list(values)
+    if not values or len(values) > 64:
+        raise SchemeError("declare between 1 and 64 legal tone values")
+    for value in values:
+        if (not isinstance(value, str) or not value or len(value) > 6
+                or (value != "0" and any(char not in "12345" for char in value))):
+            raise SchemeError("tone values must be 0 or one to six ASCII digits 1–5")
+    return tuple(dict.fromkeys(values))
+
+
+def _product_phonetic_letter(char):
+    if not unicodedata.category(char).startswith("L"):
+        return False
+    point = ord(char)
+    return ("LATIN" in unicodedata.name(char, "")
+            or 0x0250 <= point <= 0x02ff or 0x1d00 <= point <= 0x1dbf
+            or char in "βθχ")
+
+
+def _product_phonetic_before(value, start):
+    previous = start - 1
+    while previous >= 0 and unicodedata.category(value[previous]).startswith("M"):
+        previous -= 1
+    return previous >= 0 and _product_phonetic_letter(value[previous])
+
+
+
+def _product_mixed_notation(value, protected=()):
+    plain, raised, mark = False, False, 0
+    for at, char in enumerate(value):
+        while mark < len(protected) and protected[mark][1] <= at:
+            mark += 1
+        if mark < len(protected) and protected[mark][0] <= at < protected[mark][1]:
+            continue
+        plain = plain or char in "0123456789"
+        raised = raised or char in _SUPERSCRIPT_TO_DIGIT
+        if plain and raised:
+            return True
+    return False
+
+def convert_product_cell(value, legal, superscripts):
+    """Opt-in product guard; legacy CLI convert_cell remains unchanged.
+
+    Every decimal run outside an opaque @ placeholder must have a Latin/IPA
+    stem. Detached digits, Han descriptions and half-raised runs refuse the
+    whole cell; matching a contour alone is not enough to identify a reading.
+    """
+    try:
+        legal = validate_product_legal(legal)
+    except (SchemeError, TypeError):
+        return Conversion(text=value, status=UNSUPPORTED, tones=(), reason="invalid_legal_values")
+    if not value:
+        return Conversion(text=value, status=EMPTY, tones=(), reason="")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return Conversion(text=value, status=UNSUPPORTED, tones=(), reason="invalid_utf8")
+    protected = []
+    for mark in PLACEHOLDER.finditer(value):
+        if len(mark.group(0)) - 1 > PLACEHOLDER_MAX_HEX:
+            return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                              reason="placeholder_out_of_spec_length")
+        protected.append((mark.start(), mark.end()))
+    if _product_mixed_notation(value, protected):
+        return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                          reason="mixed_tone_notation")
+    runs, mark = [], 0
+    for match in DIGIT_RUN.finditer(value):
+        while mark < len(protected) and protected[mark][1] <= match.start():
+            mark += 1
+        if mark < len(protected) and protected[mark][0] <= match.start() < protected[mark][1]:
+            continue
+        if any(digit not in "0123456789" for digit in match.group(0)):
+            return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                              reason="non_ascii_tone_digits")
+        if not _product_phonetic_before(value, match.start()):
+            return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                              reason="tone_digits_without_phonetic_context")
+        runs.append(match)
+    trusted = {digit: char for digit, char in superscripts.items()
+               if ALL_SUPERSCRIPTS.get(digit) == char}
+    # A short run can still have exponentially many failed recursive paths when
+    # no complete segmentation exists. Bound every product run with DP; retain
+    # the legacy CLI's codec and its behavior independently.
+    known = frozenset(legal)
+    status, reason, tones, pieces, cursor = EXACT, "", [], [], 0
+    for match in runs:
+        run = match.group(0)
+        if run in known:
+            missing = sorted(digit for digit in run if digit not in trusted)
+            if missing:
+                return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                                  reason="superscript_untypeable:" + "".join(missing))
+            tones.append(run)
+            pieces.extend((value[cursor:match.start()], _raise(run, trusted)))
+            cursor = match.end()
+            continue
+        contours, ways = _product_segment_info(run, known)
+        if ways:
+            detail = "tone_run_holds_%d_contours" % contours
+            if ways > 1:
+                detail += "_in_%s%d_ways" % ("at_least_" if ways >= 4 else "", ways)
+            status, reason = _worst(status, AMBIGUOUS), detail
+        else:
+            status, reason = UNSUPPORTED, "tone_run_not_a_legal_value"
+    if status != EXACT:
+        return Conversion(text=value, status=status, tones=(), reason=reason)
+    if not tones:
+        return Conversion(text=value, status=NO_TONE, tones=(), reason="")
+    pieces.append(value[cursor:])
+    return Conversion(text="".join(pieces), status=EXACT, tones=tuple(tones), reason="")
+
+
+def _product_segment_info(run, legal):
+    """Longest-first contour count and up to four readings, without recursion."""
+    width = max(map(len, legal))
+    ways, contours = [0] * (len(run) + 1), [0] * (len(run) + 1)
+    ways[-1] = 1
+    for at in range(len(run) - 1, -1, -1):
+        for size in range(min(width, len(run) - at), 0, -1):
+            end = at + size
+            if run[at:end] not in legal or not ways[end]:
+                continue
+            if not ways[at]:
+                contours[at] = contours[end] + 1
+            ways[at] = min(4, ways[at] + ways[end])
+    return contours[0], ways[0]
+
+
+def convert_tone_only_cell(value, legal, superscripts):
+    """One declared contour without a syllable stem; preserve boundary spaces."""
+    try:
+        legal = validate_product_legal(legal)
+    except (SchemeError, TypeError):
+        return Conversion(text=value, status=UNSUPPORTED, tones=(), reason="invalid_legal_values")
+    if not value:
+        return Conversion(text=value, status=EMPTY, tones=(), reason="")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return Conversion(text=value, status=UNSUPPORTED, tones=(), reason="invalid_utf8")
+    # Go unicode.IsSpace excludes Python's extra U+001C–001F control separators.
+    is_space = lambda char: char.isspace() and char not in "\x1c\x1d\x1e\x1f"
+    start, end = 0, len(value)
+    while start < end and is_space(value[start]):
+        start += 1
+    while end > start and is_space(value[end - 1]):
+        end -= 1
+    core = value[start:end]
+    if not core:
+        return Conversion(text=value, status=NO_TONE, tones=(), reason="")
+    if _product_mixed_notation(core):
+        return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                          reason="mixed_tone_notation")
+    if not all(char in "0123456789" for char in core):
+        if all(char in _SUPERSCRIPT_TO_DIGIT for char in core):
+            status = NO_TONE if flatten(core) in legal else UNSUPPORTED
+            return Conversion(text=value, status=status, tones=(),
+                              reason="" if status == NO_TONE else "tone_run_not_a_legal_value")
+        for char in core:
+            if unicodedata.category(char) == "Nd" and char not in "0123456789":
+                return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                                  reason="non_ascii_tone_digits")
+        return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                          reason="tone_only_requires_single_value")
+    if core not in legal:
+        return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                          reason="tone_run_not_a_legal_value")
+    missing = sorted(digit for digit in core if superscripts.get(digit) != ALL_SUPERSCRIPTS[digit])
+    if missing:
+        return Conversion(text=value, status=UNSUPPORTED, tones=(),
+                          reason="superscript_untypeable:" + "".join(missing))
+    return Conversion(text=value[:start] + _raise(core, superscripts) + value[end:],
+                      status=EXACT, tones=(core,), reason="")

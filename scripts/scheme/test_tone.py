@@ -14,6 +14,8 @@ import io
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unicodedata
 import unittest
@@ -417,6 +419,119 @@ class CliTests(unittest.TestCase):
         with open(path, "rb") as handle:
             return handle.read()
 
+
+
+class ProductCodecTests(unittest.TestCase):
+    """Synthetic algorithm checks, not validation of a real dialect corpus."""
+
+    def test_go_embedded_rule_copy_is_byte_identical_to_authority(self):
+        embedded = HERE.parents[1] / "backend" / "tone" / "data" / "tone_notation.json"
+        self.assertEqual(RULES.read_bytes(), embedded.read_bytes(),
+                         "refresh the Go embedded copy when canonical rules change")
+
+    def test_shared_synthetic_golden_cases_match_both_runtimes(self):
+        fixture = HERE.parents[1] / "backend" / "tone" / "testdata" / "codec_cases.json"
+        doc = json.loads(fixture.read_text(encoding="utf-8"))
+        self.assertIs(doc["synthetic"], True)
+        self.assertEqual(tone.ALL_SUPERSCRIPTS, doc["superscripts"],
+                         "Go codepoint enumeration must match Unicode superscript digit names")
+        rules = tone.load_tone_rules(str(RULES), "puxian-dict-reading")
+        parity_cases = 0
+        for case in doc["cases"]:
+            with self.subTest(case=case["name"]):
+                column = "仙游IPA" if case["legal_set"] == "xianyou" else "拼音"
+                legal = case.get("legal", rules.legal_by_column[column])
+                values = [char for digit, char in doc["superscripts"].items()
+                          if digit not in case.get("missing_superscripts", ())]
+                superscripts = tone.load_superscript_map(values)
+                fn = (tone.convert_product_cell if case["mode"] == "reading"
+                      else tone.convert_tone_only_cell)
+                result = fn(case["input"], legal, superscripts)
+                actual = dict(result._asdict(), tones=list(result.tones))
+                self.assertEqual(case["expected"], actual)
+                if result.status != tone.EXACT:
+                    self.assertEqual(case["input"], result.text)
+                    self.assertEqual((), result.tones)
+                self.assertEqual(tone.flatten(case["input"]), tone.flatten(result.text))
+                if case.get("legacy_parity"):
+                    parity_cases += 1
+                    self.assertEqual(result, tone.convert_cell(case["input"],
+                                                              frozenset(legal), superscripts))
+        self.assertGreaterEqual(parity_cases, 20)
+
+    def test_product_guards_are_opt_in_and_do_not_rewrite_legacy_codec(self):
+        for text in ("第13页 qa533", "a533 (编号21)", "533", "a⁵3", "字̃533", "̃533"):
+            with self.subTest(text=text):
+                result = tone.convert_product_cell(text, PUTIAN, SUP)
+                self.assertEqual(tone.UNSUPPORTED, result.status)
+                self.assertEqual(text, result.text)
+        self.assertEqual("第¹³页 qa⁵³³", convert("第13页 qa533").text)
+        self.assertEqual("⁵³³", convert("533").text)
+
+    def test_mixed_notation_refuses_the_whole_cell_but_ids_are_opaque(self):
+        for text in ("a⁵3", "a53⁵", "a53 b⁵"):
+            with self.subTest(text=text):
+                result = tone.convert_product_cell(text, ["53", "3"], SUP)
+                self.assertEqual(tone.UNSUPPORTED, result.status)
+                self.assertEqual("mixed_tone_notation", result.reason)
+                self.assertEqual(text, result.text)
+                self.assertEqual((), result.tones)
+        for text in ("53⁵", "⁵3", "53 ⁵"):
+            result = tone.convert_tone_only_cell(text, ["53", "3"], SUP)
+            self.assertEqual("mixed_tone_notation", result.reason)
+            self.assertEqual(text, result.text)
+        protected = tone.convert_product_cell("qa⁵³³@12345", PUTIAN, SUP)
+        self.assertEqual(tone.NO_TONE, protected.status)
+        self.assertEqual("qa⁵³³@12345", protected.text)
+
+    def test_custom_legal_values_are_strict_and_deduplicated(self):
+        self.assertEqual(("53", "0", "533"),
+                         tone.validate_product_legal(["53", "0", "533", "53"]))
+        for invalid in ([], [""], ["01"], ["10"], ["6"], ["５３"], [" 53"],
+                        ["1.3"], ["1234512"], ["1"] * 65):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(tone.SchemeError):
+                    tone.validate_product_legal(invalid)
+
+    def test_long_damaged_product_runs_decline_without_recursion(self):
+        text = "a" + "1" * 20000
+        result = tone.convert_product_cell(text, ["1", "11"], SUP)
+        self.assertEqual(tone.AMBIGUOUS, result.status)
+        self.assertEqual(text, result.text)
+        self.assertEqual("tone_run_holds_10000_contours_in_at_least_4_ways", result.reason)
+        self.assertEqual((), result.tones)
+
+    def test_unsegmentable_product_runs_finish_and_preserve_the_whole_cell(self):
+        # The old <=128-digit path explored every failed recursive split. Keep
+        # this in a disposable child so a regression fails within a fixed bound
+        # instead of hanging the suite; this is not a throughput benchmark.
+        values = ["a" + "1" * 40 + "2", "a" + "1" * 127 + "2",
+                  "a" + "1" * 129 + "2",
+                  "\t a53 b" + "1" * 40 + "2\u00a0 "]
+        program = """
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("tone", sys.argv[1])
+tone = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tone)
+print(json.dumps([tone.convert_product_cell(value, ["1", "11", "53"],
+                                          tone.ALL_SUPERSCRIPTS)._asdict()
+                  for value in json.loads(sys.argv[2])]))
+"""
+        result = subprocess.run([sys.executable, "-c", program, str(HERE / "tone.py"),
+                                 json.dumps(values)], capture_output=True, text=True,
+                                timeout=5, check=True)
+        actuals = json.loads(result.stdout)
+        self.assertEqual(len(values), len(actuals))
+        for value, actual in zip(values, actuals):
+            with self.subTest(value=value):
+                self.assertEqual({"text": value, "status": tone.UNSUPPORTED, "tones": [],
+                                  "reason": "tone_run_not_a_legal_value"}, actual)
+
+    def test_untrusted_superscript_output_is_not_emitted(self):
+        result = tone.convert_product_cell("a533", ["533"], {"5": "X", "3": "³"})
+        self.assertEqual(tone.UNSUPPORTED, result.status)
+        self.assertEqual("a533", result.text)
+        self.assertEqual("superscript_untypeable:5", result.reason)
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,7 +58,7 @@ with harness.temporary_root() as temporary:
                     'profile': ['frontend/scripts/test-profile-session.cjs'],
                     'pagination': ['frontend/scripts/test-pagination.cjs'],
                     'unicode': ['backend/tests/rare_characters_integration.mjs', 'frontend/scripts/test-rare-workflow.cjs'],
-                    'workbench': ['frontend/tests/browser/auth-navigation.cjs', 'frontend/tests/browser/discovery.cjs', 'backend/tests/seed_demo.mjs', 'frontend/tests/browser/workbench.cjs', 'frontend/tests/browser/entry-list-experience.cjs', 'frontend/tests/browser/review-bundle.cjs', 'frontend/tests/browser/import-errors.cjs'],
+                    'workbench': ['frontend/tests/browser/auth-navigation.cjs', 'frontend/tests/browser/discovery.cjs', 'backend/tests/seed_demo.mjs', 'frontend/tests/browser/workbench.cjs', 'frontend/tests/browser/entry-list-experience.cjs', 'frontend/tests/browser/review-bundle.cjs', 'frontend/tests/browser/import-errors.cjs', 'frontend/tests/browser/tone-batch.cjs'],
                 }
                 for name, scripts in checks.items():
                     if selected and name not in selected:

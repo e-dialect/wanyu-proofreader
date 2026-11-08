@@ -599,6 +599,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           groups = {
+              'output/playwright/tone-batch': ['result.json', 'desktop-preview.png', 'mobile-preview.png'],
               'output/playwright/workbench': ['result.json', 'desktop-editor-with-shell.png', 'mobile-manager-workbench.png', 'mobile-editor-with-shell.png'],
               'output/playwright/editor-experience': ['desktop-tray.png', 'mobile-source-and-input.png', 'mobile-next-field.png', 'mobile-blocked-source.png', 'reflow-640x400.json', 'reflow-640x400-character-tray.png', 'reflow-640x400-confirmation.png'],
               'output/playwright/frontend-quality/review-bundle': ['report.json', '01-invalid-bundle.png', '02-declaration-and-confirmation.png', '03-mobile-existing-job.png'],
