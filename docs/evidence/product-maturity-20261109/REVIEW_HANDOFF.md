@@ -43,7 +43,7 @@
 | `1794204000_field_summary_judgment_index.js`、`1794204100_field_summary_projection.js` | 最新 judgment 索引、事务 trigger/backfill 读模型；对账旧 SQL 口径和全部写/撤销/删除路径，不改源正文。 |
 | `1794204200_claim_queue_indexes.js`、`1794204300_own_review_cursor_index.js`、`1794204400_claim_tier_filter_cover.js`、`1794204410_claim_active_order.js` | 领取/本人已校 cursor/档位及 active 排序索引；需 populated upgrade、结果顺序/NULL/source_empty/跨账号一致性验证。未在本锚点的后续索引不算已集成。 |
 
-上线回退应使用旧镜像与升级前**整目录**备份，不能让旧程序直接打开新 schema。迁移测试通过也不能代替真实数据量副本演练。
+新能力异常优先关闭入口并前滚修复。只有升级后没有新增写入且兼容回退已演练时，才可按停写流程恢复旧镜像与升级前**整目录**；已有新交付或回执时不得直接覆盖旧备份，必须先处理新增数据及外部记录的一致性。旧程序不能直接打开未经兼容验证的新 schema，迁移测试也不代替真实数据量副本演练。
 
 | 设置 | 当前约定 |
 | --- | --- |
@@ -62,7 +62,7 @@
 2. **作业/导入/帮助/视觉（WP03、05–06）**：observer、CSV metadata、转换 exact GET、练习文件、PDF 生命周期；不引入新框架或扫描能力承诺。账户隔离依赖第 1 组。
 3. **管理工作区与交付（WP04、07）**：深链/分页、scope cancel、Guard、picker、完整单 Bundle adapter、3000 迁移、幂等/历史兼容作为一个可运行切面；依赖第 1 组授权。
 4. **草稿退出（WP02 交互部分）**：AppShell registry、同步 flush、固定账号归属、焦点/选区恢复及强制失效 bypass；同时审查路由与第 3 组 Guard，避免两个确认框互锁。
-5. **观测与性能（WP08）**：日志白名单/脱敏、runtime-config、真实业务时点、PDF deadline、连接池、read snapshot、4000–4410 索引/投影；每项需语义对账，不以较快响应代替正确性。
+5. **观测与性能（WP08）**：日志白名单/脱敏、runtime-config、真实业务时点、PDF deadline、连接池、read snapshot、4000–4420 索引/投影；每项需语义对账，不以较快响应代替正确性。
 6. **验收/运维（WP00、09）**：同机/分机 runner、source freeze、burst、精确行摘要/审计链对账、资源恢复、故障进程清理、备份及 release receipts；测试驱动变更也需要独立评审，不能放宽阈值“修绿”。
 
 ## 后续执行顺序与命令
