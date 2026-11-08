@@ -354,7 +354,9 @@ function sessionFixture(send) {
       'loginWithPassword',
       'loginWithExternalProvider',
       'refreshStoredAuth',
-      'updateProfile'
+      'updateProfile',
+      'logoutAllDevices',
+      'changeAccountPassword'
     ],
     {
       pb: {
@@ -671,3 +673,30 @@ regression(
     assert.notEqual(context.lastSavedNote.value, context.note.value)
   }
 )
+
+regression(
+  'logout-all ends only its own local session, including uncertain network results',
+  async () => {
+    const waiting = deferred()
+    const { api, store } = sessionFixture(() => waiting.promise)
+    const pending = api.logoutAllDevices()
+    store.save('b-token', { id: 'b' })
+    waiting.resolve(null)
+    await pending
+    assert.equal(store.token, 'b-token')
+    const uncertain = sessionFixture(async () => {
+      throw new Error('network interrupted')
+    })
+    await assert.rejects(uncertain.api.logoutAllDevices(), /network interrupted/)
+    assert.equal(uncertain.store.token, '')
+  }
+)
+regression('password update cannot clear a newer tab session', async () => {
+  const waiting = deferred()
+  const { api, store } = sessionFixture(() => waiting.promise)
+  const pending = api.changeAccountPassword('old', 'new', 'new')
+  store.save('b-token', { id: 'b' })
+  waiting.resolve({ id: 'a' })
+  await assert.rejects(pending, { name: 'AbortError' })
+  assert.equal(store.token, 'b-token')
+})
