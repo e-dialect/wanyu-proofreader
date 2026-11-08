@@ -301,7 +301,7 @@ const queueCTE = `WITH accessible AS (
   AND (SELECT COUNT(*) FROM proofreading_attempts a WHERE a.page=p.id AND a.round=COALESCE(NULLIF(p.proofread_round,0),1) AND a.kind='proofread') < MAX(2,pr.required_proofreads) AS claimable
  FROM accessible pr JOIN pages p ON p.project=pr.id AND p.status!='importing'
  LEFT JOIN task_leases l ON l.page=p.id
-), queues AS (
+), queues AS MATERIALIZED (
  SELECT pr.id,pr.name,pr.description,COUNT(c.id) AS total,
  COALESCE(SUM(c.status='approved'),0) AS completed,COALESCE(SUM(c.active_mine),0) AS active_mine,
  COALESCE(SUM(c.claimable),0) AS claimable,
@@ -323,6 +323,38 @@ func queuePage(key string) any {
 	number, _ := strconv.Atoi(key[:20])
 	pdf, _ := strconv.Atoi(key[20:40])
 	return map[string]any{"id": key[40:], "page_number": number, "pdf_page": pdf}
+}
+
+// queuePageSQL aggregates the authorized page metadata once, then derives the
+// global counters, filtered count and bounded page from the same small queue
+// relation. LEFT JOIN retains the counters even when the selected page is empty.
+func queuePageSQL(predicate string) string {
+	return queueCTE + `, filtered_queues AS (
+ SELECT * FROM queues WHERE ` + predicate + `
+), queue_summary AS (
+ SELECT (SELECT COUNT(*) FROM filtered_queues) AS filtered,
+ COALESCE(SUM(active_mine>0),0) AS summary_active,
+ COALESCE(SUM(claimable>0),0) AS summary_available,
+ COALESCE(SUM(completed),0) AS summary_completed,
+ COALESCE(SUM(total),0) AS summary_items FROM queues
+), queue_bounds AS (
+ SELECT *,MAX(1,(filtered+{:size}-1)/{:size}) AS total_pages,
+ MIN({:page},MAX(1,(filtered+{:size}-1)/{:size})) AS actual_page FROM queue_summary
+), paged_queues AS (
+ SELECT * FROM filtered_queues
+ ORDER BY active_mine DESC,claimable DESC,name COLLATE NOCASE,id
+ LIMIT {:size} OFFSET (SELECT (actual_page-1)*{:size} FROM queue_bounds)
+)
+SELECT b.*,COALESCE(p.id,'') AS id,COALESCE(p.name,'') AS name,
+ COALESCE(p.description,'') AS description,COALESCE(p.total,0) AS total,
+ COALESCE(p.completed,0) AS completed,COALESCE(p.active_mine,0) AS active_mine,
+ COALESCE(p.claimable,0) AS claimable,COALESCE(p.tier_a,0) AS tier_a,
+ COALESCE(p.tier_b,0) AS tier_b,COALESCE(p.tier_c,0) AS tier_c,
+ COALESCE(p.tier_other,0) AS tier_other,COALESCE(p.tier_unlabeled,0) AS tier_unlabeled,
+ COALESCE(p.missing_glyph,0) AS missing_glyph,
+ COALESCE(p.active_key,'') AS active_key,COALESCE(p.next_key,'') AS next_key
+FROM queue_bounds b LEFT JOIN paged_queues p ON 1=1
+ORDER BY p.active_mine DESC,p.claimable DESC,p.name COLLATE NOCASE,p.id`
 }
 
 func (s *importService) proofreadingQueues(e *core.RequestEvent) error {
@@ -361,48 +393,46 @@ func (s *importService) proofreadingQueues(e *core.RequestEvent) error {
 	}
 	var result map[string]any
 	err := withReadSnapshot(e.Request.Context(), s.app, func(tx *dbx.Tx) error {
-		summary := struct {
-			Total     int `db:"total"`
-			Filtered  int `db:"filtered"`
-			Active    int `db:"active"`
-			Available int `db:"available"`
-			Completed int `db:"completed"`
-			Items     int `db:"items"`
-		}{}
-		// Compute the filtered count and the unfiltered authorized summary in
-		// the same aggregation. Filtering a tab/project must not change the
-		// dashboard counters, and pagination must apply after filtering.
-		summarySQL := queueCTE + `SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN ` + predicate + ` THEN 1 ELSE 0 END),0) AS filtered,
-		 COALESCE(SUM(active_mine>0),0) AS active,COALESCE(SUM(claimable>0),0) AS available,
-		 COALESCE(SUM(completed),0) AS completed,COALESCE(SUM(total),0) AS items FROM queues`
-		if err := tx.NewQuery(summarySQL).WithContext(e.Request.Context()).Bind(params).One(&summary); err != nil {
-			return err
-		}
-		totalPages := max(1, (summary.Filtered+size-1)/size)
-		page = min(page, totalPages)
 		rows := []struct {
-			ID           string `db:"id"`
-			Name         string `db:"name"`
-			Description  string `db:"description"`
-			Total        int    `db:"total"`
-			Completed    int    `db:"completed"`
-			Active       int    `db:"active_mine"`
-			Claimable    int    `db:"claimable"`
-			TierA        int    `db:"tier_a"`
-			TierB        int    `db:"tier_b"`
-			TierC        int    `db:"tier_c"`
-			TierOther    int    `db:"tier_other"`
-			TierBlank    int    `db:"tier_unlabeled"`
-			MissingGlyph int    `db:"missing_glyph"`
-			ActiveKey    string `db:"active_key"`
-			NextKey      string `db:"next_key"`
+			Filtered         int    `db:"filtered"`
+			TotalPages       int    `db:"total_pages"`
+			Page             int    `db:"actual_page"`
+			SummaryActive    int    `db:"summary_active"`
+			SummaryAvailable int    `db:"summary_available"`
+			SummaryCompleted int    `db:"summary_completed"`
+			SummaryItems     int    `db:"summary_items"`
+			ID               string `db:"id"`
+			Name             string `db:"name"`
+			Description      string `db:"description"`
+			Total            int    `db:"total"`
+			Completed        int    `db:"completed"`
+			Active           int    `db:"active_mine"`
+			Claimable        int    `db:"claimable"`
+			TierA            int    `db:"tier_a"`
+			TierB            int    `db:"tier_b"`
+			TierC            int    `db:"tier_c"`
+			TierOther        int    `db:"tier_other"`
+			TierBlank        int    `db:"tier_unlabeled"`
+			MissingGlyph     int    `db:"missing_glyph"`
+			ActiveKey        string `db:"active_key"`
+			NextKey          string `db:"next_key"`
 		}{}
-		sql := queueCTE + fmt.Sprintf("SELECT * FROM queues WHERE %s ORDER BY active_mine DESC,claimable DESC,name COLLATE NOCASE,id LIMIT %d OFFSET %d", predicate, size, (page-1)*size)
-		if err := tx.NewQuery(sql).WithContext(e.Request.Context()).Bind(params).All(&rows); err != nil {
+		params["page"], params["size"] = page, size
+		if err := tx.NewQuery(queuePageSQL(predicate)).WithContext(e.Request.Context()).Bind(params).All(&rows); err != nil {
 			return err
 		}
+		// The aggregate always returns one summary row, including for an empty
+		// authorization scope or filter. No project is synthesized from that row.
+		if len(rows) == 0 {
+			return fmt.Errorf("queue aggregation returned no summary")
+		}
+		summary := rows[0]
+
 		items := []map[string]any{}
 		for _, row := range rows {
+			if row.ID == "" {
+				continue
+			}
 			items = append(items, map[string]any{
 				"project":    map[string]any{"id": row.ID, "name": row.Name, "description": row.Description},
 				"total":      row.Total,
@@ -419,7 +449,7 @@ func (s *importService) proofreadingQueues(e *core.RequestEvent) error {
 				"nextPage":     queuePage(row.NextKey),
 			})
 		}
-		result = map[string]any{"items": items, "page": page, "perPage": size, "totalItems": summary.Filtered, "totalPages": totalPages, "summary": map[string]int{"activeProjects": summary.Active, "availableProjects": summary.Available, "completedItems": summary.Completed, "totalItems": summary.Items}}
+		result = map[string]any{"items": items, "page": summary.Page, "perPage": size, "totalItems": summary.Filtered, "totalPages": summary.TotalPages, "summary": map[string]int{"activeProjects": summary.SummaryActive, "availableProjects": summary.SummaryAvailable, "completedItems": summary.SummaryCompleted, "totalItems": summary.SummaryItems}}
 		return nil
 	})
 	if err != nil {

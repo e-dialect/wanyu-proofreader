@@ -60,6 +60,10 @@ func TestPaginationAndQueueIsolation(t *testing.T) {
 	}
 	service := newImportService(app)
 	service.registerPagination()
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		e.Router.GET("/legacy-proofreading-queues", service.legacyProofreadingQueues).Bind(apis.RequireAuth("users"))
+		return e.Next()
+	})
 	router, err := apis.NewRouter(app)
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +88,19 @@ func TestPaginationAndQueueIsolation(t *testing.T) {
 		result := map[string]any{}
 		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
+		}
+		if strings.HasPrefix(path, "/api/fangji/proofreading-queues") {
+			oldRequest := httptest.NewRequest(http.MethodGet, strings.Replace(path, "/api/fangji/proofreading-queues", "/legacy-proofreading-queues", 1), nil)
+			oldRequest.Header = req.Header.Clone()
+			oldResponse := httptest.NewRecorder()
+			mux.ServeHTTP(oldResponse, oldRequest)
+			var oldResult map[string]any
+			if err := json.Unmarshal(oldResponse.Body.Bytes(), &oldResult); err != nil {
+				t.Fatal(err)
+			}
+			if oldResponse.Code != rec.Code || !reflect.DeepEqual(oldResult, result) {
+				t.Fatalf("queue fields changed: got %s; old %s", rec.Body.String(), oldResponse.Body.String())
+			}
 		}
 		return result
 	}
@@ -564,6 +581,19 @@ func BenchmarkQueueAggregation(b *testing.B) {
 				if count != 10000 {
 					b.Fatal(count)
 				}
+			}
+		}
+	})
+	b.Run("single_statement_summary_and_page", func(b *testing.B) {
+		b.ReportAllocs()
+		params["page"], params["size"] = 1, 12
+		for n := 0; n < b.N; n++ {
+			var rows []dbx.NullStringMap
+			if err := app.DB().NewQuery(queuePageSQL("1=1")).Bind(params).All(&rows); err != nil {
+				b.Fatal(err)
+			}
+			if len(rows) != 1 || rows[0]["summary_items"].String != "10000" || rows[0]["claimable"].String != "10000" {
+				b.Fatal("summary/list aggregation disagrees", rows)
 			}
 		}
 	})
