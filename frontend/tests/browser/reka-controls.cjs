@@ -53,11 +53,53 @@ const output = path.resolve(__dirname, '../../../output/playwright/reka-controls
       () => document.activeElement?.getAttribute('aria-label') === '第 3 条的更多操作'
     )
     assert.equal(await trigger.evaluate((element) => element === document.activeElement), true)
-    await page.getByRole('button', { name: '保存', exact: true }).click()
+    const save = page.getByRole('button', { name: '保存', exact: true })
+    const idleSave = await save.boundingBox()
+    await save.click()
     assert.equal(await page.getByRole('button', { name: '保存', exact: true }).isDisabled(), true)
+    assert.deepEqual(await save.boundingBox(), idleSave, 'Default busy indicator adds no width')
+    assert.equal(await save.getAttribute('aria-busy'), 'true')
     assert.equal(await page.getByLabel('保存请求次数').innerText(), '1')
+    const busyGeometry = []
     for (const width of [1280, 390, 320]) {
       await page.setViewportSize({ width, height: 844 })
+      await page.getByRole('button', { name: '结束保存', exact: true }).click()
+      const saveNormal = await save.boundingBox()
+      await save.click()
+      assert.deepEqual(await save.boundingBox(), saveNormal)
+      const stable = page.getByRole('button', { name: '提交', exact: true })
+      const next = page.getByRole('button', { name: '后续操作', exact: true })
+      const idle = await stable.boundingBox()
+      const neighbor = await next.boundingBox()
+      await stable.click()
+      const waiting = page.getByRole('button', { name: '正在提交到服务端…', exact: true })
+      await waiting.waitFor()
+      assert.equal(await waiting.getAttribute('data-operation'), 'geometry')
+      assert.equal(await waiting.getAttribute('type'), 'button')
+      assert.equal(await waiting.isDisabled(), true)
+      assert.deepEqual(
+        await waiting.boundingBox(),
+        idle,
+        'Declared busy text reserves its natural size'
+      )
+      assert.deepEqual(
+        await next.boundingBox(),
+        neighbor,
+        'Busy actions do not shift their neighbors'
+      )
+      assert.ok(
+        saveNormal.width < idle.width,
+        'Short default buttons do not inherit reserved long labels'
+      )
+      await page.getByRole('button', { name: '结束提交', exact: true }).click()
+      await page.getByRole('button', { name: '聚焦提交按钮', exact: true }).click()
+      assert.equal(await stable.evaluate((element) => element === document.activeElement), true)
+      busyGeometry.push({
+        width,
+        saveWidth: saveNormal.width,
+        labelledWidth: idle.width,
+        stable: true
+      })
       await select.click()
       const bounds = await page.getByRole('listbox').boundingBox()
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1)
@@ -96,6 +138,7 @@ const output = path.resolve(__dirname, '../../../output/playwright/reka-controls
           reorderedOptionsKeepIdentity: true,
           widths: [1280, 390, 320],
           reducedMotion: true,
+          busyGeometry,
           pageErrors: errors
         },
         null,

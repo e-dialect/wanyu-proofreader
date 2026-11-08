@@ -3,11 +3,15 @@
     <header class="page-heading">
       <div>
         <h1>项目管理</h1>
-        <p>查看项目进展，优先处理待仲裁条目。</p>
       </div>
       <div class="page-heading-actions">
-        <AppButton variant="ghost" :loading="loading" @click="loadDashboard()">
-          <AppIcon name="refresh" />{{ loading ? '正在刷新' : '刷新' }}
+        <AppButton
+          variant="ghost"
+          :loading="loading"
+          loading-label="正在刷新"
+          @click="loadDashboard()"
+        >
+          <AppIcon name="refresh" />刷新
         </AppButton>
         <RouterLink v-if="auth.canCreateProjects" to="/admin/projects/new" class="btn btn-primary"
           ><AppIcon name="plus" />创建项目</RouterLink
@@ -28,7 +32,7 @@
     </AppStatusPanel>
 
     <dl
-      class="catalog-summary catalog-summary--four"
+      class="catalog-summary catalog-summary--four admin-summary"
       aria-label="项目总体状态"
       :aria-busy="loading"
     >
@@ -64,7 +68,6 @@
       <div class="section-heading">
         <div>
           <h2 id="admin-project-list-title">项目进展</h2>
-          <p>总体统计覆盖全部项目；搜索与快捷筛选只改变下方列表。</p>
         </div>
         <span v-if="loading && hasResult" class="admin-updating" role="status">正在更新…</span>
         <span v-else-if="hasResult" class="section-count">{{ pagination.totalItems }} 个项目</span>
@@ -72,7 +75,7 @@
 
       <div class="admin-list-filters admin-insights-controls">
         <label class="admin-filter-field" for="admin-project-search">
-          <span>搜索项目名或简介</span>
+          <span class="sr-only">搜索项目名或简介</span>
           <input
             id="admin-project-search"
             v-model="searchQuery"
@@ -135,28 +138,24 @@
           <tr>
             <th>项目</th>
             <th>完成进度</th>
-            <th>待仲裁</th>
-            <th>创建时间</th>
+            <th>待办</th>
             <th>操作</th>
           </tr>
         </template>
         <tr
           v-for="item in projectInsights"
           :key="item.project.id"
+          :data-project-id="item.project.id"
           :class="{ 'admin-project-row--urgent': item.summary.arbitration > 0 }"
         >
-          <td>
+          <td class="admin-project-identity">
             <div class="admin-project-name">
               <RouterLink :to="`/admin/projects/${item.project.id}`" class="project-name-link">
                 {{ item.project.name }}
               </RouterLink>
-              <span v-if="item.summary.arbitration" class="badge badge-arbitration">待仲裁</span>
             </div>
-            <p>{{ item.project.description || '暂无项目简介' }}</p>
-            <details class="project-status-details">
-              <summary>
-                状态明细 <span>{{ item.summary.total }} 条</span>
-              </summary>
+            <p v-if="item.project.description">{{ item.project.description }}</p>
+            <AppDisclosure class="project-status-details" label="状态与创建信息">
               <dl class="project-pipeline">
                 <div>
                   <dt>待开始</dt>
@@ -175,7 +174,8 @@
                   <dd>{{ item.summary.approved }}</dd>
                 </div>
               </dl>
-            </details>
+              <p class="project-created">创建于 {{ formatDate(item.project.created) }}</p>
+            </AppDisclosure>
           </td>
           <td class="project-progress-cell">
             <div
@@ -189,12 +189,11 @@
               <div class="progress-bar" :style="{ width: item.summary.completionPct + '%' }"></div>
             </div>
             <span
-              >{{ item.summary.completionPct }}% · {{ item.summary.approved }}/{{
-                item.summary.total
-              }}</span
+              >{{ item.summary.approved }} / {{ item.summary.total }} 条已完成 ·
+              {{ item.summary.completionPct }}%</span
             >
           </td>
-          <td>
+          <td class="admin-project-attention">
             <RouterLink
               v-if="item.summary.arbitration"
               :to="`/admin/projects/${item.project.id}?status=${PAGE_STATUS.ARBITRATION}`"
@@ -202,10 +201,9 @@
             >
               {{ item.summary.arbitration }} 条待仲裁
             </RouterLink>
-            <span v-else class="attention-clear">无异常</span>
+            <span v-else class="attention-clear">暂无待仲裁</span>
           </td>
-          <td class="text-sm text-muted">{{ formatDate(item.project.created) }}</td>
-          <td>
+          <td class="admin-project-action-cell">
             <div class="admin-project-actions">
               <RouterLink
                 :to="
@@ -247,6 +245,7 @@ import AppDataTable from '@/components/AppDataTable.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppDropdown from '@/components/AppDropdown.vue'
+import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import '@/styles/work-catalog.css'
 import { useAsyncResource } from '@/composables/useAsyncResource'
@@ -411,3 +410,178 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleDateString('zh-CN') : '—'
 }
 </script>
+
+<style scoped>
+.admin-catalog .admin-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-5);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+.admin-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+.admin-catalog .admin-summary dt,
+.admin-catalog .admin-summary dd,
+.admin-catalog .admin-summary small {
+  margin: 0;
+}
+.admin-catalog .admin-summary dd {
+  font-size: var(--text-md);
+}
+.admin-project-identity {
+  width: 44%;
+}
+.admin-catalog :deep(.admin-project-table) {
+  width: 100%;
+}
+.admin-catalog :deep(.admin-project-table td) {
+  vertical-align: top;
+}
+.admin-project-attention {
+  white-space: nowrap;
+}
+.admin-project-action-cell {
+  width: 170px;
+}
+.admin-catalog .project-status-details :deep(.app-disclosure__trigger) {
+  min-height: var(--control-height-sm);
+  align-content: center;
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+.admin-catalog .project-status-details .project-created {
+  white-space: normal;
+  margin-top: var(--space-2);
+}
+@media (max-width: 640px) {
+  .admin-catalog .page-heading {
+    margin-bottom: var(--space-3);
+  }
+  .admin-catalog .project-hub-tabs {
+    margin-bottom: var(--space-3);
+  }
+  .admin-catalog .admin-summary {
+    gap: var(--space-1) var(--space-3);
+    margin-bottom: var(--space-3);
+    padding-bottom: var(--space-3);
+  }
+  .admin-catalog .admin-summary dt,
+  .admin-catalog .admin-summary dd,
+  .admin-catalog .admin-summary dd span {
+    font-size: var(--text-sm);
+  }
+  .admin-catalog .admin-summary > div {
+    gap: var(--space-1);
+  }
+  .admin-catalog .section-heading {
+    margin-bottom: var(--space-3);
+  }
+  .admin-catalog .admin-insights-controls {
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+  .admin-catalog .admin-filter-field {
+    min-width: 0;
+  }
+  .admin-catalog :deep(.table-wrapper) {
+    overflow: visible;
+    border: 0;
+    border-radius: var(--radius-none);
+  }
+  .admin-catalog :deep(.admin-project-table),
+  .admin-catalog :deep(.admin-project-table tbody) {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .admin-catalog :deep(.admin-project-table) {
+    border-radius: var(--radius-panel);
+  }
+  .admin-catalog :deep(.admin-project-table thead) {
+    display: none;
+  }
+  .admin-catalog :deep(.admin-project-table tr) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'identity identity' 'progress progress' 'attention actions';
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-4) var(--space-3);
+    border-bottom: 1px solid var(--line);
+  }
+  .admin-catalog :deep(.admin-project-table tr:last-child) {
+    border-bottom: 0;
+  }
+  .admin-catalog :deep(.admin-project-table td) {
+    display: block;
+    min-width: 0;
+    width: auto;
+    padding: 0;
+    border: 0;
+  }
+  .admin-project-identity {
+    grid-area: identity;
+  }
+  .admin-catalog .admin-project-name {
+    display: block;
+  }
+  .admin-catalog .project-name-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height-touch);
+    font-size: var(--text-lg);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+  .admin-catalog :deep(.admin-project-table td:first-child p) {
+    max-width: none;
+  }
+  .admin-catalog :deep(.admin-project-table td.project-progress-cell) {
+    grid-area: progress;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .project-progress-cell .progress {
+    width: 72px;
+    margin: 0;
+  }
+  .admin-project-attention {
+    grid-area: attention;
+    align-self: center;
+  }
+  .admin-catalog .attention-count {
+    padding: 0;
+    background: transparent;
+    min-height: var(--control-height-touch);
+    align-items: center;
+    font-size: var(--text-sm);
+  }
+  .admin-project-action-cell {
+    grid-area: actions;
+  }
+  .admin-project-actions {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .admin-catalog .project-status-details {
+    margin-top: 0;
+  }
+  .admin-catalog .project-status-details :deep(.app-disclosure__trigger) {
+    min-height: var(--control-height-touch);
+  }
+  .admin-catalog .project-pipeline {
+    min-width: 0;
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+</style>

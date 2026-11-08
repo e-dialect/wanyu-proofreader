@@ -42,18 +42,23 @@ async function main() {
           .waitFor()
         if (admin) {
           await page.getByRole('button', { name: '全部字段 3', exact: true }).click()
-          if (mobile)
-            await page
-              .getByRole('navigation', { name: '字段导航' })
-              .getByRole('combobox')
-              .selectOption('1')
-          assert.equal(
-            await page
-              .getByRole('button', { name: '检查并完成仲裁', exact: true })
-              .first()
-              .isDisabled(),
-            true
-          )
+          if (mobile) {
+            const navigation = page.getByRole('navigation', { name: '字段导航' })
+            await navigation.getByRole('combobox').selectOption('1')
+            await navigation.getByRole('button', { name: '总览/提交', exact: true }).click()
+            assert.equal(
+              await navigation
+                .getByRole('button', { name: '检查并仲裁', exact: true })
+                .isDisabled(),
+              true
+            )
+            await navigation.getByRole('button', { name: '返回编辑', exact: true }).click()
+          } else {
+            assert.equal(
+              await page.getByRole('button', { name: '检查并完成仲裁', exact: true }).isDisabled(),
+              true
+            )
+          }
           await page
             .locator('.arbitration-field')
             .filter({ has: page.getByRole('heading', { name: '读音', exact: true }) })
@@ -70,7 +75,7 @@ async function main() {
               .getByRole('navigation', { name: '字段导航' })
               .getByRole('button', { name: admin ? '检查并仲裁' : '检查并提交', exact: true })
           : page.getByRole('button', { name: admin ? '检查并完成仲裁' : '检查并提交', exact: true })
-        // Exercise both desktop arbitration entry points and the mobile entry point.
+        // Exercise the single desktop action and the mobile overview action.
         for (let index = 0; index < (await triggers.count()); index += 1) {
           const trigger = triggers.nth(index)
           await trigger.focus()

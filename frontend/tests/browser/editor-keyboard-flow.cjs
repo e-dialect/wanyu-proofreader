@@ -100,7 +100,7 @@ async function main() {
           await page.keyboard.press('Enter')
         }
       }
-      const help = page.getByText('字符用法与读音说明', { exact: true })
+      const help = page.getByRole('button', { name: '字符用法与读音说明', exact: true })
       await help.focus()
       await page.keyboard.press('Enter')
       await page.locator('.keyboard-guide-entry').first().waitFor()
@@ -249,6 +249,18 @@ async function main() {
       document.querySelector('.editor-shortcuts')?.textContent.includes('Alt+→ 下一条')
     )
     assert.doesNotMatch(await page.locator('.editor-shortcuts').innerText(), /Ctrl|Alt\+←/)
+    await page.getByRole('button', { name: '查看任务状态详情', exact: true }).click()
+    const statusUrl = page.url()
+    await page.keyboard.press('Alt+ArrowRight')
+    assert.equal(
+      page.url(),
+      statusUrl,
+      'an available neighbor does not navigate behind status details'
+    )
+    assert.equal(await page.getByRole('dialog').count(), 1)
+    assert.match(await page.locator('#task-panel-title').innerText(), /1/)
+    assert.deepEqual(writes, [], 'status details do not write or navigate a read-only task')
+    await page.keyboard.press('Escape')
     await page.locator('.proofread-textarea').first().focus()
     await page.keyboard.press('Alt+ArrowRight')
     await page.waitForFunction(() =>

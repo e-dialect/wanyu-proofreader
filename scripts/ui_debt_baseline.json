@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "captured_from": "feat/workbench-experience (2026-11-07)",
-  "reason": "All literal inline styles use named CSS; eight runtime dimensions/progress styles remain after removing the decorative dashboard progress ring. Native tables exist only in AppDataTable. Every category is a failing ratchet and limits only decrease.",
+  "captured_from": "feat/ui-refinement-20261108 (2026-11-08)",
+  "reason": "All literal inline styles use named CSS; seven runtime dimensions/progress styles remain after removing the hidden arbitration progress bar. Native tables exist only in AppDataTable. Every category is a failing ratchet and limits only decrease.",
   "kinds": {
     "hardcoded_colors": {
       "limit": 0,
@@ -16,7 +16,7 @@
       "mode": "fail"
     },
     "inline_styles": {
-      "limit": 8,
+      "limit": 7,
       "mode": "fail"
     },
     "bare_tables": {

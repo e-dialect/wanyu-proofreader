@@ -1,0 +1,35 @@
+{
+  "emptyStringRoundTrip": true,
+  "numericValuePreserved": true,
+  "menuDialogFocusReturn": true,
+  "disabledAndBusyProtected": true,
+  "asyncDisableClosesList": true,
+  "reorderedOptionsKeepIdentity": true,
+  "widths": [
+    1280,
+    390,
+    320
+  ],
+  "reducedMotion": true,
+  "busyGeometry": [
+    {
+      "width": 1280,
+      "saveWidth": 66.5,
+      "labelledWidth": 180.9375,
+      "stable": true
+    },
+    {
+      "width": 390,
+      "saveWidth": 66.5,
+      "labelledWidth": 180.9375,
+      "stable": true
+    },
+    {
+      "width": 320,
+      "saveWidth": 66.5,
+      "labelledWidth": 180.9375,
+      "stable": true
+    }
+  ],
+  "pageErrors": []
+}

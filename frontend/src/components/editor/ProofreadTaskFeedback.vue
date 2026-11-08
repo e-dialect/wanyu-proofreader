@@ -1,8 +1,12 @@
 <template>
-  <details v-if="saved && !claimNextFailure" class="editor-result-note" role="note">
-    <summary>最近一次操作结果</summary>
+  <AppDisclosure
+    v-if="saved && !claimNextFailure"
+    class="editor-result-note"
+    role="note"
+    label="最近一次操作结果"
+  >
     <p>{{ saved }}</p>
-  </details>
+  </AppDisclosure>
   <div v-if="claimNextFailure" class="editor-recovery-note" role="alert">
     <p>{{ claimNextFailureNotice }}</p>
     <div class="claim-next-actions">
@@ -23,8 +27,12 @@
     <p class="text-sm text-muted">输入仍在本页，请核对原因后按原操作重试。</p>
   </div>
 
-  <details v-if="staleLocalDrafts.length" class="alert" role="note">
-    <summary>本人旧版／失配本机草稿（{{ staleLocalDrafts.length }}）</summary>
+  <AppDisclosure
+    v-if="staleLocalDrafts.length"
+    class="alert"
+    role="note"
+    :label="`本人旧版／失配本机草稿（${staleLocalDrafts.length}）`"
+  >
     <p>旧值未自动套用到新来源；请逐字段重新核对。</p>
     <dl v-for="(draft, index) in staleLocalDrafts" :key="index">
       <template v-for="(value, field) in draft.row" :key="field"
@@ -32,12 +40,13 @@
         <dd><AppFieldValue :value="value" :font-notice="false" /></dd
       ></template>
     </dl>
-  </details>
+  </AppDisclosure>
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppDisclosure from '@/components/AppDisclosure.vue'
 defineProps({
   saved: String,
   claimNextFailure: Boolean,
@@ -69,8 +78,5 @@ const emit = defineEmits(['retry-claim', 'reclaim'])
   margin-bottom: var(--space-3);
   color: var(--ink-muted);
   font-size: var(--text-sm);
-}
-.editor-result-note summary {
-  cursor: pointer;
 }
 </style>

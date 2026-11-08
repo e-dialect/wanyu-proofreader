@@ -35,6 +35,25 @@ async function logout(page) {
 async function noOverflow(page) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
 }
+async function primaryWorkFits(page, mobile = false) {
+  const section = page.getByRole('region', { name: '当前工作', exact: true })
+  const action = section.locator('.btn-primary')
+  await action.first().waitFor()
+  assert.equal(await action.count(), 1, 'Current work exposes one primary action')
+  const copy = await section.locator('.workbench-start__copy').boundingBox()
+  const button = await action.boundingBox()
+  const bounds = await section.boundingBox()
+  assert.ok(bounds.height <= (mobile ? 240 : 160), 'Current work is a compact group')
+  if (mobile) {
+    assert.ok(button.y >= copy.y + copy.height - 1)
+    assert.ok(button.y + button.height <= bounds.y + bounds.height)
+  } else {
+    assert.ok(button.x >= copy.x + copy.width + 12)
+    assert.ok(button.x <= copy.x + copy.width + 33, 'The action stays beside its task context')
+    assert.ok(button.y < copy.y + copy.height && button.y + button.height > copy.y)
+  }
+  await noOverflow(page)
+}
 async function catalogFits(page) {
   await page.locator('.work-catalog').waitFor()
   const bounds = await page.locator('.work-catalog').boundingBox()
@@ -97,8 +116,35 @@ async function catalogFits(page) {
     })
     page.on('dialog', (dialog) => dialog.accept())
     await login(page, readerEmail)
+    await page.getByRole('button', { name: '开始校对', exact: true }).waitFor()
+    await primaryWorkFits(page)
+    const claimAction = page.getByRole('button', { name: '开始校对', exact: true })
+    const idleAction = await claimAction.boundingBox()
+    let finishClaim, claimStarted
+    const claimGate = new Promise((resolve) => {
+      finishClaim = resolve
+    })
+    const claimRequested = new Promise((resolve) => {
+      claimStarted = resolve
+    })
+    const claimRequest = `**/api/fangji/projects/${project.id}/claim`
+    await page.route(claimRequest, async (route) => {
+      claimStarted()
+      await claimGate
+      await route.continue()
+    })
     await page.getByRole('button', { name: '开始校对', exact: true }).click()
+    await claimRequested
+    const busyAction = page.getByRole('button', { name: '正在打开…', exact: true })
+    await busyAction.waitFor()
+    assert.equal(await busyAction.isDisabled(), true)
+    assert.equal(await busyAction.getAttribute('aria-busy'), 'true')
+    const openingAction = await busyAction.boundingBox()
+    assert.deepEqual(openingAction, idleAction, 'Claiming keeps the primary action geometry stable')
+    await page.screenshot({ path: path.join(output, 'desktop-current-work-opening.png') })
+    finishClaim()
     await page.waitForURL('**/tasks/*/edit')
+    await page.unroute(claimRequest)
     await page.locator('.proofread-textarea').first().waitFor()
     assert.equal(await page.locator('.app-sidebar').count(), 0)
     const shell = await page.locator('.shell-header').boundingBox()
@@ -170,6 +216,7 @@ async function catalogFits(page) {
     await page.unroute(reviewUrl)
     await page.goto(base + '/workspace')
     await page.getByRole('link', { name: '继续校对', exact: true }).waitFor()
+    await primaryWorkFits(page)
     await page.screenshot({ path: path.join(output, 'desktop-reader-workbench.png') })
     assert.equal(
       await page.getByRole('link', { name: '继续校对', exact: true }).count(),
@@ -203,6 +250,7 @@ async function catalogFits(page) {
     await logout(page)
     await login(page, `demo-manager-${suffix}@example.com`)
     await page.getByRole('heading', { name: '项目进展', exact: true }).waitFor()
+    await primaryWorkFits(page)
     assert.equal(await page.getByRole('heading', { name: '我的校对', exact: true }).count(), 0)
     await page.reload()
     await page
@@ -216,6 +264,13 @@ async function catalogFits(page) {
     await page.waitForURL('**/admin')
     await page.getByRole('region', { name: '项目进展表', exact: true }).waitFor()
     await catalogFits(page)
+    assert.equal(await page.locator('.admin-project-table thead').isVisible(), true)
+    assert.equal(
+      await page
+        .locator('.admin-project-table')
+        .evaluate((element) => getComputedStyle(element).display),
+      'table'
+    )
     await page.getByRole('button', { name: `${project.name} 更多操作`, exact: true }).click()
     await page.getByRole('menuitem', { name: '项目设置', exact: true }).waitFor()
     assert.equal(
@@ -240,6 +295,39 @@ async function catalogFits(page) {
       .waitFor({ state: 'hidden' })
     await page.setViewportSize({ width: 390, height: 844 })
     await catalogFits(page)
+    const managedTable = page.getByRole('region', { name: '项目进展表', exact: true })
+    assert.equal(
+      await managedTable.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      true,
+      'Mobile management actions do not need horizontal scrolling'
+    )
+    const managedRow = page.locator(
+      `.admin-project-table tbody tr[data-project-id="${project.id}"]`
+    )
+    const managedName = managedRow.locator('.project-name-link')
+    const managedAction = managedRow.getByRole('link', { name: '处理仲裁', exact: true })
+    const managedMore = managedRow.getByRole('button', {
+      name: `${project.name} 更多操作`,
+      exact: true
+    })
+    assert.equal(await managedAction.count(), 1)
+    assert.equal(await managedMore.count(), 1)
+    for (const element of [managedName, managedAction, managedMore]) {
+      const bounds = await element.boundingBox()
+      assert.ok(
+        bounds.x >= 0 && bounds.x + bounds.width <= 390 && bounds.y + bounds.height <= 845,
+        'Project identity and actions stay on the first mobile screen'
+      )
+    }
+    const managedDetails = managedRow.locator('.project-status-details')
+    assert.equal(await managedDetails.getAttribute('data-state'), 'closed')
+    await managedDetails.getByRole('button', { name: '状态与创建信息', exact: true }).click()
+    assert.equal(await managedDetails.getAttribute('data-state'), 'open')
+    for (const label of ['待开始', '处理中', '收集中', '已完成'])
+      await managedDetails.getByText(label, { exact: true }).waitFor()
+    await managedDetails.locator('.project-created').waitFor()
+    await managedDetails.getByRole('button', { name: '状态与创建信息', exact: true }).click()
+    assert.equal(await managedDetails.getAttribute('data-state'), 'closed')
     await page.screenshot({ path: path.join(output, 'mobile-managed-catalog.png') })
     await page.getByRole('button', { name: '打开导航', exact: true }).click()
     const drawer = page.getByRole('dialog')
@@ -247,10 +335,12 @@ async function catalogFits(page) {
     await drawer.waitFor({ state: 'hidden' })
     await page.waitForURL('**/workspace')
     await noOverflow(page)
+    await primaryWorkFits(page, true)
     await page.screenshot({ path: path.join(output, 'mobile-manager-workbench.png') })
     await logout(page)
     await login(page, readerEmail)
     await page.getByRole('link', { name: '继续校对', exact: true }).waitFor()
+    await primaryWorkFits(page, true)
     assert.equal(
       await page.getByRole('link', { name: '继续校对', exact: true }).count(),
       1,
@@ -320,6 +410,10 @@ async function catalogFits(page) {
           catalogHierarchyAndMobileFit: true,
           managementMenuRoute: true,
           managementRefreshFailureRetention: true,
+          compactPrimaryWork: true,
+          claimingActionStableGeometry: true,
+          mobileManagementActionsInView: true,
+          managementDetailsDisclosure: true,
           nativeKeyboardVerified: false
         },
         null,

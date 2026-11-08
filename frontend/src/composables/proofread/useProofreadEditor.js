@@ -659,12 +659,26 @@ export function useProofreadEditor() {
   function handleEditorShortcut(event) {
     if (researchOpen.value) return
     if (shouldIgnoreEditorShortcut(event, onboardingRef.value)) return
+    const control = event.ctrlKey || event.metaKey
+    // Help, status and recovery dialogs own keyboard input while open. The
+    // explicit submission confirmation alone keeps its existing submit shortcut.
+    if (
+      document.querySelector(
+        '[role="dialog"][aria-modal="true"]:not([aria-labelledby="submit-review-title"])'
+      )
+    ) {
+      if (
+        (control && (event.key.toLowerCase() === 's' || event.key === 'Enter')) ||
+        (event.altKey && ['ArrowLeft', 'ArrowRight'].includes(event.key))
+      )
+        event.preventDefault()
+      return
+    }
     if (event.key === 'Escape' && reviewingSubmission.value) {
       event.preventDefault()
       closeSubmitReview()
       return
     }
-    const control = event.ctrlKey || event.metaKey
     if (ownReview.value && control && (event.key.toLowerCase() === 's' || event.key === 'Enter')) {
       event.preventDefault()
       return

@@ -90,6 +90,28 @@ async function stableFeedback(browser, width) {
   )
   const draft = await geometry()
   assert.deepEqual(draft, original, 'local draft feedback does not move or resize the task head')
+  const detailsTrigger = page.getByRole('button', { name: '查看任务状态详情', exact: true })
+  await detailsTrigger.click()
+  const details = page.getByRole('dialog')
+  await details.getByRole('heading', { name: '本机草稿', exact: true }).waitFor()
+  assert.match(await details.innerText(), /草稿已保存于|已恢复/)
+  const detailsUrl = page.url()
+  for (const key of ['ControlOrMeta+Enter', 'Alt+ArrowRight', 'Alt+ArrowLeft']) {
+    await page.keyboard.press(key)
+    assert.equal(
+      await page.getByRole('dialog').count(),
+      1,
+      'status details never stacks a submission dialog'
+    )
+    assert.equal(page.url(), detailsUrl, 'editor shortcuts do not navigate behind status details')
+  }
+  assert.equal(submissions, 0, 'reading status details never submits the task')
+  await page.keyboard.press('Escape')
+  await details.waitFor({ state: 'hidden' })
+  assert.equal(await detailsTrigger.evaluate((element) => element === document.activeElement), true)
+  assert.equal(await input.evaluate((element) => element === window.__feedbackInput), true)
+  assert.equal(await input.inputValue(), exact)
+  assert.deepEqual(await geometry(), original, 'opening details does not resize the task head')
   await input.focus()
   await input.evaluate((element) => element.setSelectionRange(2, 4))
   const selection = await input.evaluate((element) => [

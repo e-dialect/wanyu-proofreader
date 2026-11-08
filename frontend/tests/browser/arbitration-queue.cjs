@@ -24,6 +24,12 @@ async function main() {
       let failQueue = false
       let failSubmit = true
       let submissions = 0
+      const completionLabel = width < 768 ? '检查并仲裁' : '检查并完成仲裁'
+      let verificationState = {
+        source_approved: true,
+        policy_compatible: true,
+        needs_review: false
+      }
       await page.route('**/api/**', async (route) => {
         const url = new URL(route.request().url())
         const pathname = url.pathname
@@ -45,6 +51,21 @@ async function main() {
         }
         if (pathname.endsWith('/arbitrate')) {
           submissions++
+          const payload = route.request().postDataJSON()
+          assert.equal(
+            payload.basis,
+            'synthetic',
+            'the current verification basis reaches the existing API'
+          )
+          if (submissions <= 2) {
+            assert.equal(
+              JSON.parse(payload.rowJson).词条,
+              '  ia̤̍h  \n𠮷',
+              'failed submission and retry preserve exact whitespace and combining characters'
+            )
+            assert.equal(payload.judgments[0].attempt, 'synthetic-a')
+            assert.equal(payload.judgments[0].state, 'correct')
+          }
           if (failSubmit)
             return route.fulfill({ status: 500, json: { message: '合成提交失败，请重试' } })
           const id = pathname.split('/').at(-2)
@@ -78,7 +99,15 @@ async function main() {
         if (pathname.endsWith('/verification'))
           return route.fulfill({
             json: {
-              context: { pdf_page: 1, basis: 'synthetic', policy: null, source: null },
+              context: {
+                pdf_page: 1,
+                basis: 'synthetic',
+                policy: { instructions: '合成版本化核验约定' },
+                source: null,
+                source_approved: verificationState.source_approved,
+                policy_compatible: verificationState.policy_compatible
+              },
+              completion: { needs_review: verificationState.needs_review },
               judgments: [],
               history: []
             }
@@ -90,6 +119,25 @@ async function main() {
       await page.goto(`${base}/tests/fixtures/arbitration-queue.html`)
       const queue = page.getByRole('navigation', { name: '待仲裁队列' })
       await queue.getByText('待仲裁第 1 / 2 条').waitFor()
+      assert.equal(
+        await queue.getByRole('button', { name: '下一条', exact: true }).locator('svg').isVisible(),
+        true
+      )
+      assert.equal(
+        await page
+          .locator('.arbitration-final-heading')
+          .getByText('待确认采用', { exact: true })
+          .count(),
+        1,
+        'a prefilled final value is not presented as an adopted decision'
+      )
+      if (width < 768) {
+        assert.ok(
+          (await page.locator('.editor-panel-header--task').boundingBox()).height <= 76,
+          'the mobile task header stays compact'
+        )
+        assert.ok((await queue.boundingBox()).height <= 60, 'the mobile queue is one row')
+      }
       assert.equal(
         await queue.getByRole('button', { name: '上一条', exact: true }).isDisabled(),
         true
@@ -104,6 +152,36 @@ async function main() {
         await queue.getByRole('button', { name: '下一条', exact: true }).isEnabled(),
         true
       )
+      const judgments = page.locator('.source-judgment select')
+      assert.deepEqual(
+        await judgments.evaluateAll((items) => items.map((item) => item.value)),
+        ['', '', ''],
+        'adopting a value must not mark any source correct'
+      )
+      await judgments.nth(0).selectOption('correct')
+      await page
+        .locator('.source-judgment')
+        .nth(0)
+        .getByLabel('依据／待处理原因')
+        .fill('合成来源核对：保留 a̤̍')
+      await judgments.nth(2).selectOption('correct')
+      const exactFinal = '  ia̤̍h  \n𠮷'
+      await page.getByRole('textbox', { name: '词条的最终仲裁结果', exact: true }).fill(exactFinal)
+      assert.equal(
+        await judgments.nth(0).inputValue(),
+        'correct',
+        'editing final value preserves the independent reader-source judgment'
+      )
+      assert.equal(
+        await judgments.nth(2).inputValue(),
+        '',
+        'editing final value invalidates its own previous judgment'
+      )
+      assert.equal(
+        await page.getByRole('textbox', { name: '词条的最终仲裁结果', exact: true }).inputValue(),
+        exactFinal
+      )
+
       const showOverview = async () => {
         const overview = page
           .getByRole('navigation', { name: '字段导航' })
@@ -114,7 +192,7 @@ async function main() {
       await page.locator('#arbitration-note').fill('合成第一条说明，不得带入下一条')
       const submit = async () => {
         await showOverview()
-        await page.getByRole('button', { name: '检查并完成仲裁', exact: true }).first().click()
+        await page.getByRole('button', { name: completionLabel, exact: true }).first().click()
         await page
           .getByRole('dialog')
           .getByRole('button', { name: '确认完成仲裁', exact: true })
@@ -140,19 +218,42 @@ async function main() {
       await queue.getByRole('button', { name: '重试加载队列', exact: true }).click()
       await queue.getByText('待仲裁第 1 / 1 条').waitFor()
       await page.locator('#arbitration-note').waitFor({ state: 'attached' })
+      await showOverview()
       assert.equal(await page.locator('#arbitration-note').inputValue(), '')
       assert.equal(
-        await page
-          .getByRole('button', { name: '检查并完成仲裁', exact: true })
-          .first()
-          .isDisabled(),
+        await page.getByRole('button', { name: completionLabel, exact: true }).first().isDisabled(),
         true
       )
+      if (width < 768) await page.getByRole('button', { name: '修改此字段', exact: true }).click()
       await page.locator('.comparison-option button').first().click()
       await submit()
       await page.getByText('本条仲裁已保存，当前待仲裁队列已处理完。').waitFor()
       assert.equal(submissions, 3)
       await page.screenshot({ path: path.join(output, `${width}-done.png`), fullPage: true })
+      // Source-basis alerts are independent and must open their disclosure,
+      // including after a healthy case was collapsed.
+      for (const [state, expected] of [
+        [
+          { source_approved: true, policy_compatible: true, needs_review: true },
+          '来源或约定已变化，旧判断需要复核。'
+        ],
+        [
+          { source_approved: false, policy_compatible: true, needs_review: false },
+          '当前来源尚未纳入此版约定，请先复核来源。'
+        ],
+        [
+          { source_approved: true, policy_compatible: false, needs_review: false },
+          '记音字段配置已变化，请先更新核验约定。'
+        ]
+      ]) {
+        verificationState = state
+        pending = ['first', 'second']
+        await page.reload()
+        const basis = page.locator('.arbitration-source-context > .app-disclosure__trigger')
+        await basis.waitFor()
+        assert.equal(await basis.getAttribute('aria-expanded'), 'true')
+        await page.getByRole('alert').filter({ hasText: expected }).waitFor()
+      }
       assert.deepEqual(errors, [])
       await page.close()
     }

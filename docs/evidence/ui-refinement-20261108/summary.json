@@ -1,0 +1,100 @@
+{
+  "capturedAt": "2026-11-08T09:04:42.156034+00:00",
+  "base": "1c0331e79b55a2971f2fd784090469a4e5575ca5",
+  "branch": "feat/ui-refinement-20261108",
+  "synthetic": true,
+  "browser": "Microsoft Edge with Playwright 1.65.0",
+  "manualReview": "OpenAI Codex visual inspection in a separate headed browser",
+  "checks": {
+    "makeCheck": {
+      "status": "passed",
+      "frontendUnitTests": 486,
+      "failures": 0
+    },
+    "productionBuild": {
+      "status": "passed",
+      "VITE_PB_URL": "http://localhost"
+    },
+    "qualityBrowserGroups": [
+      "components",
+      "workbench",
+      "editor",
+      "repository",
+      "unicode"
+    ],
+    "qualityBrowserScripts": 19,
+    "arbitrationAndModalGroups": "passed",
+    "entryDensityRealBackend": "passed",
+    "assistProductionIntegration": "passed",
+    "sourceFidelityProductionIntegration": "passed",
+    "formatAndUiDebt": "passed",
+    "runtimeInlineStyles": 7
+  },
+  "observations": {
+    "desktopEntryWithNotePx": 129.890625,
+    "desktopEntryWithoutNotePx": 104.296875,
+    "actualDesktopFourVisibleRowsBottomPx": 892.015625,
+    "projectActionAt320": {
+      "x": 100.796875,
+      "y": 587.25,
+      "right": 176,
+      "bottom": 631.25,
+      "height": 44,
+      "pageOverflow": false
+    }
+  },
+  "pending": [
+    "iOS/Android native keyboards and IMEs",
+    "native browser 200 percent zoom",
+    "real screen reader and human usability acceptance",
+    "remote CI after push"
+  ],
+  "sourceSha256": {
+    "backend/tests/assist_browser.cjs": "9fa06b6458d3a0311970db25db7d081de92a8fefd8ba02f8ae9913d34be6ad84",
+    "backend/tests/run_frontend_quality_browser.py": "90b6d1fcc47cd3785dac0cd1878579608899d5724004b9e28949fb659e17b5d4",
+    "frontend/src/components/AppButton.vue": "f009f6481e30ce940d8bb41a68c9a25a0a5f998daef56cbbfc7a6f7ef2454a28",
+    "frontend/src/components/AppDisclosure.vue": "6a394ca3db34766c63372b41ecb109f8adeb79209fdcffe29703a2c35a83185b",
+    "frontend/src/components/admin/project/ProjectEntriesPanel.vue": "969b41000a5759437a9242585cbb48c5111f420ad5ec40b4e7f4020167c18b6f",
+    "frontend/src/components/editor/KeyboardGuide.vue": "0feed92e94aaec52898d63f5b760af5c7d187c98cc0b14e4261a038981a05c70",
+    "frontend/src/components/editor/ProofreadTaskFeedback.vue": "b93ee1f7826e7a6c16a9224a6238dd7a62a24e0c0802400820ff29f486345414",
+    "frontend/src/components/editor/ProofreadTaskHeader.vue": "f723d8e723d0188b13bae9ec45668f060be442e2036970d8488535d11daaaf77",
+    "frontend/src/composables/proofread/useProofreadEditor.js": "7585734e41684fc36e96373bfbdc35b9fca9d1d7b179f3335037167b3def2bcd",
+    "frontend/src/editor-experience.css": "87678581267bad8c191884c05c8e163e94a89d20d485f07d7c5f87e2a431d930",
+    "frontend/src/entry-list-experience.css": "374a8aee16dbc0ed098e68073c55dd367939a74f66d708573bf63a7a54105b6d",
+    "frontend/src/lib/entryListPresentation.js": "25aeb1e141de3bd18e9e70724627f89e6d6e55231563513d49e0201460033090",
+    "frontend/src/style.css": "91f7205ab93209e040de5fd0b1d68f6505ed5bb9d85499cb26ba43a06bc8c2b5",
+    "frontend/src/styles/arbitration-workspace.css": "ddc25bc0a7dacfe250b1499f09e6c0915684a5420c58622aed335d9a4c09f782",
+    "frontend/src/styles/ui-components.css": "36af7b1f98c09a12b51b863b243bbd09e5d1e399c5836c16af2d6cea401e70e5",
+    "frontend/src/views/WorkspaceHomeView.vue": "52dc9d5508ea6f142454c847a272ab06f6a2bebddfef0e4606dd2320edf1a5f3",
+    "frontend/src/views/admin/ArbitrationView.vue": "21514bd11832bee6be5084a1ba689f2ea047c8a27d47dc837dfca2f472470aef",
+    "frontend/src/views/admin/DashboardView.vue": "274585e17825bd4a8ed395adbd84af0b6d5bfb13521f164f83648335e3651db3",
+    "frontend/src/views/proofreader/TaskHallView.vue": "947fecfce2158a16a0aa2f3bc8e55f5c9b1e0d6242e48e08ca5ea7138deadd27",
+    "frontend/src/workbench.css": "2cf3d996cd5bef3052c348a8515d05441c1cbc42124474dec737e9002dfd852b",
+    "frontend/tests/browser/arbitration-queue.cjs": "22cd69610db63c3ac2e75efa074f6814b158cc46888d1b322b202fac2b1b7a8f",
+    "frontend/tests/browser/disclosure.cjs": "ef8177bde2d144dfc8a23abe84f713483bff105097f9104a15324363ddfa55aa",
+    "frontend/tests/browser/editor-keyboard-flow.cjs": "2200508b99c3316bc804bcbaba765ac458bedae9af4aec307a08c737fb3603b7",
+    "frontend/tests/browser/editor-states.cjs": "5e734e777017df255cf0bf5eaa57001b69a72247f7018a5870dff1d79f379fc4",
+    "frontend/tests/browser/entry-list-experience.cjs": "198915140f60e428163127f92036e31ad99dc31f8ced3077dfd4f4c659facbc0",
+    "frontend/tests/browser/modal.cjs": "e048f41917a0142fdb851ac25faec80524b726aa384f313c267a312fee0ed86a",
+    "frontend/tests/browser/reka-controls.cjs": "383c4eaaaf7eec276fdd7b45384265a9d4d7acc54de2f108ba648c34da926e9f",
+    "frontend/tests/browser/review.cjs": "a6c27d11e6ac4ee72a23817b84a162861b6d3fafe10cd5bdbad976b7a6be5837",
+    "frontend/tests/browser/workbench.cjs": "18e51a79de440eeeab290d109fc048ddccfdb45380aedfadfede85424b96fa17",
+    "frontend/tests/entryListPresentation.test.js": "98d2e1adf80dae56fda430035dbfe4c9061c29812d233be43251941427892ab8",
+    "frontend/tests/fixtures/reka-controls.js": "b422cd946c4ca8261517f88fb5a070fe8e70746beca2c56e86d77c19e18fa9a1",
+    "scripts/check_ui_debt.py": "847a4588268b50dd48191181b9975c975cbe0a4ef405f6fe6257886768afe73a",
+    "scripts/test_check_ui_debt.py": "7a05c4210ef414eefaeb5fe3515f4bc9bb6817fd229af99e5220e9b4398d5cd5",
+    "scripts/ui_debt_baseline.json": "1a79ca848dff6c2214cdc6a6aaae49df1a8c97b5f6fa2ccf313f3cb6a622f5c1"
+  },
+  "imageSha256": {
+    "home-before.png": "a8a69d9687f338248a371145500a5b89fc533199b0638d0b93c05a6577fea07b",
+    "home-after.png": "02542f31ec075c6df5902d8666c55f2dc4213a8578b27208a31f7c01897bf405",
+    "entries-before.png": "98a870437ed2b2ffc6b865321023ad26f385511d6c4e6f5768b5998455e04e69",
+    "entries-after.png": "47a3d5fff527068fbc6cf08c4bca64fc2d831fe658e51a81452a370e438759dc",
+    "projects-mobile-before.png": "7396c8fd10be8c455c73701e9b8f32aed1d2e6d6ad9ab0d13ea29a59e58da6ac",
+    "projects-mobile-after.png": "a63fca95a8309818354247018b76f1801e4ffb6c03b9a1b7e7c178317a8c7466",
+    "arbitration-mobile-before.png": "c675a773340ba69789118b5c0435435ddb6065d4d5801de36cb12df5b4d38597",
+    "arbitration-mobile-after.png": "e3b6c198aa485bd1d04b2b4bd797a05f49bc21f29ee0acc4fb9a50e8b5935344",
+    "arbitration-desktop-after.png": "29409405545eacdcee03674ef75a2603037725d23dcb4205cd0ae15f56a31dd1",
+    "projects-320-after.png": "fa96af03368c7b987a240b12951311e92e818f0b8ca60c478a71c8d5e546d7e7"
+  }
+}

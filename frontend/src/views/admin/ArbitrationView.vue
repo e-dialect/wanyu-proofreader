@@ -1,6 +1,8 @@
 <template>
   <h1 class="sr-only">{{ verificationMode ? '来源核验' : '条目仲裁' }}</h1>
   <DocumentReviewWorkspace
+    class="arbitration-studio"
+    inline-source-toggle
     :page="casePage"
     :keyboard-available="keyboardAvailable"
     :suspended="(mobile && overview) || reviewingSubmission"
@@ -15,7 +17,7 @@
     content-labelled-by="arbitration-panel-title"
     empty-pdf-description="请保存进度并处理来源问题，待来源 PDF 可用后继续核验。"
   >
-    <template #panel-header>
+    <template #panel-header="{ compact, sourceCollapsed, toggleSource }">
       <header class="editor-panel-header editor-panel-header--task">
         <div class="editor-context">
           <span
@@ -25,45 +27,49 @@
           <strong id="arbitration-panel-title">第 {{ casePage?.page_number || '—' }} 条</strong>
         </div>
         <div class="editor-toolbar">
-          <RouterLink
-            v-if="mobile"
-            :to="
-              verificationMode
-                ? sourceReviewListTarget(projectId, sourceReviewScope)
-                : `/admin/projects/${projectId}?status=arbitration`
-            "
-            class="btn btn-quiet"
-            >返回列表</RouterLink
+          <AppButton
+            v-if="compact"
+            size="sm"
+            :aria-expanded="!sourceCollapsed"
+            aria-controls="review-source"
+            @click="toggleSource"
+            >{{ sourceCollapsed ? '查看原文' : '收起原文' }}</AppButton
           >
           <span v-if="submitted" class="task-position">本条已保存</span>
           <span v-else-if="casePage" class="task-position"
             >{{ resolvedCount }} / {{ differingHeaders.length }} 项差异</span
           >
-          <button
-            v-if="!submitted"
-            class="btn btn-success btn-sm"
+          <AppButton
+            v-if="!submitted && !mobile"
+            variant="primary"
+            size="sm"
+            :loading="submitting"
             :disabled="
               submitting || loading || submitted || unresolvedHeaders.length > 0 || !caseData
             "
             @click="openSubmitReview"
           >
             {{ submitting ? '保存中…' : verificationMode ? '检查并完成核验' : '检查并完成仲裁' }}
-          </button>
+          </AppButton>
         </div>
       </header>
       <nav v-if="!verificationMode" class="arbitration-queue" aria-label="待仲裁队列">
         <span class="task-position" role="status">{{ queuePositionLabel }}</span>
-        <button
-          class="btn btn-secondary btn-sm"
+        <AppButton
+          size="sm"
+          class="arbitration-queue-step"
+          aria-label="上一条"
           :disabled="
             queueState !== 'ready' || !queueData?.previous || submitting || loading || submitted
           "
           @click="navigateQueue(queueData.previous)"
         >
-          上一条
-        </button>
-        <button
-          class="btn btn-secondary btn-sm"
+          <AppIcon name="back" /><span class="arbitration-queue-label">上一条</span>
+        </AppButton>
+        <AppButton
+          size="sm"
+          class="arbitration-queue-step"
+          aria-label="下一条"
           :disabled="
             queueState !== 'ready' ||
             !queueData?.next ||
@@ -74,8 +80,8 @@
           "
           @click="navigateQueue(queueData.next, true)"
         >
-          下一条
-        </button>
+          <span class="arbitration-queue-label">下一条</span><AppIcon name="arrow" />
+        </AppButton>
         <button
           v-if="queueState === 'error'"
           class="btn btn-secondary btn-sm"
@@ -116,23 +122,21 @@
       <div v-else-if="error" class="alert alert-error" role="alert">{{ error }}</div>
 
       <template v-else-if="caseData && !submitted">
-        <details
+        <AppDisclosure
           v-if="verificationData"
+          v-model="sourceEvidenceOpen"
           class="arbitration-source-context verification-details"
-          :open="
-            verificationData.completion?.needs_review ||
-            verificationData.context.policy_compatible === false ||
-            !verificationData.context.source_approved
-          "
         >
-          <summary class="verification-summary">
-            <strong>来源与核验依据</strong
-            ><span class="verification-status">{{
-              verificationData.completion?.needs_review
-                ? '旧判断需要复核'
-                : '采用与来源正误分别记录'
-            }}</span>
-          </summary>
+          <template #summary
+            ><span class="arbitration-evidence-summary">
+              <strong>来源与核验依据</strong
+              ><span class="verification-status">{{
+                verificationData.completion?.needs_review
+                  ? '旧判断需要复核'
+                  : '采用与来源正误分别记录'
+              }}</span>
+            </span></template
+          >
           <strong
             >来源 PDF：{{ verificationData.context.source?.name || '未记录' }} · 物理第
             {{ verificationData.context.pdf_page }} 页</strong
@@ -151,31 +155,31 @@
           <p v-if="verificationData.completion?.needs_review" role="alert">
             来源或约定已变化，旧判断需要复核。
           </p>
-        </details>
+          <p
+            v-if="verificationData.context.policy_compatible === false"
+            class="alert alert-error"
+            role="alert"
+          >
+            记音字段配置已变化，请先更新核验约定。
+          </p>
+          <p
+            v-if="
+              verificationData.context.policy && verificationData.context.source_approved === false
+            "
+            class="alert alert-error"
+            role="alert"
+          >
+            当前来源尚未纳入此版约定，请先复核来源。
+          </p>
+        </AppDisclosure>
         <p v-if="progressMessage" class="alert alert-success" role="status">
           {{ progressMessage }}
         </p>
-        <section class="arbitration-summary" aria-label="仲裁进度">
-          <div>
-            <div class="page-eyebrow">差异确认</div>
-            <strong>{{ resolvedCount }} / {{ differingHeaders.length }}</strong>
-            <span>个不一致字段已明确处理</span>
-          </div>
-          <div class="arbitration-progress">
-            <div
-              class="progress"
-              role="progressbar"
-              aria-label="仲裁差异确认进度"
-              :aria-valuenow="resolutionPct"
-              aria-valuemin="0"
-              aria-valuemax="100"
-            >
-              <div class="progress-bar" :style="{ width: `${resolutionPct}%` }"></div>
-            </div>
-            <p v-if="unresolvedHeaders.length">还需确认：{{ unresolvedHeaders.join('、') }}</p>
-            <p v-else>差异采用已确认；请继续核对来源，未记录判断仍保持未核实。</p>
-          </div>
-        </section>
+        <p class="arbitration-progress-note" role="status">
+          <strong>差异已确认 {{ resolvedCount }} / {{ differingHeaders.length }}</strong
+          ><span v-if="unresolvedHeaders.length">还需确认：{{ unresolvedHeaders.join('、') }}</span
+          ><span v-else>采用已明确；来源判断分别记录。</span>
+        </p>
 
         <RareCharacterNotice
           :texts="[
@@ -188,8 +192,7 @@
         <section class="arbitration-workspace">
           <header class="arbitration-toolbar">
             <div>
-              <h2>校对结果对比</h2>
-              <p>对照 PDF，采用任一版本或直接编辑最终内容。</p>
+              <h2>字段处理</h2>
             </div>
             <div class="arbitration-toolbar__view" role="group" aria-label="字段显示范围">
               <button
@@ -211,8 +214,7 @@
             </div>
           </header>
 
-          <details class="bulk-actions-menu">
-            <summary>批量处理</summary>
+          <AppDisclosure class="bulk-actions-menu" label="批量处理">
             <div
               v-if="differingHeaders.length"
               class="bulk-source-actions"
@@ -236,7 +238,7 @@
                 全部采用{{ item.label }}
               </button>
             </div>
-          </details>
+          </AppDisclosure>
           <div v-if="visibleHeaders.length" class="arbitration-fields">
             <article
               v-for="header in visibleHeaders"
@@ -280,7 +282,9 @@
                     :lang="fieldValueLanguage(header)"
                     :font-notice="false"
                   />
-                  <button type="button" @click="pickValue(header, 'original')">采用导入值</button>
+                  <AppButton size="sm" :disabled="submitting" @click="pickValue(header, 'original')"
+                    >采用导入值</AppButton
+                  >
                 </section>
                 <section
                   v-for="item in attemptRows"
@@ -295,41 +299,59 @@
                     :lang="fieldValueLanguage(header)"
                     :font-notice="false"
                   />
-                  <button type="button" @click="pickValue(header, item.key)">采用此结果</button>
+                  <AppButton size="sm" :disabled="submitting" @click="pickValue(header, item.key)"
+                    >采用此结果</AppButton
+                  >
+                </section>
+              </div>
+              <div class="final-value" :class="{ selected: sourceIs(header, 'custom') }">
+                <div class="arbitration-final-heading">
+                  <h4>最终采用值</h4>
+                  <span>{{ isResolved(header) ? resolutionLabel(header) : '待确认采用' }}</span>
+                </div>
+                <textarea
+                  :inputmode="inputMode"
+                  :readonly="submitting || (mobile && overview)"
+                  :ref="(element) => setTextareaRef(header, element)"
+                  v-model="finalRow[header]"
+                  :lang="fieldValueLanguage(header) || undefined"
+                  class="form-control"
+                  :aria-label="`${header}的最终仲裁结果`"
+                  @focus="rememberSelection(header, $event)"
+                  @blur="rememberSelection(header, $event)"
+                  @select="rememberSelection(header, $event)"
+                  @keyup="rememberSelection(header, $event)"
+                  @click="rememberSelection(header, $event)"
+                  @input="onFinalInput(header)"
+                ></textarea>
+              </div>
+              <section
+                v-if="verificationData"
+                class="arbitration-judgments"
+                :aria-label="`${header} 来源判断`"
+              >
+                <header>
+                  <h4>来源判断</h4>
+                  <p>与采用值分别记录；未核实保持未记录。</p>
+                </header>
+                <div class="arbitration-judgment-grid">
                   <SourceJudgmentInput
-                    v-if="verificationData"
+                    v-for="item in attemptRows"
+                    :key="`${header}-judgment-${item.key}`"
                     :disabled="submitting"
                     :label="item.label"
                     :model-value="judgmentFor(item.attempt.id, header)"
                     @update:model-value="setJudgment(item.attempt.id, header, $event)"
                   />
-                </section>
-                <div class="final-value" :class="{ selected: sourceIs(header, 'custom') }">
-                  <span>最终结果</span>
-                  <textarea
-                    :inputmode="inputMode"
-                    :readonly="submitting || (mobile && overview)"
-                    :ref="(element) => setTextareaRef(header, element)"
-                    v-model="finalRow[header]"
-                    :lang="fieldValueLanguage(header) || undefined"
-                    class="form-control"
-                    :aria-label="`${header}的最终仲裁结果`"
-                    @focus="rememberSelection(header, $event)"
-                    @blur="rememberSelection(header, $event)"
-                    @select="rememberSelection(header, $event)"
-                    @keyup="rememberSelection(header, $event)"
-                    @click="rememberSelection(header, $event)"
-                    @input="onFinalInput(header)"
-                  ></textarea>
                   <SourceJudgmentInput
-                    v-if="verificationData"
+                    class="arbitration-final-judgment"
                     :disabled="submitting"
                     label="最终采用值"
                     :model-value="judgmentFor('final', header)"
                     @update:model-value="setJudgment('final', header, $event)"
                   />
                 </div>
-              </div>
+              </section>
             </article>
           </div>
 
@@ -370,17 +392,12 @@
               <strong v-else>差异采用已确认</strong>
               <span>提交后将完成条目，并永久保留全部校对结果与本次仲裁记录。</span>
             </p>
-            <button
-              class="btn btn-success"
-              :disabled="submitting || unresolvedHeaders.length > 0"
-              :title="unresolvedHeaders.length ? '请先确认所有差异字段' : ''"
-              @click="openSubmitReview"
-            >
-              {{ submitting ? '保存中…' : verificationMode ? '检查并完成核验' : '检查并完成仲裁' }}
-            </button>
           </div>
-          <details v-if="verificationData?.history?.length" class="mt-3">
-            <summary>处理与判断历史（{{ verificationData.history.length }}）</summary>
+          <AppDisclosure
+            v-if="verificationData?.history?.length"
+            class="arbitration-history"
+            :label="`处理与判断历史（${verificationData.history.length}）`"
+          >
             <ul>
               <li v-for="event in verificationData.history" :key="event.id">
                 {{ event.at }} · {{ event.field || '本条' }} · {{ historyLabel(event) }} ·
@@ -390,7 +407,7 @@
                 >
               </li>
             </ul>
-          </details>
+          </AppDisclosure>
         </section>
       </template>
     </template>
@@ -463,6 +480,9 @@
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import { fieldValueLanguage } from '@/lib/fieldValue'
 import AppModal from '@/components/AppModal.vue'
+import AppDisclosure from '@/components/AppDisclosure.vue'
+import AppIcon from '@/components/AppIcon.vue'
+import '@/styles/arbitration-workspace.css'
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
 import SourceJudgmentInput from '@/components/editor/SourceJudgmentInput.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -520,6 +540,16 @@ const verificationMode = computed(
   () => caseData.value?.mode === 'verification' || route.query.mode === 'verification'
 )
 const verificationData = ref(null)
+const sourceEvidenceOpen = ref(false)
+watch(verificationData, (data) => {
+  if (
+    data &&
+    (data.completion?.needs_review ||
+      data.context.policy_compatible === false ||
+      !data.context.source_approved)
+  )
+    sourceEvidenceOpen.value = true
+})
 const judgmentDrafts = reactive({})
 const progressMessage = ref('')
 const reviewSourceChecked = ref(false)
@@ -565,11 +595,6 @@ const unresolvedHeaders = computed(() =>
   getUnresolvedHeaders(differingHeaders.value, resolvedHeaders)
 )
 const resolvedCount = computed(() => differingHeaders.value.length - unresolvedHeaders.value.length)
-const resolutionPct = computed(() =>
-  differingHeaders.value.length
-    ? Math.round((resolvedCount.value / differingHeaders.value.length) * 100)
-    : 100
-)
 const hasUnsubmittedWork = computed(
   () =>
     !submitted.value &&
@@ -679,6 +704,7 @@ async function loadCase() {
   error.value = ''
   caseData.value = null
   verificationData.value = null
+  sourceEvidenceOpen.value = false
   attemptRows.value = []
   for (const values of [originalRow, finalRow, resolutionSource, judgmentDrafts])
     for (const key of Object.keys(values)) delete values[key]
@@ -1102,44 +1128,3 @@ async function submitFinal() {
   }
 }
 </script>
-
-<style scoped>
-.arbitration-queue {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-.arbitration-summary {
-  margin-bottom: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-.arbitration-workspace {
-  overflow: hidden;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-.arbitration-source-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-.arbitration-source-grid > .final-value {
-  grid-column: 1 / -1;
-}
-.arbitration-submit-card {
-  margin-top: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-@media (max-width: 640px) {
-  .arbitration-source-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

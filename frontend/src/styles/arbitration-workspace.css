@@ -1,0 +1,287 @@
+/* Arbitration stages share one surface; choosing a value never judges a source. */
+.editor-layout.experience-workspace.arbitration-studio .arbitration-queue {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+}
+.arbitration-studio .arbitration-queue .task-position {
+  margin-right: auto;
+}
+.arbitration-studio .arbitration-queue-step .app-icon {
+  width: 16px;
+  height: 16px;
+}
+.editor-layout.experience-workspace.arbitration-studio .arbitration-source-context {
+  margin: 0 0 var(--space-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-none);
+  background: transparent;
+}
+.arbitration-studio .arbitration-evidence-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.arbitration-studio .arbitration-source-context > .app-disclosure__trigger {
+  padding-inline: 0;
+}
+.arbitration-studio .arbitration-source-context .app-disclosure__body {
+  padding-inline: 0;
+}
+.arbitration-studio .arbitration-source-context .app-disclosure__body > p {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+.arbitration-studio .arbitration-progress-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+.arbitration-studio .arbitration-progress-note strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.editor-layout.experience-workspace.arbitration-studio .arbitration-workspace {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-none);
+  background: transparent;
+  overflow: visible;
+}
+.editor-layout.experience-workspace.arbitration-studio .arbitration-toolbar {
+  padding: 0 0 var(--space-2);
+  border: 0;
+  gap: var(--space-2);
+}
+.arbitration-studio .arbitration-toolbar h2 {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.arbitration-studio .arbitration-toolbar__view {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.arbitration-studio .arbitration-toolbar__view button {
+  min-height: var(--control-height-sm);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.editor-layout.experience-workspace.arbitration-studio .bulk-actions-menu {
+  padding: 0;
+  margin-bottom: var(--space-3);
+}
+.arbitration-studio .bulk-actions-menu > .app-disclosure__trigger {
+  font-size: var(--text-xs);
+  padding-block: var(--space-1);
+}
+.arbitration-studio .bulk-source-actions {
+  padding: var(--space-2) 0;
+  background: transparent;
+  border: 0;
+}
+.arbitration-studio .arbitration-fields {
+  padding: 0;
+  gap: var(--space-5);
+  background: transparent;
+}
+.editor-layout.experience-workspace.arbitration-studio .arbitration-field {
+  border: 0;
+  border-radius: var(--radius-none);
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+.arbitration-studio .arbitration-field + .arbitration-field {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.arbitration-studio .arbitration-field__header {
+  padding: 0 0 var(--space-3);
+  border: 0;
+  gap: var(--space-2);
+}
+.arbitration-studio .arbitration-field__header h3 {
+  font-size: var(--text-lg);
+}
+.editor-layout.experience-workspace.arbitration-studio .arbitration-source-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+.editor-layout.experience-workspace.arbitration-studio .comparison-option {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.28fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  grid-column: auto;
+  background: transparent;
+  box-shadow: none;
+}
+.arbitration-studio .comparison-option > span {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.arbitration-studio .comparison-option > .app-field-value {
+  margin: 0;
+  font-size: var(--text-entry);
+}
+.arbitration-studio .comparison-option > .app-button {
+  margin: 0;
+  justify-self: end;
+}
+.editor-layout.experience-workspace.arbitration-studio .final-value {
+  display: block;
+  min-height: 0;
+  padding: var(--space-4) 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.arbitration-studio .arbitration-final-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.arbitration-studio .arbitration-final-heading h4,
+.arbitration-studio .arbitration-judgments h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.arbitration-studio .arbitration-final-heading > span {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+.editor-layout.experience-workspace.arbitration-studio .final-value textarea.form-control {
+  min-height: 80px;
+  margin: 0;
+}
+.arbitration-studio .arbitration-judgments > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.arbitration-studio .arbitration-judgments > header p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+.arbitration-studio .arbitration-judgment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.editor-layout.experience-workspace.arbitration-studio .source-judgment {
+  min-inline-size: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-none);
+}
+.arbitration-studio .source-judgment legend {
+  max-width: 100%;
+  margin-bottom: var(--space-1);
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+}
+.editor-layout.experience-workspace.arbitration-studio .arbitration-final-judgment {
+  grid-column: 1 / -1;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+.editor-layout.experience-workspace.arbitration-studio .arbitration-submit-card {
+  padding: var(--space-4) 0 0;
+  margin: var(--space-5) 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: var(--radius-none);
+  background: transparent;
+}
+.arbitration-studio .arbitration-submit-card > .form-group {
+  margin-top: var(--space-4);
+}
+.arbitration-studio .arbitration-submit-actions {
+  padding-top: var(--space-3);
+  border: 0;
+}
+.arbitration-studio .arbitration-history {
+  margin-top: var(--space-3);
+}
+.arbitration-studio .arbitration-history ul {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+@media (max-width: 768px) {
+  .editor-layout.experience-workspace.arbitration-studio .arbitration-queue {
+    padding: var(--space-1) var(--space-3);
+    gap: var(--space-1);
+  }
+  .arbitration-studio .arbitration-queue-step {
+    min-width: 44px;
+    padding-inline: 0;
+  }
+  .arbitration-studio .arbitration-queue-step .arbitration-queue-label {
+    display: none;
+  }
+  .editor-layout.experience-workspace.arbitration-studio .editor-panel-header--task {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+  .arbitration-studio .editor-panel-header--task .editor-context {
+    flex: 1;
+    min-width: 0;
+  }
+  .arbitration-studio .editor-panel-header--task .editor-toolbar {
+    flex: 0 0 auto;
+    width: auto;
+  }
+  .arbitration-studio .editor-toolbar > .task-position {
+    display: none;
+  }
+  .arbitration-studio .arbitration-progress-note > span {
+    display: none;
+  }
+  .editor-layout.experience-workspace.arbitration-studio .comparison-option {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-2);
+  }
+  .arbitration-studio .comparison-option > span {
+    grid-column: 1 / -1;
+  }
+  .arbitration-studio .arbitration-judgment-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .arbitration-studio .arbitration-field__header {
+    flex-wrap: wrap;
+  }
+  .arbitration-studio .arbitration-toolbar {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .arbitration-studio .arbitration-toolbar__view {
+    align-self: auto;
+    width: auto;
+  }
+  .arbitration-studio .arbitration-toolbar__view button {
+    min-height: var(--control-height-touch);
+  }
+}

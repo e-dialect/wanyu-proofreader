@@ -58,10 +58,11 @@
             v-if="primaryWork.kind === 'claim'"
             variant="primary"
             :loading="Boolean(opening)"
+            loading-label="正在打开…"
             :disabled="Boolean(opening)"
             @click="startProject(primaryWork.queue)"
           >
-            {{ opening ? '正在打开…' : '开始校对' }}<AppIcon name="arrow" />
+            开始校对<AppIcon name="arrow" />
           </AppButton>
           <RouterLink
             v-else-if="!resumeNameError || primaryWork.kind !== 'resume'"

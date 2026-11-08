@@ -24,6 +24,7 @@ DISTINCT = {'border_radius_literals', 'z_index_literals'}
 # Geometry is supplied inline by the installed Reka primitives, not by our CSS.
 # Keep this explicit: a misspelled dependency variable must still fail the guard.
 EXTERNAL_VARIABLES = {
+    '--reka-collapsible-content-height',
     '--reka-dropdown-menu-content-transform-origin',
     '--reka-select-trigger-width',
     '--reka-select-content-available-height',
