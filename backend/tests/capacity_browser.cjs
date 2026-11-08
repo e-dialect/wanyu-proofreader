@@ -107,6 +107,9 @@ async function main() {
         })
         const requestOperation = (request) => {
           const pathname = new URL(request.url()).pathname
+          if (pathname.endsWith('/proofreading-queues')) return 'hall'
+          if (pathname.endsWith('/tasks/mine')) return 'own_active_tasks'
+          if (pathname.endsWith('/tasks/reviewed')) return 'own_reviewed_tasks'
           return /\/claim$/.test(pathname)
             ? 'claim'
             : /\/submit$/.test(pathname)
@@ -383,6 +386,9 @@ async function main() {
       JSON.stringify(
         {
           actors: actors.length,
+          browser_engine: browser.browserType().name(),
+          browser_version: browser.version(),
+          browser_channel: process.env.BROWSER_CHANNEL || 'chromium',
           generator_event_loop_p95_ms: delay.percentile(95) / 1e6,
           generator_cpu_percent_one_core:
             (used.user + used.system) / ((performance.now() - started) * 10),

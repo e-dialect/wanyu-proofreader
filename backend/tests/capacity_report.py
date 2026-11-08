@@ -5,7 +5,8 @@ from pathlib import Path
 from capacity_burst import burst_report
 
 HTTP_P95 = {'claim': 800, 'submit': 800, 'arbitrate': 800, 'field_summary': 1000,
-            'pdf_descriptor': 500, 'task': 500, 'admin_pages': 500, 'verification': 500}
+            'pdf_descriptor': 500, 'task': 500, 'admin_pages': 500, 'verification': 500,
+            'hall': 500, 'arbitration_read': 500, 'own_active_tasks': 500, 'own_reviewed_tasks': 500}
 
 
 def lines(path):

@@ -41,6 +41,18 @@ class CapacityReportTest(unittest.TestCase):
             self.assertEqual(submit['samples'],25)
             self.assertEqual(submit['p95_ms'],10)
 
+    def test_slow_own_history_cannot_hide_behind_fast_primary_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);config=self.fixture(root)
+            path=root/'requests.jsonl'
+            rows=[json.loads(line) for line in path.read_text().splitlines()]
+            for row in rows:
+                if row['operation']=='own_reviewed_tasks': row['duration_ms']=600
+            path.write_text(''.join(json.dumps(row)+'\n' for row in rows))
+            result=report.summarize(root,config,{'pass':True},[0,0])
+            self.assertEqual(result['status'],'fail')
+            self.assertEqual(next(row for row in result['http'] if row['operation']=='own_reviewed_tasks')['status'],'fail')
+
     def test_expected_conflicts_are_not_fast_successes(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);config=self.fixture(root)
