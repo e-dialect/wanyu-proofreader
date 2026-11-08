@@ -125,17 +125,22 @@
     </template>
     <template #navigation
       ><FieldNavigation
+        v-if="rowHeaders.length"
         :headers="rowHeaders"
         :index="fieldIndex"
         :overview="overview"
+        :read-only="ownReview"
+        :workflow-label="ownReview ? '结果回看' : '校对'"
         @select="selectField"
         @next="nextField"
+        @overview="overview = true"
         ><template v-if="!ownReview" #submit
           ><AppButton
             variant="primary"
-            :disabled="saving || loadingPage || leaseLost || !leaseToken"
+            :loading="saving || (submittedHere && taskHeaderProps.retryingClaim)"
+            :disabled="submittedHere || loadingPage || leaseLost || !leaseToken"
             @click="openSubmitReview"
-            >检查并提交</AppButton
+            >{{ taskHeaderProps.submitLabel }}</AppButton
           ></template
         ></FieldNavigation
       ></template

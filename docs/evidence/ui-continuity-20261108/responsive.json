@@ -1,0 +1,673 @@
+{
+  "widths": [
+    320,
+    360,
+    390,
+    430,
+    768
+  ],
+  "routes": [
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 320,
+      "scroll": 320,
+      "title": "工作台",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 360,
+      "scroll": 360,
+      "title": "工作台",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 390,
+      "scroll": 390,
+      "title": "工作台",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 430,
+      "scroll": 430,
+      "title": "工作台",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/workspace",
+      "name": "workspace",
+      "width": 768,
+      "scroll": 768,
+      "title": "工作台",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 320,
+      "scroll": 320,
+      "title": "项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 360,
+      "scroll": 360,
+      "title": "项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 390,
+      "scroll": 390,
+      "title": "项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 430,
+      "scroll": 430,
+      "title": "项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/projects",
+      "name": "discovery",
+      "width": 768,
+      "scroll": 768,
+      "title": "项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 320,
+      "scroll": 320,
+      "title": "项目管理",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 360,
+      "scroll": 360,
+      "title": "项目管理",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 390,
+      "scroll": 390,
+      "title": "项目管理",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 430,
+      "scroll": 430,
+      "title": "项目管理",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin",
+      "name": "projects",
+      "width": 768,
+      "scroll": 768,
+      "title": "项目管理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 320,
+      "scroll": 320,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 360,
+      "scroll": 360,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 390,
+      "scroll": 390,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 430,
+      "scroll": 430,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/new",
+      "name": "new-project",
+      "width": 768,
+      "scroll": 768,
+      "title": "创建新项目",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 320,
+      "scroll": 320,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 360,
+      "scroll": 360,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 390,
+      "scroll": 390,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 430,
+      "scroll": 430,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/guide/project-files",
+      "name": "file-guide",
+      "width": 768,
+      "scroll": 768,
+      "title": "项目文件与校对条目说明",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll",
+      "name": "project-detail",
+      "width": 320,
+      "scroll": 320,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll",
+      "name": "project-detail",
+      "width": 360,
+      "scroll": 360,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll",
+      "name": "project-detail",
+      "width": 390,
+      "scroll": 390,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll",
+      "name": "project-detail",
+      "width": 430,
+      "scroll": 430,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll",
+      "name": "project-detail",
+      "width": 768,
+      "scroll": 768,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/settings",
+      "name": "settings",
+      "width": 320,
+      "scroll": 320,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/settings",
+      "name": "settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/settings",
+      "name": "settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/settings",
+      "name": "settings",
+      "width": 430,
+      "scroll": 430,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/settings",
+      "name": "settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "质量状态截图 1794108331000",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/verification",
+      "name": "verification",
+      "width": 320,
+      "scroll": 320,
+      "title": "问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/verification",
+      "name": "verification",
+      "width": 360,
+      "scroll": 360,
+      "title": "问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/verification",
+      "name": "verification",
+      "width": 390,
+      "scroll": 390,
+      "title": "问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/verification",
+      "name": "verification",
+      "width": 430,
+      "scroll": 430,
+      "title": "问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/verification",
+      "name": "verification",
+      "width": 768,
+      "scroll": 768,
+      "title": "问题处理",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/adoption",
+      "name": "adoption",
+      "width": 320,
+      "scroll": 320,
+      "title": "用途编选",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/adoption",
+      "name": "adoption",
+      "width": 360,
+      "scroll": 360,
+      "title": "用途编选",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/adoption",
+      "name": "adoption",
+      "width": 390,
+      "scroll": 390,
+      "title": "用途编选",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/adoption",
+      "name": "adoption",
+      "width": 430,
+      "scroll": 430,
+      "title": "用途编选",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/adoption",
+      "name": "adoption",
+      "width": 768,
+      "scroll": 768,
+      "title": "用途编选",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/deliveries",
+      "name": "deliveries",
+      "width": 320,
+      "scroll": 320,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/deliveries",
+      "name": "deliveries",
+      "width": 360,
+      "scroll": 360,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/deliveries",
+      "name": "deliveries",
+      "width": 390,
+      "scroll": 390,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/deliveries",
+      "name": "deliveries",
+      "width": 430,
+      "scroll": 430,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/projects/d5sga2bvim2k1ll/deliveries",
+      "name": "deliveries",
+      "width": 768,
+      "scroll": 768,
+      "title": "交付包与回执",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 320,
+      "scroll": 320,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 360,
+      "scroll": 360,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 390,
+      "scroll": 390,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 430,
+      "scroll": 430,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/sources",
+      "name": "sources",
+      "width": 768,
+      "scroll": 768,
+      "title": "来源登记",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 320,
+      "scroll": 320,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 360,
+      "scroll": 360,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 390,
+      "scroll": 390,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 430,
+      "scroll": 430,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/gate-rules",
+      "name": "gate-rules",
+      "width": 768,
+      "scroll": 768,
+      "title": "规则门控",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 320,
+      "scroll": 320,
+      "title": "项目创建权限",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 360,
+      "scroll": 360,
+      "title": "项目创建权限",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 390,
+      "scroll": 390,
+      "title": "项目创建权限",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 430,
+      "scroll": 430,
+      "title": "项目创建权限",
+      "horizontalRegions": 1
+    },
+    {
+      "route": "/admin/creator-grants",
+      "name": "grants",
+      "width": 768,
+      "scroll": 768,
+      "title": "项目创建权限",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 320,
+      "scroll": 320,
+      "title": "我的任务",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 360,
+      "scroll": 360,
+      "title": "我的任务",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 390,
+      "scroll": 390,
+      "title": "我的任务",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 430,
+      "scroll": 430,
+      "title": "我的任务",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks",
+      "name": "task-hall",
+      "width": 768,
+      "scroll": 768,
+      "title": "我的任务",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 320,
+      "scroll": 320,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 360,
+      "scroll": 360,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 390,
+      "scroll": 390,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 430,
+      "scroll": 430,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/tasks/profile",
+      "name": "profile",
+      "width": 768,
+      "scroll": 768,
+      "title": "个人中心",
+      "horizontalRegions": 0
+    },
+    {
+      "route": "/login",
+      "width": 320,
+      "scroll": 320,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 360,
+      "scroll": 360,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 390,
+      "scroll": 390,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 430,
+      "scroll": 430,
+      "guest": true
+    },
+    {
+      "route": "/login",
+      "width": 768,
+      "scroll": 768,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 320,
+      "scroll": 320,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 360,
+      "scroll": 360,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 390,
+      "scroll": 390,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 430,
+      "scroll": 430,
+      "guest": true
+    },
+    {
+      "route": "/register",
+      "width": 768,
+      "scroll": 768,
+      "guest": true
+    }
+  ],
+  "failures": [],
+  "pageErrors": []
+}

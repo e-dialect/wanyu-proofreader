@@ -1,28 +1,34 @@
 <template>
-  <main class="container page workspace-page">
+  <main class="container page workspace-page work-catalog task-catalog">
     <header class="page-heading">
       <div>
-        <div class="page-eyebrow">独立校对</div>
         <h1>我的任务</h1>
         <p>继续当前工作，或领取下一条材料。</p>
       </div>
-      <button class="btn btn-secondary" @click="loadProjects" :disabled="loading">
-        <span aria-hidden="true">↻</span>
+      <AppButton variant="ghost" @click="loadProjects" :loading="loading">
+        <AppIcon name="refresh" />
         {{ loading ? '正在刷新' : '刷新项目' }}
-      </button>
+      </AppButton>
     </header>
 
     <nav class="task-view-tabs" aria-label="任务视图">
-      <RouterLink :to="taskViewRoute('active')" :class="{ 'is-active': taskView === 'active' }"
+      <RouterLink
+        :to="taskViewRoute('active')"
+        :class="{ 'is-active': taskView === 'active' }"
+        :aria-current="taskView === 'active' ? 'page' : undefined"
         >进行中</RouterLink
       >
       <RouterLink
         :to="taskViewRoute('available')"
         :class="{ 'is-active': taskView === 'available' }"
+        :aria-current="taskView === 'available' ? 'page' : undefined"
         >待领取</RouterLink
       >
       <RouterLink to="/tasks/problems">问题与草稿</RouterLink>
-      <RouterLink :to="taskViewRoute('reviewed')" :class="{ 'is-active': taskView === 'reviewed' }"
+      <RouterLink
+        :to="taskViewRoute('reviewed')"
+        :class="{ 'is-active': taskView === 'reviewed' }"
+        :aria-current="taskView === 'reviewed' ? 'page' : undefined"
         >已提交</RouterLink
       >
     </nav>
@@ -52,26 +58,23 @@
       <p v-else>项目与统计暂不可用，这不代表没有任务。</p>
     </AppStatusPanel>
 
-    <section class="workspace-summary" aria-label="全部参与项目的校对概况">
-      <article class="workspace-stat workspace-stat--accent">
-        <span>正在处理</span>
-        <strong>{{ hasLoadedProjects ? queueSummary.activeProjects : '—' }}</strong>
-        <small>个项目有我的未提交任务</small>
-      </article>
-      <article class="workspace-stat">
-        <span>现在可领取</span>
-        <strong>{{ hasLoadedProjects ? queueSummary.availableProjects : '—' }}</strong>
-        <small>个项目有适合我的下一条</small>
-      </article>
-      <article class="workspace-stat">
-        <span>整体已完成</span>
-        <strong
-          >{{ hasLoadedProjects ? queueSummary.completedItems : '—'
-          }}<em v-if="hasLoadedProjects">/{{ queueSummary.totalItems }}</em></strong
-        >
-        <small>条已完成校对流程</small>
-      </article>
-    </section>
+    <dl class="catalog-summary" aria-label="全部参与项目的校对概况">
+      <div>
+        <dt>正在处理</dt>
+        <dd>{{ hasLoadedProjects ? queueSummary.activeProjects : '—' }}<span>个项目</span></dd>
+      </div>
+      <div>
+        <dt>现在可领取</dt>
+        <dd>{{ hasLoadedProjects ? queueSummary.availableProjects : '—' }}<span>个项目</span></dd>
+      </div>
+      <div>
+        <dt>校对已完成</dt>
+        <dd>
+          {{ hasLoadedProjects ? queueSummary.completedItems : '—'
+          }}<span v-if="hasLoadedProjects"> / {{ queueSummary.totalItems }} 条</span>
+        </dd>
+      </div>
+    </dl>
 
     <div v-if="actionError" class="alert alert-error" role="alert">{{ actionError }}</div>
 
@@ -87,7 +90,13 @@
                   : '可以领取的项目'
             }}
           </h2>
-          <p>系统会保留本地草稿；完成提交后自动领取同项目下一条。</p>
+          <p>
+            {{
+              taskView === 'reviewed'
+                ? '回看本人提交的结果，内容只读。'
+                : '本机草稿自动保留，提交后继续同项目下一条。'
+            }}
+          </p>
         </div>
         <span v-if="hasLoadedProjects && !loading" class="section-count"
           >{{ totalProjects }} 个项目</span
@@ -129,7 +138,7 @@
         "
         class="empty-state card"
       >
-        <div class="empty-state-mark" aria-hidden="true">✓</div>
+        <AppIcon name="check" />
         <div class="empty-state-text">
           {{
             taskView === 'active'
@@ -172,8 +181,8 @@
             <span class="project-progress-number">{{ progressPct(queue) }}%</span>
           </header>
 
-          <p class="project-description">
-            {{ queue.project.description || '该项目暂未填写简介。' }}
+          <p v-if="queue.project.description" class="project-description">
+            {{ queue.project.description }}
           </p>
 
           <div
@@ -208,23 +217,27 @@
           >
             <summary>按难度选择任务</summary>
             <div class="queue-tiers" aria-label="按难度层级领取">
-              <button
+              <AppButton
                 v-for="option in tierRows(queue)"
                 :key="option.key"
                 class="queue-tier"
+                variant="secondary"
+                size="sm"
                 :disabled="loading || claimingProject === queue.project.id"
                 @click="enterProject(queue, option.key)"
               >
                 {{ option.label }} · {{ option.count }}
-              </button>
-              <button
+              </AppButton>
+              <AppButton
                 v-if="queue.missingGlyph"
                 class="queue-tier queue-tier--glyph"
+                variant="secondary"
+                size="sm"
                 :disabled="loading || claimingProject === queue.project.id"
                 @click="enterProject(queue, '', true)"
               >
                 缺字待登记 · {{ queue.missingGlyph }}
-              </button>
+              </AppButton>
               <span v-if="tierUnknown(queue)" class="queue-tier queue-tier--muted">
                 信号不足 {{ tierUnknown(queue) }}
               </span>
@@ -240,9 +253,10 @@
           <footer class="project-work-card__footer">
             <span>{{ queueAction(queue).detail }}</span>
             <div class="project-work-card__actions">
-              <button
+              <AppButton
                 type="button"
-                :class="taskView === 'reviewed' ? 'btn btn-primary' : 'btn btn-quiet'"
+                :variant="taskView === 'reviewed' ? 'primary' : 'ghost'"
+                :loading="reviewingProject === queue.project.id"
                 :disabled="
                   loading ||
                   reviewingProject === queue.project.id ||
@@ -251,11 +265,11 @@
                 @click="openOwnReview(queue)"
               >
                 {{ reviewingProject === queue.project.id ? '正在打开…' : '回看已提交' }}
-              </button>
-              <button
+              </AppButton>
+              <AppButton
                 v-if="taskView !== 'reviewed'"
-                class="btn"
-                :class="queueAction(queue).tone === 'active' ? 'btn-success' : 'btn-primary'"
+                variant="primary"
+                :loading="claimingProject === queue.project.id"
                 :disabled="
                   loading ||
                   claimingProject === queue.project.id ||
@@ -265,8 +279,8 @@
                 @click="enterProject(queue)"
               >
                 {{ claimingProject === queue.project.id ? '正在打开…' : queueAction(queue).label }}
-                <span v-if="queueAction(queue).canEnter" aria-hidden="true">→</span>
-              </button>
+                <AppIcon v-if="queueAction(queue).canEnter" name="arrow" />
+              </AppButton>
             </div>
           </footer>
         </article>
@@ -289,6 +303,9 @@ import { useAsyncResource } from '@/composables/useAsyncResource'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppPagination from '@/components/AppPagination.vue'
+import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
+import '@/styles/work-catalog.css'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { currentUserId } from '@/services/authService'

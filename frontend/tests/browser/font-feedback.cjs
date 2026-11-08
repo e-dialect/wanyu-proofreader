@@ -194,7 +194,7 @@ async function feedbackCase() {
       const first = page.locator('.proofread-textarea').first()
       await first.fill('测试保留ɡ⁵á')
       await page.waitForFunction(() =>
-        document.querySelector('.draft-indicator')?.textContent.includes('已保存')
+        document.querySelector('[data-task-feedback="draft"]')?.textContent.includes('已存本机')
       )
       if (!baseline)
         assert.equal(
@@ -204,7 +204,7 @@ async function feedbackCase() {
       if (width === 390) {
         const nav = page.getByRole('navigation', { name: '字段导航' })
         await nav.getByRole('combobox').selectOption('2')
-        await nav.getByRole('button', { name: '整条总览', exact: true }).click()
+        await nav.getByRole('button', { name: '总览/提交', exact: true }).click()
       }
       await page.screenshot({ path: path.join(output, `proof-${width}-edited.png`) })
       const open =

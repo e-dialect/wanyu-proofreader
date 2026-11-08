@@ -202,7 +202,7 @@ const output =
     await navigation.getByRole('combobox').selectOption('0')
     assert.equal(await short.locator('.proofread-textarea:visible').evaluate(centerUncovered), true)
     await navigation.getByRole('combobox').selectOption('2')
-    await navigation.getByRole('button', { name: '整条总览', exact: true }).click()
+    await navigation.getByRole('button', { name: '总览/提交', exact: true }).click()
     await navigation.getByRole('button', { name: '检查并提交', exact: true }).click()
     const confirmation = short.getByRole('dialog')
     await confirmation.getByRole('checkbox').check()

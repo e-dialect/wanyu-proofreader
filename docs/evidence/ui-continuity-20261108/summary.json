@@ -1,0 +1,208 @@
+{
+  "date": "2026-11-08",
+  "baseline": "9be06da",
+  "data": "synthetic disposable data only; real App and backend for catalog journeys, mounted production editor with intercepted synthetic APIs for state and field scenarios",
+  "runtime": "Microsoft Edge / Playwright 1.65.0, local browser and viewport checks",
+  "scope": [
+    "task and project directories",
+    "mobile field overview and confirmation path",
+    "truthful stable feedback and presentation-only motion"
+  ],
+  "backendApiChanged": false,
+  "databaseMigration": false,
+  "newDependencies": false,
+  "validation": {
+    "makeCheck": true,
+    "frontendNodeTests": 480,
+    "productionBuild": true,
+    "eslint": true,
+    "browserGroupsPassed": [
+      "components",
+      "repository",
+      "review",
+      "modal",
+      "editor",
+      "workbench"
+    ],
+    "reviewIncludesArbitrationQueue": true,
+    "qualityStateExistingSuite": true,
+    "responsiveCases": 85,
+    "responsiveWidths": [
+      320,
+      360,
+      390,
+      430,
+      768
+    ],
+    "pageOverflowFailures": [],
+    "pageErrors": [],
+    "finalCatalogSpacingVerified": true
+  },
+  "catalog": {
+    "fullApp": true,
+    "realApi": true,
+    "disposableData": true,
+    "homeStartOneClick": true,
+    "homeResumeOneClick": true,
+    "originalQueueQueryAndHash": true,
+    "ownReviewNoWrites": true,
+    "projectJoining": true,
+    "managementOnlyHome": true,
+    "mobileNavigation": true,
+    "accountReplacement": true,
+    "shellEditorHeight": true,
+    "mobileInputVisible": true,
+    "reviewedTabCancellation": true,
+    "guidanceDoesNotCoverControls": true,
+    "catalogHierarchyAndMobileFit": true,
+    "managementMenuRoute": true,
+    "managementRefreshFailureRetention": true,
+    "nativeKeyboardVerified": false
+  },
+  "mobileFieldFlow": {
+    "synthetic": true,
+    "nativeMobileKeyboardVerified": false,
+    "cases": [
+      {
+        "viewport": [
+          390,
+          844
+        ],
+        "footerHeight": 52,
+        "firstFieldOverview": true,
+        "textNextAction": true,
+        "inputUncoveredWithTray": true,
+        "caretInsertion": "甲ɑ乙",
+        "originalTextareaRetained": true,
+        "overviewDoesNotSubmit": true,
+        "confirmationRetained": true,
+        "pageErrors": []
+      },
+      {
+        "viewport": [
+          320,
+          844
+        ],
+        "footerHeight": 52,
+        "firstFieldOverview": true,
+        "textNextAction": true,
+        "inputUncoveredWithTray": true,
+        "caretInsertion": "甲ɑ乙",
+        "originalTextareaRetained": true,
+        "overviewDoesNotSubmit": true,
+        "confirmationRetained": true,
+        "pageErrors": []
+      },
+      {
+        "viewport": [
+          640,
+          400
+        ],
+        "footerHeight": 52,
+        "firstFieldOverview": true,
+        "textNextAction": true,
+        "inputUncoveredWithTray": true,
+        "caretInsertion": "甲ɑ乙",
+        "originalTextareaRetained": true,
+        "overviewDoesNotSubmit": true,
+        "confirmationRetained": true,
+        "pageErrors": []
+      }
+    ],
+    "checks": {
+      "arbitrationUnresolvedBlocked": true,
+      "arbitrationConfirmationRetained": true,
+      "readOnlyHasNoSubmitEntry": true
+    }
+  },
+  "feedback": [
+    {
+      "width": 1440,
+      "original": {
+        "headerHeight": 95.5,
+        "feedbackY": 69.25,
+        "feedbackHeight": 26.25
+      },
+      "draft": {
+        "headerHeight": 95.5,
+        "feedbackY": 69.25,
+        "feedbackHeight": 26.25
+      },
+      "editingDraftOfflineFailureStable": true,
+      "offlineNoAutomaticSubmit": true,
+      "server503And409Preserved": true,
+      "onlyServerSuccessIsSubmitted": true,
+      "submittedBeforeClaimResult": true,
+      "previousSubmissionFlashDoesNotMarkCurrentSubmitted": true,
+      "inputSelectionAndElementPreserved": true,
+      "reducedMotion": {
+        "animation": "none",
+        "transition": "1e-05s"
+      },
+      "submissions": 3,
+      "pageErrors": []
+    },
+    {
+      "width": 390,
+      "original": {
+        "headerHeight": 91.25,
+        "feedbackY": 65,
+        "feedbackHeight": 26.25
+      },
+      "draft": {
+        "headerHeight": 91.25,
+        "feedbackY": 65,
+        "feedbackHeight": 26.25
+      },
+      "editingDraftOfflineFailureStable": true,
+      "offlineNoAutomaticSubmit": true,
+      "server503And409Preserved": true,
+      "onlyServerSuccessIsSubmitted": true,
+      "submittedBeforeClaimResult": true,
+      "previousSubmissionFlashDoesNotMarkCurrentSubmitted": true,
+      "inputSelectionAndElementPreserved": true,
+      "reducedMotion": {
+        "animation": "none",
+        "transition": "1e-05s"
+      },
+      "submissions": 3,
+      "pageErrors": []
+    }
+  ],
+  "sharedControls": {
+    "emptyStringRoundTrip": true,
+    "numericValuePreserved": true,
+    "menuDialogFocusReturn": true,
+    "disabledAndBusyProtected": true,
+    "asyncDisableClosesList": true,
+    "reorderedOptionsKeepIdentity": true,
+    "widths": [
+      1280,
+      390,
+      320
+    ],
+    "reducedMotion": true,
+    "pageErrors": []
+  },
+  "screenshots": [
+    "desktop-tasks.png",
+    "desktop-projects.png",
+    "desktop-management.png",
+    "desktop-management-error.png",
+    "mobile-tasks.png",
+    "mobile-editor.png",
+    "mobile-overview.png",
+    "mobile-offline.png",
+    "desktop-claiming.png",
+    "shortscreen-fields.png"
+  ],
+  "pending": [
+    "native iOS/Android keyboards and IMEs",
+    "native browser 200-percent zoom",
+    "real screen reader",
+    "human usability acceptance",
+    "site-wide page-by-page migration"
+  ],
+  "pushed": false,
+  "deployed": false
+}

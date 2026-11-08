@@ -35,6 +35,19 @@ async function logout(page) {
 async function noOverflow(page) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
 }
+async function catalogFits(page) {
+  await page.locator('.work-catalog').waitFor()
+  const bounds = await page.locator('.work-catalog').boundingBox()
+  assert.ok(bounds.width <= 1201, 'Catalog shares the workbench content width')
+  const headingSize = await page
+    .locator('.work-catalog h1')
+    .evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
+  assert.ok(
+    headingSize >= 24 && headingSize <= 28.1,
+    'Catalog title stays within the shared hierarchy'
+  )
+  await noOverflow(page)
+}
 
 ;(async () => {
   assert.ok(
@@ -98,6 +111,13 @@ async function noOverflow(page) {
     await page.waitForURL('**/tasks')
     const queuePath = `/tasks?view=active&project=${project.id}&page=1#project-list-title`
     await page.goto(base + queuePath)
+    await page.getByRole('button', { name: '继续校对', exact: false }).waitFor()
+    await catalogFits(page)
+    assert.ok(
+      (await page.locator('.catalog-summary').boundingBox()).height < 120,
+      'Queue statistics stay compact'
+    )
+    await page.screenshot({ path: path.join(output, 'desktop-task-catalog.png') })
     await page.getByRole('button', { name: '继续校对', exact: false }).click()
     await page.waitForURL('**/tasks/*/edit')
     await page.getByRole('link', { name: '返回队列', exact: true }).click()
@@ -162,7 +182,7 @@ async function noOverflow(page) {
     await page.getByRole('button', { name: '回看已提交', exact: true }).waitFor()
     writes.length = 0
     await page.getByRole('button', { name: '回看已提交', exact: true }).click()
-    await page.getByText('已提交结果 · 只读回看', { exact: true }).waitFor()
+    await page.locator('[data-task-feedback="readonly"]').waitFor()
     assert.equal(
       await page
         .locator('.proofread-textarea')
@@ -172,6 +192,8 @@ async function noOverflow(page) {
     assert.deepEqual(writes, [], 'Own review must not claim, save drafts, renew or submit')
     await page.goto(base + '/projects?view=mine')
     await page.getByRole('heading', { name: project.name, exact: true }).waitFor()
+    await catalogFits(page)
+    await page.screenshot({ path: path.join(output, 'desktop-project-catalog.png') })
     await page.getByRole('link', { name: '可加入', exact: true }).click()
     const joinForm = page.getByRole('form', { name: publicProject.name, exact: true })
     await joinForm.getByRole('button', { name: '加入项目', exact: true }).click()
@@ -192,7 +214,33 @@ async function noOverflow(page) {
     await page.goto(base + '/projects?view=mine')
     await page.getByRole('link', { name: '项目管理', exact: true }).click()
     await page.waitForURL('**/admin')
+    await page.getByRole('region', { name: '项目进展表', exact: true }).waitFor()
+    await catalogFits(page)
+    await page.getByRole('button', { name: `${project.name} 更多操作`, exact: true }).click()
+    await page.getByRole('menuitem', { name: '项目设置', exact: true }).waitFor()
+    assert.equal(
+      await page.getByRole('menuitem', { name: '项目设置', exact: true }).getAttribute('href'),
+      `/admin/projects/${project.id}/settings`
+    )
+    await page.keyboard.press('Escape')
+    await page.screenshot({ path: path.join(output, 'desktop-managed-catalog.png') })
+    const dashboardRequest = '**/api/fangji/project-insights?*'
+    await page.route(dashboardRequest, (route) =>
+      route.fulfill({ status: 503, json: { message: '合成测试：项目目录暂时不可用' } })
+    )
+    await page.getByRole('button', { name: '刷新', exact: true }).click()
+    await page.getByRole('alert').filter({ hasText: '合成测试：项目目录暂时不可用' }).waitFor()
+    await page.getByRole('region', { name: '项目进展表', exact: true }).waitFor()
+    await page.screenshot({ path: path.join(output, 'desktop-managed-catalog-error.png') })
+    await page.unroute(dashboardRequest)
+    await page.getByRole('button', { name: '重新加载', exact: true }).click()
+    await page
+      .getByRole('alert')
+      .filter({ hasText: '合成测试：项目目录暂时不可用' })
+      .waitFor({ state: 'hidden' })
     await page.setViewportSize({ width: 390, height: 844 })
+    await catalogFits(page)
+    await page.screenshot({ path: path.join(output, 'mobile-managed-catalog.png') })
     await page.getByRole('button', { name: '打开导航', exact: true }).click()
     const drawer = page.getByRole('dialog')
     await drawer.getByRole('link', { name: '工作台', exact: true }).click()
@@ -208,6 +256,20 @@ async function noOverflow(page) {
       1,
       'the current task has one resume action'
     )
+    await page.goto(base + '/tasks?view=active')
+    await page.getByRole('button', { name: '继续校对', exact: false }).waitFor()
+    await catalogFits(page)
+    assert.ok(
+      (await page.locator('.project-work-card').first().boundingBox()).y < 600,
+      'Mobile catalog exposes the first task without a screen of statistics'
+    )
+    await page.screenshot({ path: path.join(output, 'mobile-task-catalog.png') })
+    await page.goto(base + '/projects?view=mine')
+    await page.getByRole('heading', { name: project.name, exact: true }).waitFor()
+    await catalogFits(page)
+    await page.screenshot({ path: path.join(output, 'mobile-project-catalog.png') })
+    await page.goto(base + '/workspace')
+    await page.getByRole('link', { name: '继续校对', exact: true }).waitFor()
     await page.getByRole('link', { name: '继续校对', exact: true }).click()
     await page.waitForURL('**/tasks/*/edit')
     const input = page.locator('.proofread-textarea').first()
@@ -255,6 +317,9 @@ async function noOverflow(page) {
           mobileInputVisible: true,
           reviewedTabCancellation: true,
           guidanceDoesNotCoverControls: true,
+          catalogHierarchyAndMobileFit: true,
+          managementMenuRoute: true,
+          managementRefreshFailureRetention: true,
           nativeKeyboardVerified: false
         },
         null,

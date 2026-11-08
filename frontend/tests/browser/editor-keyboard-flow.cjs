@@ -119,7 +119,7 @@ async function main() {
       if (width === 390) {
         const nav = page.getByRole('navigation', { name: '字段导航' })
         await nav.getByRole('combobox').selectOption('2')
-        await nav.getByRole('button', { name: '整条总览', exact: true }).focus()
+        await nav.getByRole('button', { name: '总览/提交', exact: true }).focus()
         await page.keyboard.press('Enter')
       }
       const trigger =

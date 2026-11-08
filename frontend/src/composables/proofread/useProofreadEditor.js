@@ -8,6 +8,7 @@ import { shouldIgnoreEditorShortcut } from '@/lib/onboarding'
 import { getChangedFields } from '@/lib/workspaceInsights'
 import { prepareFieldHints, gatedNotice } from '@/lib/fieldHints'
 import { takeTaskFlash } from '@/lib/taskDraft'
+import { proofreadSubmitLabel, proofreadTaskFeedback } from '@/lib/taskFeedback'
 import { loadGlyphQueue, saveGlyphQueue } from '@/lib/taskLease'
 import { currentUserId as getCurrentUserId } from '@/services/authService'
 import {
@@ -94,6 +95,10 @@ export function useProofreadEditor() {
   const ownReview = ref(false)
   const claimNextFailure = ref(false)
   const retryingClaim = ref(false)
+  const connectionOnline = ref(globalThis.navigator?.onLine !== false)
+  const updateConnectionStatus = () => {
+    connectionOnline.value = globalThis.navigator?.onLine !== false
+  }
   const irreversibleSubmitNotice = IRREVERSIBLE_SUBMIT_NOTICE
   const claimNextFailureNotice = CLAIM_NEXT_FAILURE_NOTICE
   const textareaRefs = new Map()
@@ -164,28 +169,28 @@ export function useProofreadEditor() {
     return ''
   })
   const leaseStatus = computed(() => {
-    if (leaseLost.value) return '租约已失效 · 草稿已保留'
+    if (leaseLost.value) return '租约已失效 · 请保留本页输入'
     if (!leaseExpiresAt.value) return ''
     const date = new Date(leaseExpiresAt.value)
     if (Number.isNaN(date.getTime())) return '任务租约已启用'
     return `任务保留至 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
   })
-  const taskFeedback = computed(() => {
-    if (loadingPage.value) return { kind: 'loading', text: '正在准备任务…' }
-    if (ownReview.value) return { kind: 'readonly', text: '已提交结果 · 只读回看' }
-    if (saving.value) return { kind: 'submitting', text: '正在提交 · 请等待结果' }
-    if (leaseLost.value) return { kind: 'error', text: '租约失效 · 输入保留在本机，请重新领取' }
-    if (saveError.value) return { kind: 'error', text: '操作失败 · 输入已保留，可以重试' }
-    if (submittedHere.value)
-      return {
-        kind: 'submitted',
-        text:
-          '本条已提交 · ' +
-          (claimNextFailure.value ? '领取下一条失败，可重试领取' : '当前项目暂无下一条可处理任务')
-      }
-    if (draftStatus.value) return { kind: 'draft', text: draftStatus.value + ' · 尚未提交' }
-    return { kind: 'editing', text: '逐字段核对来源 PDF · 完成后检查并提交' }
-  })
+  const taskFeedback = computed(() =>
+    proofreadTaskFeedback({
+      loading: loadingPage.value,
+      hasPage: Boolean(page.value),
+      ownReview: ownReview.value,
+      saving: saving.value,
+      leaseLost: leaseLost.value,
+      saveError: saveError.value,
+      submittedHere: submittedHere.value,
+      claimNextFailure: claimNextFailure.value,
+      retryingClaim: retryingClaim.value,
+      draftStatus: draftStatus.value,
+      saved: saved.value,
+      online: connectionOnline.value
+    })
+  )
   const taskHeaderProps = computed(() => ({
     projectName: projectName.value,
     ownReview: ownReview.value,
@@ -194,6 +199,12 @@ export function useProofreadEditor() {
     navigationHint: navigationHint.value,
     neighborsState: neighborsState.value,
     submittedHere: submittedHere.value,
+    retryingClaim: retryingClaim.value,
+    submitLabel: proofreadSubmitLabel({
+      submittedHere: submittedHere.value,
+      saving: saving.value,
+      retryingClaim: retryingClaim.value
+    }),
     canSwitchPrev: canSwitchPrev.value,
     canSwitchNext: canSwitchNext.value,
     leaseLost: leaseLost.value,
@@ -460,6 +471,9 @@ export function useProofreadEditor() {
   })
 
   onMounted(() => {
+    updateConnectionStatus()
+    window.addEventListener('online', updateConnectionStatus)
+    window.addEventListener('offline', updateConnectionStatus)
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('keydown', handleEditorShortcut)
     window.addEventListener('focus', handleLeaseActivation)
@@ -476,6 +490,8 @@ export function useProofreadEditor() {
     window.removeEventListener('beforeunload', handleBeforeUnload)
     window.removeEventListener('keydown', handleEditorShortcut)
     window.removeEventListener('focus', handleLeaseActivation)
+    window.removeEventListener('online', updateConnectionStatus)
+    window.removeEventListener('offline', updateConnectionStatus)
     document.removeEventListener('visibilitychange', handleLeaseActivation)
   })
 

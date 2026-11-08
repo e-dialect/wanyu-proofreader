@@ -400,11 +400,19 @@
         :headers="visibleHeaders"
         :index="fieldIndex"
         :overview="overview"
+        :workflow-label="verificationMode ? '来源核验' : '仲裁'"
         @select="selectField"
         @next="nextField"
+        @overview="overview = true"
       >
         <template #submit
-          ><button class="btn btn-success" @click="openSubmitReview">检查并提交</button></template
+          ><AppButton
+            variant="primary"
+            :loading="submitting"
+            :disabled="loading || submitted || unresolvedHeaders.length > 0 || !caseData"
+            @click="openSubmitReview"
+            >{{ verificationMode ? '检查并核验' : '检查并仲裁' }}</AppButton
+          ></template
         >
       </FieldNavigation></template
     >
@@ -467,6 +475,7 @@ import {
 } from 'vue-router'
 import DocumentReviewWorkspace from '@/components/editor/DocumentReviewWorkspace.vue'
 import FieldNavigation from '@/components/editor/FieldNavigation.vue'
+import AppButton from '@/components/AppButton.vue'
 import { useFieldNavigation } from '@/composables/useFieldNavigation'
 import ProjectKeyboard from '@/components/editor/ProjectKeyboard.vue'
 import { composeRowText, safeParseRowJson } from '@/composables/useStructuredRow'

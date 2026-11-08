@@ -1,26 +1,20 @@
 <template>
-  <main class="container page workspace-page">
-    <ProjectHubTabs active="managed" />
+  <main class="container page workspace-page work-catalog admin-catalog">
     <header class="page-heading">
       <div>
-        <div class="page-eyebrow">项目 / 管理</div>
         <h1>项目管理</h1>
-        <p>按项目查看校对进展，优先处理待仲裁条目，再继续准备文件、管理条目或导出结果。</p>
+        <p>查看项目进展，优先处理待仲裁条目。</p>
       </div>
       <div class="page-heading-actions">
-        <button
-          type="button"
-          class="btn btn-secondary"
-          :disabled="loading"
-          @click="loadDashboard()"
-        >
-          <span aria-hidden="true">↻</span>{{ loading ? '正在刷新' : '刷新' }}
-        </button>
+        <AppButton variant="ghost" :loading="loading" @click="loadDashboard()">
+          <AppIcon name="refresh" />{{ loading ? '正在刷新' : '刷新' }}
+        </AppButton>
         <RouterLink v-if="auth.canCreateProjects" to="/admin/projects/new" class="btn btn-primary"
-          >创建新项目</RouterLink
+          ><AppIcon name="plus" />创建项目</RouterLink
         >
       </div>
     </header>
+    <ProjectHubTabs active="managed" />
 
     <AppStatusPanel
       v-if="error"
@@ -33,50 +27,37 @@
       <span>{{ error }}</span>
     </AppStatusPanel>
 
-    <section
-      class="workspace-summary admin-workspace-summary"
+    <dl
+      class="catalog-summary catalog-summary--four"
       aria-label="项目总体状态"
       :aria-busy="loading"
     >
-      <article class="workspace-stat">
-        <span>项目总数</span>
-        <strong>{{ hasResult ? overallSummary.projects : '—' }}</strong>
-        <small>{{ hasResult ? `${overallSummary.total} 条方言材料` : '统计尚未加载' }}</small>
-      </article>
-      <article class="workspace-stat workspace-stat--accent">
-        <span>整体完成率</span>
-        <strong
-          >{{ hasResult ? overallSummary.completionPct : '—' }}<em v-if="hasResult">%</em></strong
-        >
+      <div>
+        <dt>项目总数</dt>
+        <dd>{{ hasResult ? overallSummary.projects : '—' }}<span>个项目</span></dd>
+        <small v-if="hasResult">{{ overallSummary.total }} 条材料</small>
+      </div>
+      <div>
+        <dt>校对完成率</dt>
+        <dd>{{ hasResult ? overallSummary.completionPct : '—' }}<span v-if="hasResult">%</span></dd>
         <small>{{
           hasResult
             ? `${overallSummary.approved} 条已完成 · ${overallSummary.incomplete} 条未完成`
             : '完成统计不受列表筛选影响'
         }}</small>
-      </article>
-      <article class="workspace-stat">
-        <span>校对处理中</span>
-        <strong>{{ hasResult ? overallSummary.active : '—' }}</strong>
-        <small>条已由校对员领取</small>
-      </article>
-      <article
-        class="workspace-stat"
-        :class="{ 'workspace-stat--urgent': hasResult && overallSummary.arbitration > 0 }"
-      >
-        <span>等待管理员仲裁</span>
-        <strong>{{ hasResult ? overallSummary.arbitration : '—' }}</strong>
-        <small>{{
-          !hasResult
-            ? '统计尚未加载'
-            : overallSummary.arbitration
-              ? '需要逐字段确认'
-              : '目前没有异常积压'
-        }}</small>
-      </article>
-    </section>
+      </div>
+      <div>
+        <dt>校对处理中</dt>
+        <dd>{{ hasResult ? overallSummary.active : '—' }}<span>条</span></dd>
+      </div>
+      <div :class="{ 'catalog-summary__attention': hasResult && overallSummary.arbitration > 0 }">
+        <dt>等待仲裁</dt>
+        <dd>{{ hasResult ? overallSummary.arbitration : '—' }}<span>条</span></dd>
+      </div>
+    </dl>
 
     <section
-      class="card admin-projects-card"
+      class="admin-projects-card catalog-projects"
       aria-labelledby="admin-project-list-title"
       :aria-busy="loading"
     >
@@ -103,47 +84,38 @@
           />
         </label>
         <div class="admin-quick-filters" role="group" aria-label="项目快捷筛选">
-          <button
+          <AppButton
             v-for="option in FILTER_OPTIONS"
             :key="option.value"
             type="button"
-            class="btn btn-sm"
-            :class="dashboardQuery.filter === option.value ? 'btn-primary' : 'btn-secondary'"
+            size="sm"
+            :variant="dashboardQuery.filter === option.value ? 'primary' : 'ghost'"
             :aria-pressed="dashboardQuery.filter === option.value"
             @click="setFilter(option.value)"
           >
             {{ option.label }}
-          </button>
+          </AppButton>
         </div>
       </div>
 
       <AppStatusPanel v-if="loading && !hasResult" state="pending" message="正在加载项目…" />
 
       <div v-else-if="!hasResult && error" class="empty-state">
-        <div class="empty-state-mark" aria-hidden="true">!</div>
+        <AppIcon name="refresh" />
         <div class="empty-state-text">项目状态暂时不可用</div>
         <p>请检查网络连接后重试；重试不会清空当前筛选条件。</p>
-        <button
-          type="button"
-          class="btn btn-secondary mt-3"
-          :disabled="loading"
-          @click="loadDashboard()"
-        >
-          重新加载
-        </button>
+        <AppButton class="mt-3" :loading="loading" @click="loadDashboard()"> 重新加载 </AppButton>
       </div>
 
       <AppStatusPanel v-else-if="projectInsights.length === 0" state="empty" reason="none">
         <template v-if="hasActiveFilters && overallSummary.projects > 0">
-          <div class="empty-state-mark" aria-hidden="true">筛</div>
+          <AppIcon name="search" />
           <div class="empty-state-text">没有符合条件的项目</div>
           <p>当前搜索或快捷筛选没有结果，可以清除条件后查看全部项目。</p>
-          <button type="button" class="btn btn-secondary mt-3" @click="clearFilters">
-            清除搜索与筛选
-          </button>
+          <AppButton class="mt-3" @click="clearFilters"> 清除搜索与筛选 </AppButton>
         </template>
         <template v-else>
-          <div class="empty-state-mark" aria-hidden="true">项</div>
+          <AppIcon name="project" />
           <div class="empty-state-text">还没有项目</div>
           <p>创建项目后，先上传原文 PDF，再用 CSV 导入待校对条目。</p>
           <RouterLink
@@ -242,22 +214,14 @@
                     : `/admin/projects/${item.project.id}`
                 "
                 class="btn btn-sm"
-                :class="item.summary.arbitration ? 'btn-warn' : 'btn-secondary'"
+                :class="item.summary.arbitration ? 'btn-primary' : 'btn-secondary'"
               >
                 {{ item.summary.arbitration ? '处理仲裁' : '管理项目' }}
               </RouterLink>
-              <details class="project-more-actions">
-                <summary class="btn btn-quiet btn-sm" :aria-label="`${item.project.name} 更多操作`">
-                  更多操作
-                </summary>
-                <div class="project-more-actions__menu">
-                  <RouterLink
-                    :to="`/admin/projects/${item.project.id}/settings`"
-                    class="btn btn-quiet btn-sm"
-                    >项目设置</RouterLink
-                  >
-                </div>
-              </details>
+              <AppDropdown
+                :aria-label="`${item.project.name} 更多操作`"
+                :items="[{ label: '项目设置', to: `/admin/projects/${item.project.id}/settings` }]"
+              />
             </div>
           </td>
         </tr>
@@ -281,6 +245,10 @@ import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppPagination from '@/components/AppPagination.vue'
+import AppButton from '@/components/AppButton.vue'
+import AppDropdown from '@/components/AppDropdown.vue'
+import AppIcon from '@/components/AppIcon.vue'
+import '@/styles/work-catalog.css'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'

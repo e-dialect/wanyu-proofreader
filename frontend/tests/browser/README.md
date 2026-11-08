@@ -1,5 +1,21 @@
 # Review workspace browser regression
 
+`mobile-field-flow.cjs` runs with the `editor` group. It mounts the real editor
+and arbitration workspace at 320×844, 390×844 and 640×400, checks the first-field
+overview entry, visible next-field action, one-row footer, original textarea
+identity and caret insertion, and verifies that overview/confirmation alone
+never submits. Read-only review has no submission entry; arbitration keeps its
+unresolved-field gate. Receipts and screenshots are in
+`output/playwright/mobile-field-flow/`. These viewport checks do not verify
+native phone keyboards or IMEs.
+
+`editor-states.cjs` also checks stable task-header feedback for local drafts,
+storage failure, offline/online signals and server failures. A held claim request
+after a successful submit confirms that server submission and next-task claiming
+remain distinct. The full-App `workbench.cjs` and discovery regression verify
+the shared task/project directory geometry, retained results on refresh failure,
+permission links and existing join/claim behavior.
+
 `run_frontend_quality_browser.py --only components` runs `reka-controls.cjs`
 against the real public components: empty-string and numeric values, reordered
 options, an asynchronous disabled change while open, disabled/busy actions,
