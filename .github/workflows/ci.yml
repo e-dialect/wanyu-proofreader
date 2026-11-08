@@ -744,6 +744,17 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
+      - name: Verify stopped Docker account recovery and bootstrap preservation
+        run: python3 backend/tests/run_account_recovery_container.py --image fangji-backend:ci --output output/maturity/account-recovery-container
+
+      - name: Attach disposable Docker recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: account-recovery-container
+          path: output/maturity/account-recovery-container/report.json
+          if-no-files-found: error
+
       - name: Build frontend image
         uses: docker/build-push-action@v7
         with:
