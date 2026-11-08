@@ -77,3 +77,12 @@ BROWSER_CHANNEL=chrome python3 backend/tests/run_capacity_baseline.py \
 | LCP / INP / CLS | 1,128 ms / 72 ms / 0.142 | CLS fail |
 
 较早冻结 smoke（`smoke-before-source-probes/`）也保留：claim 867 ms、submit 1,260 ms、summary 1,989 ms、UI ack 1,074 ms、CLS 0.155。两次差异不表示产品已优化；运行器加了测量探针，负载与时序也有波动，两次均没有通过总体验收。产品 CLS 的 0.1 目标未放宽，具体布局位移来源尚待定位。
+
+
+### PDF 加载布局诊断与局部修复
+
+`cls-layout-evidence.json` 保留相同 smoke 下修复前后的原始来源矩形摘录。完整未过滤 `layout-shifts.jsonl` 只留本地受控输出，采集内容是合成页面的 tag/class 和位置，不含输入文本，也未发送产品遥测。
+
+诊断确认：PDF 初次渲染前展示默认 300×150 canvas，随后 stage、加载遮罩、水印一起改为页面实际大小，单次非近期输入位移贡献 **0.07943**。它在连续任务中重复发生，是实际页面跳动。任务大厅进入沉浸编辑器的 shell 位移另有 hadRecentInput=true，Web Vitals 自行处理，没有人为过滤不利样本。
+
+修复把加载遮罩放到固定 PDF 滚动视口，加载/渲染期间不展示尺寸未就绪的 stage，源内容就绪再显示。相同 30 s 工况 CLS p95 **0.1545 → 0.07488**，LCP 1,572 ms，INP 64 ms；该次总体容量仍 fail，不能将局部视觉改善视为正式容量通过。剩余最大单次位移 0.01243 来自提交反馈区，完整产品 CLS 0.1 目标保持不变。

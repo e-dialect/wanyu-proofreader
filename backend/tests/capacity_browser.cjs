@@ -135,6 +135,43 @@ async function main() {
               at_ms: Date.now()
             })
         })
+        await page.exposeFunction('__capacityLayoutShift', (value) => {
+          // Synthetic local evidence only. No DOM text, input value, token or
+          // source material is sent to the product telemetry endpoint.
+          append('layout-shifts.jsonl', { vu: actor.vu, ...value })
+        })
+        await page.addInitScript(() => {
+          const documentId = Math.random().toString(36).slice(2)
+          const selector = (node) => {
+            const parts = []
+            for (let current = node; current && parts.length < 4; current = current.parentElement) {
+              parts.unshift(
+                current.tagName?.toLowerCase() +
+                  (current.classList?.length ? '.' + [...current.classList].join('.') : '')
+              )
+            }
+            return parts.join(' > ')
+          }
+          const rect = (value) =>
+            Object.fromEntries(
+              ['x', 'y', 'width', 'height'].map((key) => [key, Math.round(value[key] * 100) / 100])
+            )
+          new PerformanceObserver((list) => {
+            for (const entry of list.getEntries())
+              window.__capacityLayoutShift({
+                document_id: documentId,
+                route: location.pathname,
+                start_time_ms: entry.startTime,
+                value: entry.value,
+                had_recent_input: entry.hadRecentInput,
+                sources: (entry.sources || []).map((source) => ({
+                  selector: selector(source.node),
+                  previous: rect(source.previousRect),
+                  current: rect(source.currentRect)
+                }))
+              })
+          }).observe({ type: 'layout-shift', buffered: true })
+        })
         await page.addInitScript({
           content:
             vitalsCode +

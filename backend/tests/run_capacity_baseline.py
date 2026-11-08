@@ -15,7 +15,7 @@ import capacity_fixture as fixture_helpers
 import capacity_report
 
 
-def clone_fixture(db, project, entries, pdf_file):
+def clone_fixture(db, project, entries, pdf_file=None):
     """Clone actual workflow templates offline, preserving attempt/event references."""
     with sqlite3.connect(db) as sql:
         sql.row_factory = sqlite3.Row
@@ -45,8 +45,9 @@ def clone_fixture(db, project, entries, pdf_file):
                     result[key]=value
                 return result
             record=mapped(page);record['page_number']=1000+index
-            record['project_file']=pdf_file
-            record['pdf_page']=index % 200 + 1
+            if pdf_file is not None:
+                record['project_file']=pdf_file
+                record['pdf_page']=index % 200 + 1
             if kind in ('single','pending'):
                 record.update(status='proofreading' if kind=='single' else 'pending',proofread_count=len(chosen),proofread_row_json='',proofreader='',lease_token_hash='',lease_expires_at='')
             # Unknown optional schema keys must not be invented during fixture creation.
