@@ -1,11 +1,15 @@
 import os
+import io
+import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
+import run_capacity_faults
 from run_capacity_faults import controlled_run
 
 
@@ -73,6 +77,64 @@ raise SystemExit(7)
             self.assertEqual(code, 3)
             self.assertNotIn('secret-example', (root/'gate.log').read_text())
             self.assertEqual((root/'gate.log').stat().st_mode & 0o777, 0o600)
+
+
+class FaultSourceFreezeTests(unittest.TestCase):
+    def run_full(self, after, failed_suite=False):
+        before = {'baseline_sha': 'a'*40, 'dirty_diff_sha256': 'b'*64,
+                  'source_sha256': {'backend/main.go': 'c'*64}}
+        clock = {'now': 0}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(sys, 'argv', ['faults', '--profile', 'full', '--output', str(root)]), \
+                    patch.object(run_capacity_faults.capacity_fixture, 'source_manifest', side_effect=[before, after]) as snapshots, \
+                    patch.object(run_capacity_faults.time, 'monotonic', side_effect=lambda: clock['now']), \
+                    patch('sys.stdout', new_callable=io.StringIO):
+                def run(command, cwd, log_path, timeout=1800):
+                    # The first source snapshot must precede npm build, not
+                    # merely the first fault suite. No child process is launched.
+                    self.assertEqual(snapshots.call_count, 1)
+                    if command[0] != 'npm':
+                        clock['now'] += 200
+                    return 3 if failed_suite and log_path.name == '1-restart.log' else 0
+                with patch.object(run_capacity_faults, 'controlled_run', side_effect=run) as executions:
+                    code = run_capacity_faults.main()
+                self.assertEqual(executions.call_count, 6)
+                self.assertEqual(snapshots.call_count, 2)
+            return code, json.loads((root/'faults.json').read_text())
+
+    def test_matching_source_allows_full_fault_result(self):
+        source = {'baseline_sha': 'a'*40, 'dirty_diff_sha256': 'b'*64,
+                  'source_sha256': {'backend/main.go': 'c'*64}}
+        code, report = self.run_full(source)
+        self.assertEqual(code, 0)
+        self.assertEqual(report['source_after'], source)
+        self.assertEqual(report['source_unchanged'], 'pass')
+        self.assertEqual(report['gates']['source_unchanged'], 'pass')
+        self.assertEqual(report['status'], 'pass')
+        self.assertTrue(report['full_fault_gate'])
+        self.assertEqual(report['duration_seconds'], 1000)
+
+    def test_changed_or_missing_source_never_passes_full_fault_result(self):
+        source = {'baseline_sha': 'a'*40, 'dirty_diff_sha256': 'b'*64,
+                  'source_sha256': {'backend/main.go': 'c'*64}}
+        cases = [{**source, 'baseline_sha': 'd'*40}, {**source, 'dirty_diff_sha256': 'd'*64},
+                 {**source, 'source_sha256': {'backend/main.go': 'd'*64}}, {}, OSError('unavailable')]
+        for after in cases:
+            with self.subTest(after=type(after).__name__):
+                code, report = self.run_full(after)
+                self.assertEqual(code, 2)
+                self.assertEqual(report['source_unchanged'], 'incomplete')
+                self.assertEqual(report['status'], 'incomplete')
+                self.assertFalse(report['full_fault_gate'])
+                self.assertEqual(len(report['executions']), 5)
+                self.assertTrue(all(row['status'] == 'pass' for row in report['executions']))
+
+    def test_suite_failure_is_not_downgraded_by_missing_source(self):
+        code, report = self.run_full(OSError('unavailable'), failed_suite=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(report['status'], 'fail')
+        self.assertFalse(report['full_fault_gate'])
 
 
 if __name__ == '__main__':

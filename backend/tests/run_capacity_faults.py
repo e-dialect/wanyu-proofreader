@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 import harness
 import capacity_fixture
+from capacity_remote_contract import same_source
 
 
 def owned_process_groups(process, known):
@@ -122,8 +123,11 @@ def main():
     if output.exists() and any(output.iterdir()): parser.error('output must be empty')
     output.mkdir(parents=True, exist_ok=True)
     root = harness.BACKEND.parent
+    # Freeze before compiling either frontend or backend code. A later snapshot
+    # must not label earlier suite executions with a different checkout.
+    source = capacity_fixture.source_manifest(harness.BACKEND)
     if controlled_run(['npm', 'run', 'build'], root/'frontend', output/'frontend-build.log') != 0:
-        (output/'faults.json').write_text(json.dumps({'status':'fail','full_fault_gate':False,'reason':'frontend_build_failed','log':'frontend-build.log'}))
+        (output/'faults.json').write_text(json.dumps({**source, 'status':'fail','full_fault_gate':False,'reason':'frontend_build_failed','log':'frontend-build.log'}))
         return 1
     commands = [
         ('offline', ['run_frontend_quality_browser.py', '--only', 'components'],
@@ -138,7 +142,7 @@ def main():
          'SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry')
     ]
     started = time.monotonic()
-    manifest = {**capacity_fixture.source_manifest(harness.BACKEND), 'profile': args.profile,
+    manifest = {**source, 'profile': args.profile,
                 'synthetic': True, 'gates': {name: 'not_run' for name, _, _ in commands}, 'executions': []}
     cycle = 0
     while True:
@@ -157,12 +161,20 @@ def main():
             (output/'faults.json').write_text(json.dumps(manifest, indent=2))
         if args.profile == 'smoke' or time.monotonic()-started >= 900 or 'fail' in manifest['gates'].values(): break
     manifest['duration_seconds'] = time.monotonic()-started
-    manifest['status'] = 'pass' if all(value == 'pass' for value in manifest['gates'].values()) else 'fail'
+    try:
+        source_after = capacity_fixture.source_manifest(harness.BACKEND)
+    except (OSError, subprocess.SubprocessError):
+        source_after = None
+    manifest['source_after'] = source_after
+    manifest['source_unchanged'] = 'pass' if source_after is not None and same_source(source, source_after) else 'incomplete'
+    manifest['gates']['source_unchanged'] = manifest['source_unchanged']
+    manifest['status'] = ('fail' if 'fail' in manifest['gates'].values() else
+                          'pass' if all(value == 'pass' for value in manifest['gates'].values()) else 'incomplete')
     manifest['full_fault_gate'] = manifest['status'] == 'pass' and args.profile == 'full' and manifest['duration_seconds'] >= 900
     manifest['limitation'] = 'Independent fault suites, not simultaneous faults injected into all 30 active users. A missing or failed child never counts as passed.'
     (output/'faults.json').write_text(json.dumps(manifest, indent=2))
     print(json.dumps({'status': manifest['status'], 'full_fault_gate': manifest['full_fault_gate'], 'output': str(output)}))
-    return 0 if manifest['status'] == 'pass' else 1
+    return {'pass': 0, 'fail': 1, 'incomplete': 2}[manifest['status']]
 
 
 if __name__ == '__main__': raise SystemExit(main())
