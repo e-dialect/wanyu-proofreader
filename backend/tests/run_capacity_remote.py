@@ -19,6 +19,7 @@ from pathlib import Path
 import harness
 import capacity_fixture as fixture
 import capacity_report
+from capacity_burst import make_submit_burst
 from capacity_remote_contract import (VERSION, MAX_LINE, ARTIFACTS, canonical_hash, clean_environment,
     host_identity, validate_budget, validate_init, evaluate_evidence, same_source, observation_seconds, strict_json_loads,
     CapacityFailure, failure_from_frame, safe_failure)
@@ -216,6 +217,9 @@ def run_once(args, output, source, budget):
         armed = transport.request({'op': 'arm'}, timeout=700)
         if armed.get('ok') != 'armed': raise ValueError('invalid_arm')
         config.update(start_epoch_ms=armed['start_epoch_ms']-clock['offset_ms'], output=str(output))
+        config['submit_burst'] = make_submit_burst(config, args.submit_burst)
+        if args.burst_miss_vu is not None:
+            config['submit_burst_test_fault'] = {'miss_vu': args.burst_miss_vu, 'expected_fail': True}
         config.pop('observation', None)
         phase = 'generate'
         # mkstemp starts 0600; credentials are never written into output or argv.
@@ -299,6 +303,8 @@ def main():
     parser.add_argument('--duration', type=int)
     parser.add_argument('--repeats', type=int)
     parser.add_argument('--fault-report', type=Path)
+    parser.add_argument('--submit-burst', action='store_true', help='one synchronized submit per proofreader (mandatory for full)')
+    parser.add_argument('--burst-miss-vu', type=int, help='smoke-only missed-participant fault; expected fail')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.duration = args.duration or (3600 if args.profile == 'full' else 180)
@@ -306,6 +312,8 @@ def main():
     if args.transport == 'ssh' and (not args.ssh_target or not args.target_repo): parser.error('SSH requires an explicitly selected isolated target and checkout')
     if not 1 <= args.repeats <= 3: parser.error('repeats must be 1..3')
     if args.profile == 'full' and args.repeats != 3: parser.error('full requires three repeats')
+    if args.burst_miss_vu is not None and (args.profile != 'smoke' or not args.submit_burst or not 0 <= args.burst_miss_vu < args.users - 6):
+        parser.error('--burst-miss-vu requires smoke --submit-burst and a proofreader VU')
     args.output = args.output.resolve()
     if args.output.exists() and any(args.output.iterdir()): parser.error('output must be empty')
     args.output.mkdir(parents=True, exist_ok=True)
@@ -320,6 +328,8 @@ def main():
                 'release_ready': False,
                 'entries': args.entries, 'users': args.users, 'duration': args.duration, 'repeats': args.repeats,
                 'budget': budget, 'budget_sha256': canonical_hash(budget), 'budget_file_sha256': hashlib.sha256(budget_bytes).hexdigest() if budget_bytes else None, 'status': 'running', 'full_acceptance': False}
+    manifest['submit_burst_enabled'] = args.profile == 'full' or args.submit_burst
+    manifest['submit_burst_test_fault'] = {'miss_vu': args.burst_miss_vu, 'expected_fail': True} if args.burst_miss_vu is not None else None
     (args.output/'manifest.json').write_text(json.dumps(manifest, indent=2))
     results = []
     try:

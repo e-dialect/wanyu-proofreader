@@ -13,6 +13,7 @@ import harness
 import field_audit_capacity as audit
 import capacity_fixture as fixture_helpers
 import capacity_report
+from capacity_burst import make_submit_burst
 from capacity_reconciliation import snapshot_actor_records, reconcile_submissions
 from capacity_resources import ResourceSampler
 
@@ -131,6 +132,9 @@ def run_once(binary, root, args, output, repeat):
                 'actors':actors,'duration':args.duration,'profile':args.profile,'phases':fixture_helpers.phases(args.duration),
                 'start_epoch_ms':int(time.time()*1000)+3000,'output':str(output),'seed':1701,
                 'parallel_import_rows':200 if args.profile=='smoke' else 2000}
+        config['submit_burst']=make_submit_burst(config, args.submit_burst)
+        if args.burst_miss_vu is not None:
+            config['submit_burst_test_fault']={'miss_vu':args.burst_miss_vu,'expected_fail':True}
         config_path=root/'load.json';config_path.write_text(json.dumps(config));os.chmod(config_path,0o600)
         sampler=ResourceSampler(env['PB_TEST_SERVER_PID'],root,config)
         sampler.start()
@@ -161,7 +165,8 @@ def run_once(binary, root, args, output, repeat):
     report=capacity_report.summarize(output, config, reconciliation, codes)
     report.update({'resources':resources,'fixture':fixture_meta,'pdf':pdf_meta,'storage_rollback_gate':storage_gate,
                    'database_bytes':db.stat().st_size,'repeat':repeat,'duration':args.duration,
-                   'users':args.users,'browser_users':2,'phases':config['phases']})
+                   'users':args.users,'browser_users':2,'phases':config['phases'],
+                   'submit_burst_plan':config['submit_burst'],'submit_burst_test_fault':config.get('submit_burst_test_fault')})
     (output/'acceptance.json').write_text(json.dumps(report,indent=2))
     return report
 
@@ -174,6 +179,8 @@ def main():
     parser.add_argument('--users',type=int,default=30)
     parser.add_argument('--repeats',type=int)
     parser.add_argument('--fault-report',type=Path)
+    parser.add_argument('--submit-burst',action='store_true',help='one synchronized submit per proofreader (mandatory for full)')
+    parser.add_argument('--burst-miss-vu',type=int,help='smoke-only missed-participant fault; expected fail, never a product pass')
     parser.add_argument('--reference-profile',choices=['production_shared','8g_comparison'],default='production_shared')
     parser.add_argument('--target-cpus',type=int,default=4)
     parser.add_argument('--target-memory-gib',type=float)
@@ -188,6 +195,8 @@ def main():
         parser.error('entries 20..20000, users 8..30, duration >=12, repeats 1..3')
     if args.profile=='full' and (args.duration!=3600 or args.users!=30 or args.entries!=20000 or args.repeats!=3):
         parser.error('full profile is frozen at 20,000 entries / 30 actors / 3 x 3,600 seconds')
+    if args.burst_miss_vu is not None and (args.profile!='smoke' or not args.submit_burst or not 0<=args.burst_miss_vu<args.users-6):
+        parser.error('--burst-miss-vu requires smoke --submit-burst and a proofreader VU')
     args.output=args.output.resolve()
     if args.output.exists() and any(args.output.iterdir()): parser.error('output must be empty; never append a repeat to previous evidence')
     args.output.mkdir(parents=True,exist_ok=True)
@@ -195,6 +204,8 @@ def main():
     manifest={**fixture_helpers.source_manifest(harness.BACKEND),'hardware':fixture_helpers.hardware(),
               'profile':args.profile,'synthetic':True,'seed':1701,'entries':args.entries,'users':args.users,
               'browser_users':2,'duration':args.duration,'repeats':args.repeats,'phases':fixture_helpers.phases(args.duration)}
+    manifest['submit_burst_enabled']=args.profile=='full' or args.submit_burst
+    manifest['submit_burst_test_fault']={'miss_vu':args.burst_miss_vu,'expected_fail':True} if args.burst_miss_vu is not None else None
     manifest['target_hardware']={'reference_profile':args.reference_profile,'cpu_cores':args.target_cpus,'memory_gib':args.target_memory_gib,'production_is_shared':args.reference_profile=='production_shared'}
     manifest['runtime_environment']={
         'GOMAXPROCS':os.environ.get('GOMAXPROCS'),

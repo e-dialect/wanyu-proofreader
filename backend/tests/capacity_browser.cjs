@@ -6,12 +6,14 @@ const { performance, monitorEventLoopDelay } = require('node:perf_hooks')
 const { chromium } = require('playwright')
 const { startHost } = require('./export_browser_host.cjs')
 const { submissionEvidence } = require('./capacity_submission.cjs')
+const { createSubmitBurst } = require('./capacity_burst.cjs')
 
 async function main() {
   const config = JSON.parse(fs.readFileSync(process.env.CAPACITY_FIXTURE, 'utf8'))
   assert.match(config.base, /^http:\/\/127\.0\.0\.1:\d+$/)
   assert.equal(config.disposable, true)
-  const { sleep, phaseAt, randomFor } = await import('./capacity_profile.mjs')
+  const { sleep, phaseAt, randomFor, isSourcePayloadRequest } =
+    await import('./capacity_profile.mjs')
   const actors = config.actors.filter((actor) => actor.transport === 'browser')
   assert.equal(actors.length, 2)
   if (config.browser_origin) assert.match(config.browser_origin, /^http:\/\/127\.0\.0\.1:\d+$/)
@@ -52,10 +54,13 @@ async function main() {
             localStorage.setItem('pocketbase_auth', JSON.stringify({ token, record }))
         }, actor)
         const page = await context.newPage()
+        const burst = createSubmitBurst(config, actor, {
+          record: (event) => append('burst-events.jsonl', event)
+        })
+        const requestMetadata = new WeakMap()
         let sourcePayloadRequests = 0
         page.on('request', (request) => {
-          if (/\/pdf(?:\/images\/\d+\/asset)?$/.test(new URL(request.url()).pathname))
-            sourcePayloadRequests++
+          if (isSourcePayloadRequest(request.url())) sourcePayloadRequests++
         })
         const waitSource = async () => {
           await page.waitForFunction(
@@ -114,12 +119,24 @@ async function main() {
                     ? 'pdf_descriptor'
                     : null
         }
+        page.on('request', (request) => {
+          if (!config.submit_burst) return
+          const burstId =
+            request.method() === 'POST' && requestOperation(request) === 'submit'
+              ? burst.claimRequest()
+              : null
+          requestMetadata.set(request, {
+            ...(burstId ? { burst_id: burstId } : {})
+          })
+        })
         page.on('requestfailed', (request) => {
           const operation = requestOperation(request)
           if (!operation) return
           append('requests.jsonl', {
             vu: actor.vu,
             operation,
+            ...requestMetadata.get(request),
+            ...(config.submit_burst ? { started_at_ms: request.timing().startTime } : {}),
             duration_ms: Math.max(0, Date.now() - request.timing().startTime),
             phase: phaseAt(config).name,
             at_ms: Date.now(),
@@ -137,6 +154,9 @@ async function main() {
           const record = {
             vu: actor.vu,
             operation,
+            ...requestMetadata.get(request),
+            // Playwright exposes startTime only after network timing is available.
+            ...(config.submit_burst ? { started_at_ms: timing.startTime } : {}),
             duration_ms: timing.responseEnd,
             phase: phaseAt(config).name,
             at_ms: Date.now(),
@@ -148,7 +168,9 @@ async function main() {
           if (operation === 'submit' && response.ok()) {
             try {
               record.submission = submissionEvidence(
-                new URL(request.url()).pathname, actor.record.id, request.postDataJSON()
+                new URL(request.url()).pathname,
+                actor.record.id,
+                request.postDataJSON()
               )
             } catch {
               record.submission_evidence_error = 'invalid_submission_evidence'
@@ -310,6 +332,7 @@ async function main() {
             await page.getByRole('button', { name: '检查并提交', exact: true }).click()
             const dialog = page.getByRole('dialog')
             await dialog.getByRole('checkbox', { name: '我已逐字段对照本条来源 PDF' }).check()
+            if (config.submit_burst) await burst.beforeSubmit()
             const ack = page.waitForResponse(
               (response) =>
                 /\/submit$/.test(new URL(response.url()).pathname) &&
@@ -344,6 +367,7 @@ async function main() {
               .catch(() => {})
           }
         }
+        burst.finalize()
         // Real pagehide flushes Web Vitals; no fabricated visibility event or fallback zero.
         await page.goto('about:blank')
         await sleep(100)
