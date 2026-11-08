@@ -19,6 +19,11 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204420_queue_projection_index.js': {
+        'indexes': ['idx_pages_queue_projection'],
+        'collection_indexes': ('pages', 'idx_pages_queue_projection'),
+        'plans': [('pages', 'SELECT project,id,page_number,pdf_page,status,difficulty_tier,missing_glyph,proofreader,proofread_round FROM pages WHERE project=?', ('p',), 'COVERING INDEX idx_pages_queue_projection')],
+    },
     '1794204410_claim_active_order.js': {
         'replacement_predecessor': '1794204200_claim_queue_indexes.js',
         'index_replacements': [('idx_pages_claim_active',
