@@ -25,6 +25,33 @@ type externalProfileProvider interface {
 	Avatar(context.Context, string) *filesystem.File
 }
 
+// A provider snapshot is fetched before a binding transaction begins.
+type cachedExternalProfile struct {
+	externalIdentityProvider
+	profile externalProfile
+	avatar  *filesystem.File
+}
+
+func (p cachedExternalProfile) Profile(context.Context, string) externalProfile { return p.profile }
+func (p cachedExternalProfile) Avatar(context.Context, string) *filesystem.File { return p.avatar }
+func cacheExternalProfile(ctx context.Context, provider externalIdentityProvider, subject string, user *core.Record) externalIdentityProvider {
+	source, ok := provider.(externalProfileProvider)
+	if !ok {
+		return provider
+	}
+	cached := cachedExternalProfile{externalIdentityProvider: provider}
+	if user.GetString("name") != "" && user.Email() != "" && user.GetString("avatar") != "" {
+		return cached
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cached.profile = source.Profile(ctx, subject)
+	if user.GetString("avatar") == "" && cached.profile.AvatarURL != "" {
+		cached.avatar = source.Avatar(ctx, cached.profile.AvatarURL)
+	}
+	return cached
+}
+
 // Import only empty local fields, after authenticating and resolving the stable
 // provider/subject mapping. A remote email never selects or links local accounts.
 func (s *externalIdentityService) syncExternalProfile(ctx context.Context, provider externalIdentityProvider, subject string, user *core.Record, newlyCreated ...bool) *core.Record {

@@ -25,6 +25,13 @@ SPECS = {
         'fields': ('release_deliveries', {'request_id': {'required': False}, 'request_fingerprint': {'required': False}, 'reconciliation_json': {'required': False}}),
         'plans': [('release_deliveries', 'SELECT id FROM release_deliveries WHERE project=? AND recipient=? AND purpose=? AND import_job=? ORDER BY version DESC LIMIT 1', ('p','r','public_display','j'), 'idx_delivery_job_version')],
     },
+    '1794201000_account_security.js': {
+        'indexes': ['idx_security_created', 'idx_security_subject', 'idx_security_actor', 'idx_security_project'],
+        'collection_indexes': ('security_events', 'idx_security_subject'),
+        'fields': ('security_events', {'event_type': {'max': 80}, 'outcome': {'required': True, 'values_contains': 'failed'}, 'source': {'required': True}}),
+        'plans': [('security_events', "SELECT id FROM security_events WHERE subject_user_id=? ORDER BY created DESC,id DESC LIMIT 25", ('u',), 'idx_security_subject')],
+    },
+    '1794201100_account_mail_pages.js': {'mail_links': True},
     '1793926800_ocr_runtime.js': {
         'indexes': ['idx_import_jobs_ocr_request'],
         'collection_indexes': ('import_jobs', 'idx_import_jobs_ocr_request'),
@@ -415,12 +422,16 @@ def assert_applied(data, migration, problems):
             plan = str(db.execute(f'EXPLAIN QUERY PLAN {query}', parameters).fetchall())
         if name not in plan:
             problems.append(f'{migration}: {table} query plan does not use {name}: {plan}')
+    if spec.get('mail_links'):
+        _assert_mail_links(data, migration, problems, expect=True)
     field_spec = spec.get('fields')
     if field_spec:
         _assert_fields(data, migration, field_spec, problems, expect=True)
 
 
 def assert_absent(data, migration, problems, context):
+    if SPECS.get(migration, {}).get('mail_links'):
+        _assert_mail_links(data, migration, problems, expect=False)
     present = index_names(data)
     for name in SPECS.get(migration, {}).get('indexes', []):
         if name in present:
@@ -428,6 +439,22 @@ def assert_absent(data, migration, problems, context):
     field_spec = SPECS.get(migration, {}).get('fields')
     if field_spec:
         _assert_fields(data, migration, field_spec, problems, expect=False)
+
+
+def _assert_mail_links(data, migration, problems, expect):
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        row = db.execute("SELECT options FROM _collections WHERE name='users'").fetchone()
+    if not row:
+        if expect:
+            problems.append(f'{migration}: users collection missing')
+        return
+    options = json.loads(row[0])
+    for key, path in [('verificationTemplate', '/account/verify-email#token={TOKEN}'),
+                      ('resetPasswordTemplate', '/account/reset-password#token={TOKEN}'),
+                      ('confirmEmailChangeTemplate', '/account/confirm-email#token={TOKEN}')]:
+        contains = path in options.get(key, {}).get('body', '')
+        if contains != expect:
+            problems.append(f'{migration}: {key} link mismatch after {"up" if expect else "down"}')
 
 
 def _assert_fields(data, migration, field_spec, problems, expect):
