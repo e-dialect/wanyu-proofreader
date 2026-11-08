@@ -450,6 +450,14 @@ func TestLocalAndExternalLoginShareIPAndGlobalLimits(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, app := newExternalIdentityTestService(t)
 			registerAccountSecurity(app)
+			// Exercise the real HTTP routes and shared limiter without hundreds
+			// of dummy bcrypt checks extending this test beyond its rate window.
+			// Native password validation is covered by the account API tests.
+			localAttempts := 0
+			app.OnRecordAuthWithPasswordRequest("users").BindFunc(func(e *core.RecordAuthWithPasswordRequestEvent) error {
+				localAttempts++
+				return e.BadRequestError("Failed to authenticate.", nil)
+			})
 			newExternalIdentityService(app, &mockExternalProvider{err: errExternalCredentials}).register()
 			h := accountTestRouter(t, app)
 			attempt := func(index, ip, status int) {
@@ -476,6 +484,9 @@ func TestLocalAndExternalLoginShareIPAndGlobalLimits(t *testing.T) {
 			}
 			attempt(test.count, test.probeIP, 429)
 			attempt(test.count+1, test.probeIP, 429)
+			if localAttempts != test.count/2 {
+				t.Fatalf("local authentication attempts=%d want=%d", localAttempts, test.count/2)
+			}
 		})
 	}
 }
