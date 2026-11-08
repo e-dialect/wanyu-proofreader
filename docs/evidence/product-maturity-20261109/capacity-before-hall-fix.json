@@ -1,0 +1,241 @@
+{
+  "source_commit": "f35455072c5b0970b82e114cb5d6f9a6a656bcca",
+  "source_unchanged": "pass",
+  "source_files_digest": "4e2ca11f026cbcf1f1c878724d4bb7cd0d145e4d7cf3e6580373b120d5f2fe1b",
+  "protocol": {
+    "entries": 20000,
+    "actors": 30,
+    "browser_actors": 2,
+    "duration_seconds": 180,
+    "submit_burst": true,
+    "gomaxprocs": 2,
+    "gomemlimit": "768MiB",
+    "same_host": true,
+    "container_hard_limits": false
+  },
+  "status": "fail",
+  "full_acceptance": false,
+  "gates": {
+    "mixed_runs": "fail",
+    "three_full_repeats": "incomplete",
+    "reference_hardware": "incomplete",
+    "formal_reference_profile": "pass",
+    "fifteen_minute_faults": "pass",
+    "production_runtime": "pass",
+    "resource_sampling": "pass",
+    "resource_budget": "incomplete",
+    "cooldown_recovery": "incomplete",
+    "separate_generator_host": "incomplete",
+    "source_unchanged": "pass"
+  },
+  "http": [
+    {
+      "operation": "claim",
+      "samples": 897,
+      "p50_ms": 32.17,
+      "p95_ms": 270.00121299998136,
+      "p99_ms": 593.3679450000054,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "submit",
+      "samples": 895,
+      "p50_ms": 68.19906499999342,
+      "p95_ms": 533.2698319999909,
+      "p99_ms": 1144.6374050000013,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "arbitrate",
+      "samples": 687,
+      "p50_ms": 138.31635199999437,
+      "p95_ms": 558.1886399999785,
+      "p99_ms": 794.448921999996,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "field_summary",
+      "samples": 424,
+      "p50_ms": 33.667981000005966,
+      "p95_ms": 195.12811199997668,
+      "p99_ms": 268.81399399999646,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "pdf_descriptor",
+      "samples": 898,
+      "p50_ms": 3.062,
+      "p95_ms": 38.498,
+      "p99_ms": 69.881,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "task",
+      "samples": 899,
+      "p50_ms": 2.867,
+      "p95_ms": 20.233,
+      "p99_ms": 37.46229100000346,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "admin_pages",
+      "samples": 1116,
+      "p50_ms": 11.234218999990844,
+      "p95_ms": 43.847959999984596,
+      "p99_ms": 70.79376600001706,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "verification",
+      "samples": 1589,
+      "p50_ms": 10.083313000010094,
+      "p95_ms": 43.03029200001038,
+      "p99_ms": 86.568,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "hall",
+      "samples": 115,
+      "p50_ms": 600.2010870000231,
+      "p95_ms": 1154.4633319999994,
+      "p99_ms": 1368.193219000008,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "fail"
+    },
+    {
+      "operation": "arbitration_read",
+      "samples": 691,
+      "p50_ms": 2.52255399999558,
+      "p95_ms": 22.830644999979995,
+      "p99_ms": 54.14615000000049,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "own_active_tasks",
+      "samples": 302,
+      "p50_ms": 4.064,
+      "p95_ms": 32.672,
+      "p99_ms": 53.055,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "own_reviewed_tasks",
+      "samples": 302,
+      "p50_ms": 110.308,
+      "p95_ms": 449.494,
+      "p99_ms": 651.178,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    }
+  ],
+  "submit_ack": {
+    "operation": "submit_ack",
+    "samples": 299,
+    "p50_ms": 82.61917999997968,
+    "p95_ms": 314.84178099999554,
+    "p99_ms": 1102.2959560000018,
+    "p95_limit_ms": 800,
+    "p99_limit_ms": null,
+    "status": "pass"
+  },
+  "source_visible": [
+    {
+      "operation": "source_visible",
+      "samples": 4,
+      "p50_ms": 732.3284760000001,
+      "p95_ms": 1146.5369139999966,
+      "p99_ms": 1146.5369139999966,
+      "p95_limit_ms": 3000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "cold_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 2,
+      "p50_ms": 118.17691500000365,
+      "p95_ms": 118.20835400000215,
+      "p99_ms": 118.20835400000215,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "hot_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 297,
+      "p50_ms": 282.5021290000004,
+      "p95_ms": 971.385008000012,
+      "p99_ms": 1494.884579999998,
+      "p95_limit_ms": null,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "unknown"
+    }
+  ],
+  "web_vitals": [
+    {
+      "name": "LCP",
+      "samples": 6,
+      "p95": 1100,
+      "limit": 2500,
+      "status": "pass"
+    },
+    {
+      "name": "INP",
+      "samples": 4,
+      "p95": 48,
+      "limit": 200,
+      "status": "pass"
+    },
+    {
+      "name": "CLS",
+      "samples": 6,
+      "p95": 0.08611397124030135,
+      "limit": 0.1,
+      "status": "pass"
+    }
+  ],
+  "burst": {
+    "status": "pass",
+    "participants": 24,
+    "prepared": 24,
+    "requests": 24,
+    "dispatch_span_ms": 25.93701171875,
+    "errors": []
+  },
+  "reconciliation": {
+    "pass": true,
+    "acknowledged_submissions": 895,
+    "new_attempts": 895,
+    "new_submission_events": 895,
+    "duplicate_attempts": 0,
+    "integrity": "ok"
+  },
+  "sampled_peak_rss_bytes": 377245696,
+  "runtime_dev_modes": [
+    false
+  ]
+}

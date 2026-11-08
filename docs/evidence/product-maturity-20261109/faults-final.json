@@ -1,0 +1,698 @@
+{
+  "baseline_sha": "0d27b29d5cb1697ee161b30940f55e96154f677d",
+  "dirty_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "profile": "full",
+  "synthetic": true,
+  "gates": {
+    "offline": "pass",
+    "response_loss": "pass",
+    "restart": "pass",
+    "revocation": "pass",
+    "storage": "pass",
+    "source_unchanged": "pass"
+  },
+  "executions": [
+    {
+      "gate": "offline",
+      "cycle": 1,
+      "status": "pass",
+      "duration_seconds": 43.76839548605494,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "1-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 1,
+      "status": "pass",
+      "duration_seconds": 24.102797453000676,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "1-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 1,
+      "status": "pass",
+      "duration_seconds": 16.36690597102279,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "1-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 1,
+      "status": "pass",
+      "duration_seconds": 19.962387951964047,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "1-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 1,
+      "status": "pass",
+      "duration_seconds": 16.298768688051496,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "1-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-1"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 2,
+      "status": "pass",
+      "duration_seconds": 39.20444744103588,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "2-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 2,
+      "status": "pass",
+      "duration_seconds": 22.883118313970044,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "2-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 2,
+      "status": "pass",
+      "duration_seconds": 13.774505149980541,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "2-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 2,
+      "status": "pass",
+      "duration_seconds": 19.82536302198423,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "2-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 2,
+      "status": "pass",
+      "duration_seconds": 15.73596198798623,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "2-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-2"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 3,
+      "status": "pass",
+      "duration_seconds": 38.420639553049114,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "3-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 3,
+      "status": "pass",
+      "duration_seconds": 22.24488461203873,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "3-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 3,
+      "status": "pass",
+      "duration_seconds": 14.471592117042746,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "3-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 3,
+      "status": "pass",
+      "duration_seconds": 19.870884075004142,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "3-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 3,
+      "status": "pass",
+      "duration_seconds": 15.968705645005684,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "3-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-3"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 4,
+      "status": "pass",
+      "duration_seconds": 38.31242033402668,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "4-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 4,
+      "status": "pass",
+      "duration_seconds": 22.090763949032407,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "4-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 4,
+      "status": "pass",
+      "duration_seconds": 13.983373778988607,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "4-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 4,
+      "status": "pass",
+      "duration_seconds": 19.71138927404536,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "4-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 4,
+      "status": "pass",
+      "duration_seconds": 15.765956127957907,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "4-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-4"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 5,
+      "status": "pass",
+      "duration_seconds": 38.38019556697691,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "5-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 5,
+      "status": "pass",
+      "duration_seconds": 21.971002774022054,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "5-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 5,
+      "status": "pass",
+      "duration_seconds": 13.883929544012062,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "5-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 5,
+      "status": "pass",
+      "duration_seconds": 19.73283207899658,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "5-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 5,
+      "status": "pass",
+      "duration_seconds": 15.867973928980064,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "5-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-5"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 6,
+      "status": "pass",
+      "duration_seconds": 38.03215755597921,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "6-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 6,
+      "status": "pass",
+      "duration_seconds": 21.856504341994878,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "6-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 6,
+      "status": "pass",
+      "duration_seconds": 14.438174147973768,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "6-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 6,
+      "status": "pass",
+      "duration_seconds": 19.6122549950378,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "6-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 6,
+      "status": "pass",
+      "duration_seconds": 16.003009129024576,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "6-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-6"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 7,
+      "status": "pass",
+      "duration_seconds": 38.09171307802899,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "7-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 7,
+      "status": "pass",
+      "duration_seconds": 22.138970935950056,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "7-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 7,
+      "status": "pass",
+      "duration_seconds": 14.064691104984377,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "7-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 7,
+      "status": "pass",
+      "duration_seconds": 19.66878548398381,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "7-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 7,
+      "status": "pass",
+      "duration_seconds": 15.804259543016087,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "7-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-7"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 8,
+      "status": "pass",
+      "duration_seconds": 38.20252204698045,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "8-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 8,
+      "status": "pass",
+      "duration_seconds": 23.25796480901772,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "8-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 8,
+      "status": "pass",
+      "duration_seconds": 14.04700993100414,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "8-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 8,
+      "status": "pass",
+      "duration_seconds": 19.63763640203979,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "8-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 8,
+      "status": "pass",
+      "duration_seconds": 16.037458145001438,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "8-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-8"
+      ]
+    },
+    {
+      "gate": "offline",
+      "cycle": 9,
+      "status": "pass",
+      "duration_seconds": 38.678200694033876,
+      "exit_code": 0,
+      "coverage": "real browser offline -> pause -> online re-read; stale snapshots and auth isolation",
+      "log": "9-offline.log",
+      "command": [
+        "python3",
+        "backend/tests/run_frontend_quality_browser.py",
+        "--only",
+        "components"
+      ]
+    },
+    {
+      "gate": "response_loss",
+      "cycle": 9,
+      "status": "pass",
+      "duration_seconds": 23.08125123998616,
+      "exit_code": 0,
+      "coverage": "server accepted POST then browser loses response; retry/reload reuses original intent",
+      "log": "9-response_loss.log",
+      "command": [
+        "python3",
+        "backend/tests/run_ocr_browser.py"
+      ]
+    },
+    {
+      "gate": "restart",
+      "cycle": 9,
+      "status": "pass",
+      "duration_seconds": 13.871938465046696,
+      "exit_code": 0,
+      "coverage": "real server restart resumes conversion cursor without duplicate counting",
+      "log": "9-restart.log",
+      "command": [
+        "python3",
+        "backend/tests/run_scheme_conversion_integration.py"
+      ]
+    },
+    {
+      "gate": "revocation",
+      "cycle": 9,
+      "status": "pass",
+      "duration_seconds": 20.129195643006824,
+      "exit_code": 0,
+      "coverage": "real project/member revocation rejects protected material and project operations",
+      "log": "9-revocation.log",
+      "command": [
+        "python3",
+        "backend/tests/run_all.py",
+        "pdf_access",
+        "project_access"
+      ]
+    },
+    {
+      "gate": "storage",
+      "cycle": 9,
+      "status": "pass",
+      "duration_seconds": 16.203141163045075,
+      "exit_code": 0,
+      "coverage": "SQLite trigger rejects event persistence; attempt/events/page rollback, then one successful retry",
+      "log": "9-storage.log",
+      "command": [
+        "python3",
+        "backend/tests/field_audit_capacity.py",
+        "--entries",
+        "20",
+        "--samples",
+        "5",
+        "--output",
+        "output/maturity/faults-exact-final/storage-9"
+      ]
+    }
+  ],
+  "duration_seconds": 1005.4940461100196,
+  "source_unchanged": "pass",
+  "status": "pass",
+  "full_fault_gate": true,
+  "limitation": "Independent fault suites, not simultaneous faults injected into all 30 active users. A missing or failed child never counts as passed.",
+  "source_files_digest": "f93ebbe9141cd322142ebab27010ede517f1a363aa864c8100691d800c25de45",
+  "source_after_files_digest": "f93ebbe9141cd322142ebab27010ede517f1a363aa864c8100691d800c25de45"
+}

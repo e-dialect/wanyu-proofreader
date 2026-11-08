@@ -1,0 +1,32 @@
+{
+  "status": "pass",
+  "synthetic": true,
+  "gates": {
+    "isolation": "pass",
+    "running_refused": "pass",
+    "shared_mount_refused": "pass",
+    "stopped_recovered": "pass",
+    "old_password_rejected": "pass",
+    "old_token_rejected": "pass",
+    "new_password_accepted": "pass",
+    "identity_preserved": "pass",
+    "bootstrap_did_not_elevate": "pass",
+    "no_secret_output": "pass",
+    "cleanup": "pass"
+  },
+  "wrapper_sha256": "ca8eeb478794500bd5703d5b3ca3c7053d23e07760fbd6717230a4d5475c7783",
+  "runner_sha256": "72aee9b3245f36bf4eb3d74cbf55ac6275f083efc648c6eb28b7ca5e476a8ba3",
+  "image_id": "sha256:3646f7aba7fe4c696fdee8c96d02507df136a2962b5095d28fcd9f7fbb42c93d",
+  "image_revision": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "docker_server": "29.8.2",
+  "python_version": "3.13.16",
+  "binary_commit": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "identity_assertions": {
+    "same_id": true,
+    "same_email": true,
+    "same_verified_false": true,
+    "same_demoted_role": true,
+    "same_user_count": true,
+    "must_change_password": true
+  }
+}
