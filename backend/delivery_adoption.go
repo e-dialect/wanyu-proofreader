@@ -30,6 +30,9 @@ func requireAdoptionManagerInApp(app core.App, c *core.RequestEvent, projectID s
 	if err != nil {
 		return nil, nil, apis.NewUnauthorizedError("登录状态已失效，请重新登录。", nil)
 	}
+	if auth.TokenKey() != c.Auth.TokenKey() {
+		return nil, nil, apis.NewUnauthorizedError("认证已变化，请重新登录。", nil)
+	}
 	if auth.GetBool("must_change_password") {
 		return nil, nil, apis.NewForbiddenError("首次登录请先修改密码。", nil)
 	}
@@ -88,22 +91,10 @@ func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, 
 	if err != nil {
 		return h, err
 	}
-	jobs := map[string]bool{}
-	if len(rule.ImportJobs) > 0 {
-		for _, id := range rule.ImportJobs {
-			jobs[id] = true
-		}
-	} else {
-		for _, row := range rows {
-			jobs[row.ImportJob] = true
-		}
+	if len(rule.ImportJobs) != 1 || rule.ImportJobs[0] == "" {
+		return h, fmt.Errorf("交付要求编选规则显式指定一个完整 ReviewBundle 导入批次，请新建并确认对应编选。")
 	}
-	if len(jobs) != 1 || jobs[""] {
-		return h, fmt.Errorf("交付仅支持一个完整 ReviewBundle 导入批次，请在编选规则中指定唯一批次。")
-	}
-	for id := range jobs {
-		h.ImportJob = id
-	}
+	h.ImportJob = rule.ImportJobs[0]
 	belongs := map[string]bool{}
 	for _, row := range rows {
 		if row.ImportJob == h.ImportJob {
@@ -145,6 +136,8 @@ func (s *importService) adoptionDeliveryPreflight(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("请求内容无法解析。", err)
 	}
 	var snap reviewbundle.DeliverySnapshot
+	var selection map[string]any
+	var projectCounts map[string]any
 	err := s.app.RunInTransaction(func(app core.App) error {
 		auth, _, err := requireAdoptionManagerInApp(app, c, c.Request.PathValue("projectId"))
 		if err != nil {
@@ -154,6 +147,8 @@ func (s *importService) adoptionDeliveryPreflight(c *core.RequestEvent) error {
 		if err != nil {
 			return err
 		}
+		selection = map[string]any{"id": h.NativeBatch.Id, "confirmed_at": h.NativeBatch.GetString("confirmed_at"), "scope_digest": h.NativeBatch.GetString("scope_digest"), "confirmed_by": h.NativeBatch.GetString("confirmed_by")}
+		projectCounts = map[string]any{"total": h.NativeBatch.GetInt("total_count"), "selected": h.NativeBatch.GetInt("selected_count"), "excluded": h.NativeBatch.GetInt("excluded_count"), "pending": h.NativeBatch.GetInt("pending_count")}
 		snap, err = s.readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
 		return err
 	})
@@ -166,7 +161,7 @@ func (s *importService) adoptionDeliveryPreflight(c *core.RequestEvent) error {
 		r.Status = "inconsistent"
 		r.Problems = append(r.Problems, buildErr.Error())
 	}
-	return c.JSON(http.StatusOK, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "can_generate": buildErr == nil, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_scope_digest": snap.SelectionScopeDigest, "import_job": snap.ImportJob, "version": snap.Version, "dependency_gaps": []string{"X 侧真实 dry-run 与双方签字仍须完成"}})
+	return c.JSON(http.StatusOK, map[string]any{"selection": selection, "selection_project_counts": projectCounts, "package_scope_counts": r.Counts, "reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "can_generate": buildErr == nil, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_scope_digest": snap.SelectionScopeDigest, "import_job": snap.ImportJob, "version": snap.Version, "dependency_gaps": []string{"X 侧真实 dry-run 与双方签字仍须完成"}})
 }
 
 var deliveryRequestUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
@@ -180,6 +175,8 @@ func (s *importService) createAdoptionDelivery(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("request_id 必须是 UUID；重试须复用同一值。", nil)
 	}
 	input.RequestID = strings.ToLower(input.RequestID)
+	input.Reviewer = strings.TrimSpace(input.Reviewer)
+	input.ChangeReason = strings.TrimSpace(input.ChangeReason)
 	fingerprintJSON, _ := json.Marshal(input)
 	fingerprint := reviewbundle.Digest(fingerprintJSON)
 	var record *core.Record
@@ -227,7 +224,9 @@ func (s *importService) createAdoptionDelivery(c *core.RequestEvent) error {
 	if replay {
 		status = http.StatusOK
 	}
-	return c.JSON(status, deliveryView(record, events))
+	view := deliveryView(record, events)
+	view["replayed"] = replay
+	return c.JSON(status, view)
 }
 
 func deliveryInputError(err error) error {

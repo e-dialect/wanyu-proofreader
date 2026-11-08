@@ -157,7 +157,7 @@ class UiDebtTests(unittest.TestCase):
                      'alerts_without_role', 'custom_modals', 'undefined_variables',
                      'font_family_stacks', 'inline_styles', 'bare_tables'):
             self.assertEqual(baseline['kinds'][kind]['mode'], 'fail', kind)
-        self.assertEqual(baseline['kinds']['inline_styles']['limit'], 7)
+        self.assertEqual(baseline['kinds']['inline_styles']['limit'], 6)
 
     def test_bound_alert_class_and_empty_role_are_detected(self):
         self.write('View.vue', '''<template>

@@ -184,6 +184,11 @@
         </button>
       </form>
       <div v-if="preview" class="mt-4" role="status">
+        <p v-if="preview.selection_project_counts" class="text-muted">
+          编选项目范围共 {{ preview.selection_project_counts.total }} 条，采用
+          {{ preview.selection_project_counts.selected }} 条。 本包只覆盖所选入站批次的
+          {{ preview.reconciliation.source_total }} 条，下面按本包范围对账。
+        </p>
         <label class="form-group delivery-reviewer"
           ><span class="form-label">本次人工核查者</span
           ><input
