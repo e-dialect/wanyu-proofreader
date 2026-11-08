@@ -76,6 +76,6 @@ Python 使用终端无回显 getpass，密码通过子进程 stdin 传入，不�
 
 ## 验证边界
 
-`run_account_security_integration.py` 运行真实 API 后停止临时后端，以 stdin 离线恢复已有账号，再重启确认 bootstrap 不恢复旧环境密码/角色、不额外创建账号、旧 token 失效；CI 的 account_security 矩阵明确调用此 runner。Docker 包装器停机/挂载/隔离约束有独立 Python 测试；真实 Docker 恢复演练、实际 SMTP 送达与旧链接容器验收仍需发布前完成，不能由本地 API 测试替代。账户页使用视图代际与 AbortSignal，切换身份、token、路由或离开页面即清理旧数据并拒绝迟到结果。
+`run_account_security_integration.py` 运行真实 API 后停止临时后端，以 stdin 离线恢复已有账号，再重启确认 bootstrap 不恢复旧环境密码/角色、不额外创建账号、旧 token 失效；CI 的 account_security 矩阵明确调用此 runner。Docker 包装器停机/挂载/隔离约束有独立 Python 测试；真实 Docker 恢复演练、实际 SMTP 送达仍需发布前完成；root 已用一次性官方 Nginx 容器验证旧链接桥、CSP、缓存与管理 UI 关闭，超管 API 路由保持独立边界，不能由本地 API 测试替代。账户页使用视图代际与 AbortSignal，切换身份、token、路由或离开页面即清理旧数据并拒绝迟到结果。
 
-本工作包的成功审计覆盖不含文件流导出/交付创建；这些由导出/交付工作包在其事务和传输边界接入，不能将导出开始事件当作下载完成。
+集成工作包另已接入交付创建与导出审计：delivery.created 与包记录同事务，审计失败清理新 ZIP 并回滚；export.authorized 在正文前短事务重新校验身份/权限，export.stream_finished 仅表示服务端传输结果。传输结束后的审计持久化失败会告警，不能撤回已经发出的字节，也不能把开始事件或服务器写完当成接收方确认。

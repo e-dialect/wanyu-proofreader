@@ -328,7 +328,7 @@ func arbitrationKey(pageID string, round int) string {
 }
 
 func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
-	auth, err := s.deliveryManager(c, c.Request.PathValue("projectId"))
+	_, err := s.deliveryManager(c, c.Request.PathValue("projectId"))
 	if err != nil {
 		return err
 	}
@@ -341,12 +341,15 @@ func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
 	}
 	var snap reviewbundle.DeliverySnapshot
 	err = s.app.RunInTransaction(func(app core.App) error {
-		var e error
-		snap, e = s.readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
-		return e
+		auth, _, err := requireAdoptionManagerInApp(app, c, c.Request.PathValue("projectId"))
+		if err != nil {
+			return err
+		}
+		snap, err = s.readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
+		return err
 	})
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+		return deliveryInputError(err)
 	}
 	r := reviewbundle.Reconcile(snap)
 	_, buildErr := reviewbundle.BuildDelivery(snap, "2000-01-01T00:00:00Z")
@@ -358,7 +361,7 @@ func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
 }
 
 func (s *importService) createDelivery(c *core.RequestEvent) error {
-	auth, err := s.deliveryManager(c, c.Request.PathValue("projectId"))
+	_, err := s.deliveryManager(c, c.Request.PathValue("projectId"))
 	if err != nil {
 		return err
 	}
@@ -371,6 +374,10 @@ func (s *importService) createDelivery(c *core.RequestEvent) error {
 	}
 	var record *core.Record
 	err = s.app.RunInTransaction(func(app core.App) error {
+		auth, _, err := requireAdoptionManagerInApp(app, c, c.Request.PathValue("projectId"))
+		if err != nil {
+			return err
+		}
 		snap, err := s.readDeliverySnapshot(app, c.Request.PathValue("projectId"), auth.Id, h)
 		if err != nil {
 			return err
@@ -382,7 +389,7 @@ func (s *importService) createDelivery(c *core.RequestEvent) error {
 		return err
 	})
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+		return deliveryInputError(err)
 	}
 	return c.JSON(http.StatusCreated, deliveryView(record, nil))
 }
@@ -627,6 +634,9 @@ func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
 	}
 	var event *core.Record
 	err = s.app.RunInTransaction(func(app core.App) error {
+		if _, _, err := requireAdoptionManagerInApp(app, c, r.GetString("project")); err != nil {
+			return err
+		}
 		if input.Kind == "notice" {
 			events, err := deliveryEvents(app, r.Id)
 			if err != nil {
@@ -679,7 +689,7 @@ func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
 		return app.Save(event)
 	})
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+		return deliveryInputError(err)
 	}
 	events, err := deliveryEvents(s.app, r.Id)
 	if err != nil {

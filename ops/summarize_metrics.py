@@ -23,6 +23,13 @@ def timestamp(raw):
         return None
 
 
+def timestamp_argument(raw):
+    value = timestamp(raw)
+    if value is None:
+        raise argparse.ArgumentTypeError('a timestamp with timezone is required')
+    return value
+
+
 def summarize(lines, since=None, until=None):
     operations = defaultdict(list)
     failures = defaultdict(int)
@@ -112,8 +119,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--since', type=timestamp)
-    parser.add_argument('--until', type=timestamp)
+    parser.add_argument('--since', type=timestamp_argument)
+    parser.add_argument('--until', type=timestamp_argument)
     args = parser.parse_args()
     if args.since and args.until and args.since > args.until:
         parser.error('since must be before until')
