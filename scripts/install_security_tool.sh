@@ -16,11 +16,12 @@ trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 # Each new invocation recomputes the resume offset from the existing file.
 # curl's internal retry reuses its original offset and can discard partial data.
 downloaded=false
-for attempt in 1 2 3 4; do
+backoff=2
+for attempt in 1 2 3 4 5 6; do
   source="https://github.com/$repository/releases/download/v$version/$archive"
   # Same official release asset and reviewed digest; an alternate GitHub front
   # door recovers release-page/CDN 5xx without changing version or trust source.
-  if [ "$attempt" -ge 3 ]; then
+  if [ $((attempt % 2)) -eq 0 ]; then
     source="https://api.github.com/repos/$repository/releases/assets/$asset"
   fi
   if curl --fail --silent --show-error --http1.1 --location --continue-at - --connect-timeout 15 --max-time "${SECURITY_DOWNLOAD_TIMEOUT:-180}" \
@@ -28,10 +29,15 @@ for attempt in 1 2 3 4; do
     downloaded=true
     break
   fi
-  if [ "$attempt" -lt 4 ]; then sleep "$attempt"; fi
+  # Alternate official front doors across a bounded 62-second backoff window.
+  # Keep the same partial file so every new curl recomputes its resume offset.
+  if [ "$attempt" -lt 6 ]; then
+    sleep "$backoff"
+    backoff=$((backoff * 2))
+  fi
 done
 if [ "$downloaded" != true ]; then
-  echo "Unable to download pinned $tool $version from official release endpoints" >&2
+  echo "Unable to download pinned $tool $version from official release endpoints after 6 attempts" >&2
   exit 1
 fi
 python3 - "$temporary/archive.tar.gz" "$digest" <<'PY'

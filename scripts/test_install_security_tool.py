@@ -51,10 +51,15 @@ calls.append({'url': url, 'args': args, 'offset': dest.stat().st_size if dest.ex
 state.write_text(json.dumps(calls))
 mode = os.environ['WANYU_TEST_MODE']
 raw = pathlib.Path(os.environ['WANYU_TEST_ARCHIVE']).read_bytes()
-if mode == 'failed' or (mode in ('fallback', 'corrupt') and len(calls) <= 2):
+if mode == 'failed' or (mode in ('fallback', 'corrupt') and len(calls) == 1) or (mode == 'late' and len(calls) <= 5):
     sys.exit(22)
 if mode == 'resume' and len(calls) == 1:
     dest.write_bytes(raw[:20])
+    sys.exit(28)
+if mode == 'resume_late' and len(calls) <= 5:
+    offset = dest.stat().st_size if dest.exists() else 0
+    with dest.open('ab') as output:
+        output.write(raw[offset:offset + max(1, len(raw) // 8)])
     sys.exit(28)
 if mode == 'corrupt':
     dest.write_bytes(b'not the reviewed archive')
@@ -86,23 +91,45 @@ else:
     def test_official_api_fallback_and_backoff(self):
         result, calls, sleeps, _ = self.run_installer('fallback')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(calls), 3)
-        self.assertEqual(calls[2]['url'], 'https://api.github.com/repos/gitleaks/gitleaks/releases/assets/378332058')
-        self.assertIn('Accept: application/octet-stream', calls[2]['args'])
-        self.assertEqual(sleeps, ['1', '2'])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]['url'], 'https://api.github.com/repos/gitleaks/gitleaks/releases/assets/378332058')
+        self.assertIn('Accept: application/octet-stream', calls[1]['args'])
+        self.assertEqual(sleeps, ['2'])
+
+    def test_both_front_doors_retry_three_times_before_late_recovery(self):
+        result, calls, sleeps, destination = self.run_installer('late')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 6)
+        self.assertEqual([call['url'] for call in calls], [calls[0]['url'], calls[1]['url']] * 3)
+        self.assertIn('/releases/download/v8.30.1/', calls[0]['url'])
+        self.assertEqual(calls[1]['url'], 'https://api.github.com/repos/gitleaks/gitleaks/releases/assets/378332058')
+        self.assertEqual(sleeps, ['2', '4', '8', '16', '32'])
+        self.assertTrue((destination / 'gitleaks').is_file())
 
     def test_resumed_download_recomputes_offset(self):
         result, calls, sleeps, _ = self.run_installer('resume')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[1]['offset'], 20)
         self.assertIn('--continue-at', calls[1]['args'])
-        self.assertEqual(sleeps, ['1'])
+        self.assertEqual(sleeps, ['2'])
+
+    def test_partial_download_survives_every_backoff_and_endpoint_switch(self):
+        result, calls, sleeps, destination = self.run_installer('resume_late')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 6)
+        offsets = [call['offset'] for call in calls]
+        self.assertEqual(offsets[0], 0)
+        self.assertTrue(all(left < right for left, right in zip(offsets, offsets[1:])), offsets)
+        for call in calls:
+            self.assertEqual(call['args'][call['args'].index('--continue-at') + 1], '-')
+        self.assertEqual(sleeps, ['2', '4', '8', '16', '32'])
+        self.assertTrue((destination / 'gitleaks').is_file())
 
     def test_all_endpoints_fail_clearly_without_installing(self):
         result, calls, sleeps, destination = self.run_installer('failed')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(len(calls), 4)
-        self.assertEqual(sleeps, ['1', '2', '3'])
+        self.assertEqual(len(calls), 6)
+        self.assertEqual(sleeps, ['2', '4', '8', '16', '32'])
         self.assertIn('Unable to download pinned gitleaks 8.30.1', result.stderr)
         self.assertNotIn('Traceback', result.stderr)
         self.assertFalse((destination / 'gitleaks').exists())
