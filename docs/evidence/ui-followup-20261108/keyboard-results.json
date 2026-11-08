@@ -1,0 +1,48 @@
+{
+  "synthetic": true,
+  "results": [
+    {
+      "width": 1280,
+      "tabAndShiftTab": true,
+      "virtualCharacterViaEnter": true,
+      "helpViaKeyboard": true,
+      "submitEscapeRestoresTrigger": true,
+      "returnFailurePreservesInputAndFocus": true,
+      "returnRetryNext": true,
+      "unavailableNavigationShortcutHidden": true
+    },
+    {
+      "width": 1440,
+      "tabAndShiftTab": true,
+      "virtualCharacterViaEnter": true,
+      "helpViaKeyboard": true,
+      "submitEscapeRestoresTrigger": true,
+      "returnFailurePreservesInputAndFocus": true,
+      "returnRetryNext": true,
+      "unavailableNavigationShortcutHidden": true
+    },
+    {
+      "width": 390,
+      "tabAndShiftTab": true,
+      "virtualCharacterViaEnter": true,
+      "helpViaKeyboard": true,
+      "submitEscapeRestoresTrigger": true,
+      "returnFailurePreservesInputAndFocus": true,
+      "returnRetryNext": true,
+      "unavailableNavigationShortcutHidden": true
+    },
+    {
+      "ownReview": true,
+      "noWrites": true,
+      "noLease": true,
+      "noKeyboard": true,
+      "immutableText": true,
+      "unavailableEditingShortcutsHidden": true
+    },
+    {
+      "ownReviewNavigation": true,
+      "onlyAvailableDirectionShown": true,
+      "noWrites": true
+    }
+  ]
+}

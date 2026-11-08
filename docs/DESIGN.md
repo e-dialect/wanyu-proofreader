@@ -22,6 +22,8 @@ UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_base
 
 ## 共享组件
 
+前端样式门禁、真实组件挂载、格式与图标的既有选择，以及 Reka 的依赖与 CI 位置，集中记录在[工具链决策](ui-tooling-decisions.md)。
+
 | 组件/资源 | 职责与接口 | 调用范围 |
 | --- | --- | --- |
 | `AppErrorBoundary` | 渲染异常时给可见错误与恢复入口 | `App.vue` |
@@ -35,6 +37,7 @@ UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_base
 | `AppField` | 真实 label 包控件；`label` / `#label`，`layout=plain` 可保留原 label 几何 | 项目创建/导入/设置、资料、来源/门控/授权 |
 | `AppDataTable` | 唯一原生表格壳；具名、可聚焦、区域内横滚；`#head` / 默认行槽 | 管理列表、CSV 预检/错误、批次台账 |
 | `AppPagination` | `page/totalPages/hasNext/busy` 与 `change`；未知总数时不猜最后一页 | 项目/条目/候选成员/归一复核/用途编选 |
+| `ImportErrorsPanel` | 授权错误记录分页、原值查看与完整 JSON 下载；拒绝处理中的快照、分页失败、重复或变化的记录 | CSV、Review Bundle 及历史导入台账 |
 | `AppModal` | dialog/aria-modal、Esc、Tab 环绕、关闭后焦点返回 | 确认层与引导；焦点算法见 `lib/modalFocus.js` |
 | `ConfirmDialog` | 薄封装 AppModal，透传内容/操作槽，不另写焦点算法 | 质量状态、导入值修正及来源等确认 |
 | `AppStatusPanel` | pending/error/empty/danger/success/note 与重试 | 共享资源页面、OCR、任务大厅 |
@@ -63,6 +66,8 @@ UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_base
 工作台只有一个当前工作主入口，优先恢复仍可访问的工作；无当前工作时提升待仲裁或可领取工作。项目进展收为去重列表，读取失败仍显示错误与重试。项目条目默认关闭批量选择与高级筛选，URL已有筛选时展开对应筛选；普通待校对与质量待定分别以中性文字呈现，仲裁/异常继续突出。手机列表在同一表格内容列呈现进度与质量摘要，避免重复交互与整页横向滚动。
 
 校对结果位于字段主体，导入文本作为紧凑对照；短字段可双列，多行字段自然跨列。textarea 按内容增高但保留可滚动上限，换行、空白、组合字符与选区不得被修整。手机原文入口在任务头，默认专注当前字段，字符搜索与分类压为一行。健康来源摘要紧凑呈现，失配/阻塞仍自动展开。
+
+快捷键提示只呈现当前可用操作：单条进行中任务不提示方向切换，本人只读回看不提示保存或提交，回看邻居只展示实际可用的方向。方向键不创建第二个活跃任务，提交仍先打开核对确认。
 
 动效统一使用 `--motion-fast` 120ms、`--motion-normal` 180ms、`--motion-slow` 220ms 与 `--ease-out`。按钮仅过渡颜色/边框，菜单淡入并小幅移动，字符托盘只在展开时入场；保存反馈按真实结果即时更新。减少动态效果设置关闭位移/入场动画。不得给 RouterView、任务/账号更换或权限失效添加延迟卸载，不得让动画改变光标、草稿落盘或服务端判断。
 

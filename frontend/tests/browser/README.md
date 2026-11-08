@@ -111,6 +111,14 @@ queue restoration, while bundle import covers read-only validation, malformed
 packages, unknown rights references, human confirmation, exact original values,
 and idempotent replay. Use `--only workbench` to run this group locally.
 
+`import-errors.cjs` also runs in the `workbench` group against the real disposable
+backend. A mixed CSV creates one valid row and 205 error records. The script
+visits every error page from the historical batch, downloads the complete JSON
+report, checks exact stored values and counts, refuses a failed later page,
+cancels an in-flight report without producing a file, and reopens the same CSV
+through the current import UI. Screenshots and its receipt are saved to
+`output/playwright/import-errors`; the mobile check covers whole-page overflow.
+
 CI's existing `backend-unicode` job invokes the unified runner without `--only`,
 so both `editor` and `workbench` execute. It explicitly selects the installed
 Chromium browser and requires their screenshots and final JSON receipts before

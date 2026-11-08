@@ -67,7 +67,9 @@
             </button>
           </div>
           <p v-if="leaseStatus" class="text-sm text-muted">{{ leaseStatus }}</p>
-          <p class="text-sm text-muted">⌘/Ctrl+S 草稿 · ⌘/Ctrl+Enter 提交 · Alt+←/→ 切换</p>
+          <p v-if="shortcutHints.length" class="text-sm text-muted editor-shortcuts">
+            {{ shortcutHints.join(' · ') }}
+          </p>
           <RouterLink :to="returnTarget" class="btn btn-quiet btn-sm">返回任务</RouterLink>
           <span v-if="navigationHint" class="text-sm text-muted" role="status">{{
             navigationHint
@@ -115,10 +117,10 @@
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import AppButton from '@/components/AppButton.vue'
 const returnTarget = inject('workReturnTarget', '/tasks')
-defineProps({
+const props = defineProps({
   projectName: String,
   ownReview: Boolean,
   pageNumber: [String, Number],
@@ -141,6 +143,16 @@ defineProps({
   loadingPage: Boolean,
   activeField: String,
   feedback: { type: Object, required: true }
+})
+const shortcutHints = computed(() => {
+  const hints = []
+  if (!props.ownReview && props.hasPage && !props.loadingPage && !props.submittedHere) {
+    hints.push('⌘/Ctrl+S 本机草稿')
+    if (!props.saving && !props.leaseLost && props.leaseToken) hints.push('⌘/Ctrl+Enter 检查并提交')
+  }
+  if (props.canSwitchPrev) hints.push('Alt+← 上一条')
+  if (props.canSwitchNext) hints.push('Alt+→ 下一条')
+  return hints
 })
 const emit = defineEmits([
   'previous',

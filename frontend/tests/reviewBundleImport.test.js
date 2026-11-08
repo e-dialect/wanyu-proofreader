@@ -76,7 +76,7 @@ function component(overrides = {}) {
   }
   const instance = new Function(
     ...Object.keys(scope),
-    `${script}\nreturn { chooseFile, inspect, submit, refreshJob, reset, file, report, declaration, job, busy, error, acknowledged, uncertain, alreadyImported, rowErrors, hasPendingWork }`
+    `${script}\nreturn { chooseFile, inspect, submit, refreshJob, reset, file, report, declaration, job, busy, error, acknowledged, uncertain, alreadyImported, hasPendingWork }`
   )(...Object.values(scope))
   return { ...instance, events, unmount: () => unmount() }
 }

@@ -118,41 +118,22 @@
       </details>
     </div>
     <p v-if="error" class="alert alert-error preserve-line-breaks" role="alert">{{ error }}</p>
-    <div v-if="rowErrors.length" class="bundle-row-errors">
-      <h4>未导入的条目（显示前 {{ rowErrors.length }} 条）</h4>
-      <AppDataTable label="资料包导入错误">
-        <template #head
-          ><tr>
-            <th>条目行</th>
-            <th>字段</th>
-            <th>原因</th>
-          </tr></template
-        >
-        <tr v-for="item in rowErrors" :key="item.id">
-          <td>{{ item.row_number || '—' }}</td>
-          <td>{{ item.column_name || '—' }}</td>
-          <td>
-            {{ item.message }}
-            <details>
-              <summary>错误详情</summary>
-              <code>{{ item.error_code }}</code>
-              <p>{{ item.raw_value }}</p>
-            </details>
-          </td>
-        </tr>
-      </AppDataTable>
-    </div>
+    <ImportErrorsPanel
+      v-if="job?.id && (job.failed_count > 0 || job.status === 'failed')"
+      :project-id="props.projectId"
+      :job-id="job.id"
+      :revision="`${job.status}:${job.updated || ''}`"
+    />
   </section>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import AppField from '@/components/AppField.vue'
-import AppDataTable from '@/components/AppDataTable.vue'
+import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
 import {
   createBundleImport,
   getImportJob,
-  listImportJobErrors,
   validateReviewBundle
 } from '@/services/importJobsService'
 import { bundleTerminal, MAX_BUNDLE_BYTES, readBundleDeclaration } from '@/lib/reviewBundle'
@@ -170,8 +151,7 @@ const busy = ref(false),
   error = ref(''),
   acknowledged = ref(false),
   uncertain = ref(false)
-const alreadyImported = ref(false),
-  rowErrors = ref([])
+const alreadyImported = ref(false)
 let generation = 0,
   disposed = false,
   timer
@@ -196,7 +176,6 @@ function reset() {
   file.value = report.value = declaration.value = job.value = null
   busy.value = acknowledged.value = uncertain.value = alreadyImported.value = false
   error.value = ''
-  rowErrors.value = []
 }
 function chooseFile(event) {
   reset()
@@ -229,15 +208,6 @@ async function publishJob(value, version) {
   job.value = value
   if (bundleTerminal(value)) {
     emit('changed')
-    if (Number(value.failed_count) > 0) {
-      try {
-        const result = await listImportJobErrors(value.id)
-        if (current(version)) rowErrors.value = result.items || []
-      } catch (cause) {
-        if (current(version))
-          error.value = getPbMessage(cause, '错误明细加载失败，请刷新进度重试。')
-      }
-    }
   } else timer = setTimeout(refreshJob, 1000)
 }
 async function submit() {

@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-08",
+  "base": "e821e0a89b574d4308c43873f32bbf3150db9de4",
+  "issue": 369,
+  "command": "cd backend && go run /private/tmp/wanyu-encoding-probe.go",
+  "scope": "Existing golang.org/x/text simplifiedchinese.GB18030.NewDecoder exercised directly; not a full upload regression",
+  "cases": [
+    {"input_hex":"ff", "output":"�", "read":1, "error":null},
+    {"input_hex":"81", "output":"�", "read":1, "error":null},
+    {"input_hex":"8120", "output":"� ", "read":2, "error":null},
+    {"input_hex":"ffff", "output":"��", "read":2, "error":null}
+  ],
+  "finding": "decodedCSVReader falls back to this decoder for every non-UTF8 input; invalid bytes may be replaced with U+FFFD without error, so CSV_ENCODING_ERROR does not cover these cases.",
+  "backend_modified": false
+}

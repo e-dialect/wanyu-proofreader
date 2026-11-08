@@ -132,30 +132,12 @@
     <div v-if="csvError" role="alert" class="alert alert-error mt-2 preserve-line-breaks">
       {{ csvError }}
     </div>
-    <div v-if="csvImportErrors.length" class="mt-3">
-      <div class="font-semibold mb-2">错误明细（显示前 {{ csvImportErrors.length }} 条）</div>
-      <AppDataTable label="CSV 导入错误" class="table-wrapper import-error-table"
-        ><template #head>
-          <tr>
-            <th>CSV 行</th>
-            <th>字段</th>
-            <th>错误代码</th>
-            <th>原因</th>
-          </tr>
-        </template>
-        <tr v-for="item in csvImportErrors" :key="item.id">
-          <td>{{ item.row_number || '—' }}</td>
-          <td>{{ item.column_name || '—' }}</td>
-          <td>
-            <code>{{ item.error_code }}</code>
-          </td>
-          <td>
-            {{ item.message }}
-            <span v-if="item.raw_value" class="text-muted">（值：{{ item.raw_value }}）</span>
-          </td>
-        </tr>
-      </AppDataTable>
-    </div>
+    <ImportErrorsPanel
+      v-if="csvJob?.id && (csvJob.failed_count > 0 || csvJob.status === 'failed')"
+      :project-id="projectId"
+      :job-id="csvJob.id"
+      :revision="`${csvJob.status}:${csvJob.updated || ''}`"
+    />
   </div>
 </template>
 
@@ -165,14 +147,10 @@ import AppFieldValue from '@/components/AppFieldValue.vue'
 import { fieldValueLanguage } from '@/lib/fieldValue'
 import ProjectSourcePicker from '@/components/admin/project/ProjectSourcePicker.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
+import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { listSources } from '@/services/sourcesService'
-import {
-  commitCsvImport,
-  createCsvInspection,
-  getImportJob,
-  listImportJobErrors
-} from '@/services/importJobsService'
+import { commitCsvImport, createCsvInspection, getImportJob } from '@/services/importJobsService'
 import {
   csvFatalMessage,
   csvFixedSource,
@@ -208,7 +186,6 @@ const csvError = ref('')
 
 const csvJob = ref(null)
 
-const csvImportErrors = ref([])
 const csvActualSource = ref(null)
 const csvSourcePending = ref(false)
 const csvSourceError = ref('')
@@ -257,7 +234,6 @@ function onCsvSelected(e) {
   csvSuccess.value = ''
   csvError.value = ''
   csvJob.value = null
-  csvImportErrors.value = []
   csvActualSource.value = null
   csvSourcePending.value = false
   csvSourceError.value = ''
@@ -306,7 +282,6 @@ async function uploadCsv() {
   csvError.value = ''
   csvSuccess.value = ''
   csvJob.value = null
-  csvImportErrors.value = []
   const generation = ++csvPollGeneration
   requestedSourceId.value = sourceId.value
   try {
@@ -329,11 +304,6 @@ async function uploadCsv() {
     } else if (job.status === 'validated') {
       const inspection = parseCsvInspection(job.inspection_json)
       csvSuccess.value = inspection ? csvImportResultText(job) : 'CSV 检查完成，请确认后开始导入。'
-      if (job.failed_count > 0) {
-        const result = await listImportJobErrors(job.id, 1, 100)
-        if (generation !== csvPollGeneration) return
-        csvImportErrors.value = result.items
-      }
     } else if (['completed', 'completed_with_errors'].includes(job.status)) {
       csvSuccess.value = '相同文件已经导入，无需重复处理。'
       await loadPages()
@@ -355,7 +325,6 @@ async function confirmCsvImport() {
   uploadingCsv.value = true
   csvError.value = ''
   csvSuccess.value = ''
-  csvImportErrors.value = []
   const generation = ++csvPollGeneration
   try {
     let job = await commitCsvImport(csvJob.value.id)
@@ -370,11 +339,6 @@ async function confirmCsvImport() {
       return
     }
     csvSuccess.value = csvImportResultText(job)
-    if (job.failed_count > 0) {
-      const result = await listImportJobErrors(job.id, 1, 100)
-      if (generation !== csvPollGeneration) return
-      csvImportErrors.value = result.items
-    }
     props.clearSelection()
     // 导入会改变条目总数，汇总必须跟着走：只刷表格的话，三枚分桶芯片与「共 N 条」
     // 会停在旧数字上，与正下方刚刷新出来的表格对不上账（#172 验收第 4 条问的就是这个数）。
@@ -404,11 +368,6 @@ async function refreshCsvJob() {
     csvError.value = csvFatalMessage(job)
     if (['validated', 'completed', 'completed_with_errors'].includes(job.status))
       csvSuccess.value = csvImportResultText(job)
-    if (job.failed_count > 0) {
-      const result = await listImportJobErrors(job.id, 1, 100)
-      if (generation !== csvPollGeneration) return
-      csvImportErrors.value = result.items
-    }
     await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
   } catch (cause) {
     if (generation === csvPollGeneration)
