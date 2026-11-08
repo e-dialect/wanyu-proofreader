@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -437,5 +438,93 @@ func TestPasswordHTTPResponsesWaitForAuditCommit(t *testing.T) {
 				t.Fatal("failure audit was not saved outside rollback")
 			}
 		})
+	}
+}
+
+func TestLocalAndExternalLoginShareIPAndGlobalLimits(t *testing.T) {
+	for _, test := range []struct {
+		name                  string
+		count, perIP, probeIP int
+	}{{"IP", 120, 1000, 1}, {"global", 600, 120, 6}} {
+		t.Run(test.name, func(t *testing.T) {
+			_, app := newExternalIdentityTestService(t)
+			registerAccountSecurity(app)
+			newExternalIdentityService(app, &mockExternalProvider{err: errExternalCredentials}).register()
+			h := accountTestRouter(t, app)
+			attempt := func(index, ip, status int) {
+				t.Helper()
+				path := "/api/collections/users/auth-with-password"
+				if index%2 == 1 {
+					path = "/api/fangji/auth/external/mock/login"
+				}
+				r := httptest.NewRequest("POST", path, strings.NewReader(fmt.Sprintf(`{"identity":"mixed-%d@example.test","password":"invalid-password"}`, index)))
+				r.Header.Set("Content-Type", "application/json")
+				r.RemoteAddr = fmt.Sprintf("203.0.113.%d:12345", ip)
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r)
+				if w.Code != status {
+					t.Fatalf("attempt %d ip %d status=%d want=%d", index, ip, w.Code, status)
+				}
+			}
+			for n := 0; n < test.count; n++ {
+				status := 400
+				if n%2 == 1 {
+					status = 401
+				}
+				attempt(n, n/test.perIP+1, status)
+			}
+			attempt(test.count, test.probeIP, 429)
+			attempt(test.count+1, test.probeIP, 429)
+		})
+	}
+}
+
+// PocketBase refresh signs the guarded e.Record snapshot; it does not reload
+// the user in its final response handler. Pausing after our guard proves a
+// revocation racing the remaining handler cannot mint a new-generation token.
+func TestRefreshAfterGenerationGuardCannotResurrectRevokedSession(t *testing.T) {
+	service, app := newExternalIdentityTestService(t)
+	user, _, _ := service.resolveOrCreateUser("mock", "refresh-after-guard")
+	token, _ := user.NewAuthToken()
+	registerAccountSecurity(app)
+	started, release := make(chan struct{}), make(chan struct{})
+	app.OnRecordAuthRefreshRequest("users").BindFunc(func(e *core.RecordAuthRefreshRequestEvent) error {
+		close(started)
+		<-release
+		return e.Next()
+	})
+	h := accountTestRouter(t, app)
+	result := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		r := httptest.NewRequest("POST", "/api/collections/users/auth-refresh", strings.NewReader(`{}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Authorization", token)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		result <- w
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("refresh did not reach post-guard hook")
+	}
+	accountTestRequest(t, h, "POST", "/api/fangji/auth/logout-all", token, map[string]any{}, 204)
+	close(release)
+	select {
+	case response := <-result:
+		if response.Code != 200 {
+			t.Fatalf("refresh returned %d", response.Code)
+		}
+		var body struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.Token == "" {
+			t.Fatal("missing refresh result")
+		}
+		if _, err := app.FindAuthRecordByToken(body.Token, core.TokenTypeAuth); err == nil {
+			t.Fatal("post-revocation refresh resurrected a valid session")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("refresh hung")
 	}
 }

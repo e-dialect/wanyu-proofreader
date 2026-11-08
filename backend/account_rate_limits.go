@@ -122,7 +122,11 @@ func registerAccountRateLimits(app core.App) {
 			if ip == "" {
 				ip = c.Request.RemoteAddr
 			}
-			allowed := limiter.allow("global:"+action, 600, time.Minute) && limiter.allow("ip:"+action+":"+ip, limit, time.Minute)
+			realm := action
+			if action == "external" {
+				realm = "login"
+			}
+			allowed := limiter.allow("global:"+realm, 600, time.Minute) && limiter.allow("ip:"+realm+":"+ip, limit, time.Minute)
 			identity, _ := info.Body["identity"].(string)
 			if action == "login" || action == "external" {
 				allowed = allowed && limiter.allow("identity:"+action+":"+c.Request.PathValue("provider")+":"+accountLimitFingerprint(identity), 10, time.Minute)
@@ -151,7 +155,11 @@ func registerAccountRateLimits(app core.App) {
 				if silent {
 					return c.NoContent(http.StatusNoContent)
 				}
-				c.Response.Header().Set("Retry-After", "60")
+				retryAfter := "60"
+				if action == "mail-change" {
+					retryAfter = "3600"
+				}
+				c.Response.Header().Set("Retry-After", retryAfter)
 				return accountAPIError(429, "ACCOUNT_RATE_LIMITED", "操作过于频繁，请稍后重试。")
 			}
 			c.Set("accountSecurityRateLimited", true)

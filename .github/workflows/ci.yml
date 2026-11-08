@@ -132,9 +132,13 @@ jobs:
         with:
           node-version: "24"
       - name: Run against a freshly migrated disposable database
+        if: matrix.suite != 'account_security'
         env:
           SUITE: ${{ matrix.suite }}
         run: python3 backend/tests/run_integration.py "${SUITE}_integration.mjs"
+      - name: Account security APIs, offline recovery and restart
+        if: matrix.suite == 'account_security'
+        run: python3 backend/tests/run_account_security_integration.py
 
   race-integration:
     name: Concurrency under the race detector (${{ matrix.suite }})
