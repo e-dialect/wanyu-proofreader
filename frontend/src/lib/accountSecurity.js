@@ -25,13 +25,22 @@ export function securityEventLabel(type) {
       'account.email_verified': '验证邮箱',
       'account.external_bound': '绑定外部账号',
       'account.admin_recovered': '管理员恢复账号',
+      'auth.login_rejected': '登录未通过',
       'project.member_changed': '变更项目成员角色',
       'project.member_removed': '移除项目成员',
       'project.owner_changed': '变更项目所有者',
+      'project.volunteers_created': '创建志愿者账号',
       'platform.creator_grant_changed': '变更项目创建授权',
-      'platform.role_changed': '变更平台角色'
-    }[type] || '账户权限变更'
+      'platform.role_changed': '变更平台角色',
+      'export.authorized': '授权资料导出',
+      'export.stream_finished': '导出传输结束'
+    }[type] || '安全事件'
   )
+}
+
+/** @param {string} outcome @returns {string} */
+export function securityOutcomeLabel(outcome) {
+  return { success: '成功', denied: '已拒绝', failed: '失败' }[outcome] || '结果未知'
 }
 
 export function accountErrorMessage(error, fallback = '操作未完成，请稍后重试。') {
