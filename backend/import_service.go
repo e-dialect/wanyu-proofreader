@@ -659,11 +659,23 @@ func (s *importService) runWorkQueue(queue <-chan importWork) {
 			})
 			defer s.finishWork(work)
 			defer func() {
+				result, errorCode := "unknown", ""
+				if route, ok := workRoutes[work.kind]; ok {
+					collection := route.collection
+					if work.kind == "conversion" {
+						collection = "conversion_jobs"
+					}
+					if record, err := s.app.FindRecordById(collection, work.id); err == nil {
+						result, errorCode = record.GetString("status"), record.GetString("error_code")
+					}
+				}
 				logUpload("info", "work_finished", map[string]any{
 					"request_id":  work.requestID,
 					"kind":        work.kind,
 					"record_id":   work.id,
 					"duration_ms": time.Since(startedAt).Milliseconds(),
+					"result":      result,
+					"error_code":  errorCode,
 				})
 			}()
 			defer func() {

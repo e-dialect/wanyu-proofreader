@@ -241,7 +241,7 @@
 
           <div class="adoption-actions">
             <RouterLink
-              v-if="current.status === 'confirmed'"
+              v-if="current.status === 'confirmed' && nativeDeliveryEnabled"
               class="btn btn-primary"
               :to="{
                 path: `/admin/projects/${projectId}/deliveries`,
@@ -609,6 +609,7 @@
 </template>
 
 <script setup>
+const nativeDeliveryEnabled = globalThis.__FANGJI_NATIVE_DELIVERY_ENABLED__ !== false
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'

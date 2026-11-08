@@ -43,6 +43,11 @@ for (const [index, page] of pages.entries()) {
   const material = await api(`/api/fangji/pages/${page.id}/arbitration`, { token: admin.token })
   assert.equal(material.attempts.length, 2, 'independent results must remain available to the arbitrator')
   await api(`/api/fangji/pages/${page.id}/arbitrate`, { method: 'POST', token: admin.token, body: { rowJson: material.attempts[0].row_json, selections: { 词条: `attempt:${material.attempts[0].id}` } } })
+  const attemptsURL = `/api/collections/proofreading_attempts/records?perPage=1&filter=${encodeURIComponent(`page="${page.id}"`)}`
+  const attemptsBefore = (await api(attemptsURL, { token: superuser.token })).totalItems
+  const conflict = await api(`/api/fangji/pages/${page.id}/arbitrate`, { method: 'POST', token: admin.token, body: { rowJson: material.attempts[0].row_json }, status: 409 })
+  assert.equal(conflict.data.reasonCode, 'ARBITRATION_STATE_CHANGED')
+  assert.equal((await api(attemptsURL, { token: superuser.token })).totalItems, attemptsBefore, 'a stale arbitrator cannot append a second result')
   const current = await queue(page.id)
   assert.equal(current.position, 0)
   assert.equal(current.totalItems, 1 - index)

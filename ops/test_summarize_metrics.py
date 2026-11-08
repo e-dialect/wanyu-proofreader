@@ -1,6 +1,6 @@
 import json
 import unittest
-from summarize_metrics import summarize
+from summarize_metrics import summarize, timestamp
 
 
 class MetricsTest(unittest.TestCase):
@@ -18,6 +18,21 @@ class MetricsTest(unittest.TestCase):
         self.assertTrue(report['browser'][0]['small_sample'])
         self.assertEqual(summarize(['{"event":"collection_gap"}'])['status'], 'incomplete')
         self.assertEqual(summarize(['{"bad'])['malformed_lines'], 1)
+
+    def test_window_queue_results_and_failed_audits_remain_visible(self):
+        rows = [
+            {'event': 'work_started', 'time': '2026-11-08T12:00:00Z', 'kind': 'csv', 'queue_wait_ms': 22},
+            {'event': 'work_finished', 'time': '2026-11-08T12:00:01Z', 'kind': 'csv', 'duration_ms': 150, 'result': 'failed'},
+            {'event': 'security_audit_persist_failed', 'time': '2026-11-08T12:00:02Z'},
+            {'event': 'runtime_sample', 'time': '2026-11-07T12:00:00Z', 'heap_bytes': 999},
+        ]
+        report = summarize(map(json.dumps, rows), since=timestamp('2026-11-08T00:00:00Z'))
+        self.assertEqual(report['jobs'][0]['queue_wait_p95_ms'], 22)
+        self.assertEqual(report['jobs'][0]['results'], {'failed': 1})
+        self.assertEqual(report['peak_heap_bytes'], 0)
+        self.assertEqual(report['audit_persistence_gaps'], 1)
+        self.assertEqual(report['status'], 'incomplete')
+        self.assertEqual(summarize(['{"event":"work_started"}'], since=timestamp('2026-11-08T00:00:00Z'))['status'], 'incomplete')
 
 
 if __name__ == '__main__':

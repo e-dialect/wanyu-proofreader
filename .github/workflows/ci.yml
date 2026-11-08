@@ -761,13 +761,14 @@ jobs:
 
       - name: Verify production font HTTP cache and headers
         run: |
-          container=$(docker run -d --add-host backend:127.0.0.1 -p 127.0.0.1:18080:8080 fangji-frontend:ci)
+          container=$(docker run -d --add-host backend:127.0.0.1 -e FANGJI_NATIVE_DELIVERY_ENABLED=0 -p 127.0.0.1:18080:8080 fangji-frontend:ci)
           trap 'docker rm -f "$container"' EXIT
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:18080/ >/dev/null; then break; fi
             sleep 1
           done
           FRONTEND_URL=http://127.0.0.1:18080 node frontend/scripts/test-font-cache.mjs
+          FRONTEND_URL=http://127.0.0.1:18080 node frontend/scripts/test-account-http.mjs
 
       - name: Scan built images and generate CycloneDX SBOMs
         run: |

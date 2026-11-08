@@ -68,15 +68,15 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout), value)
 
     def test_telemetry_flags_are_atomic_and_not_javascript_injection(self):
-        result = self.run_config('', extra={'FANGJI_TELEMETRY_ENABLED': '1', 'FANGJI_BUILD_SHA': 'abc123'})
+        result = self.run_config('', extra={'FANGJI_TELEMETRY_ENABLED': '1', 'FANGJI_BUILD_SHA': 'abc123', 'FANGJI_NATIVE_DELIVERY_ENABLED': '0'})
         self.assertEqual(result.returncode, 0, result.stderr)
         before = (self.html / 'runtime-config.js').read_text()
         result = subprocess.run(['node', '--input-type=module', '-e',
             'import vm from "node:vm"; const context={}; vm.runInNewContext(' + json.dumps(before) +
-            ',context); console.log(JSON.stringify([context.__FANGJI_TELEMETRY_ENABLED__,context.__FANGJI_BUILD_SHA__]));'],
+            ',context); console.log(JSON.stringify([context.__FANGJI_TELEMETRY_ENABLED__,context.__FANGJI_BUILD_SHA__,context.__FANGJI_NATIVE_DELIVERY_ENABLED__]));'],
             text=True, capture_output=True, timeout=10)
-        self.assertEqual(json.loads(result.stdout), [True, 'abc123'])
-        for extra in [{'FANGJI_TELEMETRY_ENABLED': 'yes'}, {'FANGJI_BUILD_SHA': 'bad";alert(1)'}]:
+        self.assertEqual(json.loads(result.stdout), [True, 'abc123', False])
+        for extra in [{'FANGJI_TELEMETRY_ENABLED': 'yes'}, {'FANGJI_BUILD_SHA': 'bad";alert(1)'}, {'FANGJI_NATIVE_DELIVERY_ENABLED': 'yes'}]:
             self.assertNotEqual(self.run_config('', extra=extra).returncode, 0)
             self.assertEqual((self.html / 'runtime-config.js').read_text(), before)
 

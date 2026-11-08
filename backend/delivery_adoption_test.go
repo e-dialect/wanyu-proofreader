@@ -110,7 +110,7 @@ func TestDeliveryMigrationRollbackGuardsBeforeSchemaChanges(t *testing.T) {
 }
 
 func TestDeliveryArchiveTransactionFailureCleansFiles(t *testing.T) {
-	for _, scenario := range []string{"outer-transaction", "save-hook"} {
+	for _, scenario := range []string{"outer-transaction", "save-hook", "security-audit"} {
 		t.Run(scenario, func(t *testing.T) {
 			app := newSchemaTestApp(t)
 			up, _ := deliveryMigration(t, "pb_migrations/1792281600_release_deliveries.js")
@@ -123,6 +123,13 @@ func TestDeliveryArchiveTransactionFailureCleansFiles(t *testing.T) {
 			}
 			snap := deliveryArchiveFixture(t, app)
 			injected := errors.New("synthetic failure after file persistence")
+			if scenario == "security-audit" {
+				up, _ = deliveryMigration(t, "pb_migrations/1794201000_account_security.js")
+				if err := app.RunInTransaction(up); err != nil {
+					t.Fatal(err)
+				}
+				app.OnRecordCreate("security_events").BindFunc(func(_ *core.RecordEvent) error { return injected })
+			}
 			if scenario == "save-hook" {
 				app.OnRecordCreate("release_deliveries").BindFunc(func(e *core.RecordEvent) error {
 					if err := e.Next(); err != nil {
@@ -132,7 +139,11 @@ func TestDeliveryArchiveTransactionFailureCleansFiles(t *testing.T) {
 				})
 			}
 			err := app.RunInTransaction(func(tx core.App) error {
-				if _, err := saveDeliveryArchive(tx, snap, "", ""); err != nil {
+				var requests []*core.RequestEvent
+				if scenario == "security-audit" {
+					requests = append(requests, nil)
+				}
+				if _, err := saveDeliveryArchive(tx, snap, "", "", requests...); err != nil {
 					return err
 				}
 				return injected
