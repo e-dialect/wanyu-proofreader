@@ -9,6 +9,7 @@ import subprocess
 import queue
 import time
 from pathlib import Path
+from capacity_resources import production_runtime_status
 
 VERSION = 1
 MAX_LINE = 16 * 1024 * 1024
@@ -161,10 +162,23 @@ def same_source(a, b):
     return all(a.get(key) == b.get(key) and a.get(key) is not None for key in SOURCE_KEYS)
 
 
+def valid_fault_evidence(report, source):
+    if not isinstance(report, dict) or not isinstance(report.get('source_after'), dict):
+        return False
+    duration = report.get('duration_seconds')
+    gates = report.get('gates', {})
+    return bool(report.get('status') == 'pass' and report.get('full_fault_gate') is True and
+        type(duration) in (int, float) and math.isfinite(duration) and duration >= 900 and
+        isinstance(gates, dict) and all(gates.get(name) == 'pass' for name in
+        ('offline', 'response_loss', 'restart', 'revocation', 'storage', 'source_unchanged')) and
+        same_source(source, report) and same_source(source, report['source_after']))
+
+
 def evaluate_evidence(rows, budget, target, generator, clock, transport):
     """All inputs are observed receipts, never caller assertions of CPU/SSD/separation."""
     gates = dict.fromkeys(('separate_generator_host', 'reference_hardware', 'clock_alignment',
                           'resource_sampling', 'resource_budget', 'cooldown_recovery', 'formal_reference_profile', 'runtime_budgets'), 'incomplete')
+    gates['production_runtime'] = production_runtime_status(rows)
     a, b = target['host'].get('machine_sha256'), generator.get('machine_sha256')
     if a and b:
         gates['separate_generator_host'] = 'pass' if transport == 'ssh' and a != b else 'fail'

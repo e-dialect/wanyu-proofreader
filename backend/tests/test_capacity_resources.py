@@ -6,10 +6,16 @@ import time
 import unittest
 from unittest.mock import patch
 
-from capacity_resources import ResourceSampler
+from capacity_resources import ResourceSampler, production_runtime_status
 
 
 class SamplerConnectionTests(unittest.TestCase):
+    def test_mode_requires_actual_false_and_never_promotes_unknown_or_true(self):
+        self.assertEqual(production_runtime_status([{}, {'dev_mode': False}]), 'pass')
+        for rows in ([], [{}], [{'dev_mode': 0}], [{'dev_mode': None}]):
+            self.assertEqual(production_runtime_status(rows), 'incomplete')
+        self.assertEqual(production_runtime_status([{'dev_mode': False}, {'dev_mode': True}]), 'fail')
+
     def test_repeated_samples_release_every_read_connection(self):
         opened = []
         connect = sqlite3.connect

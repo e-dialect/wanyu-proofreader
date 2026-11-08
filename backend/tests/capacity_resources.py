@@ -28,6 +28,15 @@ def trend(rows, key):
             'per_second': (points[-1][1] - points[0][1]) / duration if duration > 0 else None}
 
 
+def production_runtime_status(rows):
+    modes = [row['dev_mode'] for row in rows if row.get('dev_mode') is not None]
+    if any(mode is True for mode in modes):
+        return 'fail'
+    if not modes or any(type(mode) is not bool for mode in modes):
+        return 'incomplete'
+    return 'pass'
+
+
 class ResourceSampler:
     interval_seconds = 5
 
@@ -135,6 +144,7 @@ class ResourceSampler:
             phases[phase] = {key: trend(rows, key) for key in (*required, 'heap_bytes', 'queue_length', 'ocr_queue_length', 'image_queue_length')}
         report = {'sample_interval_seconds': self.interval_seconds, 'samples': len(self.rows),
             'complete_samples': len(complete), 'sampling_status': 'pass' if measured else 'incomplete',
+            'production_runtime_status': production_runtime_status(self.rows),
             'resource_budget_status': 'incomplete', 'cooldown_recovery_status': 'incomplete',
             'separate_generator_host': False, 'separate_generator_status': 'incomplete',
             'phases': phases,

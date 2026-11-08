@@ -16,7 +16,7 @@ import harness
 import run_capacity_remote
 from capacity_remote_contract import (canonical_hash, clean_environment, evaluate_evidence, host_identity,
                                       validate_budget, validate_init, strict_json_loads, CapacityFailure,
-                                      safe_failure, failure_from_frame)
+                                      safe_failure, failure_from_frame, valid_fault_evidence)
 from capacity_target import OwnedTarget
 from run_capacity_remote import Transport, loopback_port, ssh_command, transport_environment, stop_generator_group
 
@@ -36,6 +36,25 @@ def init():
 
 
 class CapacityRemoteTest(unittest.TestCase):
+    def test_fault_evidence_requires_frozen_source_and_complete_real_window(self):
+        source = {'baseline_sha': 'a'*40, 'dirty_diff_sha256': 'b'*64,
+                  'source_sha256': {'synthetic.go': 'c'*64}}
+        report = {**copy.deepcopy(source), 'source_after': copy.deepcopy(source),
+                  'status': 'pass', 'full_fault_gate': True, 'duration_seconds': 901,
+                  'gates': dict.fromkeys(('offline', 'response_loss', 'restart', 'revocation',
+                                          'storage', 'source_unchanged'), 'pass')}
+        self.assertTrue(valid_fault_evidence(report, source))
+        for duration in (899, float('inf'), float('nan'), True):
+            self.assertFalse(valid_fault_evidence({**report, 'duration_seconds': duration}, source))
+        for field in ('source_after', 'full_fault_gate'):
+            old = copy.deepcopy(report); del old[field]
+            self.assertFalse(valid_fault_evidence(old, source))
+        for field in source:
+            changed = copy.deepcopy(report); changed['source_after'][field] = 'changed'
+            self.assertFalse(valid_fault_evidence(changed, source))
+        changed = copy.deepcopy(report); del changed['gates']['source_unchanged']
+        self.assertFalse(valid_fault_evidence(changed, source))
+
     def test_known_hardware_mismatch_fails_even_when_ssd_unknown(self):
         target = {'workload': {'duration':10}, 'host':{'machine_sha256':'target'},
                   'hardware':{'effective_cpu_cores':4, 'effective_memory_bytes':3800000000, 'storage_medium_verified':False}}
@@ -134,7 +153,7 @@ class CapacityRemoteTest(unittest.TestCase):
         return [{'at_ms': i*5000, 'observation':'baseline' if i < 3 else 'load' if i < 6 else 'postload_idle',
             'server_rss_bytes':100, 'frontend_rss_bytes':50, 'target_group_rss_bytes':160,'wal_bytes':500,'data_directory_bytes':500,
             'disk_free_bytes':2000,'unfinished_jobs':0,'heap_bytes':50,'runtime_sample_age_seconds':0,
-            'gomaxprocs':2,'go_memory_limit_bytes':805306368,'queue_length':0,'ocr_queue_length':0,'image_queue_length':0} for i in range(9)]
+            'gomaxprocs':2,'go_memory_limit_bytes':805306368,'dev_mode':False,'queue_length':0,'ocr_queue_length':0,'image_queue_length':0} for i in range(9)]
 
     def test_observed_limits_recovery_and_separation(self):
         target = {'workload': {'duration': 10}, 'host':{'machine_sha256':'target'}, 'hardware':{'effective_cpu_cores':4,'effective_memory_bytes':3800000000,'storage_medium_verified':True}}
