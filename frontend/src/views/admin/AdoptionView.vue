@@ -31,7 +31,7 @@
           返回批次列表
         </button>
         <button
-          v-else
+          v-else-if="!accessLost && !projectUnavailable"
           type="button"
           class="btn btn-primary"
           :disabled="loading || busy"
@@ -56,6 +56,9 @@
       :busy="loading"
       @retry="load()"
     />
+    <RouterLink v-if="projectUnavailable" to="/admin" class="btn btn-secondary mb-4">
+      返回项目列表
+    </RouterLink>
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
     <AppStatusPanel
@@ -706,6 +709,7 @@ const loading = ref(false)
 const loadError = ref('')
 const loaded = ref(false)
 const unavailable = ref(false)
+const projectUnavailable = ref(false)
 const busy = ref(false)
 const operationError = ref('')
 const message = ref('')
@@ -810,9 +814,23 @@ function clearProtectedData() {
   createStep.value = 1
   scopePreset.value = 'ready'
 }
-function handleFailure(error, request) {
+// Preserve the endpoint's authority: a missing project revokes the entire
+// workspace; a missing batch/exception revokes only the selected detail.
+function projectRead(promise) {
+  return promise.catch((cause) => {
+    throw Object.assign(new Error('项目读取失败', { cause }), { requestSource: 'project' })
+  })
+}
+function handleFailure(error, request, requestSource) {
   if (pageScope.invalidate(error, request)) return true
   if (!request.isCurrent()) return true
+  if (getPbStatus(error) === 404 && requestSource === 'project') {
+    pageScope.cancel()
+    clearProtectedData()
+    projectUnavailable.value = unavailable.value = true
+    loadError.value = '项目不存在或已被删除，页面资料已清除。请返回项目列表或重试。'
+    return true
+  }
   if ((getPbStatus(error) === 404 || error?.invalidDetail) && currentId.value) {
     pageScope.cancel()
     ++projectGeneration
@@ -858,7 +876,7 @@ onBeforeUnmount(() => {
 function resetProject() {
   pageScope.cancel()
   clearProtectedData()
-  unavailable.value = false
+  projectUnavailable.value = unavailable.value = false
   syncQuery()
   return load(screen.value === 'list' ? queryPage.value : 1)
 }
@@ -875,10 +893,12 @@ async function load(page = requestedHistoryPage.value) {
   loading.value = true
   loadError.value = ''
   try {
-    const data = await listAdoptionBatches(id, { page, perPage: 25, signal: request.signal })
+    const data = await projectRead(
+      listAdoptionBatches(id, { page, perPage: 25, signal: request.signal })
+    )
     const [details, nextSummary] = await Promise.all([
       loadBatchDetails(nextId, request.signal),
-      getAdoptionSummary(id, { signal: request.signal })
+      projectRead(getAdoptionSummary(id, { signal: request.signal }))
     ])
     if (!isCurrent()) return
     // Only the exact detail endpoint is authoritative. Network errors retain
@@ -893,9 +913,10 @@ async function load(page = requestedHistoryPage.value) {
     summary.value = nextSummary
     applyBatchDetails(details)
     loaded.value = true
-    accessLost.value = unavailable.value = false
-  } catch (error) {
-    if (handleFailure(error, request) || !isCurrent()) return
+    accessLost.value = unavailable.value = projectUnavailable.value = false
+  } catch (failure) {
+    const error = failure?.requestSource ? failure.cause : failure
+    if (handleFailure(error, request, failure?.requestSource) || !isCurrent()) return
     loadError.value = getPbMessage(error, '加载编选批次失败')
   } finally {
     if (isCurrent()) loading.value = false

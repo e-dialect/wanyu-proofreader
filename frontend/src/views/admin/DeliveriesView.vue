@@ -23,7 +23,7 @@
         <p>核对交付范围，保留每次交付与后续处置的凭据。</p>
       </div>
       <button
-        v-if="!accessLost && view === 'records'"
+        v-if="!accessLost && !projectUnavailable && view === 'records'"
         class="btn btn-primary"
         :disabled="busy"
         @click="navigate({ view: 'prepare' })"
@@ -71,10 +71,16 @@
         重新加载
       </button>
     </div>
+    <RouterLink v-if="projectUnavailable" to="/admin" class="btn btn-secondary mb-4">
+      返回项目列表
+    </RouterLink>
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
 
-    <section v-if="!accessLost && view === 'prepare' && !unavailable" class="card mb-6">
+    <section
+      v-if="!accessLost && !projectUnavailable && view === 'prepare' && !unavailable"
+      class="card mb-6"
+    >
       <div class="delivery-steps" aria-label="交付准备步骤">
         <span :aria-current="!preview ? 'step' : undefined">1 选择清单</span
         ><span :aria-current="preview ? 'step' : undefined">2 检查范围</span
@@ -268,7 +274,7 @@
       </details>
     </section>
 
-    <section v-if="!accessLost && view === 'records'" class="card mb-6">
+    <section v-if="!accessLost && !projectUnavailable && view === 'records'" class="card mb-6">
       <div class="section-heading">
         <div>
           <h2>交付记录</h2>
@@ -326,7 +332,7 @@
       </ul>
     </section>
 
-    <section v-if="!accessLost && view === 'detail'" class="mb-6">
+    <section v-if="!accessLost && !projectUnavailable && view === 'detail'" class="mb-6">
       <nav class="delivery-tabs" aria-label="交付详情">
         <button
           :aria-current="detailTab === 'summary' ? 'page' : undefined"
@@ -434,7 +440,7 @@
     </section>
 
     <section
-      v-if="!accessLost && view === 'detail' && selected"
+      v-if="!accessLost && !projectUnavailable && view === 'detail' && selected"
       ref="eventEditor"
       class="card mb-6 delivery-event-editor"
     >
@@ -531,7 +537,7 @@
       </form>
     </section>
 
-    <section v-if="!accessLost && view === 'impacts'" class="card">
+    <section v-if="!accessLost && !projectUnavailable && view === 'impacts'" class="card">
       <h2>来源权利变更后的影响</h2>
       <p>查询受影响的历史包，再逐包追加停用凭据、升级记录和消费方通知。历史包保持原样。</p>
       <form class="settings-form" @submit.prevent="findImpacts">
@@ -608,6 +614,7 @@ const listPages = ref(1)
 const eventPages = ref(1)
 const currentDelivery = ref(null)
 const unavailable = ref(false)
+const projectUnavailable = ref(false)
 const nativeBatch = ref(null)
 const adoptionChoices = ref([])
 const adoptionPage = ref(1)
@@ -638,7 +645,7 @@ async function loadAdoptions(page = 1) {
     adoptionPage.value = data.page
     adoptionPages.value = data.totalPages
   } catch (error) {
-    if (!handleFailure(error, request) && request.isCurrent())
+    if (!handleFailure(error, request, 'project') && request.isCurrent())
       loadError.value = getPbMessage(error, '编选批次加载失败')
   } finally {
     request.finish()
@@ -750,9 +757,21 @@ function clearProtectedData() {
   operationError.value = success.value = ''
   clearEditor()
 }
-function handleFailure(error, request) {
+function projectRead(promise) {
+  return promise.catch((cause) => {
+    throw Object.assign(new Error('项目读取失败', { cause }), { requestSource: 'project' })
+  })
+}
+function handleFailure(error, request, requestSource) {
   if (pageScope.invalidate(error, request)) return true
   if (!request.isCurrent()) return true
+  if (getPbStatus(error) === 404 && requestSource === 'project') {
+    pageScope.cancel()
+    clearProtectedData()
+    projectUnavailable.value = unavailable.value = true
+    loadError.value = '项目不存在或已被删除，页面资料已清除。请返回项目列表或重试。'
+    return true
+  }
   if (getPbStatus(error) === 404 || error?.invalidDetail) {
     pageScope.cancel()
     ++loadGeneration
@@ -830,10 +849,12 @@ async function load() {
   operationError.value = ''
   try {
     const id = projectId.value
-    const data = await listDeliveries(id, {
-      page: view.value === 'records' ? queryPage.value : 1,
-      signal: request.signal
-    })
+    const data = await projectRead(
+      listDeliveries(id, {
+        page: view.value === 'records' ? queryPage.value : 1,
+        signal: request.signal
+      })
+    )
     if (!isCurrent()) return
     let detail = null,
       events = null,
@@ -867,9 +888,14 @@ async function load() {
     eventPages.value = events?.totalPages || 1
     currentDelivery.value = detail ? { ...detail, events: events.events } : null
     nativeBatch.value = adoption
-    accessLost.value = unavailable.value = false
-  } catch (e) {
-    if (!handleFailure(e, request) && !disposed && generation === loadGeneration)
+    accessLost.value = unavailable.value = projectUnavailable.value = false
+  } catch (failure) {
+    const e = failure?.requestSource ? failure.cause : failure
+    if (
+      !handleFailure(e, request, failure?.requestSource) &&
+      !disposed &&
+      generation === loadGeneration
+    )
       loadError.value = getPbMessage(e, '交付记录加载失败')
   } finally {
     if (request.isCurrent() && !disposed && generation === loadGeneration) loading.value = false
@@ -984,7 +1010,7 @@ watch(
     pageScope.cancel()
     clearProtectedData()
     success.value = completedMessage
-    unavailable.value = false
+    projectUnavailable.value = unavailable.value = false
     selectedPackageId.value = typeof route.query.package === 'string' ? route.query.package : ''
     view.value = selectedPackageId.value
       ? 'detail'

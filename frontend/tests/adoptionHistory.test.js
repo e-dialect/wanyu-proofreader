@@ -69,7 +69,7 @@ function fixture(services = {}) {
     historyPage, requestedHistoryPage, historyTotalPages, historyTotalItems,
     loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError,
     exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage,
-    current, currentRecord, accessLost, pageScope, busy, message, confirmOpen, removeOpen, dirty, act,
+    current, currentRecord, accessLost, projectUnavailable, pageScope, busy, message, confirmOpen, removeOpen, dirty, act,
     clearProtectedData, handleFailure, exportManifest
   }`
   )(...Object.values(bindings))
@@ -93,8 +93,8 @@ function deferred() {
 
 const tick = () => new Promise((resolve) => setImmediate(resolve))
 
-function assertProtectedDataCleared(state) {
-  assert.equal(state.accessLost.value, true)
+function assertProtectedDataCleared(state, accessLost = true) {
+  assert.equal(state.accessLost.value, accessLost)
   assert.equal(state.loaded.value, false)
   assert.equal(state.loading.value, false)
   assert.equal(state.busy.value, false)
@@ -152,6 +152,59 @@ for (const status of [401, 403]) {
   }
 }
 
+for (const origin of ['list', 'summary']) {
+  for (const status of [404, 500]) {
+    test(`adoption project ${origin} ${status} ${status === 404 ? 'clears the whole workspace' : 'preserves loaded data and drafts'}`, async () => {
+      let failed = false
+      const state = fixture({
+        listAdoptionBatches: async () => {
+          if (failed && origin === 'list') throw { status }
+          return {
+            batches: [{ id: 'batch-one' }, { id: 'batch-two' }],
+            page: 1,
+            totalPages: 1,
+            totalItems: 2
+          }
+        },
+        getAdoptionSummary: async () => {
+          if (failed && origin === 'summary') throw { response: { status } }
+          return { project: 'project-a', private: true }
+        }
+      })
+      await state.reset()
+      await state.selectBatch('batch-one')
+      state.createForm.recipient = 'private recipient'
+      state.draftFor('entry-one').note = 'private decision'
+      state.confirmOpen.value = true
+      assert.equal(state.dirty.value, true)
+      const pending = state.pageScope.capture()
+      failed = true
+      await state.load()
+      if (status === 404) {
+        assertProtectedDataCleared(state, false)
+        assert.equal(state.projectUnavailable.value, true)
+        assert.equal(state.dirty.value, false)
+        assert.equal(pending.signal.aborted, true)
+        assert.match(state.loadError.value, /项目不存在或已被删除/)
+      } else {
+        assert.equal(state.projectUnavailable.value, false)
+        assert.equal(state.accessLost.value, false)
+        assert.equal(state.loaded.value, true)
+        assert.deepEqual(
+          state.batches.value.map((batch) => batch.id),
+          ['batch-one', 'batch-two']
+        )
+        assert.equal(state.current.value.id, 'batch-one')
+        assert.equal(state.summary.value.private, true)
+        assert.equal(state.createForm.recipient, 'private recipient')
+        assert.equal(state.draftFor('entry-one').note, 'private decision')
+        assert.equal(state.dirty.value, true)
+        assert.equal(pending.signal.aborted, false)
+      }
+    })
+  }
+}
+
 test('adoption detail 404 clears the exact authority and never falls back to a list summary', async () => {
   let missing = false
   const state = fixture({
@@ -178,6 +231,7 @@ test('adoption detail 404 clears the exact authority and never falls back to a l
   assert.deepEqual(state.decisionDrafts, {})
   assert.match(state.loadError.value, /不可用/)
   assert.equal(state.accessLost.value, false, 'one missing object does not revoke the account')
+  assert.equal(state.projectUnavailable.value, false)
   state.batches.value.push({ id: 'batch-one', recipient: 'cached summary', counts: {} })
   assert.equal(state.current.value, null, 'even a cached list item cannot substitute for detail')
 })

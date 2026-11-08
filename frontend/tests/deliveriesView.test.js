@@ -87,7 +87,7 @@ function fixture(services = {}) {
   const state = new Function(
     ...Object.keys(bindings),
     `${script}\nreturn {
-      load, loadAdoptions, action, navigate, pageScope, accessLost, unavailable,
+      load, loadAdoptions, action, navigate, pageScope, accessLost, unavailable, projectUnavailable,
       projectId, view, selectedPackageId, currentDelivery, nativeBatch, adoptionChoices,
       adoptionPage, adoptionPages, loading, busy, loadError, operationError, success,
       items, metrics, handoff, handoffFilename, handoffInput, reviewer, previous,
@@ -135,8 +135,8 @@ function seedPrivateDrafts(state) {
   state.sourceRef.value = 'private-source'
 }
 
-function assertProtectedDataCleared(state) {
-  assert.equal(state.accessLost.value, true)
+function assertProtectedDataCleared(state, accessLost = true) {
+  assert.equal(state.accessLost.value, accessLost)
   assert.equal(state.loading.value, false)
   assert.equal(state.busy.value, false)
   assert.deepEqual(state.items.value, [])
@@ -202,6 +202,61 @@ for (const status of [401, 403]) {
   }
 }
 
+for (const origin of ['list', 'picker']) {
+  for (const status of [404, 500]) {
+    test(`delivery project ${origin} ${status} ${status === 404 ? 'clears the whole workspace' : 'preserves loaded data and drafts'}`, async () => {
+      let failed = false
+      const state = fixture({
+        listDeliveries: async () => {
+          if (failed && origin === 'list') throw { status }
+          return {
+            items: [{ id: 'package-one' }, { id: 'package-two' }],
+            metrics: { package_count: 2 },
+            page: 1,
+            totalPages: 1
+          }
+        },
+        listAdoptionBatches: async () => {
+          if (failed && origin === 'picker') throw { response: { status } }
+          return { batches: [{ id: 'batch-one' }], page: 1, totalPages: 1 }
+        }
+      })
+      state.view.value = 'prepare'
+      state.selectedPackageId.value = 'package-one'
+      state.route.query.adoption = 'batch-one'
+      await state.load()
+      seedPrivateDrafts(state)
+      assert.equal(state.dirty.value, true)
+      const pending = state.pageScope.capture()
+      failed = true
+      await state.load()
+      if (status === 404) {
+        assertProtectedDataCleared(state, false)
+        assert.equal(state.projectUnavailable.value, true)
+        assert.equal(state.unavailable.value, true)
+        assert.equal(state.dirty.value, false)
+        assert.equal(pending.signal.aborted, true)
+        assert.match(state.loadError.value, /项目不存在或已被删除/)
+      } else {
+        assert.equal(state.projectUnavailable.value, false)
+        assert.equal(state.accessLost.value, false)
+        assert.deepEqual(
+          state.items.value.map((item) => item.id),
+          ['package-one', 'package-two']
+        )
+        assert.equal(state.metrics.value.package_count, 2)
+        assert.equal(state.currentDelivery.value.id, 'package-one')
+        assert.equal(state.adoptionChoices.value[0].id, 'batch-one')
+        assert.equal(state.eventForm.reason, 'private reason')
+        assert.equal(state.preview.value.preview_sha256, 'old-sha')
+        assert.equal(state.requestId.value, 'old-request-id')
+        assert.equal(state.dirty.value, true)
+        assert.equal(pending.signal.aborted, false)
+      }
+    })
+  }
+}
+
 test('delivery detail 404 revokes the selected record while preserving unrelated list rows', async () => {
   let missing = false
   const state = fixture({
@@ -223,6 +278,7 @@ test('delivery detail 404 revokes the selected record while preserving unrelated
   await state.load()
   assert.equal(state.accessLost.value, false)
   assert.equal(state.unavailable.value, true)
+  assert.equal(state.projectUnavailable.value, false)
   assert.equal(state.selectedPackageId.value, 'package-one')
   assert.deepEqual(
     state.items.value.map((item) => item.id),

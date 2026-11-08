@@ -15,7 +15,7 @@ const delivery = {id:'delivery-synthetic',project:'project-synthetic',recipient:
 const pending = new Map(), calls=[]
 const scenario={fail:null,hold:null,held:[],aborted:0,calls}
 function response(path, options) {
- if(path.endsWith('/adoption-summary'))return null
+ if(path.endsWith('/adoption-summary'))return {batches:{total:0},synthetic_note:'虚构受保护项目汇总'}
  if(path.includes('/projects/') && path.endsWith('/adoption-batches'))return {batches:[batch],page:options.query?.page||1,totalPages:3,totalItems:51,purposes:['public_display'],reasons:['quality_review']}
  if(path.includes('/adoption-batches/') && path.endsWith('/exceptions'))return {pending:[{page:'entry-synthetic',pageNumber:1,reason:'quality_review'}],exceptions:[{page:'old-entry',decision:'exclude',note:'虚构敏感历史判断',decidedAt:'2026-11-09'}],pendingTotal:1,page:1,totalPages:1}
  if(path.includes('/adoption-batches/') && path.endsWith('/events'))return {events:[],stale:false,page:1,totalPages:1}
@@ -53,8 +53,9 @@ window.fetch=async (url,options={})=>{
 const params=new URLSearchParams(location.search)
 let AdoptionComponent=Adoption,DeliveryComponent=Deliveries
 if(params.has('baseline')) {
- AdoptionComponent=(await import(/* @vite-ignore */ './AdminAdoptionBaseline.vue')).default
- DeliveryComponent=(await import(/* @vite-ignore */ './AdminDeliveriesBaseline.vue')).default
+ const baselinePath=(name)=>'/tests/fixtures/'+name+'.vue'
+ AdoptionComponent=(await import(/* @vite-ignore */ baselinePath('AdminAdoptionBaseline'))).default
+ DeliveryComponent=(await import(/* @vite-ignore */ baselinePath('AdminDeliveriesBaseline'))).default
 }
 const router=createRouter({history:createMemoryHistory(),routes:[{path:'/projects/:id/adoption',component:AdoptionComponent},{path:'/projects/:id/deliveries',component:DeliveryComponent},{path:'/:pathMatch(.*)*',component:{render:()=>h('main','安全目标页')}}]})
 const view=ref(null)
@@ -62,7 +63,7 @@ const api={scenario,router,call:(name,...args)=>view.value.$.setupState[name](..
  resolve:(key)=>{pending.get(key).resolve();pending.delete(key)},
  reject:(key,status)=>{pending.get(key).reject(Object.assign(new Error('合成延迟失败'),{status}));pending.delete(key)},
  identity:(id)=>id?pb.authStore.save(token,user(id)):pb.authStore.clear(),
- snapshot:()=>{const s=api.state();return Object.fromEntries(['batches','currentRecord','exceptions','decisionDrafts','createForm','currentDelivery','items','nativeBatch','adoptionChoices','handoff','handoffFilename','reviewer','preview','confirmed','requestId','eventForm','eventBaseline','selected','impacts','sourceRef','accessLost','unavailable'].filter(k=>k in s).map(k=>[k,s[k]]))}}
+ snapshot:()=>{const s=api.state();return Object.fromEntries(['batches','currentRecord','exceptions','decisionDrafts','createForm','currentDelivery','items','nativeBatch','adoptionChoices','handoff','handoffFilename','reviewer','preview','confirmed','requestId','eventForm','eventBaseline','selected','impacts','sourceRef','accessLost','unavailable','projectUnavailable','summary','metrics'].filter(k=>k in s).map(k=>[k,s[k]]))}}
 window.__adminFixture=api
 await router.push(params.get('route')||'/projects/project-synthetic/adoption?batch=batch-synthetic&tab=exceptions')
 createApp({render:()=>h(RouterView,null,{default:({Component})=>h(Component,{ref:view})})}).use(router).mount('#app')

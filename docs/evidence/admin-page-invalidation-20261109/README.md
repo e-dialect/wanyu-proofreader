@@ -40,3 +40,16 @@ npm test
 ![交付旧版403后仍显示资料](before-deliveries-403.png)
 ![交付修复后403清理](after-deliveries-403.png)
 ![恢复同一交付包的准确提示](after-replayed-delivery.png)
+
+## 追加：项目被删除的 404
+
+单个详情不存在与整个项目不存在现在按读取入口区分。编选项目列表／汇总，以及交付项目列表／批次选择器返回 404 时，先取消本页 scope，再清空全部列表、汇总、详情、表单与预检，显示「返回项目列表」（实际路由 `/admin`）和重试。详情 GET 的 404 仍只清当前对象，不误删无关列表记录。500／网络失败保留此前成功内容。失权后隐藏编选新建入口。
+
+追加 8 项 list/summary/picker × 404/500 单测；最终前端 **586/586** 通过，生产构建、改动文件 ESLint、runner Python 编译检查通过。实际 mounted **20/20** 通过，包含旧 16 项及项目列表／汇总 404、返回项目列表与失权新建入口隐藏。使用 `REVIEW_BASE_URL=http://localhost:5194` 的现有 runner 环境再次完整通过，console errors 为空；[结果](project-404-results.json)。原始截图保存在 `output/playwright/admin-project-runner-env/`。
+
+`admin-invalidation.cjs` 已登记到现有 `run_frontend_quality_browser.py` 的 `components`，复用其 localhost、浏览器 channel 和输出目录，无独立平行 suite。未为了该接线重跑包含 Go 夹具的整个 runner；已实测脚本在相同 URL/channel 环境下运行。Review Bundle 练习已有 `review-bundle.cjs` 的真实下载／预检覆盖，原本就在 `workbench` 清单，无新增孤立脚本。
+
+此次干净工作树复验还修正了 fixture 的可选旧版导入：Vite 会预解析字面量路径，即使有 `@vite-ignore`，导致没生成旧版副本时默认页 500。现用运行时变量路径，仅显式 baseline 模式才读取旧副本；不修改已有旧版复现结果。
+
+![项目删除后清空编选列表](project-404-adoption.png)
+![项目删除后清空交付列表](project-404-deliveries.png)

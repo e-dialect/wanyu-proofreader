@@ -2,8 +2,9 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { chromium } = require('playwright')
-const base = process.env.ADMIN_INVALIDATION_URL || 'http://127.0.0.1:5194'
-assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/)
+const base =
+  process.env.ADMIN_INVALIDATION_URL || process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5194'
+assert.match(base, /^http:\/\/(?:127\.0\.0\.1|localhost):\d+$/)
 const output =
   process.env.ADMIN_INVALIDATION_OUTPUT ||
   path.resolve(__dirname, '../../../output/playwright/admin-invalidation')
@@ -11,13 +12,15 @@ const baseline = process.env.ADMIN_INVALIDATION_BASELINE === '1'
 const routes = {
   adoption: '/projects/project-synthetic/adoption?batch=batch-synthetic&tab=exceptions',
   deliveries: '/projects/project-synthetic/deliveries?package=delivery-synthetic&tab=events',
+  adoptionList: '/projects/project-synthetic/adoption',
+  deliveryList: '/projects/project-synthetic/deliveries',
   prepare: '/projects/project-synthetic/deliveries?view=prepare&adoption=batch-synthetic'
 }
 ;(async () => {
   fs.mkdirSync(output, { recursive: true })
   const browser = await chromium.launch({
     headless: true,
-    channel: process.env.BROWSER_CHANNEL || 'chrome'
+    ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {})
   })
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }),
     errors = [],
@@ -38,7 +41,7 @@ const routes = {
     )
     await page.waitForFunction(() => {
       const s = window.__adminFixture?.state()
-      return s && !s.loading && (s.loaded || s.currentDelivery || s.nativeBatch)
+      return s && !s.loading && (s.loaded || s.currentDelivery || s.nativeBatch || s.items?.length)
     })
   }
   const snapshot = () => page.evaluate(() => window.__adminFixture.snapshot())
@@ -131,6 +134,38 @@ const routes = {
         })
         await shot(`${kind}-guard-safe`)
       }
+      for (const [kind, endpoint] of [
+        ['adoptionList', '/adoption-batches'],
+        ['adoptionList', '/adoption-summary'],
+        ['deliveryList', '/deliveries']
+      ]) {
+        await go(kind)
+        assert.ok((await page.locator('body').innerText()).includes('虚构受保护'))
+        await fail(404, endpoint)
+        await load()
+        const s = await snapshot()
+        assert.equal(s.projectUnavailable, true)
+        assert.ok(!JSON.stringify(s).includes('虚构受保护'))
+        assert.ok(!(await page.locator('body').innerText()).includes('虚构受保护'))
+        assert.equal(
+          await page.getByRole('link', { name: '返回项目列表', exact: true }).getAttribute('href'),
+          '/admin'
+        )
+        await shot(`${kind}-project404-${endpoint.slice(1)}`)
+        await page.getByRole('link', { name: '返回项目列表', exact: true }).click()
+        await page.getByText('安全目标页', { exact: true }).waitFor()
+        results.push({
+          kind,
+          case: 'project_404_' + endpoint.slice(1),
+          all_snapshot_cleared: true,
+          return_to_projects: true
+        })
+      }
+      await go('adoptionList')
+      await fail(403, '/adoption-batches')
+      await load()
+      assert.equal(await page.getByRole('button', { name: '新建编选批次', exact: true }).count(), 0)
+      results.push({ kind: 'adoption', case: 'access_lost_hides_create_entry', hidden: true })
       // A delayed mutation denies access while a guard is already pending.
       await go('adoption')
       await dirty('adoption')
