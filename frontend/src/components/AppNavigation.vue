@@ -5,6 +5,7 @@
       ><span><strong>万语校坊</strong><small>语言资料协同校勘</small></span></RouterLink
     >
     <div class="shell-navigation-group">
+      <span class="shell-navigation-label">工作空间</span>
       <RouterLink
         v-for="item in mainNavigation"
         :key="item.path"

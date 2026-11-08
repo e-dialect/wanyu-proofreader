@@ -48,12 +48,13 @@
     <AppStatusPanel
       v-if="loadError"
       state="error"
+      title="项目暂时无法加载"
       :message="loadError"
       retry-label="重新加载"
       :busy="loading"
       @retry="loadProjects"
     >
-      <strong>项目暂时无法加载。</strong> {{ loadError }}
+      <p>{{ loadError }}</p>
       <p v-if="hasLoadedProjects">下方保留上次成功加载的项目和统计，可能不是最新结果。</p>
       <p v-else>项目与统计暂不可用，这不代表没有任务。</p>
     </AppStatusPanel>
@@ -172,13 +173,26 @@
           :class="`project-work-card--${queueAction(queue).tone}`"
         >
           <header class="project-work-card__header">
-            <div>
-              <span class="work-state" :class="`work-state--${queueAction(queue).tone}`">
-                {{ queueAction(queue).label }}
-              </span>
-              <h3>{{ queue.project.name }}</h3>
+            <div class="catalog-project-identity">
+              <AppIcon name="project" />
+              <div>
+                <span class="work-state" :class="`work-state--${queueAction(queue).tone}`">
+                  {{
+                    taskView === 'reviewed'
+                      ? '本人提交 · 只读'
+                      : queue.activeMine > 0
+                        ? '进行中'
+                        : queue.claimable > 0
+                          ? '可领取'
+                          : '暂无可领取任务'
+                  }}
+                </span>
+                <h3>{{ queue.project.name }}</h3>
+              </div>
             </div>
-            <span class="project-progress-number">{{ progressPct(queue) }}%</span>
+            <span class="project-progress-number"
+              ><small>校对完成</small><strong>{{ progressPct(queue) }}%</strong></span
+            >
           </header>
 
           <p v-if="queue.project.description" class="project-description">

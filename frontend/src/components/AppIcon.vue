@@ -32,6 +32,7 @@ const paths = {
   back: 'M19 12H5m5-5-5 5 5 5',
   plus: 'M12 5v14M5 12h14',
   help: 'M9 8a3 3 0 0 1 6 0c0 2-3 2-3 5m0 4h.01M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20',
+  alert: 'M12 3 2 21h20L12 3Zm0 6v5m0 3h.01',
   refresh: 'M20 8a8 8 0 1 0 0 8M20 3v5h-5',
   check: 'm5 12 4 4L19 6'
 }

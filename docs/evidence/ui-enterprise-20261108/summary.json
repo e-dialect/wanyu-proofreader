@@ -1,0 +1,57 @@
+{
+  "base": "83ab4f7cb3c52df164beba2f2a70afd3e454929c",
+  "fixture": "seed_demo.mjs synthetic data with disposable harness backend",
+  "browser": "Chromium / msedge",
+  "fullApp": true,
+  "workbenchBrowser": "pass",
+  "componentsBrowser": "pass",
+  "makeCheck": "pass",
+  "frontendUnitTests": {
+    "pass": 490,
+    "fail": 0
+  },
+  "productionBuild": "pass",
+  "nativeKeyboardVerified": false,
+  "humanAcceptanceVerified": false,
+  "apiChanges": false,
+  "dependencyChanges": false,
+  "deployment": false,
+  "screenshots": [
+    {
+      "file": "desktop-tasks.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "bc34857084ce48110f9d71a4271a02f2c78b574d91653fe8d4372588af8da045"
+    },
+    {
+      "file": "desktop-workbench.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "e5763abf1c79f8e2725165a6614b86878f34fa222da59fa79cc11dbd0b006302"
+    },
+    {
+      "file": "management-empty.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "47278fb09033adc2acaf0a423b36bb49c0b09a92adb7b994c747037ce278a0ce"
+    },
+    {
+      "file": "management-error.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "a233372a698fc2b0cdc46b893454528e8466ba4fe28ed953bf301134ca9311bf"
+    },
+    {
+      "file": "mobile-management.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "a4c64356b16dcf8ade7e92c9e69baaa00af58f5b9ade89fdccce8222868a4de4"
+    },
+    {
+      "file": "narrow-tasks.png",
+      "width": 320,
+      "height": 844,
+      "sha256": "8c21a78c7b73510d9f2dcd23913d55c1e92da88a697fae10e1d4f0d897767848"
+    }
+  ]
+}

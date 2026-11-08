@@ -1,7 +1,10 @@
 <template>
   <main class="container page workbench-home">
     <header class="page-heading workbench-heading">
-      <h1>工作台</h1>
+      <div>
+        <h1>工作台</h1>
+        <p class="workbench-introduction">你的校勘工作与项目进展</p>
+      </div>
       <AppButton
         variant="ghost"
         :loading="loading"
@@ -167,8 +170,10 @@
               class="workbench-project"
             >
               <span class="workbench-project__name"
-                ><strong>{{ project.name }}</strong
-                ><small>{{ project.managed ? '管理项目' : '参与校对' }}</small></span
+                ><AppIcon name="project" /><span
+                  ><strong>{{ project.name }}</strong
+                  ><small>{{ project.managed ? '管理项目' : '参与校对' }}</small></span
+                ></span
               >
               <span v-if="project.summary" class="workbench-project__progress"
                 ><span>校对完成</span
