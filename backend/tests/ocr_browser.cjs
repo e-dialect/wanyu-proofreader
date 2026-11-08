@@ -72,7 +72,8 @@ async function main() {
     const rows = await api(`/api/collections/pages/records?filter=${encodeURIComponent(`project="${project.id}"`)}&sort=page_number`, { token })
     const originalCells = rows.items[0].ocr_cells_json
     assert.ok(originalCells)
-    await page.locator('#project-entries tbody tr').first().getByRole('button', { name: '修正', exact: true }).click()
+    await page.locator('#project-entries tbody tr').first().getByRole('button', { name: /^第 .* 条的更多操作$/ }).click()
+    await page.getByRole('menuitem', { name: '修正导入值', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByText('识别时的状态与原始文本（修正后仍保留）', { exact: true }).click()
     const corrected = ' 𠮷\uE000⿰木木 a̤̍⁵³³ '

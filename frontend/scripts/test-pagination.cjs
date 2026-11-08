@@ -94,7 +94,7 @@ with sqlite3.connect(Path(sys.argv[1])/'data.db') as db:
         const search = page.waitForResponse(
           (r) => r.url().includes('/pages?') && r.url().includes('q=')
         )
-        await page.getByPlaceholder('条号、PDF页码、文本或当前校对员').fill('条目-10000 ')
+        await page.getByRole('searchbox', { name: '搜索条目', exact: true }).fill('条目-10000 ')
         await search
         await page.waitForFunction(
           () => document.querySelectorAll('#project-entries tbody tr').length === 1

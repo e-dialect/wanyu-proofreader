@@ -62,7 +62,7 @@ async function navigationResume(page, output, originalRecords) {
   } finally { clearTimeout(timer) }
   assert.ok(sessionId)
   assert.deepEqual((await read(url)).items.find(item => item.id === sessionId).received, [0])
-  await page.locator('a.back-link[href="/admin"]').click()
+  await page.getByRole('link', { name: '所有项目', exact: true }).click()
   const leave = page.getByRole('dialog', { name: '离开当前工作区？', exact: true })
   await leave.waitFor()
   await leave.getByText('离开会暂停 PDF 上传并保留已有分片', { exact: false }).waitFor()
