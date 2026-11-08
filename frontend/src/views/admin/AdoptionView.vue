@@ -375,7 +375,7 @@
           ><select
             :value="activeExceptionId"
             class="form-control"
-            @change="navigate({ ...route.query, entry: $event.target.value })"
+            @change="navigate({ ...route.query, exception: $event.target.value })"
           >
             <option v-for="item in exceptions.pending" :key="item.page" :value="item.page">
               第 {{ item.pageNumber }} 条 · {{ reasonLabel(item.reason) }}
@@ -420,11 +420,7 @@
           </button>
         </article>
 
-        <details
-          v-if="exceptions.exceptions.length"
-          class="mt-3"
-          :open="Boolean(route.query.entry)"
-        >
+        <details v-if="exceptions.exceptions.length" class="mt-3" :open="Boolean(exceptionQuery)">
           <summary>
             已处理的例外（{{ exceptions.decidedTotal || exceptions.exceptions.length }}）
           </summary>
@@ -659,14 +655,28 @@ import { getPbMessage } from '@/utils/pbErrors'
 const route = useRoute()
 const router = useRouter()
 const queryPage = computed(() => Math.max(1, Number.parseInt(route.query.page, 10) || 1))
+function exceptionFromQuery(query) {
+  // Canonical links win when both keys exist; entry remains a read-only alias.
+  return typeof query.exception === 'string'
+    ? query.exception
+    : typeof query.entry === 'string'
+      ? query.entry
+      : ''
+}
+const exceptionQuery = computed(() => exceptionFromQuery(route.query))
 function navigate(query) {
-  return router.push({ query })
+  const canonical = { ...query }
+  const selected = exceptionFromQuery(query)
+  delete canonical.entry
+  if (selected) canonical.exception = selected
+  else delete canonical.exception
+  return router.push({ query: canonical })
 }
 function changeTab(tab) {
   return navigate({ batch: currentId.value, tab, page: 1 })
 }
 function changePage(page) {
-  return navigate({ ...route.query, page, entry: undefined })
+  return navigate({ ...route.query, page })
 }
 const projectId = computed(() => String(route.params.id))
 const screen = ref('list')
@@ -788,7 +798,7 @@ function syncQuery() {
   detailTab.value = ['overview', 'exceptions', 'history'].includes(route.query.tab)
     ? route.query.tab
     : 'overview'
-  activeExceptionId.value = typeof route.query.entry === 'string' ? route.query.entry : ''
+  activeExceptionId.value = exceptionQuery.value
 }
 onBeforeUnmount(() => {
   ++projectGeneration
@@ -862,7 +872,9 @@ async function loadBatchDetails(batchId, signal) {
       signal,
       page: detailTab.value === 'history' ? queryPage.value : 1
     }),
-    route.query.entry ? getAdoptionExceptionByPage(batchId, route.query.entry, { signal }) : null
+    exceptionQuery.value
+      ? getAdoptionExceptionByPage(batchId, exceptionQuery.value, { signal })
+      : null
   ])
   if (record.project !== projectId.value) throw new Error('编选批次不属于当前项目')
   if (
