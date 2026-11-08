@@ -13,6 +13,7 @@ import harness
 import field_audit_capacity as audit
 import capacity_fixture as fixture_helpers
 import capacity_report
+from capacity_resources import ResourceSampler
 
 
 def clone_fixture(db, project, entries, pdf_file=None):
@@ -102,6 +103,9 @@ def run_once(binary, root, args, output, repeat):
                 'start_epoch_ms':int(time.time()*1000)+3000,'output':str(output),'seed':1701,
                 'parallel_import_rows':200 if args.profile=='smoke' else 2000}
         config_path=root/'load.json';config_path.write_text(json.dumps(config));os.chmod(config_path,0o600)
+        sampler=ResourceSampler(env['PB_TEST_SERVER_PID'],root,config)
+        sampler.start()
+        resources=None
         processes=[]
         for script in ('capacity_scenarios.mjs','capacity_browser.cjs'):
             processes.append(subprocess.Popen(['node',str(harness.BACKEND/'tests'/script)],env={**env,'CAPACITY_FIXTURE':str(config_path)},stdout=subprocess.DEVNULL))
@@ -114,6 +118,7 @@ def run_once(binary, root, args, output, repeat):
         finally:
             for process in processes:
                 if process.poll() is None: process.terminate(); process.wait(timeout=10)
+            resources=sampler.stop()
     after=snapshot_counts(db, project['id'])
     http=capacity_report.lines(output/'requests.jsonl')+capacity_report.lines(output/'browser-http.jsonl')
     acknowledged=sum(r['operation']=='submit' and r.get('status')==200 and r.get('ok') for r in http)
@@ -135,7 +140,7 @@ def run_once(binary, root, args, output, repeat):
             if event.get('event') in ('http_completed','runtime_sample','web_vital'): safe.append(json.dumps(event))
     (output/'runtime.jsonl').write_text('\n'.join(safe)+'\n')
     report=capacity_report.summarize(output, config, reconciliation, codes)
-    report.update({'fixture':fixture_meta,'pdf':pdf_meta,'storage_rollback_gate':storage_gate,
+    report.update({'resources':resources,'fixture':fixture_meta,'pdf':pdf_meta,'storage_rollback_gate':storage_gate,
                    'database_bytes':db.stat().st_size,'repeat':repeat,'duration':args.duration,
                    'users':args.users,'browser_users':2,'phases':config['phases']})
     (output/'acceptance.json').write_text(json.dumps(report,indent=2))
@@ -187,7 +192,7 @@ def main():
                 results.append(run_once(binary,root,args,output,repeat+1))
     faults=json.loads(args.fault_report.read_text()) if args.fault_report else None
     faults_valid=bool(faults and faults.get('status')=='pass' and faults.get('full_fault_gate') is True and faults.get('duration_seconds',0)>=900 and
-                      faults.get('baseline_sha')==manifest['baseline_sha'] and faults.get('source_sha256')==manifest['source_sha256'] and
+                      faults.get('baseline_sha')==manifest['baseline_sha'] and faults.get('dirty_diff_sha256')==manifest['dirty_diff_sha256'] and faults.get('source_sha256')==manifest['source_sha256'] and
                       all(faults.get('gates',{}).get(name)=='pass' for name in ['offline','response_loss','restart','revocation','storage']))
     gates={'mixed_runs': 'pass' if all(r['status']=='pass' for r in results) else
            'invalid_generator' if any(r['status']=='invalid_generator' for r in results) else
@@ -196,11 +201,17 @@ def main():
            'reference_hardware': 'pass' if manifest['actual_target_envelope_match'] and manifest['hardware']['storage_medium_verified'] else 'incomplete',
            'formal_reference_profile': 'pass' if args.reference_profile=='production_shared' and args.target_cpus==4 and args.target_memory_gib==3.7 else 'incomplete',
            'fifteen_minute_faults': 'pass' if faults_valid else 'incomplete'}
-    source_unchanged=fixture_helpers.source_manifest(harness.BACKEND)['source_sha256']==manifest['source_sha256']
+    gates.update({
+        'resource_sampling':'pass' if all(r['resources']['sampling_status']=='pass' for r in results) else 'incomplete',
+        'resource_budget':'incomplete', 'cooldown_recovery':'incomplete', 'separate_generator_host':'incomplete'})
+    manifest['separate_generator_host']=False
+    manifest['formal_capacity_limitation']='Local engineering rehearsal: server and generators share a host; resource/recovery budgets and separate-host execution evidence remain required.'
+    finished_source=fixture_helpers.source_manifest(harness.BACKEND)
+    source_unchanged=all(finished_source[key]==manifest[key] for key in ('baseline_sha','dirty_diff_sha256','source_sha256'))
     gates['source_unchanged']='pass' if source_unchanged else 'incomplete'
     full_pass=all(value=='pass' for value in gates.values())
     status=gates['mixed_runs']
-    if (args.profile=='full' and status=='pass' and not full_pass) or not source_unchanged: status='incomplete'
+    if status=='pass' and ((args.profile=='full' and not full_pass) or not source_unchanged): status='incomplete'
     manifest.update({'status':status,'full_acceptance':full_pass,'gates':gates,
                      'full_run_pending':not full_pass,'fault_report_supplied':bool(faults)})
     (args.output/'manifest.json').write_text(json.dumps(manifest,indent=2))

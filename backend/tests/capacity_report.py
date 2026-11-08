@@ -17,7 +17,7 @@ def percentile(values, fraction):
 
 
 def operation(rows, name, p95_limit=None, p99_limit=None):
-    values = [r['duration_ms'] for r in rows if r['operation'] == name and r.get('ok', True)]
+    values = [r['duration_ms'] for r in rows if r['operation'] == name and r.get('ok', True) and 200 <= r.get('status', 200) < 300]
     p95, p99 = percentile(values, .95), percentile(values, .99)
     status = 'incomplete' if not values else 'fail' if ((p95_limit is not None and p95 > p95_limit) or
                  (p99_limit is not None and p99 > p99_limit)) else 'pass'
@@ -81,7 +81,7 @@ def summarize(output, config, reconciliation, returncodes):
     gates.append({'gate': 'browser_errors', 'status': 'fail' if any(g['errors'] for g in generators) else 'pass'})
     status = 'invalid_generator' if saturated or missing else 'fail' if any(g['status'] == 'fail' for g in gates) else 'incomplete' if any(g['status'] != 'pass' for g in gates) else 'pass'
     return {'status': status, 'profile': config['profile'], 'threshold_scope': 'steady phase only' if config['profile'] == 'full' else 'accelerated smoke phases',
-            'gates': gates, 'http': operations, 'http_samples': len(http), 'source_visible': source,
+            'gates': gates, 'http': operations, 'expected_conflicts': {name: sum(r['operation']==name and r.get('status')==409 and r.get('ok') for r in http) for name in {r['operation'] for r in http}}, 'http_samples': len(http), 'source_visible': source,
             'editor_ready_report_only': operation(browser, 'editor_ready'), 'submit_ack': ack,
             'web_vitals': vitals, 'generators': generators, 'background': background,
             'cache_note': 'Cold/hot identify evidenced browser resource-cache state only. Unknown requests are reported and cannot satisfy the hot/cold full gates.'}

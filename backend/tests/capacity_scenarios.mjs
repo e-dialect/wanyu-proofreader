@@ -45,11 +45,21 @@ async function request(
       value = { bytes }
     } else value = await response.json().catch(() => null)
     if (!allowed.includes(status)) {
-      console.error('capacity_operation_refused', operation, status, value?.message || '')
+      appendFileSync(
+        output + '/http-errors-controlled.jsonl',
+        JSON.stringify({
+          operation,
+          status,
+          code: value?.code ?? null,
+          message: value?.message ?? null,
+          note: 'local synthetic error diagnosis only; no request body or authorization retained'
+        }) + '\n'
+      )
+      console.error('capacity_operation_refused', operation, status)
       throw Error(`unexpected_status_${status}`)
     }
     ok = true
-    return value
+    return status === 409 ? null : value
   } finally {
     const record = {
       vu: actor.vu,
@@ -146,9 +156,10 @@ async function manager(actor) {
         const item = await request(
           actor,
           'arbitration_read',
-          `/api/fangji/pages/${page.id}/arbitration`
+          `/api/fangji/pages/${page.id}/arbitration`,
+          { allowed: [200, 409] }
         )
-        if (item.attempts?.length) {
+        if (item?.attempts?.length) {
           const first = item.attempts[0],
             row = JSON.parse(first.row_json)
           const view = await request(
@@ -315,7 +326,10 @@ const thresholds = {
 }
 const operations = [...new Set(samples.map((s) => s.operation))].map((operation) => {
   const rows = samples.filter((s) => s.operation === operation),
-    v = rows.map((s) => s.duration_ms).sort((a, b) => a - b)
+    v = rows
+      .filter((s) => s.ok && s.status >= 200 && s.status < 300)
+      .map((s) => s.duration_ms)
+      .sort((a, b) => a - b)
   const percentile = (p) => v[Math.ceil(p * v.length) - 1]
   return {
     operation,
@@ -324,6 +338,7 @@ const operations = [...new Set(samples.map((s) => s.operation))].map((operation)
     p95: percentile(0.95),
     p99: percentile(0.99),
     unexpected: rows.filter((r) => !r.ok).length,
+    expected_conflicts: rows.filter((r) => r.ok && r.status === 409).length,
     threshold_pass: !(operation in thresholds) || percentile(0.95) <= thresholds[operation]
   }
 })

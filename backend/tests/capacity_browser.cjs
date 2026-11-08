@@ -96,9 +96,9 @@ async function main() {
             errors.push({ vu: actor.vu, error: 'browser_page_error' })
           }
         })
-        page.on('requestfinished', async (request) => {
+        const requestOperation = (request) => {
           const pathname = new URL(request.url()).pathname
-          const operation = /\/claim$/.test(pathname)
+          return /\/claim$/.test(pathname)
             ? 'claim'
             : /\/submit$/.test(pathname)
               ? 'submit'
@@ -109,6 +109,23 @@ async function main() {
                   : /\/pdf\/descriptor$/.test(pathname)
                     ? 'pdf_descriptor'
                     : null
+        }
+        page.on('requestfailed', (request) => {
+          const operation = requestOperation(request)
+          if (!operation) return
+          append('browser-http.jsonl', {
+            vu: actor.vu,
+            operation,
+            duration_ms: Math.max(0, Date.now() - request.timing().startTime),
+            phase: phaseAt(config).name,
+            at_ms: Date.now(),
+            status: 0,
+            ok: false,
+            failure_type: request.failure()?.errorText || 'browser_request_failed'
+          })
+        })
+        page.on('requestfinished', async (request) => {
+          const operation = requestOperation(request)
           if (!operation) return
           const timing = request.timing(),
             response = await request.response()

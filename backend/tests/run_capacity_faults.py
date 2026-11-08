@@ -7,12 +7,35 @@ each fault occurred throughout every second of that window.
 """
 import argparse
 import json
+import os
+import re
+import tempfile
 import subprocess
 import sys
 import time
 from pathlib import Path
 import harness
 import capacity_fixture
+
+
+def controlled_run(command, cwd, log_path, timeout=1800):
+    # Test suites can print fixture passwords/tokens. Keep diagnostic output but
+    # redact credentials before copying it out of the temporary capture file.
+    with tempfile.TemporaryFile(mode='w+', encoding='utf-8') as capture:
+        try:
+            code = subprocess.run(command, cwd=cwd, stdout=capture, stderr=subprocess.STDOUT, timeout=timeout).returncode
+        except subprocess.TimeoutExpired:
+            code = 124
+            capture.write('\nFAULT_GATE_TIMEOUT\n')
+        capture.seek(0)
+        text = capture.read()
+    text = re.sub(r'\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b', '[REDACTED_TEST_TOKEN]', text)
+    text = re.sub(r'(?im)^([^\n]*(?:password|authorization|access_token|refresh_token)[^:=\n]*[:=]).*$', r'\1 [REDACTED_TEST_CREDENTIAL]', text)
+    for secret in (harness.ADMIN_PASSWORD, harness.SUPER_PASSWORD, 'Demo12345678!', 'SyntheticMaturity123!'):
+        text = text.replace(secret, '[REDACTED_TEST_PASSWORD]')
+    log_path.write_text(text)
+    os.chmod(log_path, 0o600)
+    return code
 
 
 def main():
@@ -24,7 +47,9 @@ def main():
     if output.exists() and any(output.iterdir()): parser.error('output must be empty')
     output.mkdir(parents=True, exist_ok=True)
     root = harness.BACKEND.parent
-    subprocess.run(['npm', 'run', 'build'], cwd=root/'frontend', check=True, stdout=subprocess.DEVNULL)
+    if controlled_run(['npm', 'run', 'build'], root/'frontend', output/'frontend-build.log') != 0:
+        (output/'faults.json').write_text(json.dumps({'status':'fail','full_fault_gate':False,'reason':'frontend_build_failed','log':'frontend-build.log'}))
+        return 1
     commands = [
         ('offline', ['run_frontend_quality_browser.py', '--only', 'components'],
          'real browser offline -> pause -> online re-read; stale snapshots and auth isolation'),
@@ -47,16 +72,12 @@ def main():
             current = [sys.executable, str(harness.BACKEND/'tests'/command[0]), *command[1:]]
             if name == 'storage': current += ['--output', str(output/f'storage-{cycle}')]
             step = time.monotonic()
-            try:
-                # Child suites use their own temporary server, data and local workers.
-                completed = subprocess.run(current, cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1800)
-                code = completed.returncode
-            except subprocess.TimeoutExpired:
-                code = 124
+            log_path=output/f'{cycle}-{name}.log'
+            code=controlled_run(current,root,log_path)
             status = 'pass' if code == 0 else 'fail'
             if manifest['gates'][name] != 'fail': manifest['gates'][name] = status
             manifest['executions'].append({'gate': name, 'cycle': cycle, 'status': status,
-                'duration_seconds': time.monotonic()-step, 'exit_code': code, 'coverage': coverage,
+                'duration_seconds': time.monotonic()-step, 'exit_code': code, 'coverage': coverage, 'log':log_path.name,
                 'command': [Path(current[0]).name, *[str(part).replace(str(root)+'/', '') for part in current[1:]]]})
             (output/'faults.json').write_text(json.dumps(manifest, indent=2))
         if args.profile == 'smoke' or time.monotonic()-started >= 900 or 'fail' in manifest['gates'].values(): break

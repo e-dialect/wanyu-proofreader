@@ -1,0 +1,104 @@
+{
+  "baseline_sha": "7ba5440a709ce8ae0f3f995b3c3b0f15e98e159f",
+  "dirty_diff_sha256": "6e4188bc026706a6a0cae1e2164a2e3819e1817dd9db8f2e2f3334a58355ce6a",
+  "source_sha256": {
+    "tests/capacity_browser.cjs": "a804ed6c77834561c3ba3a4aaa7adef415d68cf65e319d6a60341c95d52f35d1",
+    "tests/capacity_fixture.py": "672808597e514e1e3c411ef3e9ec788d248e8d321ce2ecbb5f3fe182ba8947aa",
+    "tests/capacity_profile.mjs": "bed854e4fc959c15ef735bbb9fc9905b6782c670b3254b61623e0b048a2549f3",
+    "tests/capacity_report.py": "63b605f595fdc10784aa6e8cc946eaebc91184c1ddef757379ef4d8ebfe8e105",
+    "tests/capacity_resources.py": "e668b8da1fa377fad773a199580fca59db6a97d2558dd75f3e51041b9f6a2c01",
+    "tests/capacity_scenarios.mjs": "9459cf51dd738da3ec8b895b2573de76179a57a67644307588836070726102af",
+    "tests/field_audit_capacity.py": "76192d63a10425ec590c22a2dc76a5d66bb6ab76b097b53fcf6c1ad379d46c41",
+    "tests/run_capacity_baseline.py": "47f685bb7cfc31197875ffb560a5dd1d169829cb49d805561bd4f52512d657b1",
+    "tests/run_capacity_faults.py": "c02c4862a133e3cdc4fffbaf30d353aec9c2ee2c4329ba9de0d78afdd8f1a120",
+    "tests/test_capacity_report.py": "4525012a50bf944869730e969284ee46e0da3ba2a9898c45c621c87a69ee05a4"
+  },
+  "hardware": {
+    "platform": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+    "effective_cpu_cores": 10,
+    "effective_memory_bytes": 68719476736,
+    "storage_medium_verified": false,
+    "storage_evidence": {
+      "verified": false,
+      "method": "unavailable"
+    },
+    "note": "Envelope is read from this process host/cgroup; storage passes only on a positive system-device query. No CLI flag manufactures hardware evidence."
+  },
+  "profile": "smoke",
+  "synthetic": true,
+  "seed": 1701,
+  "entries": 2000,
+  "users": 30,
+  "browser_users": 2,
+  "duration": 30,
+  "repeats": 1,
+  "phases": [
+    {
+      "name": "warmup",
+      "seconds": 2.5
+    },
+    {
+      "name": "ramp",
+      "seconds": 2.5
+    },
+    {
+      "name": "steady",
+      "seconds": 20.0
+    },
+    {
+      "name": "cooldown",
+      "seconds": 5.0
+    }
+  ],
+  "target_hardware": {
+    "reference_profile": "production_shared",
+    "cpu_cores": 4,
+    "memory_gib": 3.7,
+    "production_is_shared": true
+  },
+  "workload_timing_assumptions": {
+    "measured_human_timing": false,
+    "full": {
+      "proofreader_seconds": [
+        30,
+        60
+      ],
+      "long_think_probability": 0.2,
+      "long_think_seconds": [
+        120,
+        180
+      ],
+      "manager_refresh_seconds": 30,
+      "arbitrator_seconds": [
+        45,
+        75
+      ]
+    },
+    "smoke": {
+      "http_proofreader_think_ms": 3000,
+      "browser_think_ms": 150,
+      "manager_arbitrator_refresh_ms": 500
+    },
+    "note": "Synthetic pacing assumptions; smoke intentionally accelerates interaction and refresh frequency. Neither is a measured real-user rhythm."
+  },
+  "actual_target_envelope_match": false,
+  "frontend_dist_sha256": "edcf1e3e10894c3f1a7f7b4a9fe4f920e522643fe38212a6c7bdf208b3d223fb",
+  "status": "fail",
+  "separate_generator_host": false,
+  "formal_capacity_limitation": "Local engineering rehearsal: server and generators share a host; resource/recovery budgets and separate-host execution evidence remain required.",
+  "full_acceptance": false,
+  "gates": {
+    "mixed_runs": "fail",
+    "three_full_repeats": "incomplete",
+    "reference_hardware": "incomplete",
+    "formal_reference_profile": "pass",
+    "fifteen_minute_faults": "incomplete",
+    "resource_sampling": "pass",
+    "resource_budget": "incomplete",
+    "cooldown_recovery": "incomplete",
+    "separate_generator_host": "incomplete",
+    "source_unchanged": "pass"
+  },
+  "full_run_pending": true,
+  "fault_report_supplied": false
+}

@@ -1,0 +1,16 @@
+{
+  "integrity": "ok",
+  "duplicate_attempts": 0,
+  "before": {
+    "proofreads": 3104,
+    "submissions": 3104
+  },
+  "after": {
+    "proofreads": 3291,
+    "submissions": 3291
+  },
+  "acknowledged_submissions": 187,
+  "expected_parallel_rows": 200,
+  "actual_parallel_rows": 200,
+  "pass": true
+}
