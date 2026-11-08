@@ -19,6 +19,19 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204500_bootstrap_bindings.js': {
+        'objects': [('table', 'bootstrap_bindings')],
+        'indexes': ['idx_bootstrap_identity'],
+        'collection_indexes': ('bootstrap_bindings', 'idx_bootstrap_identity'),
+        'unique_indexes': [('bootstrap_bindings', 'idx_bootstrap_identity', ('auth_collection', 'email_sha256'))],
+        'locked_rules': 'bootstrap_bindings',
+        'fields': ('bootstrap_bindings', {
+            'auth_collection': {'required': True, 'values_contains': '_superusers'},
+            'email_sha256': {'required': True, 'max': 64},
+            'record_id': {'required': True, 'max': 40},
+        }),
+        'plans': [('bootstrap_bindings', 'SELECT record_id FROM bootstrap_bindings WHERE auth_collection=? AND email_sha256=?', ('users', 'a' * 64), 'idx_bootstrap_identity')],
+    },
     '1794204420_queue_projection_index.js': {
         'indexes': ['idx_pages_queue_projection'],
         'collection_indexes': ('pages', 'idx_pages_queue_projection'),
@@ -493,6 +506,25 @@ def assert_applied(data, migration, problems):
     field_spec = spec.get('fields')
     if field_spec:
         _assert_fields(data, migration, field_spec, problems, expect=True)
+    if spec.get('locked_rules'):
+        _assert_locked_rules(data, migration, spec['locked_rules'], problems)
+    _assert_unique_indexes(data, migration, spec.get('unique_indexes', []), problems)
+
+
+def _assert_locked_rules(data, migration, collection, problems):
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        row = db.execute('SELECT listRule,viewRule,createRule,updateRule,deleteRule FROM _collections WHERE name=?', (collection,)).fetchone()
+    if row is None or any(value is not None for value in row):
+        problems.append(f'{migration}: {collection} native API rules must all be null')
+
+
+def _assert_unique_indexes(data, migration, indexes, problems):
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        for table, name, columns in indexes:
+            metadata = next((row for row in db.execute(f'PRAGMA index_list("{table}")') if row[1] == name), None)
+            actual = tuple(row[2] for row in db.execute(f'PRAGMA index_info("{name}")'))
+            if metadata is None or metadata[2] != 1 or actual != columns:
+                problems.append(f'{migration}: {name} must be unique on {columns}')
 
 
 def assert_absent(data, migration, problems, context):
