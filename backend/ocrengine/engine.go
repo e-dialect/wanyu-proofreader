@@ -265,12 +265,11 @@ func (b *commandBudget) Write(data []byte) (int, error) {
 	b.cancel()
 	return n, fmt.Errorf("command output exceeds budget")
 }
-func command(ctx context.Context, name string, args ...string) error {
-	_, err := CommandOutput(ctx, name, args...)
-	return err
-}
-func pageHasImages(ctx context.Context, path, page string) (bool, error) {
-	output, err := CommandOutput(ctx, "pdfimages", "-f", page, "-l", page, "-list", path)
+
+type commandRunner func(context.Context, string, ...string) ([]byte, error)
+
+func pageHasImages(ctx context.Context, path, page string, run commandRunner) (bool, error) {
+	output, err := run(ctx, "pdfimages", "-f", page, "-l", page, "-list", path)
 	if err != nil {
 		return false, err
 	}
@@ -286,10 +285,29 @@ func pageHasImages(ctx context.Context, path, page string) (bool, error) {
 // Recognize uses one private bounded-lifetime temp directory. The container
 // tmpfs/CPU/memory/pid limits enforce the aggregate budget even if a parser dies.
 func Recognize(ctx context.Context, pdfPath string, page int, language string) (Result, error) {
+	return recognize(ctx, pdfPath, page, language, CommandOutput)
+}
+
+func recognize(ctx context.Context, pdfPath string, page int, language string, run commandRunner) (Result, error) {
 	started := time.Now()
 	result := Result{Page: page, Rows: []Row{}}
 	if page < 1 || (language != "eng" && language != "chi_sim" && language != "chi_sim+eng") {
 		return result, fmt.Errorf("unsupported page/language")
+	}
+	pageText := strconv.Itoa(page)
+	hasImages, err := pageHasImages(ctx, pdfPath, pageText, run)
+	if err != nil {
+		return result, err
+	}
+	result.HasImages = hasImages
+	// Reject unsupported material before opening it twice more for text/layout.
+	// The opt-in offline experiment still checks for native titles before OCR.
+	if hasImages && os.Getenv("OCR_ALLOW_SCANNED_TEST") != "1" {
+		return result, ErrScannedUnsupported
+	}
+	command := func(name string, args ...string) error {
+		_, err := run(ctx, name, args...)
+		return err
 	}
 	dir, err := os.MkdirTemp("", "ocr-page-")
 	if err != nil {
@@ -297,11 +315,10 @@ func Recognize(ctx context.Context, pdfPath string, page int, language string) (
 	}
 	defer os.RemoveAll(dir)
 	layoutPath, rawPath := filepath.Join(dir, "layout.xml"), filepath.Join(dir, "raw.txt")
-	pageText := strconv.Itoa(page)
-	if err := command(ctx, "pdftotext", "-f", pageText, "-l", pageText, "-bbox-layout", "-enc", "UTF-8", pdfPath, layoutPath); err != nil {
+	if err := command("pdftotext", "-f", pageText, "-l", pageText, "-bbox-layout", "-enc", "UTF-8", pdfPath, layoutPath); err != nil {
 		return result, err
 	}
-	if err := command(ctx, "pdftotext", "-f", pageText, "-l", pageText, "-layout", "-nopgbrk", "-enc", "UTF-8", pdfPath, rawPath); err != nil {
+	if err := command("pdftotext", "-f", pageText, "-l", pageText, "-layout", "-nopgbrk", "-enc", "UTF-8", pdfPath, rawPath); err != nil {
 		return result, err
 	}
 	layout, err := boundedRead(layoutPath)
@@ -319,14 +336,9 @@ func Recognize(ctx context.Context, pdfPath string, page int, language string) (
 	result.Engine = "poppler_text"
 	result.RawLayout = layout
 	result.RawText = raw
-	hasImages, err := pageHasImages(ctx, pdfPath, pageText)
-	if err != nil {
-		return result, err
-	}
-	result.HasImages = hasImages
 	// Native titles must not hide an unprocessed scanned body. The first formal
 	// shape is a pure text-layer page; even decorative image pages require CSV.
-	if hasImages && (os.Getenv("OCR_ALLOW_SCANNED_TEST") != "1" || len(rows) > 0) {
+	if hasImages && len(rows) > 0 {
 		return result, ErrScannedUnsupported
 	}
 	if len(rows) == 0 && !hasImages {
@@ -337,10 +349,10 @@ func Recognize(ctx context.Context, pdfPath string, page int, language string) (
 
 	if len(rows) == 0 {
 		prefix := filepath.Join(dir, "scan")
-		if err := command(ctx, "pdftoppm", "-f", pageText, "-l", pageText, "-singlefile", "-scale-to", "3500", "-r", "200", "-png", pdfPath, prefix); err != nil {
+		if err := command("pdftoppm", "-f", pageText, "-l", pageText, "-singlefile", "-scale-to", "3500", "-r", "200", "-png", pdfPath, prefix); err != nil {
 			return result, err
 		}
-		if err := command(ctx, "tesseract", prefix+".png", prefix, "-l", language, "--psm", "6", "tsv", "txt"); err != nil {
+		if err := command("tesseract", prefix+".png", prefix, "-l", language, "--psm", "6", "tsv", "txt"); err != nil {
 			return result, err
 		}
 		tsv, err := boundedRead(prefix + ".tsv")

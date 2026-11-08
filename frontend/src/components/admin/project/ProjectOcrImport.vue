@@ -47,6 +47,13 @@
     <div v-if="job" class="import-job-card mt-3" aria-live="polite">
       <strong>{{ statusLabel }}</strong>
       <p class="text-sm text-muted">作业 {{ job.id }}</p>
+      <p v-if="position" class="text-sm">
+        本次作业页段：PDF 物理第 {{ position.startPage
+        }}{{ position.endPage === position.startPage ? '' : `–${position.endPage}` }} 页。
+        <span v-if="position.nextPage !== null"
+          >尚未完成的首个物理页：第 {{ position.nextPage }} 页（以已保存进度为准）。</span
+        >
+      </p>
       <progress :value="progress" max="100" aria-label="OCR 已处理页数进度"></progress>
       <p class="text-sm">
         已处理 {{ job.processed_count || 0 }} / {{ job.total_count || 0 }} 页；成功
@@ -94,6 +101,7 @@ import {
 } from '@/services/importJobsService'
 import { downloadText } from '@/lib/downloadText'
 import { ocrProgress, parseOcrObject, validateOcrRange } from '@/lib/ocrJob'
+import { ocrJobPosition } from '@/lib/ocrJobPosition'
 import { currentUserId } from '@/services/authService'
 import {
   readPendingOcrStart,
@@ -119,6 +127,7 @@ const running = computed(
 )
 const published = computed(() => ['completed', 'completed_with_errors'].includes(job.value?.status))
 const progress = computed(() => ocrProgress(job.value))
+const position = computed(() => ocrJobPosition(job.value))
 const result = computed(() => parseOcrObject(job.value?.ocr_result_json))
 const statusLabel = computed(
   () =>

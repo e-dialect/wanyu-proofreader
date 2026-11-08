@@ -1,0 +1,76 @@
+{
+  "synthetic_only": true,
+  "baseline": "83ab4f7",
+  "platform": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+  "fixtures": {
+    "native": {
+      "sha256": "f7fb241f68fb8324657fb9e65b00a79f65c2a10f1ff13bce054f57fe359d5e67",
+      "before": {
+        "error": "",
+        "has_images": false,
+        "max_ms": 410.956,
+        "median_ms": 250.126,
+        "min_ms": 238.266,
+        "result_sha256": "1f227d9181b25e5552615cad49d0aad8b66bb2c3fe14a03e2eeee188c2607c7e",
+        "rows": 4,
+        "samples": 20
+      },
+      "after": {
+        "error": "",
+        "has_images": false,
+        "max_ms": 290.45,
+        "median_ms": 239.1005,
+        "min_ms": 234.281,
+        "result_sha256": "1f227d9181b25e5552615cad49d0aad8b66bb2c3fe14a03e2eeee188c2607c7e",
+        "rows": 4,
+        "samples": 20
+      }
+    },
+    "scanned": {
+      "sha256": "a232165f8c9bb71a6a239b7de523b0db316760c1fd0aa9f0f8b1ff7a83f8efcc",
+      "before": {
+        "error": "OCR_SCANNED_UNSUPPORTED: scanned rare-character safety is not qualified; native PDF text is required",
+        "has_images": true,
+        "max_ms": 283.012,
+        "median_ms": 233.9755,
+        "min_ms": 231.311,
+        "result_sha256": "44e985dc184323a5176a78015088b7577031e1b34d0536b897940d217360ca68",
+        "rows": 0,
+        "samples": 20
+      },
+      "after": {
+        "error": "OCR_SCANNED_UNSUPPORTED: scanned rare-character safety is not qualified; native PDF text is required",
+        "has_images": true,
+        "max_ms": 86.299,
+        "median_ms": 78.56450000000001,
+        "min_ms": 76.012,
+        "result_sha256": "df782efec7102c852ba8f7a11b2aa9a5f153a53150232ce77b57bd2536664057",
+        "rows": 0,
+        "samples": 20
+      }
+    },
+    "mixed": {
+      "sha256": "78d6b342249fdb059f18b278d7173ea467693146501efc0f6b0bb76324ecdb24",
+      "before": {
+        "error": "OCR_SCANNED_UNSUPPORTED: scanned rare-character safety is not qualified; native PDF text is required",
+        "has_images": true,
+        "max_ms": 236.586,
+        "median_ms": 235.2265,
+        "min_ms": 231.319,
+        "result_sha256": "98978b97fc4fa8736f24f17166fd809d6e05fb4de532e47e94c76e10a65af24f",
+        "rows": 0,
+        "samples": 20
+      },
+      "after": {
+        "error": "OCR_SCANNED_UNSUPPORTED: scanned rare-character safety is not qualified; native PDF text is required",
+        "has_images": true,
+        "max_ms": 78.652,
+        "median_ms": 77.125,
+        "min_ms": 75.553,
+        "result_sha256": "df782efec7102c852ba8f7a11b2aa9a5f153a53150232ce77b57bd2536664057",
+        "rows": 0,
+        "samples": 20
+      }
+    }
+  }
+}

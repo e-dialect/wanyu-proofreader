@@ -99,12 +99,14 @@ try {
  const corrected=await api(`/api/collections/pages/records/${page.id}`,{token});assert.equal(corrected.ocr_cells_json,page.ocr_cells_json)
  const failed=await api(url,{method:'POST',token,body:{startPage:1,endPage:3,language:'eng'},status:202})
  const terminal=await wait(failed,token,value=>value.status==='failed');assert.equal(terminal.error_code,'OCR_WORKER_FAILED');assert.ok(terminal.finished_at);assert.equal(terminal.processed_count,3);assert.equal(terminal.success_count,2);assert.equal(terminal.failed_count,1)
+ assert.match(terminal.error_message,/^PDF 物理第 3 页：/)
  const hidden=await api(`/api/collections/pages/records?filter=${encodeURIComponent(`import_job="${failed.id}"`)}`,{token});assert.equal(hidden.totalItems,0,'worker failure must remove all unpublished rows')
  // Fresh job after a failed worker can finish normally.
  const retry=await api(url,{method:'POST',token,body:{startPage:1,endPage:1},status:202});assert.equal((await wait(retry,token,value=>['completed','failed'].includes(value.status))).status,'completed')
  const legacyAgain=await api(url,{method:'POST',token,body:{startPage:1,endPage:1},status:202});assert.notEqual(legacyAgain.id,retry.id,'unkeyed legacy calls remain independent');await wait(legacyAgain,token,value=>['completed','failed'].includes(value.status))
  const scanned=await api(url,{method:'POST',token,body:{startPage:4,endPage:4},status:202})
  const rejected=await wait(scanned,token,value=>value.status==='failed');assert.equal(rejected.error_code,'OCR_SCANNED_UNSUPPORTED');assert.equal(rejected.processed_count,1);assert.equal(rejected.failed_count,1)
+ assert.match(rejected.error_message,/^PDF 物理第 4 页：/)
  const scanRows=await api(`/api/collections/pages/records?filter=${encodeURIComponent(`import_job="${scanned.id}"`)}`,{token});assert.equal(scanRows.totalItems,0,'backend must reject Tesseract cells even if the worker returns HTTP200 and an unrelated engine label')
 
  // A terminal failure is still the same operation. The permanent request

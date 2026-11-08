@@ -297,11 +297,16 @@ func (s *importService) processOCR(work importWork) {
 		return
 	}
 	rowsCount := 0
+	client := newOCRHTTPClient()
+	defer client.CloseIdleConnections()
 	for page := options.StartPage; page <= options.EndPage; page++ {
 		if ctx.Err() != nil {
 			return
 		}
-		result, err := s.recognizeOCRPage(file, workerURL, token, work.requestID, page, options.Language)
+		failPage := func(code, message string, cause error) {
+			fail(code, fmt.Sprintf("PDF 物理第 %d 页：%s", page, message), cause)
+		}
+		result, err := s.recognizeOCRPage(client, file, workerURL, token, work.requestID, page, options.Language)
 		// Check before recording a failed page: the request inherits ctx and is
 		// cancelled by OnTerminate even when the local worker is healthy.
 		if ctx.Err() != nil {
@@ -312,14 +317,14 @@ func (s *importService) processOCR(work importWork) {
 			job.Set("failed_count", 1)
 			_ = s.app.Save(job)
 			if errors.Is(err, ocrengine.ErrScannedUnsupported) {
-				fail("OCR_SCANNED_UNSUPPORTED", "扫描页难字安全未达标，当前仅支持可映射文字层 PDF；请手工转录或导入 CSV。", err)
+				failPage("OCR_SCANNED_UNSUPPORTED", "扫描页难字安全未达标，当前仅支持可映射文字层 PDF；请手工转录或导入 CSV。", err)
 				return
 			}
-			fail("OCR_WORKER_FAILED", "本地识别超时或失败；暂存条目未发布，请检查 worker 后重新发起。", err)
+			failPage("OCR_WORKER_FAILED", "本地识别超时或失败；暂存条目未发布，请检查 worker 后重新发起。", err)
 			return
 		}
 		if result.Page != page || len(result.Rows) > 2000 || len(result.Rows) == 0 {
-			fail("OCR_RESULT_INVALID", "本地识别结果不符合单列接口或超出每页 2000 行上限。", nil)
+			failPage("OCR_RESULT_INVALID", "本地识别结果不符合单列接口或超出每页 2000 行上限。", nil)
 			return
 		}
 		// Independent backend guard: a test-enabled/misconfigured worker must
@@ -336,12 +341,12 @@ func (s *importService) processOCR(work importWork) {
 			job.Set("processed_count", page-options.StartPage+1)
 			job.Set("failed_count", 1)
 			_ = s.app.Save(job)
-			fail("OCR_SCANNED_UNSUPPORTED", "扫描页难字安全未达标，当前仅支持可映射文字层 PDF；请手工转录或导入 CSV。", ocrengine.ErrScannedUnsupported)
+			failPage("OCR_SCANNED_UNSUPPORTED", "扫描页难字安全未达标，当前仅支持可映射文字层 PDF；请手工转录或导入 CSV。", ocrengine.ErrScannedUnsupported)
 			return
 		}
 		artifact, err := s.saveOCREvidence(job, result)
 		if err != nil {
-			fail("OCR_EVIDENCE_FAILED", "保存识别中间态失败，条目未发布。", err)
+			failPage("OCR_EVIDENCE_FAILED", "保存识别中间态失败，条目未发布。", err)
 			return
 		}
 		artifacts := resultSummary["artifacts"].([]map[string]any)
@@ -370,7 +375,7 @@ func (s *importService) processOCR(work importWork) {
 			return nil
 		})
 		if err != nil {
-			fail("OCR_ROWS_FAILED", "保存识别条目失败，暂存条目未发布。", err)
+			failPage("OCR_ROWS_FAILED", "保存识别条目失败，暂存条目未发布。", err)
 			return
 		}
 		rowsCount += len(result.Rows)
@@ -381,7 +386,7 @@ func (s *importService) processOCR(work importWork) {
 		job.Set("success_count", page-options.StartPage+1)
 		job.Set("total_count", options.EndPage-options.StartPage+1)
 		if err := s.app.Save(job); err != nil {
-			fail("OCR_PROGRESS_FAILED", "保存识别进度失败。", err)
+			failPage("OCR_PROGRESS_FAILED", "保存识别进度失败。", err)
 			return
 		}
 	}
@@ -405,7 +410,13 @@ func localOCRHost(host string) bool {
 	return host == "ocr-worker" || host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
-func (s *importService) recognizeOCRPage(file *core.Record, workerURL *url.URL, token, requestID string, page int, language string) (ocrengine.Result, error) {
+// One client belongs to one immutable job snapshot. Keep-alive avoids a new
+// internal TCP connection per page; no client or document is cached across jobs.
+func newOCRHTTPClient() *http.Client {
+	return &http.Client{Timeout: 100 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return fmt.Errorf("redirect denied") }}
+}
+
+func (s *importService) recognizeOCRPage(client *http.Client, file *core.Record, workerURL *url.URL, token, requestID string, page int, language string) (ocrengine.Result, error) {
 	var result ocrengine.Result
 	reader, closeFn, err := s.openRecordFile(file, "file")
 	if err != nil {
@@ -428,8 +439,6 @@ func (s *importService) recognizeOCRPage(file *core.Record, workerURL *url.URL, 
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("X-Request-ID", requestID)
 	request.Header.Set("Content-Type", "application/pdf")
-	client := &http.Client{Timeout: 100 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return fmt.Errorf("redirect denied") }}
-	defer client.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
 		return result, err

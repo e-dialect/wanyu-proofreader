@@ -11,6 +11,7 @@ exports.startHost = async function (base, options = {}) {
     '/structuredRow.js': path.join(root, 'frontend/src/lib/structuredRow.js')
   }
   const server = http.createServer((req, res) => {
+    for (const [name, value] of Object.entries(options.headers || {})) res.setHeader(name, value)
     if (req.url.startsWith('/api/')) {
       const target = new URL(req.url, base)
       const proxy = http.request(target, { method: req.method, headers: { ...req.headers, host: target.host } }, (upstream) => { res.writeHead(upstream.statusCode, upstream.headers); upstream.pipe(res) })

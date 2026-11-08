@@ -455,6 +455,11 @@ volumes:
 仅保留本地实验（Alpine 3.24 包版本以实际镜像元数据为准）。首版不猜词头/音读/释义
 列，也不启用 `ocr/extract_text.py` 的 mixed 启发式。
 
+默认路径先检查所选页是否含图像，发现图像即拒绝，不再为该拒绝页启动两次文字提取。
+纯文字层仍分别保存原始 `-layout` 文本和 bbox XML，不合并或改写证据。backend 的内部
+HTTP 连接只在同一作业内复用，逐页超时、响应上限和关停取消保持；每页仍发送完整的
+不可变 PDF 快照，未新增跨作业文件缓存或 worker 会话。
+
 操作者确认材料有本地处理权利后，在仓外 `.env` 设置随机 `OCR_WORKER_TOKEN`
 （至少 32 字符，例如用 `openssl rand -hex 32` 生成）与 `OCR_ENGINE_ENABLED=true`。
 同一 token 仅供 backend 与 worker 内部鉴权，不是用户 token，不应放入前端、URL、
@@ -491,6 +496,12 @@ worker 没有 host port、代理标签或外网网络，只连接 `internal: tru
 - `certain`：文本层成功提取且没有显式解码失败，仍须人工对照原图；不表示校对正确。
 - `needs_review`：扫描 OCR 或原文含 PUA/IDS；高置信度也不提升为正确。
 - `abstained`：空识别或 U+FFFD/解码失败；原有合法字符保留，不替换为常用字或伪造 PUA。
+
+管理界面按作业快照显示物理页段；进行中仅显示依据已保存进度计算的首个未完成页，
+不推测 worker 当前正在识别哪一页。页级失败由后端在错误消息中写明实际物理页号，
+即使页段从中途开始，也不把段内序号当作 PDF 页码。前后效率与证据一致性复现见
+`ocr/preflight-benchmark.py` 及 `docs/evidence/ocr-refinement-20261108/`；这些合成样本
+不能证明真实语料识别准确率或生产容量提高。
 
 文本层坐标单位为 PDF point；扫描 TSV 坐标单位为该页栅格像素。中间态逐页保存为
 `project_artifacts.kind=ocr_json` 的 protected 文件，含未压缩的 `raw_text`、原始
