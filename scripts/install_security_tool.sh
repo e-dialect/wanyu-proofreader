@@ -24,7 +24,7 @@ for attempt in 1 2 3 4 5 6; do
   if [ $((attempt % 2)) -eq 0 ]; then
     source="https://api.github.com/repos/$repository/releases/assets/$asset"
   fi
-  if curl --fail --silent --show-error --http1.1 --location --continue-at - --connect-timeout 15 --max-time "${SECURITY_DOWNLOAD_TIMEOUT:-180}" \
+  if curl --fail --silent --show-error --http1.1 --location --continue-at - --connect-timeout 15 --max-time "${SECURITY_DOWNLOAD_TIMEOUT:-90}" \
     --header 'Accept: application/octet-stream' "$source" -o "$temporary/archive.tar.gz"; then
     downloaded=true
     break
