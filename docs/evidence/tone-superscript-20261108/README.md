@@ -1,5 +1,7 @@
 # 调值上标候选验收
 
+逐PR复审后新增的两项修复及最终累计复验见 [review-fixes.md](review-fixes.md)。下文保留首次样板验收；浏览器JSON/PNG已刷新为修复后的结果。
+
 本次为合成数据与程序边界验收，不是真实方言语言核定。基线 `83ab4f7`，专用分支 `feat/tone-superscript-batch-20261108`。
 
 - Go全套测试通过，内核另通过race测试；两语言共用59组夹具，其中29组保持旧codec行为。
