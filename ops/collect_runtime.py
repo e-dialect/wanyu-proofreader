@@ -3,6 +3,8 @@
 import argparse
 import datetime
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 import re
 import shutil
 import subprocess
@@ -36,18 +38,24 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--interval', type=int, default=60)
     parser.add_argument('--once', action='store_true')
+    parser.add_argument('--max-bytes', type=int, default=10*1024*1024)
+    parser.add_argument('--backups', type=int, default=5)
     args = parser.parse_args()
     if args.interval < 5 or not args.data_dir.is_dir():
         parser.error('interval must be >=5s and data-dir must exist')
+    if args.max_bytes < 1024 or not 1 <= args.backups <= 30:
+        parser.error('max-bytes >=1024 and backups 1..30 required')
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(args.output, maxBytes=args.max_bytes, backupCount=args.backups)
+    handler.setFormatter(logging.Formatter('%(message)s'))
     while True:
         try:
             record = sample(args.data_dir, args.container)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             record = {'event': 'collection_gap', 'error_type': type(error).__name__,
                       'ts': datetime.datetime.now(datetime.timezone.utc).isoformat()}
-        with args.output.open('a') as output:
-            output.write(json.dumps(record) + '\n')
+        handler.emit(logging.makeLogRecord({'msg': json.dumps(record)}))
+        handler.flush()
         if args.once:
             return 1 if record['event'] == 'collection_gap' else 0
         time.sleep(args.interval)
