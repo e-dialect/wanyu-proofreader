@@ -36,6 +36,34 @@ finally:
             self.assertTrue(not status or status.startswith('Z'), 'descendant remained running')
             self.assertIn('FAULT_GATE_TIMEOUT', (root/'gate.log').read_text())
 
+    def test_detached_descendant_is_stopped_after_timeout_or_parent_exit(self):
+        for timeout, exit_code in ((.5, 124), (3, 7)):
+            with self.subTest(timeout=timeout), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                command = [sys.executable, '-c', r'''
+import pathlib, subprocess, sys, time
+root = pathlib.Path(sys.argv[1])
+child = subprocess.Popen([sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGINT, signal.SIG_IGN); time.sleep(60)'], start_new_session=True)
+root.joinpath('child').write_text(str(child.pid))
+time.sleep(.8)
+raise SystemExit(7)
+''', str(root)]
+                pid = None
+                try:
+                    self.assertEqual(controlled_run(command, root, root/'gate.log', timeout=timeout), exit_code)
+                    pid = int((root/'child').read_text())
+                    status = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True, text=True).stdout.strip()
+                    self.assertTrue(not status or status.startswith('Z'), 'detached descendant remained running')
+                finally:
+                    # Clean the synthetic process even if this regression fails.
+                    if pid is None and (root/'child').exists():
+                        pid = int((root/'child').read_text())
+                    if pid is not None:
+                        try:
+                            os.killpg(pid, 9)
+                        except ProcessLookupError:
+                            pass
+
     def test_failed_suite_remains_failed_and_credentials_are_redacted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

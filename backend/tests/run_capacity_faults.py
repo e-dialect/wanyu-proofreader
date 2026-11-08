@@ -19,28 +19,58 @@ import harness
 import capacity_fixture
 
 
-def stop_owned_process(process):
-    if process.poll() is None:
+def owned_process_groups(process, known):
+    """Retain live groups observed in this suite's tree, including detached browsers."""
+    rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,pgid=,stat='], text=True, timeout=2)
+    records = [row.split() for row in rows.splitlines() if row.split()]
+    live_groups = {int(row[2]) for row in records if not row[3].startswith(('Z', 'X'))}
+    descendants = {process.pid}
+    while True:
+        found = {int(row[0]) for row in records if int(row[1]) in descendants}
+        if found <= descendants:
+            break
+        descendants.update(found)
+    # Only group leaders proven to be descendants may be added. Keep a known
+    # live group after its parent exits; forget vanished groups to avoid PID reuse.
+    return (known & live_groups) | {process.pid} | {
+        int(row[2]) for row in records if int(row[0]) in descendants and int(row[2]) in descendants
+    }
+
+
+def stop_owned_process(process, groups=None):
+    groups = groups or {process.pid}
+    if os.name == 'posix':
         # SIGINT permits Python finally blocks to remove temporary containers.
-        try:
-            if os.name == 'posix':
-                os.killpg(process.pid, signal.SIGINT)
-            else:
-                process.terminate()
-        except ProcessLookupError:
-            pass
+        # Playwright launches a separate group, so signal all proven descendants.
+        for group in groups:
+            try:
+                os.killpg(group, signal.SIGINT)
+            except ProcessLookupError:
+                pass
+    elif process.poll() is None:
+        process.terminate()
+    if process.poll() is None:
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             pass
     if os.name == 'posix':
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        for group in groups:
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
     elif process.poll() is None:
         process.kill()
     process.wait()
+    if os.name == 'posix':
+        for _ in range(40):
+            rows = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=2)
+            live = [row.split() for row in rows.splitlines() if row.split()]
+            if not any(int(row[0]) in groups and not row[1].startswith(('Z', 'X')) for row in live):
+                return
+            time.sleep(.05)
+        raise RuntimeError('fault_descendant_cleanup_unconfirmed')
 
 
 def controlled_run(command, cwd, log_path, timeout=1800):
@@ -49,13 +79,27 @@ def controlled_run(command, cwd, log_path, timeout=1800):
     with tempfile.TemporaryFile(mode='w+', encoding='utf-8') as capture:
         process = subprocess.Popen(command, cwd=cwd, stdout=capture, stderr=subprocess.STDOUT,
                                    start_new_session=os.name == 'posix')
+        groups = {process.pid}
+        deadline = time.monotonic() + timeout
         try:
-            code = process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            code = 124
+            while True:
+                if os.name == 'posix':
+                    groups = owned_process_groups(process, groups)
+                try:
+                    code = process.wait(timeout=max(0, min(.5, deadline-time.monotonic())))
+                    break
+                except subprocess.TimeoutExpired:
+                    if time.monotonic() >= deadline:
+                        code = 124
+                        break
         finally:
-            # No child backend may survive into the next fault gate.
-            stop_owned_process(process)
+            # Retain detached groups while the suite is alive, including a Node
+            # child that times out before its Python supervisor exits.
+            try:
+                if os.name == 'posix':
+                    groups = owned_process_groups(process, groups)
+            finally:
+                stop_owned_process(process, groups)
         if code == 124:
             capture.write('\nFAULT_GATE_TIMEOUT\n')
         capture.seek(0)
