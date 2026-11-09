@@ -229,6 +229,7 @@ const router = useRouter()
 const opening = ref('')
 const actionError = ref('')
 const accessReady = ref(false)
+const managedRequired = ref(false)
 const recent = loadRecentWork(browserLocalStorage(), auth.user?.id)
 let active = true
 onBeforeUnmount(() => {
@@ -261,28 +262,30 @@ const loading = computed(() => accessPending.value || queuePending.value || mana
 const workspaceStartedAt = performance.now()
 let workspaceTimingReported = false
 let workspaceDisposed = false
+// Access and queue reads are always required; management data is required only
+// when the successful access response selected that reader for this page.
+const workspaceReady = computed(
+  () =>
+    accessReady.value &&
+    !loading.value &&
+    !accessError.value &&
+    !queueError.value &&
+    queueData.value !== null &&
+    (!managedRequired.value || (!managedError.value && managedData.value !== null))
+)
 onBeforeUnmount(() => {
   workspaceDisposed = true
 })
-watch(
-  () => accessReady.value && !loading.value,
-  async (ready) => {
-    if (!ready || workspaceTimingReported || accessError.value) return
-    await nextTick()
-    requestAnimationFrame(() => {
-      if (
-        !accessReady.value ||
-        loading.value ||
-        workspaceTimingReported ||
-        workspaceDisposed ||
-        document.hidden
-      )
-        return
-      workspaceTimingReported = true
-      measureBusiness('workspace_ready', performance.now() - workspaceStartedAt)
-    })
-  }
-)
+watch(workspaceReady, async (ready) => {
+  if (!ready || workspaceTimingReported) return
+  await nextTick()
+  requestAnimationFrame(() => {
+    if (!workspaceReady.value || workspaceTimingReported || workspaceDisposed || document.hidden)
+      return
+    workspaceTimingReported = true
+    measureBusiness('workspace_ready', performance.now() - workspaceStartedAt)
+  })
+})
 
 const canManage = computed(() => auth.isPlatformAdmin || auth.hasManagedProjects)
 const queues = computed(() => queueData.value?.items || [])
@@ -413,11 +416,12 @@ onMounted(refresh)
 async function refresh() {
   const access = await reloadAccess()
   if (!access.ok) return
+  managedRequired.value = Boolean(auth.isPlatformAdmin || access.data?.managedProjectIds?.length)
   accessReady.value = true
   const reads = [reloadQueues()]
   // A concurrent shell refresh may own the store's publication generation.
   // This successful response still tells this page which readers it needs.
-  if (auth.isPlatformAdmin || access.data?.managedProjectIds?.length) reads.push(reloadManaged())
+  if (managedRequired.value) reads.push(reloadManaged())
   await Promise.allSettled(reads)
 }
 async function startProject(queue) {

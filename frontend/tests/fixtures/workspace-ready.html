@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>合成工作台就绪回归</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h } from 'vue'
+      import { createPinia } from 'pinia'
+      import { createRouter, createMemoryHistory } from 'vue-router'
+      import Workspace from '../../src/views/WorkspaceHomeView.vue'
+      import { setBusinessMetricReporter } from '../../src/lib/businessMetrics'
+      import pb from '../../src/lib/pocketbase'
+      import '../../src/style.css'
+      const role =
+        new URLSearchParams(location.search).get('role') === 'reader' ? 'user' : 'platform_admin'
+      pb.authStore.save(`fixture.${btoa(JSON.stringify({ exp: 4102444800 }))}.fixture`, {
+        id: 'workspace-fixture',
+        name: '合成工作台账号',
+        role
+      })
+      window.workspaceReadyMetrics = []
+      setBusinessMetricReporter((name, duration) =>
+        window.workspaceReadyMetrics.push({ name, duration })
+      )
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/workspace', component: Workspace },
+          { path: '/:pathMatch(.*)*', component: { render: () => h('main', '合成目标页') } }
+        ]
+      })
+      await router.push('/workspace')
+      createApp(Workspace).use(createPinia()).use(router).mount('#app')
+    </script>
+  </body>
+</html>
