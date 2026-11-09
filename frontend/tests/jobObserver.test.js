@@ -268,3 +268,52 @@ test('conversion processed count is never a percentage denominator', () => {
   })
   assert.equal(jobProgress('csv', { total_count: 0 }).percent, null)
 })
+
+test('10-second read deadline escapes an abort-ignoring transport and retries without job failure', async () => {
+  const time = clock(),
+    registry = createJobObserverRegistry(time)
+  let finishOld,
+    signal,
+    latest,
+    reads = 0
+  const sub = registry.subscribe(
+    identity,
+    {
+      initial: row(),
+      read: (options) => {
+        reads++
+        if (reads > 1) return Promise.resolve({ ...row(), processed_count: 4 })
+        signal = options.signal
+        return new Promise((resolve) => {
+          finishOld = resolve
+        })
+      }
+    },
+    (value) => {
+      latest = value
+    }
+  )
+  const reading = sub.retry()
+  await flush()
+  assert.equal(latest.refreshing, true)
+  await time.advance(9999)
+  assert.equal(signal.aborted, false)
+  await time.advance(1)
+  await reading
+  assert.equal(signal.aborted, true)
+  assert.equal(latest.refreshing, false)
+  assert.equal(latest.state, 'stale')
+  assert.equal(latest.snapshot.status, 'processing')
+  assert.equal(latest.snapshot.processed_count, 2)
+  assert.equal(time.delay(), 2000)
+  await time.advance(2000)
+  assert.equal(reads, 2)
+  assert.equal(latest.state, 'live')
+  assert.equal(latest.snapshot.processed_count, 4)
+  finishOld(row('failed'))
+  await flush()
+  assert.equal(latest.snapshot.status, 'processing')
+  assert.equal(latest.snapshot.processed_count, 4)
+  sub.unsubscribe()
+  assert.equal(time.delay(), null)
+})

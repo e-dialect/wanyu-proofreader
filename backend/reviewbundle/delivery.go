@@ -67,6 +67,10 @@ type DeliverySnapshot struct {
 	Database             ScopeCounts     `json:"database"`
 	Declarations         []Declaration   `json:"declarations"`
 	Entries              []ResultEntry   `json:"entries"`
+	SelectionScopeDigest string          `json:"selection_scope_digest,omitempty"`
+	ConfirmedAt          string          `json:"confirmed_at,omitempty"`
+	RuleJSON             json.RawMessage `json:"rule_json,omitempty"`
+	AdapterVersion       string          `json:"adapter_version,omitempty"`
 }
 
 type DeliveryChanges struct {

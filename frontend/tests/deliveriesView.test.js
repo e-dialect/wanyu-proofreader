@@ -34,11 +34,28 @@ const helpers = Object.fromEntries(
 const receiptLabel = new Function(`return (${receiptLabelSource})`)()
 const receiptEventNote = new Function(`return (${receiptEventNoteSource})`)()
 
+function routeBindings() {
+  return {
+    projectId: { value: 'project-1' },
+    view: { value: 'records' },
+    queryPage: { value: 1 },
+    route: { query: {} },
+    selectedPackageId: { value: '' },
+    detailTab: { value: 'summary' },
+    listPages: { value: 1 },
+    listPage: { value: 1 },
+    eventsPage: { value: 1 },
+    eventPages: { value: 1 },
+    currentDelivery: { value: null },
+    nativeBatch: { value: null }
+  }
+}
+
 async function runLoad(listDeliveries, initial = {}) {
   const bindings = {
     ...helpers,
     listDeliveries,
-    projectId: 'project-1',
+    ...routeBindings(),
     loading: { value: true },
     loadError: { value: '' },
     operationError: { value: '上一次出包失败' },
@@ -161,7 +178,7 @@ test('late delivery list responses cannot replace a newer successful refresh', a
   let resolveFirst
   const bindings = {
     ...helpers,
-    projectId: 'project-1',
+    ...routeBindings(),
     loading: { value: false },
     loadError: { value: '' },
     operationError: { value: '' },
@@ -194,7 +211,7 @@ test('unmount prevents old delivery data and errors from publishing', async () =
   let rejectRequest
   const bindings = {
     ...helpers,
-    projectId: 'project-1',
+    ...routeBindings(),
     loading: { value: false },
     loadError: { value: '' },
     operationError: { value: '' },
@@ -217,28 +234,22 @@ test('unmount prevents old delivery data and errors from publishing', async () =
   assert.equal(bindings.items.value[0].id, 'preserved-package')
 })
 
-test('old impact row refreshes cannot override the latest explicit package selection or a changed view', async () => {
-  const body = extract(/\nasync function openImpact\(item\) \{([\s\S]*?)\n\}\n/, 'openImpact')
-  const pending = [],
-    opened = []
-  const controller = new Function(
-    'load',
-    'openDelivery',
-    `let disposed = false, impactSelectionGeneration = 0; return { openImpact: async function(item) {${body}\n}, changeView: () => { impactSelectionGeneration++ }, dispose: () => { disposed = true } }`
-  )(
-    () => new Promise((resolve) => pending.push(resolve)),
-    (item) => opened.push(item.id)
+test('impact selection navigates directly by ID without depending on the current list page', async () => {
+  const body = extract(/function openImpact\(item\) \{([^}]+)\}/, 'openImpact')
+  const opened = []
+  const open = new Function('openDelivery', `return function(item) {${body}}`)((item) =>
+    opened.push(item.id)
   )
-  const first = controller.openImpact({ id: 'old-choice' })
-  const second = controller.openImpact({ id: 'latest-choice' })
-  pending[1]()
-  await second
-  pending[0]()
-  await first
-  assert.deepEqual(opened, ['latest-choice'])
-  const leaving = controller.openImpact({ id: 'abandoned-choice' })
-  controller.changeView()
-  pending[2]()
-  await leaving
-  assert.deepEqual(opened, ['latest-choice'])
+  open({ id: 'off-page-package' })
+  assert.deepEqual(opened, ['off-page-package'])
+  assert.match(source, /getDelivery\(selectedPackageId.value\)/)
+  assert.match(source, /detail.project !== id/)
+  assert.match(source, /WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false"/)
+})
+
+test('native retry keeps its UUID until a preview or input changes', () => {
+  assert.match(source, /request_id: requestId.value/)
+  assert.match(source, /createAdoptionDelivery/)
+  assert.match(source, /adoption_batch_id: nativeBatch.value\?\.id/)
+  assert.match(source, /expected_scope_digest: nativeBatch.value\?\.scope_digest/)
 })

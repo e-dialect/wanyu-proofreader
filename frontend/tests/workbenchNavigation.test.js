@@ -88,3 +88,7 @@ test('resume requires current project access and never treats an expired task as
   queues[0].activeMine = 1
   assert.equal(resumeWork([], queues, {}).path, '/tasks/task1/edit')
 })
+
+test('account security belongs to account navigation', () => {
+  assert.equal(navigationArea({ path: '/account/security' }), 'profile')
+})

@@ -63,7 +63,10 @@ func newRequestID() string {
 }
 
 func ensureRequestID(c *core.RequestEvent) string {
-	requestID := strings.TrimSpace(c.Request.Header.Get("X-Request-ID"))
+	requestID := strings.TrimSpace(c.Response.Header().Get("X-Request-ID"))
+	if !safeRequestID.MatchString(requestID) {
+		requestID = strings.TrimSpace(c.Request.Header.Get("X-Request-ID"))
+	}
 	if !safeRequestID.MatchString(requestID) {
 		requestID = newRequestID()
 	}
