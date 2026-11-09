@@ -65,7 +65,7 @@ child.on('exit',code=>process.exit(code||0));
         process, child = self.launch('exit')
         self.assertEqual(process.wait(timeout=5), 7)
         self.assertIsNotNone(birth_identity(child))
-        with self.assertRaisesRegex(RuntimeError, 'registry_required_after_exit'):
+        with self.assertRaisesRegex(RuntimeError, 'generator_registry_required'):
             stop_generator_group(process)
         stop_generator_group(process, self.registry)
         self.assert_gone(child)
@@ -161,6 +161,44 @@ child.on('exit',code=>process.exit(code||0));
         self.assertEqual(process.wait(timeout=5), 0)
         self.assertFalse(sentinel.exists())
         self.registry.stop()
+
+
+    def test_registry_rejects_public_directory_symlink_and_invalid_nonce(self):
+        candidate = ProcessRegistry(self.root/'boundary', create=True)
+        alias = self.root/'registry-alias'
+        alias.symlink_to(candidate.root, target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, '^generator_registry_not_private$'):
+            ProcessRegistry(alias)
+        candidate.root.chmod(0o755)
+        with self.assertRaisesRegex(RuntimeError, '^generator_registry_not_private$'):
+            ProcessRegistry(candidate.root)
+        candidate.root.chmod(0o700)
+        marker = candidate.root/'nonce'
+        marker.chmod(0o644)
+        with self.assertRaisesRegex(RuntimeError, '^generator_registry_invalid_nonce$'):
+            ProcessRegistry(candidate.root)
+        marker.chmod(0o600)
+        marker.write_text('z'*32)
+        with self.assertRaisesRegex(RuntimeError, '^generator_registry_invalid_nonce$'):
+            ProcessRegistry(candidate.root)
+        marker.unlink()
+        marker.symlink_to(self.registry.root/'nonce')
+        with self.assertRaisesRegex(RuntimeError, '^generator_registry_invalid_nonce$'):
+            ProcessRegistry(candidate.root)
+
+    def test_invalid_receipt_or_ticket_never_signals_or_echoes_payload(self):
+        receipt = self.registry.root/('b'*32+'.json')
+        for payload in ('{"secret":"synthetic-do-not-echo"', json.dumps({'nonce':'wrong','pid':999999,'birth':'fake'})):
+            receipt.write_text(payload)
+            with patch('capacity_process_ownership.os.killpg') as kill:
+                with self.assertRaisesRegex(RuntimeError, '^generator_group_cleanup_unconfirmed$') as caught:
+                    self.registry.stop()
+                self.assertNotIn('synthetic-do-not-echo', str(caught.exception))
+                kill.assert_not_called()
+        receipt.unlink()
+        with self.assertRaisesRegex(RuntimeError, '^generator_ticket_invalid$'):
+            self.registry.register('../outside')
+        self.assertFalse((self.root/'outside.pending').exists())
 
     def test_stdio_extra_fd_argv_environment_and_working_directory(self):
         program = """

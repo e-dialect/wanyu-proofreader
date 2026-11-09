@@ -37,54 +37,18 @@ def transport_environment(ssh=False):
 
 
 def stop_generator_group(process, registry=None):
-    """Stop inherited and Playwright-detached descendants before idle sampling."""
-    if registry is not None:
-        # An unreaped live Popen child retains its PID. Do not signal its group
-        # after exit: detached groups have their own stable guardian receipts.
-        if process.poll() is None:
-            try: os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError: pass
-            stop_process(process)
-        registry.stop()
-        return
-    if process.poll() is not None:
-        if getattr(process, '_capacity_group_cleaned', False):
-            return
-        raise RuntimeError('generator_registry_required_after_exit')
-    groups = {process.pid}
+    """Stop only processes launched under this run's ownership registry."""
+    if registry is None:
+        # A process-tree/PGID snapshot is not durable ownership evidence. Never
+        # fall back to signalling discovered groups, even if the parent lives.
+        raise RuntimeError('generator_registry_required')
+    # An unreaped live Popen child retains its PID. Do not signal its group
+    # after exit: detached groups have their own stable guardian receipts.
     if process.poll() is None:
-        try:
-            rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,pgid=,stat='], text=True, timeout=2).splitlines()
-            records = [row.split() for row in rows if row.split()]
-            descendants = {process.pid}
-            while True:
-                found = {int(r[0]) for r in records if int(r[1]) in descendants}
-                if found <= descendants: break
-                descendants.update(found)
-            # Playwright's browser launcher starts a separate process group.
-            # Only groups whose leader is a proven descendant can be signaled.
-            groups.update(int(r[2]) for r in records if int(r[0]) in descendants and int(r[2]) in descendants)
-        except (OSError, subprocess.SubprocessError, ValueError):
-            try: os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError: pass
-            stop_process(process)
-            raise RuntimeError('generator_descendants_unobservable') from None
-    for group in groups:
-        try: os.killpg(group, signal.SIGTERM)
+        try: os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError: pass
-    stop_process(process)
-    for attempt in range(40):
-        rows = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=2).splitlines()
-        live = [r.split() for r in rows if r.split() and int(r.split()[0]) in groups and not r.split()[1].startswith(('Z', 'X'))]
-        if not live:
-            process._capacity_group_cleaned = True
-            return
-        if attempt == 10:
-            for group in groups:
-                try: os.killpg(group, signal.SIGKILL)
-                except ProcessLookupError: pass
-        time.sleep(.1)
-    raise RuntimeError('generator_group_cleanup_unconfirmed')
+        stop_process(process)
+    registry.stop()
 
 
 class Transport:
@@ -195,7 +159,7 @@ def run_once(args, output, source, budget):
         transport = Transport(command, output)
     except (Exception, KeyboardInterrupt) as error:
         raise safe_failure('connect', error) from None
-    tunnel, processes = None, []
+    tunnel, processes, registry = None, [], None
     result = None
     phase = 'prepare'
     try:
@@ -306,7 +270,7 @@ def run_once(args, output, source, budget):
         try:
             try:
                 for process in processes:
-                    stop_generator_group(process)
+                    stop_generator_group(process, registry)
             finally:
                 stop_process(tunnel)
                 code = transport.close()
