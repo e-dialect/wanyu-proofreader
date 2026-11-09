@@ -1,0 +1,58 @@
+{
+  "recorded_at_utc": "2026-11-09T07:48:55.469376+00:00",
+  "issue": 423,
+  "original_pr": 422,
+  "base_main": "39e2d652644ce67b526b66c105b674f0ad7d0f1b",
+  "runtime_sha": "e3bcdc5732303172c26d4e1aba6ed72f203f41ac",
+  "source_sha256": {
+    "backend/tests/capacity_process_ownership.py": "41b700551c2a1dda7ccce9c080a011b2f50f578b15367de22e01a1838782c274",
+    "backend/tests/run_capacity_remote.py": "72c6d334a7dc0419722e2e1f287b060f40d15dce88e61b235a4c3c72f208d949",
+    "backend/tests/test_capacity_process_ownership.py": "12090379a0422a6c9ef2ba802a1a099190dbbb27d8c0f5d4de692329d956dbc3"
+  },
+  "baseline_reproduction": {
+    "missing_module": "fcntl",
+    "failed_module_loads": 3,
+    "platform": "Darwin with import interception"
+  },
+  "checks": [
+    {
+      "name": "capacity",
+      "command": "python3 -m unittest discover -s backend/tests -p 'test_capacity_*.py' -v",
+      "status": "pass",
+      "tests": 85,
+      "skips": 1,
+      "log_sha256": "9850b1fdfa97a5a5f735e84ea206dc1f11f9d08a18fc917b2cd297c5103ce132"
+    },
+    {
+      "name": "ownership_chrome",
+      "command": "CAPACITY_OWNERSHIP_PLAYWRIGHT=1 NODE_PATH=/private/tmp/wanyu-playwright-runtime/node_modules BROWSER_CHANNEL=chrome python3 -m unittest discover -s backend/tests -p test_capacity_process_ownership.py -v",
+      "status": "pass",
+      "tests": 16,
+      "skips": 0,
+      "log_sha256": "dc8e0efdb52ea506595babffcbbe530d3283dce8164f939af613b4b3cc8512e3"
+    },
+    {
+      "name": "make_check",
+      "command": "PATH=\"/private/tmp/wanyu-pr-followup-20261109/check-venv/bin:$PATH\" make check",
+      "status": "pass",
+      "tests": null,
+      "skips": 1,
+      "log_sha256": "34a833b634014454524470b224e4a8185ddca5c6bb2db7608816d4efeb0bfe0d"
+    }
+  ],
+  "make_check_details": {
+    "script_tests": 168,
+    "ops_tests": 24,
+    "frontend_tests": 590,
+    "backend_python_tests": 166,
+    "migrations_up_down_up": 43,
+    "compose_entry_point_configs": 6
+  },
+  "independent_review": {
+    "reviewer": "Codex security agent",
+    "result": "no blockers",
+    "tests_run_by_reviewer": false
+  },
+  "windows_native_verified": false,
+  "production_deployed": false
+}
