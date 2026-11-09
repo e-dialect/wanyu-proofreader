@@ -1,6 +1,10 @@
 <template>
   <main class="container page workspace-page delivery-workspace">
-    <WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false" />
+    <WorkspaceLeaveGuard
+      :dirty="dirty"
+      :preserve-query="false"
+      :bypass="accessLost || unavailable"
+    />
     <ProjectWorkspaceNav :project-id="projectId" active="delivery" />
     <header class="page-heading">
       <div>
@@ -19,7 +23,7 @@
         <p>核对交付范围，保留每次交付与后续处置的凭据。</p>
       </div>
       <button
-        v-if="view === 'records'"
+        v-if="!accessLost && !projectUnavailable && view === 'records'"
         class="btn btn-primary"
         :disabled="busy"
         @click="navigate({ view: 'prepare' })"
@@ -67,10 +71,16 @@
         重新加载
       </button>
     </div>
+    <RouterLink v-if="projectUnavailable" to="/admin" class="btn btn-secondary mb-4">
+      返回项目列表
+    </RouterLink>
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
 
-    <section v-if="view === 'prepare'" class="card mb-6">
+    <section
+      v-if="!accessLost && !projectUnavailable && view === 'prepare' && !unavailable"
+      class="card mb-6"
+    >
       <div class="delivery-steps" aria-label="交付准备步骤">
         <span :aria-current="!preview ? 'step' : undefined">1 选择清单</span
         ><span :aria-current="preview ? 'step' : undefined">2 检查范围</span
@@ -264,7 +274,7 @@
       </details>
     </section>
 
-    <section v-if="view === 'records'" class="card mb-6">
+    <section v-if="!accessLost && !projectUnavailable && view === 'records'" class="card mb-6">
       <div class="section-heading">
         <div>
           <h2>交付记录</h2>
@@ -322,7 +332,7 @@
       </ul>
     </section>
 
-    <section v-if="view === 'detail'" class="mb-6">
+    <section v-if="!accessLost && !projectUnavailable && view === 'detail'" class="mb-6">
       <nav class="delivery-tabs" aria-label="交付详情">
         <button
           :aria-current="detailTab === 'summary' ? 'page' : undefined"
@@ -430,7 +440,7 @@
     </section>
 
     <section
-      v-if="view === 'detail' && selected"
+      v-if="!accessLost && !projectUnavailable && view === 'detail' && selected"
       ref="eventEditor"
       class="card mb-6 delivery-event-editor"
     >
@@ -527,7 +537,7 @@
       </form>
     </section>
 
-    <section v-if="view === 'impacts'" class="card">
+    <section v-if="!accessLost && !projectUnavailable && view === 'impacts'" class="card">
       <h2>来源权利变更后的影响</h2>
       <p>查询受影响的历史包，再逐包追加停用凭据、升级记录和消费方通知。历史包保持原样。</p>
       <form class="settings-form" @submit.prevent="findImpacts">
@@ -536,6 +546,7 @@
           label="需要核对的来源"
           empty-label="选择要查询的来源"
           empty-hint="当前没有可查询的来源，可以填写已登记的来源标识。"
+          @access-error="pageScope.invalidate($event)"
           :disabled="busy"
         /><button class="btn btn-secondary mt-3" :disabled="busy || !sourceRef">
           查询受影响交付包
@@ -570,6 +581,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { useProtectedPageScope } from '@/composables/useProtectedPageScope'
 import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { getAdoptionBatch, listAdoptionBatches } from '@/services/adoptionService'
@@ -589,7 +601,7 @@ import {
   createAdoptionDelivery
 } from '@/services/deliveryService'
 import { USAGE_PURPOSE_LABELS } from '@/constants/sourceRegistry'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
@@ -601,6 +613,8 @@ const eventsPage = ref(1)
 const listPages = ref(1)
 const eventPages = ref(1)
 const currentDelivery = ref(null)
+const unavailable = ref(false)
+const projectUnavailable = ref(false)
 const nativeBatch = ref(null)
 const adoptionChoices = ref([])
 const adoptionPage = ref(1)
@@ -617,14 +631,27 @@ function navigate(query) {
 function changePage(page) {
   return navigate({ ...route.query, page })
 }
+let adoptionGeneration = 0
+let adoptionRequest
 async function loadAdoptions(page = 1) {
-  const id = projectId.value
-  const data = await listAdoptionBatches(id, { page })
-  if (disposed || id !== projectId.value) return
-  adoptionChoices.value = data.batches
-  adoptionPage.value = data.page
-  adoptionPages.value = data.totalPages
+  adoptionRequest?.cancel()
+  const request = pageScope.capture()
+  adoptionRequest = request
+  const generation = ++adoptionGeneration
+  try {
+    const data = await listAdoptionBatches(projectId.value, { page, signal: request.signal })
+    if (!request.isCurrent() || generation !== adoptionGeneration) return
+    adoptionChoices.value = data.batches
+    adoptionPage.value = data.page
+    adoptionPages.value = data.totalPages
+  } catch (error) {
+    if (!handleFailure(error, request, 'project') && request.isCurrent())
+      loadError.value = getPbMessage(error, '编选批次加载失败')
+  } finally {
+    request.finish()
+  }
 }
+
 function chooseAdoption(id) {
   return navigate({ view: 'prepare', adoption: id })
 }
@@ -688,6 +715,78 @@ const eventForm = reactive({
   evidence: '',
   resolves: ''
 })
+const pageScope = useProtectedPageScope((status) => {
+  clearProtectedData()
+  loadError.value =
+    status === 401
+      ? '登录状态已失效，当前页面内容已清除。请重新登录后重试。'
+      : '当前账号已无权查看此项目，页面内容已清除。'
+})
+const { accessLost } = pageScope
+let readRequest
+function clearEditor() {
+  selected.value = null
+  eventBaseline.value = ''
+  Object.assign(eventForm, {
+    kind: 'receipt',
+    status: 'success',
+    affected: 0,
+    reason: '',
+    reviewer: '',
+    responsible: '',
+    target: '',
+    evidence: '',
+    resolves: ''
+  })
+  reviewer.value = previous.value = changeReason.value = ''
+  handoff.value = null
+  handoffFilename.value = ''
+  if (handoffInput.value) handoffInput.value.value = ''
+  invalidatePreview()
+}
+function clearProtectedData() {
+  ++loadGeneration
+  ++operationGeneration
+  ++adoptionGeneration
+  loading.value = busy.value = false
+  items.value = adoptionChoices.value = []
+  currentDelivery.value = nativeBatch.value = metrics.value = impacts.value = null
+  sourceRef.value = ''
+  listPage.value = listPages.value = eventsPage.value = eventPages.value = 1
+  adoptionPage.value = adoptionPages.value = 1
+  operationError.value = success.value = ''
+  clearEditor()
+}
+function projectRead(promise) {
+  return promise.catch((cause) => {
+    throw Object.assign(new Error('项目读取失败', { cause }), { requestSource: 'project' })
+  })
+}
+function handleFailure(error, request, requestSource) {
+  if (pageScope.invalidate(error, request)) return true
+  if (!request.isCurrent()) return true
+  if (getPbStatus(error) === 404 && requestSource === 'project') {
+    pageScope.cancel()
+    clearProtectedData()
+    projectUnavailable.value = unavailable.value = true
+    loadError.value = '项目不存在或已被删除，页面资料已清除。请返回项目列表或重试。'
+    return true
+  }
+  if (getPbStatus(error) === 404 || error?.invalidDetail) {
+    pageScope.cancel()
+    ++loadGeneration
+    ++operationGeneration
+    ++adoptionGeneration
+    loading.value = busy.value = false
+    items.value = items.value.filter((item) => item.id !== selectedPackageId.value)
+    currentDelivery.value = nativeBatch.value = null
+    unavailable.value = true
+    clearEditor()
+    loadError.value = '这份交付记录或编选批次已不可用，请返回列表或重新加载。'
+    return true
+  }
+  return false
+}
 // receipt_state is append-only, so a conflict closed by a resolution keeps its
 // state while pending_actions empties. The card must not keep claiming
 // unfinished upstream work once a resend is allowed.
@@ -722,46 +821,65 @@ function invalidatePreview() {
   requestId.value = ''
 }
 async function action(fn) {
+  if (accessLost.value || unavailable.value) return
+  const request = pageScope.capture()
   const generation = ++operationGeneration
-  const isCurrent = () => !disposed && generation === operationGeneration
+  const isCurrent = () => request.isCurrent() && !disposed && generation === operationGeneration
   busy.value = true
   operationError.value = ''
   success.value = ''
   try {
-    await fn(isCurrent)
+    await fn(isCurrent, request.signal)
   } catch (e) {
-    if (isCurrent()) operationError.value = getPbMessage(e, e?.message || '处理失败，请重试')
+    if (!handleFailure(e, request) && isCurrent())
+      operationError.value = getPbMessage(e, e?.message || '处理失败，请重试')
   } finally {
     if (isCurrent()) busy.value = false
+    request.finish()
   }
 }
 async function load() {
+  readRequest?.cancel()
+  const request = pageScope.capture()
+  readRequest = request
   const generation = ++loadGeneration
+  const isCurrent = () => request.isCurrent() && !disposed && generation === loadGeneration
   loading.value = true
   loadError.value = ''
   operationError.value = ''
   try {
     const id = projectId.value
-    const data = await listDeliveries(id, { page: view.value === 'records' ? queryPage.value : 1 })
+    const data = await projectRead(
+      listDeliveries(id, {
+        page: view.value === 'records' ? queryPage.value : 1,
+        signal: request.signal
+      })
+    )
+    if (!isCurrent()) return
     let detail = null,
       events = null,
       adoption = null
     if (selectedPackageId.value) {
       ;[detail, events] = await Promise.all([
-        getDelivery(selectedPackageId.value),
+        getDelivery(selectedPackageId.value, { signal: request.signal }),
         listDeliveryEvents(selectedPackageId.value, {
-          page: detailTab.value === 'events' ? queryPage.value : 1
+          page: detailTab.value === 'events' ? queryPage.value : 1,
+          signal: request.signal
         })
       ])
-      if (detail.project !== id) throw new Error('交付包不属于当前项目')
+      if (!isCurrent()) return
+      if (detail.project !== id)
+        throw Object.assign(new Error('交付包不属于当前项目'), { invalidDetail: true })
     }
     if (nativeDeliveryEnabled && route.query.adoption) {
-      adoption = await getAdoptionBatch(route.query.adoption)
+      adoption = await getAdoptionBatch(route.query.adoption, { signal: request.signal })
+      if (!isCurrent()) return
       if (adoption.project !== id || adoption.status !== 'confirmed')
-        throw new Error('请选择本项目已确认的编选批次')
+        throw Object.assign(new Error('请选择本项目已确认的编选批次'), { invalidDetail: true })
     }
+    if (!isCurrent()) return
     if (nativeDeliveryEnabled && view.value === 'prepare') await loadAdoptions()
-    if (disposed || generation !== loadGeneration || id !== projectId.value) return
+    if (!isCurrent() || id !== projectId.value) return
     items.value = data.items
     metrics.value = data.metrics
     listPage.value = data.page
@@ -770,11 +888,18 @@ async function load() {
     eventPages.value = events?.totalPages || 1
     currentDelivery.value = detail ? { ...detail, events: events.events } : null
     nativeBatch.value = adoption
-  } catch (e) {
-    if (!disposed && generation === loadGeneration)
+    accessLost.value = unavailable.value = projectUnavailable.value = false
+  } catch (failure) {
+    const e = failure?.requestSource ? failure.cause : failure
+    if (
+      !handleFailure(e, request, failure?.requestSource) &&
+      !disposed &&
+      generation === loadGeneration
+    )
       loadError.value = getPbMessage(e, '交付记录加载失败')
   } finally {
-    if (!disposed && generation === loadGeneration) loading.value = false
+    if (request.isCurrent() && !disposed && generation === loadGeneration) loading.value = false
+    request.finish()
   }
 }
 async function readHandoff(event) {
@@ -805,10 +930,11 @@ const requestBody = () =>
       }
 async function preflight() {
   invalidatePreview()
-  await action(async (isCurrent) => {
+  await action(async (isCurrent, signal) => {
     const result = await (legacyMode.value ? checkDelivery : checkAdoptionDelivery)(
       projectId.value,
-      requestBody()
+      requestBody(),
+      { signal }
     )
     if (isCurrent()) {
       preview.value = result
@@ -823,23 +949,26 @@ async function generate() {
     preview_sha256: preview.value.preview_sha256,
     ...(!legacyMode.value ? { request_id: requestId.value } : {})
   }
-  await action(async (isCurrent) => {
+  await action(async (isCurrent, signal) => {
     const delivery = await (legacyMode.value ? createDelivery : createAdoptionDelivery)(
       projectId.value,
-      body
+      body,
+      { signal }
     )
     if (!isCurrent()) return
     invalidatePreview()
     handoff.value = null
     reviewer.value = previous.value = changeReason.value = ''
-    success.value = '交付包已生成，尚未收到消费方回执。'
+    success.value = delivery.replayed
+      ? '已找回上次成功生成的同一交付包，未重复生成；尚未收到消费方回执。'
+      : '交付包已生成，尚未收到消费方回执。'
     await load()
     if (!isCurrent()) return
     await openDelivery(delivery)
   })
 }
 async function download(item) {
-  await action(() => downloadDelivery(item.id))
+  await action((isCurrent, signal) => downloadDelivery(item.id, { signal, isCurrent }))
 }
 function selectEvent(item) {
   selected.value = item
@@ -860,8 +989,8 @@ function selectEvent(item) {
 async function saveEvent() {
   const id = selected.value.id,
     body = { ...eventForm }
-  await action(async (isCurrent) => {
-    await appendDeliveryEvent(id, body)
+  await action(async (isCurrent, signal) => {
+    await appendDeliveryEvent(id, body, { signal })
     if (!isCurrent()) return
     selected.value = null
     success.value = '已追加凭据。'
@@ -869,21 +998,19 @@ async function saveEvent() {
   })
 }
 async function findImpacts() {
-  await action(async (isCurrent) => {
-    const result = await findDeliveryImpacts(projectId.value, sourceRef.value)
+  await action(async (isCurrent, signal) => {
+    const result = await findDeliveryImpacts(projectId.value, sourceRef.value, { signal })
     if (isCurrent()) impacts.value = result.items
   })
 }
 watch(
   () => route.fullPath,
   () => {
-    ++operationGeneration
-    busy.value = false
-    selected.value = null
-    reviewer.value = previous.value = changeReason.value = ''
-    handoff.value = null
-    invalidatePreview()
-    currentDelivery.value = nativeBatch.value = null
+    const completedMessage = success.value
+    pageScope.cancel()
+    clearProtectedData()
+    success.value = completedMessage
+    projectUnavailable.value = unavailable.value = false
     selectedPackageId.value = typeof route.query.package === 'string' ? route.query.package : ''
     view.value = selectedPackageId.value
       ? 'detail'

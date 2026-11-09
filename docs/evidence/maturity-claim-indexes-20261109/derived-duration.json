@@ -1,0 +1,6 @@
+{
+  "samples": 1302,
+  "p50_ms": 210.0,
+  "p95_ms": 1292,
+  "measurement": "existing safeRecomputePage duration includes post-commit database wait"
+}

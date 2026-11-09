@@ -1,0 +1,511 @@
+{
+  "protocol": {
+    "entries": 20000,
+    "users": 30,
+    "browser_actors": 2,
+    "duration_seconds": 180,
+    "gomaxprocs": 2,
+    "gomemlimit": "768MiB",
+    "hard_resource_limit_applied": false,
+    "same_host_generators": true,
+    "development_mode": true,
+    "runtime_mode_evidence": "Temporary-path DefaultDev rule and emitted SQL debug logs; historical samples did not contain app.IsDev."
+  },
+  "runs": {
+    "before": {
+      "baseline_sha": "70e57c3b19f2bc50a4670a404b4dedda92c8d08b",
+      "dirty_diff_sha256": "bb00b02631fe0df536c536dfa44c0ea98dbd39275a0572b4e880ef437b2bddcb",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 1003,
+          "p50_ms": 231.88086500001373,
+          "p95_ms": 1346.9393020000134,
+          "p99_ms": 2342.743684000001,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 1000,
+          "p50_ms": 439.81394100000034,
+          "p95_ms": 2136.87154800001,
+          "p99_ms": 2867.604,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 343,
+          "p50_ms": 700.3861510000133,
+          "p95_ms": 2296.1413630000025,
+          "p99_ms": 2850.441420999996,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 404,
+          "p50_ms": 54.71404900000198,
+          "p95_ms": 243.76510899999994,
+          "p99_ms": 343.3005059999996,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 1007,
+          "p50_ms": 2.771272999991197,
+          "p95_ms": 31.339,
+          "p99_ms": 58.595,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 1005,
+          "p50_ms": 2.8788230000063777,
+          "p95_ms": 20.08,
+          "p99_ms": 47.0835619999998,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 760,
+          "p50_ms": 16.081900999997742,
+          "p95_ms": 59.246280999999726,
+          "p99_ms": 95.21726900000067,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "verification",
+          "samples": 1361,
+          "p50_ms": 10.969159000000218,
+          "p95_ms": 42.079796000005445,
+          "p99_ms": 65.82035300001735,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 8156,
+      "rss_peak_bytes": 709591040,
+      "heap_alloc_peak_bytes": 64284224,
+      "last_db_pools": {
+        "aux_read": {
+          "max_open": 2,
+          "open": 0,
+          "in_use": 0,
+          "idle": 0,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "aux_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "data_read": {
+          "max_open": 8,
+          "open": 4,
+          "in_use": 1,
+          "idle": 3,
+          "wait_count": 422,
+          "wait_duration_ms": 1274,
+          "max_idle_closed": 188,
+          "max_idle_time_closed": 0
+        },
+        "data_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 3401,
+          "wait_duration_ms": 1260380,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        }
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 1000,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 32004,
+          "submissions": 32004
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        }
+      ]
+    },
+    "tier_filter": {
+      "baseline_sha": "0f8fcc6dd1163bed643a0498ab11f5e54ca01a45",
+      "dirty_diff_sha256": "71fd2df6f297c86fb5815123236376ee27f2b90fee065af11829e2b642baebc6",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 1028,
+          "p50_ms": 211.04050500001176,
+          "p95_ms": 1272.946082999988,
+          "p99_ms": 2538.3928060000035,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 1025,
+          "p50_ms": 412.3412949999911,
+          "p95_ms": 1938.6213740000094,
+          "p99_ms": 3048.03,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 338,
+          "p50_ms": 651.3062320000026,
+          "p95_ms": 2208.701390000002,
+          "p99_ms": 3734.246561000007,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 403,
+          "p50_ms": 56.73532900000282,
+          "p95_ms": 225.73132000000624,
+          "p99_ms": 378.7710950000037,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 1032,
+          "p50_ms": 3.472492000000784,
+          "p95_ms": 33.958,
+          "p99_ms": 72.04580200000782,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 1030,
+          "p50_ms": 3.072,
+          "p95_ms": 24.199125999992248,
+          "p99_ms": 58.40995799999655,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 757,
+          "p50_ms": 17.068118999988656,
+          "p95_ms": 61.54725200000394,
+          "p99_ms": 97.57358300000487,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "verification",
+          "samples": 1384,
+          "p50_ms": 12.445305000001099,
+          "p95_ms": 55.07262700001593,
+          "p99_ms": 84.15736100000504,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 8284,
+      "rss_peak_bytes": 718131200,
+      "heap_alloc_peak_bytes": 71560024,
+      "last_db_pools": {
+        "aux_read": {
+          "max_open": 2,
+          "open": 0,
+          "in_use": 0,
+          "idle": 0,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "aux_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "data_read": {
+          "max_open": 8,
+          "open": 4,
+          "in_use": 1,
+          "idle": 3,
+          "wait_count": 500,
+          "wait_duration_ms": 1735,
+          "max_idle_closed": 209,
+          "max_idle_time_closed": 0
+        },
+        "data_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 1,
+          "idle": 0,
+          "wait_count": 3424,
+          "wait_duration_ms": 1205340,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        }
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 1025,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 32029,
+          "submissions": 32029
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        },
+        {
+          "gate": "CLS",
+          "status": "fail"
+        }
+      ]
+    },
+    "active_order": {
+      "baseline_sha": "54545667003d4d25cfeb00164756b897f3d31ab7",
+      "dirty_diff_sha256": "dbdfba09405982fb27e2c1d63e0399b08a6b6c04291423dba871b7d647e591d0",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 1333,
+          "p50_ms": 61.89403900000616,
+          "p95_ms": 558.6016999999993,
+          "p99_ms": 1175.5709789999964,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "pass"
+        },
+        {
+          "operation": "submit",
+          "samples": 1331,
+          "p50_ms": 157.686,
+          "p95_ms": 1007.864,
+          "p99_ms": 1534.7807590000011,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 501,
+          "p50_ms": 352.95345200000156,
+          "p95_ms": 1141.7854389999993,
+          "p99_ms": 1832.3635520000025,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 392,
+          "p50_ms": 50.349723999999696,
+          "p95_ms": 314.4432870000019,
+          "p99_ms": 435.0600290000002,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 1337,
+          "p50_ms": 3.507,
+          "p95_ms": 28.061,
+          "p99_ms": 57.39421199999924,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 1335,
+          "p50_ms": 3.1259619999909773,
+          "p95_ms": 23.969912000000477,
+          "p99_ms": 52.50611299999582,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 897,
+          "p50_ms": 16.566801999993913,
+          "p95_ms": 63.27828600000066,
+          "p99_ms": 119.97882599999866,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "verification",
+          "samples": 1840,
+          "p50_ms": 11.549694000001182,
+          "p95_ms": 51.56656800000201,
+          "p99_ms": 111.01957000000402,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 10526,
+      "rss_peak_bytes": 795557888,
+      "heap_alloc_peak_bytes": 62142640,
+      "last_db_pools": {
+        "aux_read": {
+          "max_open": 2,
+          "open": 0,
+          "in_use": 0,
+          "idle": 0,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "aux_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "data_read": {
+          "max_open": 8,
+          "open": 4,
+          "in_use": 0,
+          "idle": 4,
+          "wait_count": 1432,
+          "wait_duration_ms": 17557,
+          "max_idle_closed": 250,
+          "max_idle_time_closed": 0
+        },
+        "data_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 4175,
+          "wait_duration_ms": 668277,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        }
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 1331,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 32335,
+          "submissions": 32335
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        }
+      ]
+    }
+  }
+}

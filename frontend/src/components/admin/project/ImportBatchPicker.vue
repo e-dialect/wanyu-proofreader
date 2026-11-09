@@ -48,13 +48,13 @@ import { computed, onMounted } from 'vue'
 import AppField from '@/components/AppField.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import { listImportLedger } from '@/services/importJobsService'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 const props = defineProps({
   projectId: { type: String, required: true },
   modelValue: { type: String, default: '' },
   disabled: { type: Boolean, default: false }
 })
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'access-error'])
 const { data, pending, error, reload } = useAsyncResource(() => listImportLedger(props.projectId), {
   initialData: { batches: [] },
   formatError: (cause) => getPbMessage(cause, '导入批次加载失败')
@@ -67,7 +67,11 @@ function toggle(id, checked) {
   else ids.delete(id)
   emit('update:modelValue', [...ids].join(','))
 }
-const load = () => reload()
+const load = async () => {
+  const result = await reload()
+  if (!result.ok && [401, 403].includes(getPbStatus(result.error)))
+    emit('access-error', result.error)
+}
 onMounted(load)
 </script>
 

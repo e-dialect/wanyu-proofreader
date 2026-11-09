@@ -7,7 +7,9 @@
     "gomaxprocs": 2,
     "gomemlimit": "768MiB",
     "hard_resource_limit_applied": false,
-    "same_host_generators": true
+    "same_host_generators": true,
+    "development_mode": true,
+    "runtime_mode_evidence": "Temporary-path DefaultDev rule and emitted SQL debug logs; historical samples did not contain app.IsDev."
   },
   "runs": {
     "before": {

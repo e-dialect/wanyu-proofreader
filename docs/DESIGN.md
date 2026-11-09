@@ -20,7 +20,7 @@
 
 字体覆盖集合由 `lib/fontCoverage.json` 给出，测试与原始字体 manifest/Unicode 范围精确比较。`useFontAvailability` 区分加载、失败与重试，并丢弃旧请求。含受保护字符时，加载完成前必须有提示；失败时保留原字符串与码位提示，不能用形近字替换。多个字段可以共用 `RareCharacterNotice`，并关闭子项重复提示。
 
-UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_baseline.json` 执行。所有类别都为 fail 棘轮：静态内联样式为0，保留7处运行时进度/尺寸绑定；原生表格只有 `AppDataTable` 内1处；颜色、圆角、层级、缺角色提示、自制模态框、未定义变量和字体栈字面值债务均为0。上限只能下降。
+UI 债务的实际判定由 `scripts/check_ui_debt.py` 与 `scripts/ui_debt_baseline.json` 执行。所有类别都为 fail 棘轮：静态内联样式为0，保留6处运行时进度/尺寸绑定；原生表格只有 `AppDataTable` 内1处；颜色、圆角、层级、缺角色提示、自制模态框、未定义变量和字体栈字面值债务均为0。上限只能下降。
 
 ## 共享组件
 

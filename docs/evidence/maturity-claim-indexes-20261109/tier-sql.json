@@ -1,0 +1,58 @@
+{
+  "before": {
+    "tier": {
+      "p50_ms": 26.946272002533078,
+      "max_ms": 42.153638030868024,
+      "plan": [
+        [
+          5,
+          0,
+          60,
+          "SEARCH pages USING INDEX idx_pages_claim_tier_order (project=? AND difficulty_tier=?)"
+        ]
+      ],
+      "rows": 64
+    },
+    "general": {
+      "p50_ms": 26.297135977074504,
+      "max_ms": 27.18096401076764,
+      "plan": [
+        [
+          5,
+          0,
+          61,
+          "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+        ]
+      ],
+      "rows": 64
+    }
+  },
+  "after": {
+    "tier": {
+      "p50_ms": 3.9170170202851295,
+      "max_ms": 4.604739020578563,
+      "plan": [
+        [
+          5,
+          0,
+          61,
+          "SEARCH pages USING INDEX idx_pages_claim_tier_order (project=? AND difficulty_tier=?)"
+        ]
+      ],
+      "rows": 64
+    },
+    "general": {
+      "p50_ms": 26.936281006783247,
+      "max_ms": 27.272036008071154,
+      "plan": [
+        [
+          5,
+          0,
+          61,
+          "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+        ]
+      ],
+      "rows": 64
+    }
+  }
+}
