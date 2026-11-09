@@ -7,7 +7,8 @@
 但没人 import 它，所以 `go test ./...` 在镜像里也从没编译到它；等到 #289 第一次 import，
 镜像构建立刻报 `package fangji/backend/scheme is not in std`，而本机 80 多个检查全绿。
 
-所以这里把两件事对齐：**磁盘上每个含 .go 的 backend 子目录，都必须在 Dockerfile 里被 COPY**。
+磁盘上每个含 .go 的 backend 子目录及真实路由测试需要的完整 pb_hooks，
+都必须在 builder 的 go test 之前被 COPY 到相同相对路径。
 """
 import re
 import sys
@@ -36,7 +37,36 @@ def go_package_dirs(backend=BACKEND):
 def copied_dirs(text):
     """Dockerfile 里被 COPY 进镜像的目录（相对 backend/ 的 POSIX 路径）。"""
     stripped = '\n'.join(line.split('#', 1)[0].rstrip() for line in text.splitlines())
-    return {match.group(1).rstrip('/') for match in COPY_RE.finditer(stripped)}
+    return {
+        match.group(1).rstrip('/')
+        for match in COPY_RE.finditer(stripped)
+        if match.group(1).rstrip('/') == match.group(2).rstrip('/')
+    }
+
+
+def builder_test_copies(text):
+    """Only assets copied into the named builder before its first go test count."""
+    before_test = []
+    in_builder = False
+    for line in text.splitlines():
+        line = line.split('#', 1)[0].strip()
+        if re.match(r'^FROM\s', line, re.IGNORECASE):
+            in_builder = bool(re.search(r'\sAS\s+builder\s*$', line, re.IGNORECASE))
+            before_test = []
+        elif in_builder:
+            if re.match(r'^RUN\s', line, re.IGNORECASE) and re.search(r'\bgo\s+test\b', line):
+                return copied_dirs('\n'.join(before_test))
+            before_test.append(line)
+    return set()
+
+
+def test_asset_problems(copied):
+    if 'pb_hooks' in copied:
+        return []
+    return [
+        'backend/Dockerfile 必须在 builder 的 go test 之前 COPY pb_hooks/ ./pb_hooks/。'
+        '真实路由测试需要完整 *.pb.js，只有 pb_hooks/lib 或运行阶段的 COPY 会让路由返回 404。'
+    ]
 
 
 def problems(package_dirs, copied):
@@ -51,12 +81,13 @@ def problems(package_dirs, copied):
 
 
 def main():
-    found = problems(go_package_dirs(), copied_dirs(DOCKERFILE.read_text(encoding='utf-8')))
+    copied = builder_test_copies(DOCKERFILE.read_text(encoding='utf-8'))
+    found = problems(go_package_dirs(), copied) + test_asset_problems(copied)
     if found:
         for problem in found:
             print(f'docker build context drift: {problem}', file=sys.stderr)
         return 1
-    print(f'PASS: every Go package directory under backend/ is copied into the image ({len(go_package_dirs())} checked)')
+    print(f'PASS: all {len(go_package_dirs())} Go package directories and complete hooks are copied before builder tests')
     return 0
 
 

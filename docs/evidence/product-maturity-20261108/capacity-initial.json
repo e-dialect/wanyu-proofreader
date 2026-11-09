@@ -1,0 +1,121 @@
+{
+  "status": "observed",
+  "duration": 180,
+  "virtual_users": 30,
+  "seed": 1701,
+  "operations": [
+    {
+      "operation": "claim",
+      "samples": 81,
+      "p50": 371.91724299998896,
+      "p95": 977.8911239999998,
+      "p99": 1287.645104,
+      "unexpected": 0,
+      "threshold_pass": false
+    },
+    {
+      "operation": "task",
+      "samples": 81,
+      "p50": 2.2724720000042,
+      "p95": 10.957655000005616,
+      "p99": 22.362283000009484,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "pdf_descriptor",
+      "samples": 81,
+      "p50": 2.0226309999998193,
+      "p95": 8.349025999999867,
+      "p99": 24.444776000003912,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "pdf_read",
+      "samples": 81,
+      "p50": 2.316701000003377,
+      "p95": 11.274763000001258,
+      "p99": 49.07972100000188,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "verification",
+      "samples": 93,
+      "p50": 7.12497400000575,
+      "p95": 17.876477999999906,
+      "p99": 29.161078999983147,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "admin_pages",
+      "samples": 20,
+      "p50": 8.091857999999775,
+      "p95": 17.832737000000634,
+      "p99": 61.88159099999757,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "arbitration_read",
+      "samples": 12,
+      "p50": 2.375353000003088,
+      "p95": 3.8758669999951962,
+      "p99": 3.8758669999951962,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "arbitrate",
+      "samples": 12,
+      "p50": 67.0641719999985,
+      "p95": 100.04797800001688,
+      "p99": 100.04797800001688,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "submit",
+      "samples": 61,
+      "p50": 23.797623000005842,
+      "p95": 423.4610810000013,
+      "p99": 609.539242999992,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "field_summary",
+      "samples": 8,
+      "p50": 4111.921543999997,
+      "p95": 25664.644422999998,
+      "p99": 25664.644422999998,
+      "unexpected": 0,
+      "threshold_pass": false
+    },
+    {
+      "operation": "export",
+      "samples": 1,
+      "p50": 5026.205474000002,
+      "p95": 5026.205474000002,
+      "p99": 5026.205474000002,
+      "unexpected": 0,
+      "threshold_pass": true
+    },
+    {
+      "operation": "renew",
+      "samples": 6,
+      "p50": 6.209963000001153,
+      "p95": 40.09789999999339,
+      "p99": 40.09789999999339,
+      "unexpected": 0,
+      "threshold_pass": true
+    }
+  ],
+  "generator_event_loop_p95_ms": 21.086207,
+  "acceptance_profile": "smoke",
+  "limitations": [
+    "Browser visible timing, slow download, parallel import and fault cases require acceptance runner; HTTP smoke does not certify them."
+  ]
+}
