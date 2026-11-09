@@ -1,0 +1,24 @@
+{
+  "status": "pass",
+  "code_sha": "f35455072c5b0970b82e114cb5d6f9a6a656bcca",
+  "scope": "local frontend production image only; backend authorization verified separately",
+  "image_id": "sha256:54df68e6962121b3639386c9e0c6a5263ab97de10ca73e2f0d07bc5f738d7bc9",
+  "checks": [
+    {
+      "script": "frontend/scripts/test-font-cache.mjs",
+      "exit_code": 0
+    },
+    {
+      "script": "frontend/scripts/test-account-http.mjs",
+      "exit_code": 0
+    }
+  ],
+  "non_root": "nginx",
+  "logs_do_not_contain_actual_script_sentinel": true,
+  "edge_json_events": 30,
+  "resource_limits": {
+    "cpus": 0.5,
+    "memory_bytes": 134217728,
+    "pids": 64
+  }
+}

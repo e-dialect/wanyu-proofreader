@@ -1,0 +1,15 @@
+{
+  "synthetic": true,
+  "image_id": "sha256:8fadc8921943aea78636da99582fe52cb0f380d1e18f3323e341fb460f322589",
+  "phase": "verify-old-bootstrap-credentials",
+  "status": "reproduced",
+  "native_email_change_retained_id": true,
+  "native_patch_status": 200,
+  "old_email_password_login_after_restart": 200,
+  "new_email_password_login_after_restart": 200,
+  "old_bootstrap_credentials_created_second_superuser": true,
+  "renamed_original_superuser_preserved": true,
+  "superuser_count_before": 1,
+  "superuser_count_after": 2,
+  "cleanup": "pass"
+}

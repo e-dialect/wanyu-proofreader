@@ -101,3 +101,7 @@ HTTP观测替代PocketBase默认请求activity logger：新请求以路由模板
 领取原来在写事务内一次物化全部候选。现改为按page_number/id每批64条keyset扫描，SQL先应用层级/缺字过滤，同页邻接仍先于层级，租约和已提交排除继续在同一事务复核。64是单批上限，非总扫描上限；几乎已做完全队列的用户仍可能遍历很多候选。迁移1794204200补层级与本人活动任务索引。
 
 主数据读池默认open/idle为8/4，辅助库2/2，另各有1个写连接。四项FANGJI_DB_*配置只接受有界正数且idle不超过open；连接上限和GOMEMLIMIT都不是RSS硬隔离。每30秒同时记录四池等待统计、Go堆保留/释放、实际内存软预算及GOMAXPROCS。后续对照显式设GOMAXPROCS=2、GOMEMLIMIT=768MiB并保留原负载、阈值和失败证据。
+
+## 本轮最终本地回执
+
+实施、架构适配、逐工作包六项状态及完整接续入口见 [最终报告](evidence/product-maturity-20261109/IMPLEMENTATION.md) 和 [agent 交接](evidence/product-maturity-20261109/REVIEW_HANDOFF.md)。业务实现锚点8de31fa、精确容量协议0d27b29；两者只差两个容量测试Python文件。精确20k/30用户短测、24人集中提交、959次逐条对账和约1005.5秒独立故障通过；正式同规格分机60分钟×3、真人真机与实际邮件/备份/通知仍待验。未push、未创建PR、未发布。
