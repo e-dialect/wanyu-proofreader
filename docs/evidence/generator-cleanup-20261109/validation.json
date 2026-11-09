@@ -1,0 +1,52 @@
+{
+  "base_sha": "e77950e2680969d86aebde945bdf91c152cbf94a",
+  "synthetic": true,
+  "platform": "Darwin",
+  "baseline_reproduction": {
+    "sha": "e77950e2680969d86aebde945bdf91c152cbf94a",
+    "function": "stop_generator_group",
+    "scenario": "generator exits before detached child; own synthetic child only",
+    "parent_exit": 0,
+    "cleanup_returned_success": true,
+    "detached_child_survived": true,
+    "manual_owned_child_cleanup": "pass",
+    "state_after_cleanup": ""
+  },
+  "ownership_tests": {
+    "passed": 12,
+    "seconds": 9.31,
+    "real_playwright_scenarios": [
+      "normal close",
+      "generator SIGKILL before registered browser cleanup"
+    ]
+  },
+  "assertions": [
+    "parent exit and SIGKILL leave no registered browser group",
+    "normal exit preserves status",
+    "timeout and KeyboardInterrupt cleanup",
+    "inherited fd3, argv, environment and cwd preserved",
+    "mismatched birth identity not signalled",
+    "invalid receipt does not skip other owned groups",
+    "closed registry prevents browser launch",
+    "new helpers included in source-freeze hash",
+    "controller never signals saved PID/PGID after identity-check/exit race",
+    "unresponsive guardian is unconfirmed; no historical PID kill"
+  ],
+  "limits": [
+    "No capacity test, remote SSH, production access or deployment.",
+    "Actual browser validation used local Chrome on macOS. Linux ownership code is covered by the same CI-discovered tests when run on Linux.",
+    "Unverifiable ownership remains an explicit cleanup failure, never a resource-recovery pass."
+  ],
+  "full_acceptance": false,
+  "remote_protocol_tests": {
+    "passed": 17,
+    "seconds": 4.89
+  },
+  "cleanup_protocol": "private ticket+nonce stop request; only live guardian signals its own group",
+  "source_files": {
+    "backend/tests/run_capacity_remote.py": "083fe69120f4c8d512d7abb9dd5ce80f27c979ee90f943488e55c8dd4e0b6e50",
+    "backend/tests/capacity_process_ownership.py": "1524d1693582ebe91726460c7202e66008b5954afb45a1fc050e49797d72bc07",
+    "backend/tests/capacity_owned_spawn.cjs": "8e11b38f036d5f9d1876746cd1b7b2d90ba7a11d378ed72894e90ef78d44ff71",
+    "backend/tests/test_capacity_process_ownership.py": "3c58298784145d759b641b9eb2b77e22a701e09ab08e4eb178137867ead689a9"
+  }
+}

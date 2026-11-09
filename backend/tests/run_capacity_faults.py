@@ -9,7 +9,7 @@ import argparse
 import json
 import os
 import re
-import signal
+import secrets
 import tempfile
 import subprocess
 import sys
@@ -18,91 +18,61 @@ from pathlib import Path
 import harness
 import capacity_fixture
 from capacity_remote_contract import same_source
+from capacity_process_ownership import ProcessRegistry
 
 
-def owned_process_groups(process, known):
-    """Retain live groups observed in this suite's tree, including detached browsers."""
-    rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,pgid=,stat='], text=True, timeout=2)
-    records = [row.split() for row in rows.splitlines() if row.split()]
-    live_groups = {int(row[2]) for row in records if not row[3].startswith(('Z', 'X'))}
-    descendants = {process.pid}
-    while True:
-        found = {int(row[0]) for row in records if int(row[1]) in descendants}
-        if found <= descendants:
-            break
-        descendants.update(found)
-    # Only group leaders proven to be descendants may be added. Keep a known
-    # live group after its parent exits; forget vanished groups to avoid PID reuse.
-    return (known & live_groups) | {process.pid} | {
-        int(row[2]) for row in records if int(row[0]) in descendants and int(row[2]) in descendants
-    }
-
-
-def stop_owned_process(process, groups=None):
-    groups = groups or {process.pid}
-    if os.name == 'posix':
-        # SIGINT permits Python finally blocks to remove temporary containers.
-        # Playwright launches a separate group, so signal all proven descendants.
-        for group in groups:
-            try:
-                os.killpg(group, signal.SIGINT)
-            except ProcessLookupError:
-                pass
-    elif process.poll() is None:
-        process.terminate()
-    if process.poll() is None:
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pass
-    if os.name == 'posix':
-        for group in groups:
-            try:
-                os.killpg(group, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-    elif process.poll() is None:
-        process.kill()
-    process.wait()
-    if os.name == 'posix':
-        for _ in range(40):
-            rows = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=2)
-            live = [row.split() for row in rows.splitlines() if row.split()]
-            if not any(int(row[0]) in groups and not row[1].startswith(('Z', 'X')) for row in live):
-                return
-            time.sleep(.05)
-        raise RuntimeError('fault_descendant_cleanup_unconfirmed')
+class FaultCleanupUnconfirmed(RuntimeError):
+    def __init__(self, exit_code):
+        super().__init__('fault_process_cleanup_unconfirmed')
+        self.exit_code = exit_code
 
 
 def controlled_run(command, cwd, log_path, timeout=1800):
     # Test suites can print fixture passwords/tokens. Keep diagnostic output but
     # redact credentials before copying it out of the temporary capture file.
-    with tempfile.TemporaryFile(mode='w+', encoding='utf-8') as capture:
-        process = subprocess.Popen(command, cwd=cwd, stdout=capture, stderr=subprocess.STDOUT,
-                                   start_new_session=os.name == 'posix')
-        groups = {process.pid}
-        deadline = time.monotonic() + timeout
+    # Only this fixed fault-suite subtree receives the Node preload. The real
+    # backend Popen/PB_TEST_SERVER_PID inside each suite remain untouched.
+    with tempfile.TemporaryDirectory(prefix='wanyu-fault-ownership-') as temporary, \
+            tempfile.TemporaryFile(mode='w+', encoding='utf-8') as capture:
+        registry = ProcessRegistry(Path(temporary).resolve()/'processes', create=True)
+        ticket = secrets.token_hex(16)
+        pending = registry.root/(ticket+'.pending')
+        fd = os.open(pending, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, 'w') as out:
+            out.write(registry.nonce)
+        preload = harness.BACKEND/'tests/capacity_owned_spawn.cjs'
+        guardian = harness.BACKEND/'tests/capacity_process_ownership.py'
+        env = {**os.environ, 'CAPACITY_PROCESS_REGISTRY':str(registry.root),
+               'CAPACITY_GUARDIAN_PYTHON':sys.executable,
+               'NODE_OPTIONS':(os.environ.get('NODE_OPTIONS','')+' --require='+json.dumps(str(preload))).strip()}
+        process = None
+        code, cleanup_failed = None, False
         try:
-            while True:
-                if os.name == 'posix':
-                    groups = owned_process_groups(process, groups)
-                try:
-                    code = process.wait(timeout=max(0, min(.5, deadline-time.monotonic())))
-                    break
-                except subprocess.TimeoutExpired:
-                    if time.monotonic() >= deadline:
-                        code = 124
-                        break
-        finally:
-            # Retain detached groups while the suite is alive, including a Node
-            # child that times out before its Python supervisor exits.
             try:
-                if os.name == 'posix':
-                    groups = owned_process_groups(process, groups)
-            finally:
-                stop_owned_process(process, groups)
+                process = subprocess.Popen([sys.executable,str(guardian),str(registry.root),ticket,
+                    '--interrupt','--',*command], cwd=cwd, env=env, stdout=capture, stderr=subprocess.STDOUT,
+                    start_new_session=True)
+            except (OSError, ValueError):
+                pending.unlink()
+                raise
+            try:
+                code = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                code = 124
+        finally:
+            # Request stop while the registry still exists. Only a live guardian
+            # signals its own PG; no saved PID/PGID is used as signal authority.
+            try:
+                registry.stop(wait_seconds=7)
+            except (Exception, KeyboardInterrupt):
+                cleanup_failed = True
+            if process is not None:
+                try: process.wait(timeout=2)
+                except subprocess.TimeoutExpired: cleanup_failed = True
         if code == 124:
             capture.write('\nFAULT_GATE_TIMEOUT\n')
+        if cleanup_failed:
+            capture.write('\nFAULT_PROCESS_CLEANUP_UNCONFIRMED\n')
         capture.seek(0)
         text = capture.read()
     text = re.sub(r'\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b', '[REDACTED_TEST_TOKEN]', text)
@@ -111,6 +81,8 @@ def controlled_run(command, cwd, log_path, timeout=1800):
         text = text.replace(secret, '[REDACTED_TEST_PASSWORD]')
     log_path.write_text(text)
     os.chmod(log_path, 0o600)
+    if cleanup_failed:
+        raise FaultCleanupUnconfirmed(code)
     return code
 
 
@@ -126,7 +98,14 @@ def main():
     # Freeze before compiling either frontend or backend code. A later snapshot
     # must not label earlier suite executions with a different checkout.
     source = capacity_fixture.source_manifest(harness.BACKEND)
-    if controlled_run(['npm', 'run', 'build'], root/'frontend', output/'frontend-build.log') != 0:
+    try:
+        build_code = controlled_run(['npm', 'run', 'build'], root/'frontend', output/'frontend-build.log')
+    except FaultCleanupUnconfirmed as error:
+        failed = error.exit_code not in (None, 0)
+        (output/'faults.json').write_text(json.dumps({**source, 'status':'fail' if failed else 'incomplete',
+            'full_fault_gate':False,'reason':'process_cleanup_unconfirmed','log':'frontend-build.log'}))
+        return 1 if failed else 2
+    if build_code != 0:
         (output/'faults.json').write_text(json.dumps({**source, 'status':'fail','full_fault_gate':False,'reason':'frontend_build_failed','log':'frontend-build.log'}))
         return 1
     commands = [
@@ -152,14 +131,20 @@ def main():
             if name == 'storage': current += ['--output', str(output/f'storage-{cycle}')]
             step = time.monotonic()
             log_path=output/f'{cycle}-{name}.log'
-            code=controlled_run(current,root,log_path)
-            status = 'pass' if code == 0 else 'fail'
+            try:
+                code=controlled_run(current,root,log_path)
+                status = 'pass' if code == 0 else 'fail'
+            except FaultCleanupUnconfirmed as error:
+                code = error.exit_code
+                status = 'fail' if code not in (None, 0) else 'incomplete'
+                manifest['gates']['process_cleanup'] = 'incomplete'
             if manifest['gates'][name] != 'fail': manifest['gates'][name] = status
             manifest['executions'].append({'gate': name, 'cycle': cycle, 'status': status,
                 'duration_seconds': time.monotonic()-step, 'exit_code': code, 'coverage': coverage, 'log':log_path.name,
                 'command': [Path(current[0]).name, *[str(part).replace(str(root)+'/', '') for part in current[1:]]]})
             (output/'faults.json').write_text(json.dumps(manifest, indent=2))
-        if args.profile == 'smoke' or time.monotonic()-started >= 900 or 'fail' in manifest['gates'].values(): break
+            if manifest['gates'].get('process_cleanup') == 'incomplete': break
+        if args.profile == 'smoke' or time.monotonic()-started >= 900 or any(value in ('fail','incomplete') for value in manifest['gates'].values()): break
     manifest['duration_seconds'] = time.monotonic()-started
     try:
         source_after = capacity_fixture.source_manifest(harness.BACKEND)
@@ -171,7 +156,9 @@ def main():
     manifest['status'] = ('fail' if 'fail' in manifest['gates'].values() else
                           'pass' if all(value == 'pass' for value in manifest['gates'].values()) else 'incomplete')
     manifest['full_fault_gate'] = manifest['status'] == 'pass' and args.profile == 'full' and manifest['duration_seconds'] >= 900
-    manifest['limitation'] = 'Independent fault suites, not simultaneous faults injected into all 30 active users. A missing or failed child never counts as passed.'
+    manifest['limitation'] = ('Independent fault suites, not simultaneous faults injected into all 30 active users. '
+        'A missing or failed child never counts as passed. Process cleanup covers the suite group and registered '
+        'Node detached children; it does not certify Docker resources or other out-of-process systems.')
     (output/'faults.json').write_text(json.dumps(manifest, indent=2))
     print(json.dumps({'status': manifest['status'], 'full_fault_gate': manifest['full_fault_gate'], 'output': str(output)}))
     return {'pass': 0, 'fail': 1, 'incomplete': 2}[manifest['status']]

@@ -255,19 +255,22 @@ class CapacityRemoteTest(unittest.TestCase):
                 transport.close()
 
     @unittest.skipUnless(os.name == 'posix', 'POSIX process groups')
-    def test_generator_descendant_stops_before_recovery(self):
-        program = ('import subprocess,sys,time;'
-                   'p=subprocess.Popen([sys.executable,"-c","import time;time.sleep(60)"],start_new_session=True);'
-                   'print(p.pid,flush=True);time.sleep(60)')
-        process = subprocess.Popen([sys.executable, '-c', program], stdout=subprocess.PIPE, start_new_session=True)
+    def test_missing_generator_registry_never_signals_a_live_or_exited_process(self):
+        process = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)'], start_new_session=True)
         try:
-            child = int(process.stdout.readline())
-            stop_generator_group(process)
-            state = subprocess.run(['ps','-p',str(child),'-o','stat='], capture_output=True, text=True)
-            self.assertTrue(state.returncode != 0 or state.stdout.strip().startswith('Z'))
+            with patch('run_capacity_remote.os.killpg') as signal_group:
+                with self.assertRaisesRegex(RuntimeError, '^generator_registry_required$'):
+                    stop_generator_group(process)
+                signal_group.assert_not_called()
+            self.assertIsNone(process.poll())
         finally:
-            stop_generator_group(process)
-            process.stdout.close()
+            # This direct child retains its Popen identity; it is not a saved
+            # group discovered by walking the process tree.
+            process.terminate(); process.wait(timeout=5)
+        with patch('run_capacity_remote.os.killpg') as signal_group:
+            with self.assertRaisesRegex(RuntimeError, '^generator_registry_required$'):
+                stop_generator_group(process)
+            signal_group.assert_not_called()
 
     @unittest.skipUnless(os.name == 'posix', 'POSIX SSH process-group contract')
     def test_normal_target_exit_does_not_wait_for_controller_eof(self):

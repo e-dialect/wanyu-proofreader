@@ -24,6 +24,7 @@ from capacity_remote_contract import (VERSION, MAX_LINE, ARTIFACTS, canonical_ha
     host_identity, validate_budget, validate_init, evaluate_evidence, same_source, observation_seconds, strict_json_loads,
     CapacityFailure, failure_from_frame, safe_failure, valid_fault_evidence)
 from capacity_target import stop_process
+from capacity_process_ownership import ProcessRegistry
 
 
 def transport_environment(ssh=False):
@@ -35,41 +36,19 @@ def transport_environment(ssh=False):
     return env
 
 
-def stop_generator_group(process):
-    """Stop inherited and Playwright-detached descendants before idle sampling."""
-    groups = {process.pid}
+def stop_generator_group(process, registry=None):
+    """Stop only processes launched under this run's ownership registry."""
+    if registry is None:
+        # A process-tree/PGID snapshot is not durable ownership evidence. Never
+        # fall back to signalling discovered groups, even if the parent lives.
+        raise RuntimeError('generator_registry_required')
+    # An unreaped live Popen child retains its PID. Do not signal its group
+    # after exit: detached groups have their own stable guardian receipts.
     if process.poll() is None:
-        try:
-            rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,pgid=,stat='], text=True, timeout=2).splitlines()
-            records = [row.split() for row in rows if row.split()]
-            descendants = {process.pid}
-            while True:
-                found = {int(r[0]) for r in records if int(r[1]) in descendants}
-                if found <= descendants: break
-                descendants.update(found)
-            # Playwright's browser launcher starts a separate process group.
-            # Only groups whose leader is a proven descendant can be signaled.
-            groups.update(int(r[2]) for r in records if int(r[0]) in descendants and int(r[2]) in descendants)
-        except (OSError, subprocess.SubprocessError, ValueError):
-            try: os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError: pass
-            stop_process(process)
-            raise RuntimeError('generator_descendants_unobservable') from None
-    for group in groups:
-        try: os.killpg(group, signal.SIGTERM)
+        try: os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError: pass
-    stop_process(process)
-    for attempt in range(40):
-        rows = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=2).splitlines()
-        live = [r.split() for r in rows if r.split() and int(r.split()[0]) in groups and not r.split()[1].startswith(('Z', 'X'))]
-        if not live:
-            return
-        if attempt == 10:
-            for group in groups:
-                try: os.killpg(group, signal.SIGKILL)
-                except ProcessLookupError: pass
-        time.sleep(.1)
-    raise RuntimeError('generator_group_cleanup_unconfirmed')
+        stop_process(process)
+    registry.stop()
 
 
 class Transport:
@@ -180,7 +159,7 @@ def run_once(args, output, source, budget):
         transport = Transport(command, output)
     except (Exception, KeyboardInterrupt) as error:
         raise safe_failure('connect', error) from None
-    tunnel, processes = None, []
+    tunnel, processes, registry = None, [], None
     result = None
     phase = 'prepare'
     try:
@@ -228,20 +207,32 @@ def run_once(args, output, source, budget):
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             with os.fdopen(fd, 'w') as file: json.dump(config, file)
             env = {**clean_environment(), 'CAPACITY_FIXTURE': str(path)}
+            registry = ProcessRegistry(Path(temporary).resolve()/'owned-processes', create=True)
+            env.update(CAPACITY_PROCESS_REGISTRY=str(registry.root), CAPACITY_GUARDIAN_PYTHON=sys.executable)
             for key in ('NODE_PATH', 'BROWSER_CHANNEL', 'PLAYWRIGHT_BROWSERS_PATH'):
                 if key in os.environ: env[key] = os.environ[key]
-            for script in ('capacity_scenarios.mjs', 'capacity_browser.cjs'):
-                processes.append(subprocess.Popen(['node', str(harness.BACKEND/'tests'/script)], env=env,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
-            codes = []
-            deadline = time.monotonic()+args.duration+120
-            for process in processes:
-                try: codes.append(process.wait(timeout=max(1, deadline-time.monotonic())))
-                except subprocess.TimeoutExpired:
-                    stop_generator_group(process)
-                    codes.append(124)
-            for process in processes:
-                stop_generator_group(process)
+            try:
+                for script in ('capacity_scenarios.mjs', 'capacity_browser.cjs'):
+                    processes.append(subprocess.Popen(['node', '--require', str(harness.BACKEND/'tests/capacity_owned_spawn.cjs'),
+                        str(harness.BACKEND/'tests'/script)], env=env,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
+                codes = []
+                deadline = time.monotonic()+args.duration+120
+                for process in processes:
+                    try: codes.append(process.wait(timeout=max(1, deadline-time.monotonic())))
+                    except subprocess.TimeoutExpired:
+                        stop_generator_group(process, registry)
+                        codes.append(124)
+            finally:
+                # Keep the private registry alive through cleanup, including
+                # exceptions while launching the second generator or waiting.
+                errors = []
+                for process in processes:
+                    try: stop_generator_group(process, registry)
+                    except (Exception, KeyboardInterrupt) as error: errors.append(error)
+                processes.clear()
+                if errors:
+                    raise safe_failure('cleanup', errors[0]) from None
         http = capacity_report.lines(output/'requests.jsonl')+capacity_report.lines(output/'browser-http.jsonl')
         submissions = [row for row in http if row.get('operation') == 'submit' and row.get('status') == 200 and row.get('ok')]
         phase = 'observation'
@@ -279,7 +270,7 @@ def run_once(args, output, source, budget):
         try:
             try:
                 for process in processes:
-                    stop_generator_group(process)
+                    stop_generator_group(process, registry)
             finally:
                 stop_process(tunnel)
                 code = transport.close()
