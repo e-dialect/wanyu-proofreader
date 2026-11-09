@@ -1,0 +1,31 @@
+{
+  "status": "pass",
+  "synthetic": true,
+  "source_commit": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "image_id": "sha256:3646f7aba7fe4c696fdee8c96d02507df136a2962b5095d28fcd9f7fbb42c93d",
+  "script_sha256": "ac3686225776b23d7948d6a36992ce81e8409c2437ebc38cbf5dc8c3a597e64a",
+  "gates": {
+    "exact_image_identity": "pass",
+    "isolation": "pass",
+    "original_binding_matches_identity": "pass",
+    "native_email_password_change": "pass",
+    "native_change_retains_identity": "pass",
+    "old_bootstrap_credentials_rejected": "pass",
+    "old_password_not_reapplied": "pass",
+    "renamed_identity_and_password_preserved": "pass",
+    "superuser_count_unchanged": "pass",
+    "durable_binding_unchanged": "pass",
+    "no_credential_output": "pass",
+    "binary_commit_matches_image": "pass",
+    "cleanup": "pass"
+  },
+  "superusers_before": 1,
+  "superusers_after": 1,
+  "binary_commit": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "old_environment_retained": true,
+  "cleanup": {
+    "owned_remaining_containers": 0,
+    "owned_remaining_volumes": 0
+  },
+  "elapsed_seconds": 25.52473781700246
+}

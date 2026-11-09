@@ -20,13 +20,63 @@ from capacity_resources import ResourceSampler
 from capacity_remote_contract import valid_fault_evidence
 
 
+FIXTURE_GROUPS = ('complete', 'arbitration', 'single', 'pending')
+FIXTURE_STATUS_GROUP = {
+    'approved': 'complete', 'proofread': 'complete', 'arbitration': 'arbitration',
+    'proofreading': 'single', 'pending': 'pending',
+}
+
+
+def fixture_quota_plan(entries, seed_counts):
+    """Preserve the old cumulative <50%/<70%/<85% rounding, including seeds."""
+    if type(entries) is not int or not 20 <= entries <= 20000:
+        raise ValueError('fixture entries must be an integer in 20..20000')
+    if set(seed_counts) - set(FIXTURE_GROUPS):
+        raise ValueError('unsupported fixture seed group')
+    # index < entries * ratio selected ceil(entries * ratio) rows in the old
+    # generator. Integer arithmetic keeps that behavior without float drift.
+    a, b, c = ((entries * numerator + denominator - 1) // denominator
+               for numerator, denominator in ((1, 2), (7, 10), (17, 20)))
+    targets = dict(zip(FIXTURE_GROUPS, (a, b-a, c-b, entries-c)))
+    for group in FIXTURE_GROUPS:
+        count = seed_counts.get(group, 0)
+        if type(count) is not int or count < 0 or count > targets[group]:
+            raise ValueError('fixture seed count exceeds or invalidates ' + group + ' quota')
+    return targets, {group: targets[group] - seed_counts.get(group, 0) for group in FIXTURE_GROUPS}
+
+
+def fixture_seed_group(page, proofreads, has_lease):
+    """Only supported, internally consistent seed states consume a quota."""
+    group = FIXTURE_STATUS_GROUP.get(page['status'])
+    if group is None:
+        raise ValueError('unsupported fixture seed status: ' + str(page['status']))
+    if group == 'single' and (proofreads != 1 or page.get('proofread_count') != 1):
+        raise ValueError('single fixture seed must have exactly one current-round proofread')
+    if group == 'pending' and (proofreads != 0 or page.get('proofread_count') != 0 or has_lease or
+                               any(page.get(key) for key in ('proofreader', 'lease_token_hash', 'lease_expires_at'))):
+        raise ValueError('pending fixture seed must have zero current-round proofreads and no lease')
+    return group
+
+
 def clone_fixture(db, project, entries, pdf_file=None):
     """Clone actual workflow templates offline, preserving attempt/event references."""
     with closing(sqlite3.connect(db)) as sql, sql:
         sql.row_factory = sqlite3.Row
         pages = [dict(r) for r in sql.execute('SELECT * FROM pages WHERE project=? ORDER BY page_number', (project,))]
-        complete = next(p for p in pages if p['status'] in ('approved','proofread'))
-        arbitration = next(p for p in pages if p['status']=='arbitration')
+        proofread_counts = {(row[0], row[1]): row[2] for row in sql.execute(
+            "SELECT page,round,COUNT(*) FROM proofreading_attempts WHERE project=? AND kind='proofread' GROUP BY page,round", (project,))}
+        leased = {row[0] for row in sql.execute(
+            'SELECT page FROM task_leases WHERE page IN (SELECT id FROM pages WHERE project=?)', (project,))}
+        seed_counts = dict.fromkeys(FIXTURE_GROUPS, 0)
+        for page in pages:
+            group = fixture_seed_group(page, proofread_counts.get((page['id'], page.get('proofread_round') or 1), 0), page['id'] in leased)
+            seed_counts[group] += 1
+        targets, additions = fixture_quota_plan(entries, seed_counts)
+        complete = next((p for p in pages if p['status']=='approved'), None)
+        complete = complete or next((p for p in pages if p['status']=='proofread'), None)
+        arbitration = next((p for p in pages if p['status']=='arbitration'), None)
+        if complete is None or arbitration is None:
+            raise ValueError('fixture requires real complete and arbitration seed templates')
         templates = {}
         for kind, page in [('complete',complete),('arbitration',arbitration)]:
             attempts = [dict(r) for r in sql.execute('SELECT * FROM proofreading_attempts WHERE page=?',(page['id'],))]
@@ -34,12 +84,21 @@ def clone_fixture(db, project, entries, pdf_file=None):
             templates[kind]=(page,attempts,events)
         def insert(table,row):
             sql.execute(f'INSERT INTO {table} ({",".join(row)}) VALUES ({",".join("?" for _ in row)})',tuple(row.values()))
-        entries_to_add = max(0, entries - len(pages))
-        for index in range(entries_to_add):
-            kind='complete' if index<entries*.5 else 'arbitration' if index<entries*.7 else 'single' if index<entries*.85 else 'pending'
+        entries_to_add = sum(additions.values())
+        start_number = max(1000, max(p['page_number'] for p in pages) + 1)
+        current_round = arbitration.get('proofread_round') or 1
+        single_attempts = [a for a in templates['arbitration'][1]
+                           if a['kind']=='proofread' and a['round']==current_round]
+        single_attempts.sort(key=lambda a: (a['pass_no'], a['id']))
+        if additions['single'] and not single_attempts:
+            raise ValueError('arbitration template has no current-round proofread for single clones')
+        if any(len(attempts)>4 or len(events)>100 for _,attempts,events in templates.values()):
+            raise ValueError('fixture template exceeds the reserved clone identifier budget')
+        kinds = (group for group in FIXTURE_GROUPS for _ in range(additions[group]))
+        for index, kind in enumerate(kinds):
             page,attempts,events=templates['complete' if kind=='complete' else 'arbitration']
             pageid=f'mat{index:012d}';mapping={page['id']:pageid}
-            chosen=attempts if kind in ('complete','arbitration') else [a for a in attempts if a['kind']=='proofread'][:1] if kind=='single' else []
+            chosen=attempts if kind in ('complete','arbitration') else single_attempts[:1] if kind=='single' else []
             for n,a in enumerate(chosen): mapping[a['id']]=f'maa{index*4+n:012d}'
             for n,e in enumerate(events): mapping[e['id']]=f'mae{index*100+n:012d}'
             def mapped(record):
@@ -49,7 +108,7 @@ def clone_fixture(db, project, entries, pdf_file=None):
                         for old,new in mapping.items():value=value.replace(old,new)
                     result[key]=value
                 return result
-            record=mapped(page);record['page_number']=1000+index
+            record=mapped(page);record['page_number']=start_number+index
             if pdf_file is not None:
                 record['project_file']=pdf_file
                 record['pdf_page']=index % 200 + 1
@@ -63,9 +122,21 @@ def clone_fixture(db, project, entries, pdf_file=None):
             for event in events:
                 if kind in ('complete','arbitration') or (event['kind'] in ('field_action','submission') and event['ref'] in chosen_ids):
                     insert('verification_events',mapped(event))
+        counts = dict(sql.execute('SELECT status,COUNT(*) FROM pages WHERE project=? GROUP BY status', (project,)).fetchall())
+        groups = dict.fromkeys(FIXTURE_GROUPS, 0)
+        for status, count in counts.items():
+            if status not in FIXTURE_STATUS_GROUP:
+                raise ValueError('generated fixture has an unsupported status')
+            groups[FIXTURE_STATUS_GROUP[status]] += count
+        if groups != targets or sum(counts.values()) != entries:
+            raise ValueError('generated fixture does not match the complete target distribution')
         integrity=sql.execute('PRAGMA integrity_check').fetchone()[0]
-        assert integrity=='ok'
-        return {'entries_added':entries_to_add,'integrity':integrity,'counts':dict(sql.execute('SELECT status,COUNT(*) FROM pages WHERE project=? GROUP BY status',(project,)).fetchall()),'method':'offline cloning of real HTTP workflow templates; bulk setup is not submission throughput'}
+        if integrity != 'ok':
+            raise ValueError('generated fixture failed SQLite integrity check')
+        return {'entries_added':entries_to_add,'integrity':integrity,'counts':counts,
+                'target_groups':targets,'seed_groups':seed_counts,'groups':groups,
+                'method':'offline cloning of real HTTP workflow templates; bulk setup is not submission throughput'}
+
 
 
 def snapshot_counts(db, project):
