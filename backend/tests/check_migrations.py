@@ -22,6 +22,22 @@ SPECS = {
     '1794204600_import_inspection_budget.js': {
         'fields': ('import_jobs', {'inspection_json': {'max': 524288}}),
     },
+    '1794204700_assist_publications.js': {
+        'objects': [('table', name) for name in ['assist_publications', '_assist_finding_retirements', '_assist_page_derivations', '_assist_basis_epochs']] + [('trigger', '_assist_epoch_' + table + '_' + action) for table in ['projects', 'pages', 'project_files', 'import_jobs', 'verification_policies', 'project_keyboards', 'finding_dismissals', 'keyboards', 'sources', 'source_usages', 'findings', 'retirement'] for action in ['insert', 'update', 'delete']] + [('trigger', '_assist_epoch_publication')],
+        'indexes': ['idx_assist_single_bulk', 'idx_assist_publications_project', 'idx_assist_publications_cleanup', 'idx_review_findings_publication', 'idx_verification_events_publication', '_assist_retirements_publication'],
+        'collection_indexes': ('assist_publications', 'idx_assist_single_bulk'),
+        'unique_indexes': [('assist_publications', 'idx_assist_single_bulk', ('state',))],
+        'locked_rules': 'assist_publications',
+        'fields': ('assist_publications', {
+            'project': {'required': True, 'max': 15},
+            'state': {'required': True, 'values_contains': 'staging'},
+            'scope': {'required': True, 'values_contains': 'identity'},
+            'basis_json': {'required': True, 'max': 4096},
+            'expected_retirements': {'required': False},
+        }),
+        'plans': [('_assist_finding_retirements', 'SELECT publication FROM _assist_finding_retirements WHERE finding=?', ('f',), 'PRIMARY KEY'),
+                  ('_assist_page_derivations', 'SELECT difficulty_tier FROM _assist_page_derivations WHERE publication=? AND page=?', ('p','e'), 'PRIMARY KEY')],
+    },
     '1794204500_bootstrap_bindings.js': {
         'objects': [('table', 'bootstrap_bindings')],
         'indexes': ['idx_bootstrap_identity'],
