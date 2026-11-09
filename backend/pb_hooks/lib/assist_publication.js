@@ -74,6 +74,15 @@ function stageDerivations(tx, publication, rows) {
   })
   tx.db().newQuery(`INSERT INTO _assist_page_derivations(publication,page,difficulty_tier,difficulty_basis_json,difficulty_version,entry_identity_key) VALUES ${values.join(',')}`).bind(params).execute()
 }
+function derivationUpdateSQL(scope) {
+  // Only these four derived fields may bypass model Save. Human source/content,
+  // consensus, permission and judgment columns are never assigned here.
+  const fields = scope === 'identity' ? ['entry_identity_key'] : ['difficulty_tier', 'difficulty_basis_json', 'difficulty_version']
+  const expr = field => `COALESCE(d.${field},p.${field})`
+  return `UPDATE pages AS p SET ${fields.map(field => `${field}=${expr(field)}`).join(',')},updated=strftime('%Y-%m-%d %H:%M:%fZ','now')
+    FROM _assist_page_derivations d WHERE d.publication={:publication} AND d.page=p.id AND p.project={:project}
+      AND (${fields.map(field => `p.${field} IS NOT ${expr(field)}`).join(' OR ')})`
+}
 function publish(tx, publication, prepared, authorize, metrics) {
   // Millisecond-resolution, pre-COMMIT SQL segments. A measured 0 is retained,
   // not interpreted as missing; transaction().phases.final includes COMMIT.
@@ -105,13 +114,7 @@ function publish(tx, publication, prepared, authorize, metrics) {
     SELECT f.id,{:publication},{:retired_at} FROM review_findings f WHERE ${scope.join(' AND ')} AND ${currentSQL('f')}`).bind(params).execute()
   const superseded = count(tx, 'SELECT COUNT(*) AS total FROM _assist_finding_retirements WHERE publication={:publication}', params)
   step('retirement')
-  // Only these four derived fields may bypass model Save. Human source/content,
-  // consensus, permission and judgment columns are never assigned here.
-  const fields = publication.getString('scope') === 'identity' ? ['entry_identity_key'] : ['difficulty_tier', 'difficulty_basis_json', 'difficulty_version']
-  const expr = field => `COALESCE((SELECT d.${field} FROM _assist_page_derivations d WHERE d.publication={:publication} AND d.page=pages.id),pages.${field})`
-  tx.db().newQuery(`UPDATE pages SET ${fields.map(field => `${field}=${expr(field)}`).join(',')},updated=strftime('%Y-%m-%d %H:%M:%fZ','now')
-    WHERE project={:project} AND EXISTS(SELECT 1 FROM _assist_page_derivations d WHERE d.publication={:publication} AND d.page=pages.id)
-      AND (${fields.map(field => `pages.${field} IS NOT ${expr(field)}`).join(' OR ')})`).bind(params).execute()
+  if (prepared.derivations.length) tx.db().newQuery(derivationUpdateSQL(publication.getString('scope'))).bind(params).execute()
   step('derived_pages')
   current.set('state', 'published')
   current.set('published_at', params.retired_at)
@@ -192,4 +195,4 @@ function cleanup(dao, now = Date.now()) {
     (SELECT d.publication,d.page FROM _assist_page_derivations d JOIN assist_publications p ON p.id=d.publication WHERE p.state='aborted' LIMIT ${STAGE_CHUNK})`).execute())
   return removed
 }
-module.exports = { STAGE_CHUNK, STAGE_BYTES, stageSlice, basis, conflict, execute, cleanup, authorizeRequest }
+module.exports = { derivationUpdateSQL, STAGE_CHUNK, STAGE_BYTES, stageSlice, basis, conflict, execute, cleanup, authorizeRequest }

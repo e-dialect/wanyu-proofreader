@@ -687,3 +687,85 @@ func TestAssistRuleBudgetStopsBeforeWholeResultAllocation(t *testing.T) {
 		t.Fatalf("budget changed successful results or accumulated whole result: %s", value)
 	}
 }
+
+func TestAssistDerivedPublishPreservesNullEmptyAndProjectBoundary(t *testing.T) {
+	app, project, _ := newAssistAtomicFixture(t)
+	rows, err := app.FindRecordsByFilter("pages", "project={:project}", "page_number", 0, 0, dbx.Params{"project": project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, foreign := newAssistVisibilityFixture(t, app)
+	for _, row := range append(rows, foreign) {
+		if _, err = app.DB().NewQuery(`UPDATE pages SET difficulty_tier='B',difficulty_basis_json='{}',difficulty_version='old',entry_identity_key='original',updated='2026-01-01 00:00:00.000Z' WHERE id={:id}`).Bind(dbx.Params{"id": row.Id}).Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = app.DB().NewQuery(`CREATE TABLE _assist_test_page_updates(id TEXT); CREATE TRIGGER _assist_test_update AFTER UPDATE ON pages BEGIN INSERT INTO _assist_test_page_updates VALUES(NEW.id); END`).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"rules", "identity"} {
+		value, err := runAssistScript(app, `JSON.stringify(require(__hooks+"/lib/assist_publication.js").execute(dao,"`+scope+`","`+project+`","",()=>({
+ findings:[],events:[],kinds:["missing_field"],derivations:[
+ {page:"`+rows[0].Id+`",difficulty_tier:null,difficulty_basis_json:null,difficulty_version:"",entry_identity_key:""},
+ {page:"`+rows[1].Id+`",difficulty_tier:"B",difficulty_basis_json:"{}",difficulty_version:"old",entry_identity_key:"original"},
+ {page:"`+foreign.Id+`",difficulty_tier:"C",difficulty_basis_json:"{}",difficulty_version:"wrong",entry_identity_key:"wrong"}],
+ stageSizes:{findings:[],events:[],derivations:[200,200,200]},summary:{}
+})))`)
+		if err != nil {
+			t.Fatalf("%s: %v (%v)", scope, err, value)
+		}
+		first, err := app.FindRecordById("pages", rows[0].Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.GetString("difficulty_tier") != "B" || first.GetString("difficulty_basis_json") != "{}" || first.GetString("difficulty_version") != "" {
+			t.Fatal("NULL fallback or explicit empty version was changed")
+		}
+		if scope == "rules" && first.GetString("entry_identity_key") != "original" {
+			t.Fatal("rules changed identity key")
+		}
+		if scope == "identity" && first.GetString("entry_identity_key") != "" {
+			t.Fatal("identity lost explicit empty key")
+		}
+	}
+	for _, id := range []string{rows[1].Id, foreign.Id} {
+		row, err := app.FindRecordById("pages", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.GetString("difficulty_tier") != "B" || row.GetString("difficulty_version") != "old" || row.GetString("entry_identity_key") != "original" || row.GetString("updated") != "2026-01-01 00:00:00.000Z" {
+			t.Fatalf("unchanged/foreign page was touched: %s", id)
+		}
+	}
+	var changed int
+	if err = app.DB().NewQuery("SELECT COUNT(*) FROM _assist_test_page_updates").Row(&changed); err != nil {
+		t.Fatal(err)
+	}
+	if changed != 2 {
+		t.Fatalf("must update only one actual changed page per scope: %d", changed)
+	}
+}
+
+func TestAssistDerivedPublishUsesSingleJoinPlan(t *testing.T) {
+	app := newAssistVisibilityApp(t)
+	for _, scope := range []string{"rules", "identity"} {
+		value, err := runAssistScript(app, `require(__hooks+"/lib/assist_publication.js").derivationUpdateSQL("`+scope+`")`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []struct {
+			Detail string `db:"detail"`
+		}
+		if err = app.DB().NewQuery("EXPLAIN QUERY PLAN " + value.String()).Bind(dbx.Params{"publication": "synthetic", "project": "synthetic"}).All(&rows); err != nil {
+			t.Fatal(err)
+		}
+		detail := ""
+		for _, row := range rows {
+			detail += row.Detail + "\n"
+		}
+		t.Logf("actual Go SQLite %s derived update plan:\n%s", scope, detail)
+		if strings.Contains(detail, "CORRELATED SCALAR SUBQUERY") || !strings.Contains(detail, "SEARCH d ") || !strings.Contains(detail, "SEARCH p ") {
+			t.Fatal("derived publication must join each staged row once")
+		}
+	}
+}
