@@ -12,6 +12,9 @@ COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 SUITES ?=
 JOBS ?= 4
+# Full PocketBase/Goja fixtures plus actual crash/restart tests can exceed the
+# Go default package timeout under race instrumentation. Keep a bounded budget.
+GO_RACE_TIMEOUT ?= 20m
 # CI diffs against the PR base; a bare `git diff --check` only compares the
 # working tree to the index and is clean right after a checkout.
 BASE ?= $(shell git merge-base upstream/main HEAD 2>/dev/null || git merge-base origin/main HEAD 2>/dev/null || git rev-parse HEAD~1)
@@ -95,7 +98,7 @@ verify-compose:
 test: test-go test-node
 
 test-go:
-	@if [ -n "$(RACE)" ]; then cd $(BACKEND) && go test -race ./...; else cd $(BACKEND) && go test ./...; fi
+	@if [ -n "$(RACE)" ]; then cd $(BACKEND) && go test -race -timeout=$(GO_RACE_TIMEOUT) ./...; else cd $(BACKEND) && go test ./...; fi
 
 test-node:
 	@npm --prefix $(FRONTEND) test
