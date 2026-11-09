@@ -1,0 +1,449 @@
+{
+  "source_commit": "0d27b29d5cb1697ee161b30940f55e96154f677d",
+  "business_source_anchor": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "runtime_source_unchanged_from_anchor": true,
+  "changed_paths_from_anchor": [
+    "backend/tests/run_capacity_baseline.py",
+    "backend/tests/test_capacity_fixture_quotas.py"
+  ],
+  "source_unchanged": "pass",
+  "source_files_digest": "f93ebbe9141cd322142ebab27010ede517f1a363aa864c8100691d800c25de45",
+  "binary_sha256": "5ae2a9eed4c4ecfbb57ce39d2f4158d0c1f9fb985c81f095f08b858b293ac447",
+  "frontend_dist_sha256": "3d3f617f5cec6254a8b47dc1eb39f727d20ed37ef4955b7c116283c19b93beb6",
+  "fixture": {
+    "entries_added": 19998,
+    "integrity": "ok",
+    "counts": {
+      "approved": 10000,
+      "arbitration": 4000,
+      "pending": 3000,
+      "proofreading": 3000
+    },
+    "target_groups": {
+      "complete": 10000,
+      "arbitration": 4000,
+      "single": 3000,
+      "pending": 3000
+    },
+    "seed_groups": {
+      "complete": 1,
+      "arbitration": 1,
+      "single": 0,
+      "pending": 0
+    },
+    "groups": {
+      "complete": 10000,
+      "arbitration": 4000,
+      "single": 3000,
+      "pending": 3000
+    },
+    "method": "offline cloning of real HTTP workflow templates; bulk setup is not submission throughput"
+  },
+  "protocol": {
+    "entries": 20000,
+    "actors": 30,
+    "browser_actors": 2,
+    "duration_seconds": 180,
+    "submit_burst": true,
+    "gomaxprocs": 2,
+    "gomemlimit": "768MiB",
+    "same_host": true,
+    "container_hard_limits": false,
+    "actual_generator_and_target": {
+      "os": "macOS",
+      "logical_cpus": 10,
+      "memory_gib": 64
+    },
+    "target_reference": {
+      "reference_profile": "production_shared",
+      "cpu_cores": 4,
+      "memory_gib": 3.7,
+      "production_is_shared": true
+    },
+    "background": [
+      "200-row CSV import",
+      "1 MiB/s slow export"
+    ],
+    "ocr_workload_included": false
+  },
+  "status": "pass",
+  "full_acceptance": false,
+  "gates": {
+    "mixed_runs": "pass",
+    "three_full_repeats": "incomplete",
+    "reference_hardware": "incomplete",
+    "formal_reference_profile": "pass",
+    "fifteen_minute_faults": "pass",
+    "production_runtime": "pass",
+    "resource_sampling": "pass",
+    "resource_budget": "incomplete",
+    "cooldown_recovery": "incomplete",
+    "separate_generator_host": "incomplete",
+    "source_unchanged": "pass"
+  },
+  "per_run_gates": [
+    {
+      "gate": "synchronized_submit_burst",
+      "status": "pass"
+    },
+    {
+      "gate": "claim",
+      "status": "pass"
+    },
+    {
+      "gate": "submit",
+      "status": "pass"
+    },
+    {
+      "gate": "arbitrate",
+      "status": "pass"
+    },
+    {
+      "gate": "field_summary",
+      "status": "pass"
+    },
+    {
+      "gate": "pdf_descriptor",
+      "status": "pass"
+    },
+    {
+      "gate": "task",
+      "status": "pass"
+    },
+    {
+      "gate": "admin_pages",
+      "status": "pass"
+    },
+    {
+      "gate": "verification",
+      "status": "pass"
+    },
+    {
+      "gate": "hall",
+      "status": "pass"
+    },
+    {
+      "gate": "arbitration_read",
+      "status": "pass"
+    },
+    {
+      "gate": "own_active_tasks",
+      "status": "pass"
+    },
+    {
+      "gate": "own_reviewed_tasks",
+      "status": "pass"
+    },
+    {
+      "gate": "unexpected_http_responses",
+      "status": "pass"
+    },
+    {
+      "gate": "unexpected_5xx_timeout_rate",
+      "status": "pass",
+      "actual": 0.0,
+      "limit": 0.001
+    },
+    {
+      "gate": "two_ui_actors_submit",
+      "status": "pass"
+    },
+    {
+      "gate": "two_ui_actors_read_source",
+      "status": "pass"
+    },
+    {
+      "gate": "submit_ack",
+      "status": "pass"
+    },
+    {
+      "gate": "LCP",
+      "status": "pass"
+    },
+    {
+      "gate": "INP",
+      "status": "pass"
+    },
+    {
+      "gate": "CLS",
+      "status": "pass"
+    },
+    {
+      "gate": "csv",
+      "status": "pass"
+    },
+    {
+      "gate": "slow_export",
+      "status": "pass"
+    },
+    {
+      "gate": "reconciliation",
+      "status": "pass"
+    },
+    {
+      "gate": "generators_exited",
+      "status": "pass"
+    },
+    {
+      "gate": "browser_errors",
+      "status": "pass"
+    }
+  ],
+  "http": [
+    {
+      "operation": "claim",
+      "samples": 961,
+      "p50_ms": 27.88581900000281,
+      "p95_ms": 173.23490699999093,
+      "p99_ms": 373.664,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "submit",
+      "samples": 959,
+      "p50_ms": 57.56742300000042,
+      "p95_ms": 341.7514249999949,
+      "p99_ms": 731.5342930000043,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "arbitrate",
+      "samples": 713,
+      "p50_ms": 156.49381199998606,
+      "p95_ms": 348.7789380000031,
+      "p99_ms": 552.8744630000001,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "field_summary",
+      "samples": 441,
+      "p50_ms": 26.491259000002174,
+      "p95_ms": 90.44811699999264,
+      "p99_ms": 143.2963269999891,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "pdf_descriptor",
+      "samples": 963,
+      "p50_ms": 2.616,
+      "p95_ms": 31.194,
+      "p99_ms": 51.142,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "task",
+      "samples": 963,
+      "p50_ms": 2.715,
+      "p95_ms": 14.483911999996053,
+      "p99_ms": 37.225,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "admin_pages",
+      "samples": 1158,
+      "p50_ms": 10.975539000006393,
+      "p95_ms": 37.78864399999293,
+      "p99_ms": 60.336754000003566,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "verification",
+      "samples": 1680,
+      "p50_ms": 10.284125999984099,
+      "p95_ms": 38.760206999999355,
+      "p99_ms": 56.599,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "hall",
+      "samples": 121,
+      "p50_ms": 128.90816199999972,
+      "p95_ms": 262.4410000000207,
+      "p99_ms": 357.2223820000072,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "arbitration_read",
+      "samples": 717,
+      "p50_ms": 2.9518520000056014,
+      "p95_ms": 19.76150300000154,
+      "p99_ms": 32.794298000007984,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "own_active_tasks",
+      "samples": 331,
+      "p50_ms": 3.973,
+      "p95_ms": 20.901,
+      "p99_ms": 47.464,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "own_reviewed_tasks",
+      "samples": 331,
+      "p50_ms": 109.739,
+      "p95_ms": 285.603,
+      "p99_ms": 355.329,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    }
+  ],
+  "submit_ack": {
+    "operation": "submit_ack",
+    "samples": 327,
+    "p50_ms": 79.42846000001009,
+    "p95_ms": 275.3452709999983,
+    "p99_ms": 377.76790400000755,
+    "p95_limit_ms": 800,
+    "p99_limit_ms": null,
+    "status": "pass"
+  },
+  "source_visible": [
+    {
+      "operation": "source_visible",
+      "samples": 4,
+      "p50_ms": 716.1301589999998,
+      "p95_ms": 895.9907910000038,
+      "p99_ms": 895.9907910000038,
+      "p95_limit_ms": 3000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "cold_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 2,
+      "p50_ms": 116.31370600000082,
+      "p95_ms": 116.79871199998888,
+      "p99_ms": 116.79871199998888,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "hot_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 326,
+      "p50_ms": 288.1097620000073,
+      "p95_ms": 895.9697190000006,
+      "p99_ms": 964.9387739999947,
+      "p95_limit_ms": null,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "unknown"
+    }
+  ],
+  "web_vitals": [
+    {
+      "name": "LCP",
+      "samples": 6,
+      "p95": 736,
+      "limit": 2500,
+      "status": "pass"
+    },
+    {
+      "name": "INP",
+      "samples": 4,
+      "p95": 40,
+      "limit": 200,
+      "status": "pass"
+    },
+    {
+      "name": "CLS",
+      "samples": 6,
+      "p95": 0.09017713366849922,
+      "limit": 0.1,
+      "status": "pass"
+    }
+  ],
+  "generators": [
+    {
+      "kind": "summary.json",
+      "event_loop_p95_ms": 12.042239,
+      "cpu_percent_one_core": 5.746081141003829,
+      "errors": []
+    },
+    {
+      "kind": "browser-generator.json",
+      "event_loop_p95_ms": 12.042239,
+      "cpu_percent_one_core": 9.755182946189157,
+      "errors": []
+    }
+  ],
+  "burst": {
+    "status": "pass",
+    "participants": 24,
+    "prepared": 24,
+    "requests": 24,
+    "dispatch_span_ms": 26.341064453125,
+    "errors": []
+  },
+  "reconciliation": {
+    "integrity": "ok",
+    "duplicate_attempts": 0,
+    "before": {
+      "proofreads": 31000,
+      "submissions": 31000
+    },
+    "after": {
+      "proofreads": 31959,
+      "submissions": 31959
+    },
+    "acknowledged_submissions": 959,
+    "expected_parallel_rows": 200,
+    "actual_parallel_rows": 200,
+    "submission_evidence": {
+      "pass": true,
+      "acknowledged_submissions": 959,
+      "new_actor_attempts_all_projects": 959,
+      "new_submission_events": 959,
+      "matched_request_digests": 959,
+      "errors": [],
+      "scope": "load actors across all projects; exact row digest and submission linkage only"
+    },
+    "pass": true
+  },
+  "sampled_peak_rss_bytes": 364744704,
+  "runtime_dev_modes": [
+    false
+  ],
+  "resource_sampling": {
+    "sample_interval_seconds": 5,
+    "samples": 38,
+    "complete_samples": 38,
+    "sampling_status": "pass",
+    "production_runtime_status": "pass",
+    "resource_budget_status": "incomplete",
+    "cooldown_recovery_status": "incomplete",
+    "separate_generator_host": false,
+    "limitations": [
+      "RSS/WAL/disk/job counts sampled every 5 s; runtime heap and in-memory queue fields come from existing 30 s server samples.",
+      "Resource ceilings and recovery tolerance/dwell time have not been frozen, so measured trends do not manufacture a pass.",
+      "Server, HTTP generator and browser are on the same host. A separate-host remote harness is still required for formal capacity acceptance.",
+      "server_cpu_percent is ps process CPU; it is diagnostic and has no invented acceptance ceiling."
+    ]
+  }
+}

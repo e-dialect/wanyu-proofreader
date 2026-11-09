@@ -1,0 +1,28 @@
+{
+  "source_commit": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "source_clean_before_rehearsal": true,
+  "image_id": "sha256:3646f7aba7fe4c696fdee8c96d02507df136a2962b5095d28fcd9f7fbb42c93d",
+  "os": "linux",
+  "architecture": "amd64",
+  "size_bytes": 118684897,
+  "user": "10001:10001",
+  "entrypoint": null,
+  "cmd": [
+    "/pb/docker-entrypoint.sh"
+  ],
+  "labels": {
+    "org.opencontainers.image.revision": "8de31fa4b9d37184bc7b511a60039090379aac16",
+    "org.opencontainers.image.version": "maturity-local-final"
+  },
+  "build_exit_code": 0,
+  "builder_go_test": "pass",
+  "metadata_assertions": "pass",
+  "source_clean_after_rehearsals": true,
+  "source_commit_after": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "account_recovery_gates": "11/11 pass",
+  "account_recovery_exit_code": 0,
+  "bootstrap_native_change": "pass",
+  "bootstrap_native_change_exit_code": 0,
+  "owned_rehearsal_containers_remaining": 0,
+  "owned_rehearsal_volumes_remaining": 0
+}

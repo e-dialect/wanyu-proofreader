@@ -1,0 +1,212 @@
+{
+  "verified_source_commit": "0d27b29d5cb1697ee161b30940f55e96154f677d",
+  "baseline_main": "6a306ea1f47d4ae666b97ac3c34cd3ff97f670a5",
+  "production_modified": false,
+  "pushed": false,
+  "pull_request_created": false,
+  "deployed": false,
+  "checks": [
+    {
+      "command": "make check",
+      "status": "pass",
+      "source": "0d27b29",
+      "log": "/private/tmp/wanyu-maturity-check-final10.log",
+      "counts": {
+        "frontend": 586,
+        "migration_round_trips": 43,
+        "backend_python": 147,
+        "scripts_python": 168,
+        "ops_python": 24,
+        "suite_inventory": 49,
+        "compose_entrypoints": 6
+      },
+      "backend_go_seconds": null,
+      "note": "Does not include browser acceptance; Python fixture ResourceWarnings remain.",
+      "backend_go_cache": "valid cache from same Go/hooks/migration sources"
+    },
+    {
+      "command": "RACE=1 make test-go",
+      "status": "pass",
+      "source": "0d27b29",
+      "log": "/private/tmp/wanyu-maturity-race-final8.log",
+      "backend_seconds": null,
+      "cached": true,
+      "original_fresh_run": {
+        "source": "8de31fa",
+        "backend_seconds": 506.851,
+        "log": "/private/tmp/wanyu-maturity-race-final7.log"
+      }
+    },
+    {
+      "command": "make test-integration JOBS=2",
+      "status": "pass",
+      "source": "8de31fa",
+      "suites_passed": 41,
+      "suites_total": 41,
+      "log": "/private/tmp/wanyu-maturity-integration-final7.log"
+    },
+    {
+      "command": "GOMAXPROCS=2 go test -C backend -race -run '^TestBootstrapBinding' -count=1 .",
+      "status": "pass",
+      "source": "8de31fa",
+      "seconds": 43.612,
+      "log": "/private/tmp/wanyu-maturity-bootstrap-final.log"
+    },
+    {
+      "command": "python3 backend/tests/run_account_security_integration.py",
+      "status": "pass",
+      "source": "8de31fa",
+      "log": "/private/tmp/wanyu-maturity-account-lifecycle-final3.log",
+      "limitation": "Email change uses native authenticated management API, not actual SMTP."
+    },
+    {
+      "command": "go test -race -tags capacityprobe -run '^TestCapacityProbe' -count=1 ./...",
+      "status": "pass",
+      "source": "8de31fa",
+      "backend_seconds": 3.725,
+      "log": "/private/tmp/wanyu-maturity-probe-final2.log"
+    },
+    {
+      "command": "python3 backend/tests/run_capacity_faults.py --profile full --output output/maturity/faults-exact-final",
+      "status": "pass",
+      "source": "0d27b29",
+      "evidence": "faults-final.json",
+      "log": "/private/tmp/wanyu-maturity-faults-exact-final.log"
+    },
+    {
+      "command": "python3 backend/tests/run_capacity_baseline.py --profile smoke --submit-burst --entries 20000 --users 30 --duration 180 --repeats 1 --reference-profile production_shared --target-cpus 4 --target-memory-gib 3.7 --fault-report output/maturity/faults-exact-final/faults.json --output output/maturity/capacity-exact-final-20k",
+      "environment": {
+        "GOMAXPROCS": "2",
+        "GOMEMLIMIT": "768MiB",
+        "BROWSER_CHANNEL": "msedge",
+        "NODE_PATH": "/private/tmp/wanyu-playwright-runtime/node_modules"
+      },
+      "status": "pass",
+      "source": "0d27b29",
+      "full_acceptance": false,
+      "evidence": "capacity-final.json",
+      "log": "/private/tmp/wanyu-maturity-capacity-exact-final.log"
+    },
+    {
+      "command": "python3 backend/tests/run_restore_business.py --output output/maturity/restore-final3.json",
+      "status": "pass",
+      "source": "8de31fa",
+      "evidence": "restore-final.json",
+      "log": "/private/tmp/wanyu-maturity-restore-final3.log"
+    },
+    {
+      "command": "docker build backend, exact COMMIT=8de31fa4b9d37184bc7b511a60039090379aac16; run_account_recovery_container.py --image <immutable local image ID> --output output/maturity/account-container-final5",
+      "status": "pass",
+      "source": "8de31fa",
+      "evidence": [
+        "backend-image-final.json",
+        "account-recovery-final.json",
+        "bootstrap-final.json"
+      ],
+      "log": "/private/tmp/wanyu-maturity-backend-final.log"
+    },
+    {
+      "command": "python3 backend/tests/run_frontend_quality_browser.py",
+      "status": "pass",
+      "source": "f354550",
+      "log": "/private/tmp/wanyu-maturity-browser-final-all3.log",
+      "limitation": "Full browser suite ran on f354550. git diff f354550..8de31fa -- frontend is empty; final8de also ran real component fault suites and two load browsers. Not a native IME/device/screen-reader signoff.",
+      "scope_note": "Original receipt remains f354550; frontend/dependencies unchanged through 0d27b29. No claim of a fresh full run at final protocol SHA."
+    },
+    {
+      "command": "production frontend image tests: font cache, account HTTP and actual log sentinel",
+      "status": "pass",
+      "source": "f354550",
+      "evidence": "frontend-image.json",
+      "limitation": "Frontend source unchanged at final8de; API 502 in routing check is not an administrative API closure proof.",
+      "scope_note": "Original receipt remains f354550; frontend/dependencies unchanged through 0d27b29. No claim of a fresh full run at final protocol SHA."
+    },
+    {
+      "command": "govulncheck@v1.9.0 ./...",
+      "status": "pass_with_module_advisory",
+      "source": "f354550",
+      "reachable_symbol_vulnerabilities": 0,
+      "imported_package_vulnerabilities": 0,
+      "module_only_advisories": [
+        "GO-2026-5932"
+      ],
+      "limitation": "Affected OpenPGP package is not imported. Go dependencies unchanged since the scan. Not a claim that every module is advisory-free.",
+      "log": "/private/tmp/wanyu-maturity-vuln-final.log",
+      "scope_note": "Original receipt remains f354550; frontend/dependencies unchanged through 0d27b29. No claim of a fresh full run at final protocol SHA."
+    },
+    {
+      "command": "npm audit --omit=dev --json",
+      "status": "pass",
+      "source": "f354550",
+      "runtime_vulnerabilities": 0,
+      "limitation": "Runtime dependencies only; frontend dependencies unchanged at final8de.",
+      "log": "/private/tmp/wanyu-maturity-npm-audit.json",
+      "scope_note": "Original receipt remains f354550; frontend/dependencies unchanged through 0d27b29. No claim of a fresh full run at final protocol SHA."
+    },
+    {
+      "command": "python3 ops/release_preflight.py --build-sha 0d27b29d5cb1697ee161b30940f55e96154f677d --output output/maturity/release-preflight-exact-final.json",
+      "status": "expected_not_ready",
+      "exit_code": 1,
+      "evidence": "release-preflight.json",
+      "limitation": "Missing receipts are not claims that production configuration is absent."
+    }
+  ],
+  "formal_pending": [
+    "separate generator and isolated production-spec target, 4 logical CPUs / 3674 MiB shared with colocated services",
+    "3 x 60 minute reference workload and reviewed hard resource/recovery budgets",
+    "production stack / colocated contention / OCR workload when enabled",
+    "actual SMTP HTTPS receipt and human old/new mail flows",
+    "native IME / iOS / Android / screen reader / native 200 percent zoom",
+    "real independent two-person proofreading and manager same-batch delivery/recipient confirmation",
+    "production-scale whole-directory restore, offsite encryption, latest backup and actual notification receipts",
+    "CODEOWNERS review, remote required checks, immutable CI release artifacts and authorized deployment"
+  ],
+  "business_source_anchor": "8de31fa4b9d37184bc7b511a60039090379aac16",
+  "runtime_source_unchanged_from_anchor": true,
+  "changed_paths_from_anchor": [
+    "backend/tests/run_capacity_baseline.py",
+    "backend/tests/test_capacity_fixture_quotas.py"
+  ],
+  "known_test_skips": [
+    {
+      "scope": "default Go commands",
+      "cases": [
+        "TestTaskPDFBrowserRegression (FANGJI_PDF_RENDER opt-in)",
+        "TestProjectExportScaleEvidence (EXPORT_MEASURE_PATH opt-in)"
+      ],
+      "status": "not_enabled_by_recorded_commands",
+      "note": "Not counted as executed optional evidence. Default non-short TestPreviewStageReport did run."
+    },
+    {
+      "scope": "backend Docker builder Go tests",
+      "cases": [
+        "TestPageImagesWarmRotatedPagesAndInvalidateSource"
+      ],
+      "status": "skipped_if_render_tools_missing",
+      "note": "Builder stage does not install pdftoppm/cwebp. Runtime stage installs them; native validation host has both tools and real load browsers read source images."
+    }
+  ],
+  "historical_capacity_evidence": [
+    "capacity-before-hall-fix.json",
+    "capacity-before-exact-fixture.json"
+  ],
+  "raw_output_directory": "output/maturity/capacity-exact-final-20k",
+  "final_fault_output_directory": "output/maturity/faults-exact-final",
+  "formal_capacity_follow_up": {
+    "status": "deferred",
+    "decided_by": "user",
+    "decision_date": "2026-11-09",
+    "reason_code": "isolated_test_environment_unavailable",
+    "reason": "暂无隔离测试机，正式容量验收保留待办。",
+    "scope": [
+      "separate-host 3 x 60 minute capacity acceptance",
+      "production-reference hardware and colocated workload",
+      "reviewed hard resource and cooldown recovery budgets"
+    ],
+    "resume_condition": "Authorized isolated target and independent generator are available; freeze the actual source SHA and reviewed budgets before execution.",
+    "acceptance_requirement_retained": true,
+    "existing_local_evidence_retained": true,
+    "release_gate_waived": false,
+    "awaiting_user_reply": false
+  }
+}
