@@ -1,0 +1,26 @@
+{
+  "bundle": {
+    "bundle_id": "rb-wanyu-fictional-practice-v1",
+    "schema_version": "ReviewBundle/v0",
+    "created_at": "2026-11-09T00:00:00Z"
+  },
+  "source_system": "wanyu-practice",
+  "source_id": "fictional-training-only",
+  "source_version": "practice-v1",
+  "requested_fields": [
+    "page",
+    "headword",
+    "reading",
+    "note"
+  ],
+  "rights_ref": "practice-wanyu-reviewbundle-v1",
+  "operator": "synthetic-practice-generator",
+  "files": [
+    {
+      "path": "entries.jsonl",
+      "sha256": "d0223de19f92b5ef96c3e00acbc5bb253d51248829994041e5eff421f5da5054",
+      "lines": 3,
+      "bytes": 378
+    }
+  ]
+}

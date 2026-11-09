@@ -132,7 +132,7 @@ func (s *importService) projectInsights(e *core.RequestEvent) error {
 	where += conditions
 
 	var result map[string]any
-	err := s.app.RunInTransaction(func(app core.App) error {
+	err := withReadSnapshot(e.Request.Context(), s.app, func(tx *dbx.Tx) error {
 		overall := struct {
 			Projects    int `db:"projects"`
 			Total       int `db:"total"`
@@ -147,12 +147,12 @@ func (s *importService) projectInsights(e *core.RequestEvent) error {
 		 COALESCE(SUM(active),0) AS active,COALESCE(SUM(collecting),0) AS collecting,
 		 COALESCE(SUM(arbitration),0) AS arbitration,COALESCE(SUM(approved),0) AS approved
 		 FROM project_stats`
-		if err := app.DB().NewQuery(summarySQL).Bind(params).One(&overall); err != nil {
+		if err := tx.NewQuery(summarySQL).WithContext(e.Request.Context()).Bind(params).One(&overall); err != nil {
 			return err
 		}
 
 		var count int
-		if err := app.DB().NewQuery(projectInsightsCTE + "SELECT COUNT(*) FROM project_stats" + where).Bind(params).Row(&count); err != nil {
+		if err := tx.NewQuery(projectInsightsCTE + "SELECT COUNT(*) FROM project_stats" + where).WithContext(e.Request.Context()).Bind(params).Row(&count); err != nil {
 			return err
 		}
 		totalPages := max(1, (count+size-1)/size)
@@ -170,7 +170,7 @@ func (s *importService) projectInsights(e *core.RequestEvent) error {
 			Approved    int    `db:"approved"`
 		}{}
 		listSQL := projectInsightsCTE + fmt.Sprintf("SELECT * FROM project_stats%s ORDER BY arbitration DESC,(total-approved) DESC,name COLLATE NOCASE,id LIMIT %d OFFSET %d", where, size, (page-1)*size)
-		if err := app.DB().NewQuery(listSQL).Bind(params).All(&rows); err != nil {
+		if err := tx.NewQuery(listSQL).WithContext(e.Request.Context()).Bind(params).All(&rows); err != nil {
 			return err
 		}
 		items := []map[string]any{}
@@ -239,33 +239,46 @@ func (s *importService) projectPages(e *core.RequestEvent) error {
 			params[field] = value
 		}
 	}
+	// Resolve schema/query metadata before pinning a reader. The snapshot path
+	// must not borrow a second pool connection when every reader is occupied.
+	app := s.app
+	collection, err := app.FindCollectionByNameOrId("pages")
+	if err != nil {
+		return err
+	}
+	resolver := core.NewRecordFieldResolver(app, collection, nil, true)
+	expr, err := search.FilterData(filter).BuildExpr(resolver, params)
+	if err != nil {
+		return err
+	}
+	countQuery := app.RecordQuery(collection).AndWhere(expr)
+	if err := resolver.UpdateQuery(countQuery); err != nil {
+		return err
+	}
 	var result map[string]any
-	err := s.app.RunInTransaction(func(app core.App) error {
-		collection, err := app.FindCollectionByNameOrId("pages")
-		if err != nil {
-			return err
-		}
-		resolver := core.NewRecordFieldResolver(app, collection, nil, true)
-		expr, err := search.FilterData(filter).BuildExpr(resolver, params)
-		if err != nil {
-			return err
-		}
-		countQuery := app.RecordQuery(collection).AndWhere(expr)
-		if err := resolver.UpdateQuery(countQuery); err != nil {
-			return err
-		}
+	err = withReadSnapshot(e.Request.Context(), s.app, func(tx *dbx.Tx) error {
 		var count int64
-		err = countQuery.Select("COUNT(DISTINCT pages.id)").Row(&count)
+		err = snapshotQuery(e.Request.Context(), tx, countQuery.Select("COUNT(DISTINCT pages.id)").Build()).Row(&count)
 		if err != nil {
 			return err
 		}
 		totalPages := max(1, int(math.Ceil(float64(count)/float64(size))))
 		page = min(page, totalPages)
-		records, err := app.FindRecordsByFilter("pages", filter, "page_number,id", size, (page-1)*size, params)
+		listQuery := app.RecordQuery(collection).AndWhere(expr).OrderBy("pages.page_number", "pages.id").Limit(int64(size)).Offset(int64((page - 1) * size))
+		if err := resolver.UpdateQuery(listQuery); err != nil {
+			return err
+		}
+		records, err := snapshotRecords(e.Request.Context(), tx, collection, listQuery.Build())
 		if err != nil {
 			return err
 		}
-		app.ExpandRecords(records, []string{"proofreader"}, nil)
+		failures := app.ExpandRecords(records, []string{"proofreader"}, func(related *core.Collection, ids []string) ([]*core.Record, error) {
+			query := app.RecordQuery(related).AndWhere(dbx.In(related.Name+".id", toAnyStrings(ids)...))
+			return snapshotRecords(e.Request.Context(), tx, related, query.Build())
+		})
+		for _, failure := range failures {
+			return failure
+		}
 		result = map[string]any{"items": records, "page": page, "perPage": size, "totalItems": count, "totalPages": totalPages}
 		return nil
 	})
@@ -347,7 +360,7 @@ func (s *importService) proofreadingQueues(e *core.RequestEvent) error {
 		params["selectedProject"] = project
 	}
 	var result map[string]any
-	err := s.app.RunInTransaction(func(app core.App) error {
+	err := withReadSnapshot(e.Request.Context(), s.app, func(tx *dbx.Tx) error {
 		summary := struct {
 			Total     int `db:"total"`
 			Filtered  int `db:"filtered"`
@@ -362,7 +375,7 @@ func (s *importService) proofreadingQueues(e *core.RequestEvent) error {
 		summarySQL := queueCTE + `SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN ` + predicate + ` THEN 1 ELSE 0 END),0) AS filtered,
 		 COALESCE(SUM(active_mine>0),0) AS active,COALESCE(SUM(claimable>0),0) AS available,
 		 COALESCE(SUM(completed),0) AS completed,COALESCE(SUM(total),0) AS items FROM queues`
-		if err := app.DB().NewQuery(summarySQL).Bind(params).One(&summary); err != nil {
+		if err := tx.NewQuery(summarySQL).WithContext(e.Request.Context()).Bind(params).One(&summary); err != nil {
 			return err
 		}
 		totalPages := max(1, (summary.Filtered+size-1)/size)
@@ -385,7 +398,7 @@ func (s *importService) proofreadingQueues(e *core.RequestEvent) error {
 			NextKey      string `db:"next_key"`
 		}{}
 		sql := queueCTE + fmt.Sprintf("SELECT * FROM queues WHERE %s ORDER BY active_mine DESC,claimable DESC,name COLLATE NOCASE,id LIMIT %d OFFSET %d", predicate, size, (page-1)*size)
-		if err := app.DB().NewQuery(sql).Bind(params).All(&rows); err != nil {
+		if err := tx.NewQuery(sql).WithContext(e.Request.Context()).Bind(params).All(&rows); err != nil {
 			return err
 		}
 		items := []map[string]any{}

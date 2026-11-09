@@ -7,6 +7,7 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/plugins/jsvm"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	"github.com/pocketbase/pocketbase/tools/osutils"
 )
 
 // Injected by -ldflags; docs/operations.md asks operators to record the build revision.
@@ -19,7 +20,18 @@ var (
 func main() {
 	log.SetOutput(os.Stdout)
 	log.Printf("fangji backend %s (commit %s, built %s)", version, commit, buildDate)
-	app := pocketbase.New()
+	poolConfig, err := databasePoolConfig(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+	writeOperation("info", "database", "db_pool_config", map[string]any{
+		"data_max_open": poolConfig.DataMaxOpenConns, "data_max_idle": poolConfig.DataMaxIdleConns,
+		"aux_max_open": poolConfig.AuxMaxOpenConns, "aux_max_idle": poolConfig.AuxMaxIdleConns,
+		"separate_writer_connections": 2,
+	})
+	// Preserve pocketbase.New() development defaults when invoked with go run.
+	poolConfig.DefaultDev = osutils.IsProbablyGoRun()
+	app := pocketbase.NewWithConfig(poolConfig)
 
 	var hooksDir string
 	app.RootCmd.PersistentFlags().StringVar(&hooksDir, "hooksDir", "", "the directory with the JS app hooks")
@@ -63,6 +75,7 @@ func main() {
 
 	importer := newImportService(app)
 	registerObservability(app, importer)
+	registerCapacityProbe(app)
 	importer.register()
 	importer.registerOCR()
 	importer.registerPDFPreview()

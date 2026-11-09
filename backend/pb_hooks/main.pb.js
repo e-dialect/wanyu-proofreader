@@ -99,7 +99,7 @@ onBootstrap((e) => {
     record.set("name", name)
     record.set("role", "platform_admin")
     dao.save(record)
-    console.log("Created initial app admin:", email)
+    console.log("Created initial app admin:", record.id)
   }
 
   const ensureInitialPocketBaseAdmin = () => {
@@ -128,7 +128,7 @@ onBootstrap((e) => {
     admin.setEmail(email)
     admin.setPassword(password)
     dao.save(admin)
-    console.log("Created initial PocketBase admin:", email)
+    console.log("Created initial PocketBase admin:", admin.id)
   }
 
   try {

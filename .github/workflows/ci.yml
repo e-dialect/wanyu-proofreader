@@ -162,7 +162,9 @@ jobs:
       - name: Go unit tests with the race detector
         if: matrix.suite == 'upload_jobs'
         working-directory: backend
-        run: go test -race ./...
+        run: |
+          go test -race ./...
+          go test -race -tags capacityprobe -run '^TestCapacityProbe' ./...
       - name: Integration suite with a race-detected server
         env:
           SUITE: ${{ matrix.suite }}

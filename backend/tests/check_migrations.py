@@ -19,6 +19,17 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204200_claim_queue_indexes.js': {
+        'indexes': ['idx_pages_claim_tier_order', 'idx_pages_claim_active'],
+        'collection_indexes': ('pages', 'idx_pages_claim_tier_order'),
+        'plans': [('pages', 'SELECT id FROM pages WHERE project=? AND difficulty_tier=? ORDER BY page_number,id LIMIT 64', ('p','A'), 'idx_pages_claim_tier_order'),
+                  ('pages', 'SELECT id FROM pages WHERE project=? AND proofreader=? AND status=? ORDER BY page_number,id LIMIT 1', ('p','u','proofreading'), 'idx_pages_claim_active')],
+    },
+    '1794204300_own_review_cursor_index.js': {
+        'indexes': ['idx_attempt_own_review_cursor'],
+        'collection_indexes': ('proofreading_attempts', 'idx_attempt_own_review_cursor'),
+        'plans': [('proofreading_attempts', "SELECT p.id,p.page_number,a.submitted_at FROM proofreading_attempts a JOIN pages p ON p.id=a.page AND p.project=a.project WHERE a.proofreader=? AND a.project=? AND a.kind='proofread' AND a.round=COALESCE(NULLIF(p.proofread_round,0),1) ORDER BY p.page_number,p.id", ('u','p'), 'idx_attempt_own_review_cursor')],
+    },
     '1794204100_field_summary_projection.js': {
         'objects': [('table', name) for name in ['_field_audit_contributions', '_field_audit_totals', '_field_audit_projection_meta']] + [('trigger', '_field_audit_' + name) for name in ['contribution_insert', 'contribution_delete', 'attempt_insert', 'attempt_update', 'attempt_delete', 'event_insert', 'event_update', 'event_delete']],
         'plans': [('_field_audit_totals', 'SELECT field_name,submitted_fields FROM _field_audit_totals WHERE project=?', ('p',), 'PRIMARY KEY')],
@@ -171,7 +182,7 @@ SPECS = {
         # 已有的 (project, page_number) 唯一索引，那是正确选择，不是本索引的失败。
         'plans': [('pages',
                    'SELECT id FROM pages WHERE project=? AND difficulty_tier=?',
-                   ('p', 'A'), 'idx_pages_project_tier')],
+                   ('p', 'A'), ('idx_pages_project_tier', 'idx_pages_claim_tier_order'))],
         'collection_indexes': ('pages', 'idx_pages_project_tier'),
     },
     '1789113800_entry_identity.js': {
@@ -439,7 +450,8 @@ def assert_applied(data, migration, problems):
     for table, query, parameters, name in spec.get('plans', []):
         with closing(sqlite3.connect(data / 'data.db')) as db:
             plan = str(db.execute(f'EXPLAIN QUERY PLAN {query}', parameters).fetchall())
-        if name not in plan:
+        alternatives = (name,) if isinstance(name, str) else name
+        if not any(index in plan for index in alternatives):
             problems.append(f'{migration}: {table} query plan does not use {name}: {plan}')
     if spec.get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=True)
