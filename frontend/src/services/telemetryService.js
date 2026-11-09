@@ -21,6 +21,7 @@ export function startTelemetry(router) {
       pageViewId: crypto.randomUUID(),
       buildSha: globalThis.__FANGJI_BUILD_SHA__ || import.meta.env.VITE_BUILD_SHA || 'dev',
       entryRoute,
+      currentRoute: () => router.currentRoute.value.name,
       viewportClass,
       send: (body) => {
         if (!pb.authStore.isValid) return

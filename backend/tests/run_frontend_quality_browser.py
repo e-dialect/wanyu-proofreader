@@ -14,7 +14,7 @@ import time
 import harness
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor', 'repository', 'workbench', 'components'])
+parser.add_argument('--only', nargs='+', choices=['review', 'modal', 'fonts', 'profile', 'pagination', 'unicode', 'members', 'editor', 'repository', 'workbench', 'components', 'delivery'])
 selected = parser.parse_args().only
 ROOT = harness.BACKEND.parent
 FRONTEND = ROOT / 'frontend'
@@ -33,7 +33,8 @@ with harness.temporary_root() as temporary:
                'VITE_DEV_SERVER_PORT': str(port), 'VITE_PB_URL': origin,
                'FANGJI_TEST_DATA_DIR': str(temporary / 'data'), 'FANGJI_DEMO_SUFFIX': 'workbench-browser',
                'SCREENSHOT_DIR': str(output), 'SCREENSHOT_PATH': str(output / 'profile-session.png'),
-               'RARE_BROWSER_FIXTURE': str(temporary / 'rare.json'), 'FONT_ENGINES': 'chromium', 'REPOSITORY_REVIEW_OUTPUT': str(output / 'repository-review')}
+               'RARE_BROWSER_FIXTURE': str(temporary / 'rare.json'), 'FONT_ENGINES': 'chromium', 'REPOSITORY_REVIEW_OUTPUT': str(output / 'repository-review'),
+               'DRAFT_LOGOUT_OUTPUT': str(output / 'draft-logout')}
         with (temporary / 'vite.log').open('w') as log:
             vite = subprocess.Popen(['npm', 'run', 'dev', '--', '--host', '127.0.0.1'], cwd=FRONTEND, env=env, stdout=log, stderr=log)
             try:
@@ -49,13 +50,14 @@ with harness.temporary_root() as temporary:
                     raise RuntimeError('Quality fixture Vite did not start')
                 checks = {
                     'components': ['frontend/tests/browser/reka-controls.cjs', 'frontend/tests/browser/disclosure.cjs', 'frontend/tests/browser/job-observer.cjs'],
-                    'repository': ['frontend/tests/browser/repository-review.cjs', 'frontend/tests/browser/source-fidelity.cjs', 'frontend/tests/browser/normalization-draft.cjs'],
+                    'repository': ['frontend/tests/browser/repository-review.cjs', 'frontend/tests/browser/draft-logout.cjs', 'frontend/tests/browser/source-fidelity.cjs', 'frontend/tests/browser/normalization-draft.cjs'],
                     'review': ['frontend/tests/browser/review.cjs', 'frontend/tests/browser/arbitration-queue.cjs'],
                     'modal': ['frontend/tests/browser/modal.cjs'],
                     'members': ['frontend/tests/browser/member-candidates.cjs'],
                     'editor': ['frontend/tests/browser/font-feedback.cjs', 'frontend/tests/browser/editor-keyboard-flow.cjs', 'frontend/tests/browser/editor-states.cjs', 'frontend/tests/browser/editor-experience.cjs', 'frontend/tests/browser/mobile-field-flow.cjs'],
                     'fonts': ['frontend/scripts/test-rare-fonts.cjs'],
                     'profile': ['frontend/scripts/test-profile-session.cjs'],
+                    'delivery': ['backend/tests/delivery_integration.mjs'],
                     'pagination': ['frontend/scripts/test-pagination.cjs'],
                     'unicode': ['backend/tests/rare_characters_integration.mjs', 'frontend/scripts/test-rare-workflow.cjs'],
                     'workbench': ['frontend/tests/browser/auth-navigation.cjs', 'frontend/tests/browser/discovery.cjs', 'backend/tests/seed_demo.mjs', 'frontend/tests/browser/workbench.cjs', 'frontend/tests/browser/entry-list-experience.cjs', 'frontend/tests/browser/review-bundle.cjs', 'frontend/tests/browser/import-errors.cjs', 'frontend/tests/browser/tone-batch.cjs'],
@@ -65,7 +67,13 @@ with harness.temporary_root() as temporary:
                         continue
                     for script in scripts:
                         print('RUN mounted browser: ' + script, flush=True)
-                        node(script, env)
+                        script_env = env
+                        if name == 'delivery':
+                            script_env = {**env,
+                                'DELIVERY_BROWSER_SCRIPT': str(FRONTEND / 'scripts/test-delivery-workspace.cjs'),
+                                'DELIVERY_BROWSER_FIXTURE': str(temporary / 'delivery-browser.json'),
+                                'DELIVERY_BROWSER_OUTPUT': str(output / 'delivery')}
+                        node(script, script_env)
             finally:
                 vite.terminate()
                 try:

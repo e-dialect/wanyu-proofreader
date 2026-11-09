@@ -433,16 +433,14 @@ func (s *importService) exportProject(c *core.RequestEvent) error {
 	// Release the read snapshot before recording the stream result. A successful
 	// write means server-side completion, never a recipient acknowledgement.
 	_ = tx.Rollback()
-	outcome := "success"
+	metadata := map[string]any{"count": m.ExportedCount, "resource_type": "project_export", "resource_id": projectID}
 	if err != nil {
-		outcome = "failed"
-	}
-	if auditErr := appendSecurityEvent(s.app, c, "export.stream_finished", outcome, auth.Id, "", projectID, map[string]any{"count": m.ExportedCount, "resource_type": "project_export", "resource_id": projectID}); auditErr != nil {
-		writeOperation("error", "security", "security_audit_persist_failed", map[string]any{"request_id": securityRequestID(c), "event_type": "export.stream_finished"})
-	}
-	if err != nil {
+		recordSecurityFailureForProject(s.app, c, "export.stream_finished", "", projectID, metadata)
 		s.app.Logger().Error("project_export_failed", "operator", auth.Id, "project", projectID, "error", err.Error())
 		return nil
+	}
+	if auditErr := appendSecurityEvent(s.app, c, "export.stream_finished", "success", auth.Id, "", projectID, metadata); auditErr != nil {
+		writeOperation("error", "security", "security_audit_persist_failed", map[string]any{"request_id": securityRequestID(c), "event_type": "export.stream_finished"})
 	}
 	s.app.Logger().Info("project_export_completed", "operator", auth.Id, "project", projectID, "count", m.ExportedCount, "bytes", counter.Bytes)
 	return nil

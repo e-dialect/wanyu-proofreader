@@ -50,6 +50,26 @@
         </button></template
       ></AppModal
     >
+    <AppModal :open="logoutOpen" title-id="draft-logout-title" @close="cancelLogout">
+      <h2 id="draft-logout-title">{{ logoutError ? '草稿尚未保存' : '退出前检查本机草稿' }}</h2>
+      <p v-if="logoutError" role="alert">{{ logoutError }}</p>
+      <template v-else>
+        <p>
+          当前账号在此浏览器保留 {{ logoutDraftCount }} 份草稿，其中
+          {{ logoutHistoryCount }} 份为历史版本。
+        </p>
+        <p>本机草稿不等于正式提交。退出会保留这些内容；需要查看或导出时，请前往本机资料。</p>
+      </template>
+      <template #actions>
+        <AppButton variant="secondary" @click="cancelLogout">返回处理</AppButton>
+        <AppButton v-if="!logoutError" variant="secondary" @click="openLocalDrafts"
+          >前往本机资料</AppButton
+        >
+        <AppButton v-if="!logoutError" variant="primary" @click="confirmLogout"
+          >保留草稿并退出</AppButton
+        >
+      </template>
+    </AppModal>
     <AppModal :open="helpOpen" title-id="app-help-title" @close="helpOpen = false">
       <h2 id="app-help-title">开始你的校勘工作</h2>
       <section aria-labelledby="help-proofreader-title">
@@ -108,9 +128,21 @@ import AppNavigation from '@/components/AppNavigation.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import AppModal from '@/components/AppModal.vue'
+import AppButton from '@/components/AppButton.vue'
+import { useDraftLogout } from '@/composables/useDraftLogout'
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const {
+  open: logoutOpen,
+  error: logoutError,
+  draftCount: logoutDraftCount,
+  historyCount: logoutHistoryCount,
+  requestLogout,
+  cancel: cancelLogout,
+  confirmLogout,
+  openLocalData: openLocalDrafts
+} = useDraftLogout({ auth, router })
 const navigationOpen = ref(false)
 const helpOpen = ref(false)
 const accountMenu = ref(null)
@@ -146,9 +178,8 @@ async function replayGuide() {
   await router.push('/tasks/profile?guide=1')
 }
 async function logout() {
-  closeAccountMenu()
-  auth.logout()
-  await router.push('/login')
+  dismissAccountMenu()
+  await requestLogout()
 }
 watch(
   () => route.fullPath,

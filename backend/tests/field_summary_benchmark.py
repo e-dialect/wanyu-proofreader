@@ -20,6 +20,7 @@ import harness
 import field_audit_capacity as audit
 from run_capacity_baseline import clone_fixture
 from test_field_summary_sql import production_sql, index_sql
+from field_summary_projection_benchmark import baseline_migrations
 
 
 def timed_sql(db, query, params, samples):
@@ -55,7 +56,8 @@ def main():
         binary = harness.build_binary(root / 'pocketbase')
         fixture_path = root / 'fixture.json'
         db_path = root / 'data/data.db'
-        with harness.server(binary, root, extra_env={'FIDELITY_BROWSER_FIXTURE': str(fixture_path)}) as env:
+        migrations = baseline_migrations(root)  # isolate SQL; do not maintain the later read model without its index
+        with harness.server(binary, root, migrations=migrations, extra_env={'FIDELITY_BROWSER_FIXTURE': str(fixture_path)}) as env:
             subprocess.run(['node', str(harness.BACKEND / 'tests/source_fidelity_integration.mjs')], env=harness.with_research_notice_preload(env), check=True, stdout=subprocess.DEVNULL)
             fixture = json.loads(fixture_path.read_text())
             fixture['super_token'] = audit.request(env['PB_URL'], '/api/collections/_superusers/auth-with-password', method='POST', body={'identity': env['PB_SUPER_EMAIL'], 'password': env['PB_SUPER_PASSWORD']})['token']
@@ -96,7 +98,7 @@ def main():
             report['legacy_plan'] = [row[3] for row in db.execute('EXPLAIN QUERY PLAN ' + legacy, params)]
             _, report['legacy_sql'] = timed_sql(db, legacy, params, args.samples)
         print('optimized SQL measured; checking actual HTTP', flush=True)
-        with harness.server(binary, root) as env:
+        with harness.server(binary, root, migrations=migrations) as env:
             timings = []
             for _ in range(args.samples):
                 start = time.perf_counter()

@@ -200,3 +200,10 @@ CSV预检展示前20条有效行的只读样本；`preview_locations`与原previ
 原生交付仅接受规则显式指定的单个完整入站Bundle。先验证全项目scope_digest，再按目标入站批次构造完整声明；界面分别展示编选项目范围与本包范围。preflight绑定全部正文/来源/前包的preview_sha256，生成按request_id幂等；同key异体409、成功响应丢失可返回同一包并标replayed。交付链为project/recipient/purpose/import_job。旧包字节和历史previous不改写；待定或范围外只交付标识与理由。人工填核查者不是额外身份认证。
 
 页面性能观测只记录固定业务时点及脱敏时间；原文以实际image load或canvas render完成后的绘制帧记source_visible，不用API结束代替。不会上传恢复链接token、URL/query/hash、输入值或DOM选择器。
+
+
+### 主动退出与运行证据
+
+AppShell 的显式退出先经账户隔离的 draft registry 同步保存编辑器待写入值，再检查当前用户本机草稿；保存失败可返回处理，有草稿可返回、前往本机资料或明确保留后退出。确认绑定当前认证代次，A→B→A不能沿用旧确认。强制401失效、外部撤销和auth-store清除路径不受确认框拦截。AppNavbar当前没有主应用引用，不引入通用全局logout拦截。PDF旧worker异步销毁后再次核对请求代次，过期加载不能新建worker或覆盖新任务。
+
+部署采集器默认60秒采进程/数据库/WAL/磁盘，缓存目录默认300秒只扫元信息；--backup-receipt指向完整备份原子发布的本地receipt.json，--backup-max-age默认24小时。未配置、过期或损坏均明确显示，不等于异地加密、通知或恢复通过。run_restore_business.py沿既有suite验证恢复后原账户、项目、附件、领取、提交、仲裁与导出；本地小型演练结果不能代签生产RTO。

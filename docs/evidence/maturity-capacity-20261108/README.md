@@ -86,3 +86,16 @@ BROWSER_CHANNEL=chrome python3 backend/tests/run_capacity_baseline.py \
 诊断确认：PDF 初次渲染前展示默认 300×150 canvas，随后 stage、加载遮罩、水印一起改为页面实际大小，单次非近期输入位移贡献 **0.07943**。它在连续任务中重复发生，是实际页面跳动。任务大厅进入沉浸编辑器的 shell 位移另有 hadRecentInput=true，Web Vitals 自行处理，没有人为过滤不利样本。
 
 修复把加载遮罩放到固定 PDF 滚动视口，加载/渲染期间不展示尺寸未就绪的 stage，源内容就绪再显示。相同 30 s 工况 CLS p95 **0.1545 → 0.07488**，LCP 1,572 ms，INP 64 ms；该次总体容量仍 fail，不能将局部视觉改善视为正式容量通过。剩余最大单次位移 0.01243 来自提交反馈区，完整产品 CLS 0.1 目标保持不变。
+
+### 资源、回落与分机证据仍是硬性缺口
+
+本地驱动新增 5 s 只读采样：服务端 RSS / CPU、SQLite DB 与 WAL 字节、数据目录字节、剩余磁盘、未完成导入/转换/PDF 作业数。既有服务端 runtime 日志的 heap / 内存队列按其原有 30 s 周期补充，并标注采样年龄。`resources-summary.json` 按预热、升压、稳态、回落及尾部恢复记录首值、末值、峰值和每秒趋势。
+
+采到数值不等于满足资源预算。当前没有已冻结的 RSS/WAL 硬上限、回落恢复容差或持续时间，因此 `resource_budget` 与 `cooldown_recovery` 保持 **incomplete**。服务器与两个负载生成器实际处于同一主机，`separate_generator_host=false`，该正式 gate 也保持 **incomplete**。**当前驱动即使延迟全绿且运行 full 配置，也只能作为本地工程演练，不能得到正式 full acceptance。** 后续需要分机 remote harness、冻结的资源/恢复标准和对应实证；目标配置参数不能代替这些证据。
+
+故障编排不再丢弃子进程输出：各步骤 stdout/stderr 合并保留到受控 0600 `.log`，先删除测试口令和 JWT；报告索引每个日志及退出码。构建失败也保留日志。仲裁的预期 409 在报告中单列冲突次数，只有 2xx 成功响应参与业务延迟；409 不会被当作快速仲裁拉低 p95。400 仍然失败，并仅在本地 `http-errors-controlled.jsonl` 保留实际 code/message，方便核对业务错误语义。
+
+
+资源补充 smoke 的安全摘要见 `smoke-resource-gates/`：8/8 个采样完整、峰值服务端 RSS **435.8 MiB**、187 次成功提交对账一致、CLS 0.07069；总体 **fail**，资源预算/恢复/分机为 **incomplete**，源冻结一致性检查 pass。30 s 工况的 5 s 回落只有一个 RSS 样本，不能由此证明恢复。采到的 WAL 为 200,000,000 bytes；保留该实际值，不人为设置上限使它通过。
+
+源码冻结同时比较 HEAD、工作区 diff 摘要与文件摘要；独立 fault 报告也必须三者一致。摘要清单包含 tracked 和未忽略的 untracked backend、frontend/src 与前端构建清单，不扫描 node_modules/output。扩展摘要范围后另用临时未跟踪源码验证：修改其内容会改变摘要、Go 源码在清单内、依赖/输出目录不进入清单。

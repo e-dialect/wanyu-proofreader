@@ -80,10 +80,32 @@ const pagedSummarySQL = resultsSQL + `, ranked AS (
 SELECT * FROM ranked
 WHERE row_position > MIN({:offset}, CAST((total_items - 1) / {:limit} AS INTEGER) * {:limit})
 ORDER BY row_position LIMIT {:limit}`
+// Derived counters are updated in the same SQLite transaction as each source
+// mutation. The original query remains available for reconciliation and when
+// rolling back/explicitly disabling this disposable read model.
+const projectionSQL = `WITH summary AS (
+ SELECT field_name, submitted_fields, correct_count, incorrect_count,
+        pending_count, withdrawn_count, unrecorded_count
+ FROM _field_audit_totals WHERE project={:project} AND submitted_fields > 0
+)`
+function readModelEnabled(dao) {
+  const table = new DynamicModel({ total: 0 })
+  // A future collection schema rebuild can remove SQLite triggers. Missing
+  // maintenance objects must select the authoritative SQL, never stale totals.
+  dao.db().newQuery(`SELECT COUNT(*) AS total FROM sqlite_master WHERE
+    (type='table' AND name IN ('_field_audit_projection_meta','_field_audit_totals','_field_audit_contributions')) OR
+    (type='trigger' AND name IN ('_field_audit_contribution_insert','_field_audit_contribution_delete',
+      '_field_audit_attempt_insert','_field_audit_attempt_update','_field_audit_attempt_delete',
+      '_field_audit_event_insert','_field_audit_event_update','_field_audit_event_delete'))`).one(table)
+  if (Number(table.total) !== 11) return false
+  const status = new DynamicModel({ enabled: 0 })
+  dao.db().newQuery('SELECT COALESCE(MAX(enabled), 0) AS enabled FROM _field_audit_projection_meta WHERE version=1').one(status)
+  return Number(status.enabled) === 1
+}
 function fieldSummary(dao, project, query) {
   const requested = pagination(query)
   const rows = arrayOf(new DynamicModel({ field_name: "", submitted_fields: 0, correct_count: 0, incorrect_count: 0, pending_count: 0, withdrawn_count: 0, unrecorded_count: 0, total_items: 0, row_position: 0 }))
-  dao.db().newQuery(pagedSummarySQL)
+  dao.db().newQuery(readModelEnabled(dao) ? projectionSQL + pagedSummarySQL.slice(resultsSQL.length) : pagedSummarySQL)
     .bind({ project, limit: requested.perPage, offset: (requested.page - 1) * requested.perPage }).all(rows)
   const info = pageInfo(rows.length ? Number(rows[0].total_items) : 0, requested.page, requested.perPage)
   const legacy = new DynamicModel({ total: 0 })

@@ -81,14 +81,7 @@ func appendSecurityEvent(app core.App, e *core.RequestEvent, kind, outcome, acto
 }
 
 func recordSecurityFailure(app core.App, e *core.RequestEvent, kind, subject string) {
-	// Called only after the business transaction has returned/rolled back.
-	actor := ""
-	if e != nil && e.Auth != nil {
-		actor = e.Auth.Id
-	}
-	if err := appendSecurityEvent(app, e, kind, "failed", actor, subject, "", nil); err != nil {
-		app.Logger().Error("security_audit_persist_failed", "event_type", kind, "request_id", securityRequestID(e))
-	}
+	recordSecurityFailureForProject(app, e, kind, subject, "")
 }
 
 func registerAccountSecurity(app core.App) {
@@ -274,7 +267,8 @@ func registerAccountSecurity(app core.App) {
 		}
 		return err
 	})
-	app.Cron().MustAdd("security-event-retention", "23 * * * *", func() {
+	app.Cron().MustAdd("security-event-retention", "* * * * *", func() {
+		flushSecurityFailureSummary(app)
 		if _, err := cleanupSecurityEvents(app, time.Now()); err != nil {
 			app.Logger().Error("security_retention_failed")
 		}
@@ -370,6 +364,10 @@ func listSecurityEvents(e *core.RequestEvent) error {
 			item["actorId"] = r.GetString("actor_id")
 			item["subjectUserId"] = r.GetString("subject_user_id")
 			item["requestId"] = r.GetString("request_id")
+			item["source"] = r.GetString("source")
+			item["resourceType"] = r.GetString("resource_type")
+			item["resourceId"] = r.GetString("resource_id")
+			item["reasonCode"] = r.GetString("reason_code")
 			var details map[string]any
 			_ = json.Unmarshal([]byte(r.GetString("details")), &details)
 			item["details"] = details
@@ -381,18 +379,30 @@ func listSecurityEvents(e *core.RequestEvent) error {
 }
 
 func cleanupSecurityEvents(app core.App, now time.Time) (int64, error) {
-	result, err := app.DB().NewQuery(`DELETE FROM security_events WHERE id IN (SELECT id FROM security_events WHERE (outcome = 'success' AND created < {:success}) OR (outcome != 'success' AND created < {:failure}) ORDER BY created,id LIMIT 500)`).Bind(dbx.Params{"success": now.UTC().Add(-365 * 24 * time.Hour).Format("2006-01-02 15:04:05.000Z"), "failure": now.UTC().Add(-30 * 24 * time.Hour).Format("2006-01-02 15:04:05.000Z")}).Execute()
-	if err != nil {
-		return 0, err
+	var total int64
+	// Separate bounded autocommit batches prevent a success backlog from
+	// starving failure retention. 500 failures/min exceeds the 10/min budget.
+	for _, batch := range []struct {
+		outcome string
+		age     time.Duration
+	}{{"failed", 30 * 24 * time.Hour}, {"denied", 30 * 24 * time.Hour}, {"success", 365 * 24 * time.Hour}} {
+		result, err := app.DB().NewQuery(`DELETE FROM security_events WHERE id IN (SELECT id FROM security_events WHERE outcome = {:outcome} AND created < {:cutoff} ORDER BY created,id LIMIT {:limit})`).Bind(dbx.Params{"outcome": batch.outcome, "cutoff": now.UTC().Add(-batch.age).Format("2006-01-02 15:04:05.000Z"), "limit": securityRetentionBatchSize}).Execute()
+		if err != nil {
+			return total, err
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return total, err
+		}
+		total += count
 	}
-	return result.RowsAffected()
+	return total, nil
 }
 
 // JS handlers own their success transactions. This outer middleware observes
 // their returned errors only after those transactions have rolled back. Failed
 // audit persistence must not replace the original business error.
 func registerSecurityFailureAudit(app core.App) {
-	limiter := newAccountRateLimiter()
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		e.Router.BindFunc(func(c *core.RequestEvent) error {
 			path, method := c.Request.URL.Path, c.Request.Method
@@ -410,10 +420,8 @@ func registerSecurityFailureAudit(app core.App) {
 				kind = "account.initial_password_changed"
 			}
 			err := c.Next()
-			if err != nil && kind != "" && c.Auth != nil && c.Auth.Collection().Name == "users" && limiter.allow("failure:"+c.Auth.Id, 10, time.Minute) {
-				if auditErr := appendSecurityEvent(c.App, c, kind, "failed", c.Auth.Id, c.Auth.Id, c.Request.PathValue("projectId"), nil); auditErr != nil {
-					c.App.Logger().Error("security_audit_persist_failed", "event_type", kind, "request_id", securityRequestID(c))
-				}
+			if err != nil && kind != "" && c.Auth != nil && c.Auth.Collection().Name == "users" {
+				recordSecurityFailureForProject(c.App, c, kind, c.Auth.Id, c.Request.PathValue("projectId"))
 			}
 			return err
 		})

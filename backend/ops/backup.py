@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verified full-directory backups. Stop the application before invoking."""
 import argparse
+import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -41,6 +42,9 @@ def backup(source, destination, version):
         raise ValueError('Source must exist and destination must not exist')
     if source == destination or source in destination.parents:
         raise ValueError('Backup destination must be outside the data directory')
+    if not isinstance(version, str) or not 1 <= len(version) <= 512 or any(ord(char) < 32 or ord(char) > 126 for char in version):
+        raise ValueError('Version must be a bounded printable image digest or commit')
+    created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     before = inventory(source)
     if not before:
         raise ValueError('Refusing to back up an empty directory')
@@ -55,8 +59,14 @@ def backup(source, destination, version):
         check_databases(stage / 'data')
         # SQLite may manage sidecars even on a read-only connection. Record the
         # delivered copy after validation; never open the live source database.
-        manifest = {'format': 1, 'version': version, 'files': inventory(stage / 'data')}
+        manifest = {'format': 1, 'version': version, 'created_at': created_at, 'files': inventory(stage / 'data')}
         (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+        # This receipt becomes visible only with the atomically published,
+        # hash-verified directory. Restore never trusts it instead of the manifest.
+        receipt = {'format': 1, 'status': 'pass', 'created_at': created_at,
+                   'verified_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                   'version': version, 'files': len(manifest['files'])}
+        (stage / 'receipt.json').write_text(json.dumps(receipt) + '\n')
         stage.rename(destination)
     return len(manifest['files'])
 

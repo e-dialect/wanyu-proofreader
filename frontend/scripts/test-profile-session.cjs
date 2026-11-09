@@ -41,15 +41,36 @@ const { chromium } = require('playwright')
       { backend, auth }
     )
     await page.goto(`${process.env.FRONTEND_URL || 'http://127.0.0.1:5175'}/tasks/profile`)
-    await page.locator('#profile-email').fill(`updated-${suffix}@example.com`)
+    await page.locator('#profile-name').waitFor()
+    assert.equal(
+      await page.locator('#profile-email').count(),
+      0,
+      'email changes use the confirmed account flow'
+    )
+    const beforeFirstSave = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('pocketbase_auth')).token
+    )
+    await page.locator('#profile-name').fill('昵称保存保留会话𢶀')
     await page.getByRole('button', { name: '保存资料' }).click()
     await page.getByRole('status').filter({ hasText: '已' }).waitFor()
+    assert.equal(
+      await page.evaluate(() => JSON.parse(localStorage.getItem('pocketbase_auth')).token),
+      beforeFirstSave
+    )
     await page.reload()
     await page.locator('#profile-name').fill('重载后再次保存𢶀')
+    const beforeSecondSave = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('pocketbase_auth')).token
+    )
     await page.getByRole('button', { name: '保存资料' }).click()
     await page.getByRole('status').filter({ hasText: '已' }).waitFor()
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pocketbase_auth')))
-    assert.notEqual(saved.token, auth.token)
+    assert.equal(
+      saved.token,
+      beforeSecondSave,
+      'nickname updates never issue a new authentication generation'
+    )
+    assert.equal(saved.record.email, email)
     const refresh = await fetch(`${backend}/api/collections/users/auth-refresh`, {
       method: 'POST',
       headers: { Authorization: saved.token }
@@ -61,7 +82,9 @@ const { chromium } = require('playwright')
       path: process.env.SCREENSHOT_PATH || '/tmp/fangji-profile-session.png',
       fullPage: true
     })
-    console.log('PASS: email save, reload, second save and refreshed session in real Chrome')
+    console.log(
+      'PASS: nickname saves preserve request token and email across reload; native refresh remains valid in real Chrome'
+    )
   } finally {
     await browser.close()
   }

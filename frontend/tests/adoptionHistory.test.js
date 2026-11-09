@@ -65,7 +65,8 @@ function fixture(services = {}) {
     `${script}\nreturn {
     resetProject, load, selectBatch, batches, currentId, exceptions, batchEvents, summary,
     historyPage, requestedHistoryPage, historyTotalPages, historyTotalItems,
-    loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError
+    loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError,
+    exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage
   }`
   )(...Object.values(bindings))
   return {
@@ -312,15 +313,85 @@ test('creating a batch keeps note edits made during the request and does not sub
   assert.equal(state.createForm.note, 'new note typed while waiting')
 })
 
-test('an exact decided entry deep link remains visible outside the current exceptions page', async () => {
+test('an exact decided exception deep link remains visible outside the current exceptions page', async () => {
+  const requested = []
   const state = fixture({
-    getAdoptionExceptionByPage: async () => ({
-      entry: { page: 'off-page', pending: false },
-      exception: { page: 'off-page', decision: 'exclude', note: 'retained authority' }
-    })
+    getAdoptionExceptionByPage: async (batch, page) => {
+      requested.push([batch, page])
+      return {
+        entry: { page: 'off-page', pending: false },
+        exception: { page: 'off-page', decision: 'exclude', note: 'retained authority' }
+      }
+    }
   })
-  state.route.query = { batch: 'historical-batch', tab: 'exceptions', entry: 'off-page', page: '1' }
+  state.route.query = {
+    batch: 'historical-batch',
+    tab: 'exceptions',
+    exception: 'off-page',
+    page: '1'
+  }
   await state.reset()
   assert.equal(state.currentId.value, 'historical-batch')
   assert.equal(state.exceptions.value.exceptions[0].note, 'retained authority')
+  assert.deepEqual(requested, [['historical-batch', 'off-page']])
+  assert.equal(state.exceptionQuery.value, 'off-page')
+  assert.match(view, /:open="Boolean\(exceptionQuery\)"/)
+})
+
+test('canonical exception wins over a legacy entry and selects an off-page pending item', async () => {
+  const requested = []
+  const state = fixture({
+    listAdoptionExceptions: async () => ({
+      pending: [{ page: 'on-page', pageNumber: 1 }],
+      exceptions: [],
+      pendingTotal: 26
+    }),
+    getAdoptionExceptionByPage: async (_batch, page) => {
+      requested.push(page)
+      return { entry: { page, pending: true, pageNumber: 26 } }
+    }
+  })
+  state.route.query = {
+    batch: 'batch',
+    tab: 'exceptions',
+    page: '1',
+    exception: 'canonical-target',
+    entry: 'legacy-target'
+  }
+  await state.reset()
+  assert.deepEqual(requested, ['canonical-target'])
+  assert.equal(state.activeExceptionId.value, 'canonical-target')
+  assert.equal(state.visibleExceptions.value[0].page, 'canonical-target')
+  assert.equal(state.exceptions.value.pending.length, 2)
+})
+
+test('legacy entry links still load and navigation emits only canonical exception', async () => {
+  const requested = []
+  const state = fixture({
+    getAdoptionExceptionByPage: async (_batch, page) => {
+      requested.push(page)
+      return { entry: { page, pending: true, pageNumber: 26 } }
+    }
+  })
+  state.route.query = { batch: 'batch', tab: 'exceptions', page: '1', entry: 'legacy-target' }
+  await state.reset()
+  assert.equal(state.activeExceptionId.value, 'legacy-target')
+  await state.changePage(2)
+  assert.equal(state.route.query.page, 2)
+  assert.equal(state.route.query.exception, 'legacy-target')
+  assert.equal(Object.hasOwn(state.route.query, 'entry'), false)
+  assert.equal(state.activeExceptionId.value, 'legacy-target')
+  await state.navigate({ ...state.route.query, entry: 'stale-alias', exception: 'selected-target' })
+  assert.equal(state.route.query.exception, 'selected-target')
+  assert.equal(Object.hasOwn(state.route.query, 'entry'), false)
+  assert.equal(state.activeExceptionId.value, 'selected-target')
+  await state.navigate({ ...state.route.query, decidedPage: 3 })
+  assert.equal(state.route.query.decidedPage, 3)
+  assert.equal(state.route.query.exception, 'selected-target')
+  assert.deepEqual(requested, [
+    'legacy-target',
+    'legacy-target',
+    'selected-target',
+    'selected-target'
+  ])
 })

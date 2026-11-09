@@ -34,6 +34,24 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(report['status'], 'incomplete')
         self.assertEqual(summarize(['{"event":"work_started"}'], since=timestamp('2026-11-08T00:00:00Z'))['status'], 'incomplete')
 
+    def test_resource_peaks_and_missing_backup_do_not_become_success(self):
+        rows = [{'event': 'container_sample', 'database_bytes': 20, 'wal_bytes': 5,
+                 'disk_free_bytes': 900, 'cpu_percent': '123.5%',
+                 'cache_usage': {'directories': {'pdf-preview-cache-v1': {'bytes': 8}}},
+                 'backup': {'status': 'not_configured', 'evidence': 'local_backup_receipt_only'}},
+                {'event': 'container_sample', 'database_bytes': 21, 'wal_bytes': 2, 'disk_free_bytes': 800}]
+        report = summarize(map(json.dumps, rows))
+        self.assertEqual(report['peak_wal_bytes'], 5)
+        self.assertEqual(report['min_disk_free_bytes'], 800)
+        self.assertEqual(report['peak_cpu_percent'], 123.5)
+        self.assertEqual(report['peak_cache_bytes']['pdf-preview-cache-v1'], 8)
+        self.assertEqual(report['backup_evidence_gaps'], 1)
+        self.assertEqual(report['status'], 'incomplete')
+        rows[0]['backup']['status'] = 'current'
+        current = summarize(map(json.dumps, rows))
+        self.assertEqual(current['backup_evidence_gaps'], 0)
+        self.assertEqual(current['status'], 'observed')
+
 
 if __name__ == '__main__':
     unittest.main()

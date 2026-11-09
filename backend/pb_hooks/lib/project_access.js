@@ -10,6 +10,24 @@ function auth(c) {
   return record
 }
 
+// Call as the first operation of a sensitive write transaction. Re-reading
+// only outside the transaction leaves requests queued before revocation able
+// to retain a former role or pick up the next token generation.
+function currentAuth(dao, snapshot) {
+  if (!snapshot) throw new UnauthorizedError("登录状态已失效，请重新登录")
+  let current
+  try { current = dao.findRecordById("users", snapshot.id) } catch {
+    throw new UnauthorizedError("登录状态已变化，请重新登录")
+  }
+  if (current.tokenKey() !== snapshot.tokenKey() ||
+      current.getString("role") !== snapshot.getString("role") ||
+      current.getBool("must_change_password") !== snapshot.getBool("must_change_password")) {
+    throw new UnauthorizedError("登录状态已变化，请重新登录")
+  }
+  if (current.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
+  return current
+}
+
 function assertId(value, label) {
   const id = String(value || "")
   if (!idPattern.test(id)) throw new BadRequestError(`${label || "记录"}ID无效`)
@@ -440,6 +458,7 @@ function deleteProjectSecret(dao, projectId) {
 
 module.exports = {
   auth,
+  currentAuth,
   assertId,
   isPlatformAdmin,
   membership,

@@ -34,6 +34,59 @@ export function jobProgress(kind, snapshot) {
   }
 }
 
+// Stable service-facing view. Server timestamps and business state stay separate
+// from the observer's local receipt time and connection failures.
+export function normalizeJob(kind, snapshot) {
+  if (!snapshot) return null
+  const text = (value) => (typeof value === 'string' && value.trim() ? value : null)
+  const count = (value) => {
+    if (value === null || value === undefined || value === '') return null
+    const number = Number(value)
+    return Number.isFinite(number) && number >= 0 ? number : null
+  }
+  const states = {
+    queued: 'queued',
+    inspecting: 'processing',
+    processing: 'processing',
+    completed: 'completed',
+    completed_with_errors: 'completed_with_errors',
+    failed: 'failed',
+    cancelled: 'cancelled'
+  }
+  const state =
+    kind === 'csv' && snapshot.status === 'validated'
+      ? 'awaiting_confirmation'
+      : kind === 'pdf' && snapshot.status === 'ready'
+        ? 'completed'
+        : states[snapshot.status] || 'unknown'
+  const progress = jobProgress(kind, snapshot)
+  return {
+    id: text(snapshot.id),
+    projectId: text(snapshot.project),
+    kind,
+    state,
+    progress,
+    counts: {
+      processed: progress?.processed ?? null,
+      total: progress?.total ?? null,
+      success: count(snapshot.success_count),
+      failed: count(snapshot.failed_count),
+      skipped: count(snapshot.skipped_count),
+      exact: count(snapshot.exact_count),
+      reviewed: count(snapshot.reviewed_count),
+      ambiguous: count(snapshot.ambiguous_count),
+      unsupported: count(snapshot.unsupported_count),
+      pages: count(snapshot.page_count)
+    },
+    errorCode: text(snapshot.error_code),
+    errorMessage: text(snapshot.error_message),
+    createdAt: text(snapshot.created_at) || text(snapshot.created),
+    startedAt: text(snapshot.started_at),
+    finishedAt: text(snapshot.finished_at),
+    updatedAt: text(snapshot.updated_at) || text(snapshot.updated)
+  }
+}
+
 export function emptyJobObservation() {
   return {
     snapshot: null,
