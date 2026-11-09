@@ -117,7 +117,8 @@ const accountMenu = ref(null)
 const immersive = computed(() => isImmersiveRoute(route))
 const shellArea = computed(() => {
   if (['CreatorGrants', 'GateRules'].includes(route.name)) return '平台管理'
-  if (route.name === 'ProofreaderProfile') return '账户与偏好'
+  if (['ProofreaderProfile', 'AccountSecurity', 'AccountAction'].includes(route.name))
+    return '账户与偏好'
   return (
     { workspace: '工作空间', tasks: '校勘工作', projects: '项目空间', sources: '来源资料' }[
       navigationArea(route)

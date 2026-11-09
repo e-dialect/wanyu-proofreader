@@ -408,6 +408,7 @@ func (s *importService) registerAdoption() {
 		e.Router.DELETE("/api/fangji/adoption-batches/{batchId}", s.deleteAdoptionBatch).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/fangji/adoption-batches/{batchId}/preview", s.previewAdoptionBatch).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/adoption-batches/{batchId}/exceptions", s.listAdoptionExceptions).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/fangji/adoption-batches/{batchId}/exceptions/{pageId}", s.getAdoptionExceptionByPage).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/fangji/adoption-batches/{batchId}/exceptions", s.decideAdoptionException).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/fangji/adoption-batches/{batchId}/confirm", s.confirmAdoptionBatch).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/adoption-batches/{batchId}/manifest", s.exportAdoptionManifest).Bind(apis.RequireAuth("users"))
@@ -418,11 +419,15 @@ func (s *importService) registerAdoption() {
 // loadAdoptionBatch 读批次并校验调用方对该项目有管理权限。批次的 project 是
 // 作用域的唯一来源：路由里的 batchId 不带项目，不能拿路径参数当权限依据。
 func (s *importService) loadAdoptionBatch(c *core.RequestEvent) (*core.Record, *core.Record, *core.Record, error) {
-	record, err := s.app.FindRecordById("adoption_batches", c.Request.PathValue("batchId"))
+	return s.loadAdoptionBatchInApp(s.app, c)
+}
+
+func (s *importService) loadAdoptionBatchInApp(app core.App, c *core.RequestEvent) (*core.Record, *core.Record, *core.Record, error) {
+	record, err := app.FindRecordById("adoption_batches", c.Request.PathValue("batchId"))
 	if err != nil || record == nil {
 		return nil, nil, nil, apis.NewNotFoundError("编选批次不存在。", err)
 	}
-	auth, project, err := s.requireAdoptionManager(c, record.GetString("project"))
+	auth, project, err := requireAdoptionManagerInApp(app, c, record.GetString("project"))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -476,12 +481,13 @@ func adoptionBatchView(record *core.Record) map[string]any {
 			"pending":  pending,
 			"complete": pending == 0,
 		},
-		"reasons":     reasons,
-		"previewedAt": record.GetString("previewed_at"),
-		"createdBy":   record.GetString("created_by"),
-		"confirmedBy": record.GetString("confirmed_by"),
-		"confirmedAt": record.GetString("confirmed_at"),
-		"created":     record.GetString("created"),
+		"reasons":      reasons,
+		"previewedAt":  record.GetString("previewed_at"),
+		"createdBy":    record.GetString("created_by"),
+		"confirmedBy":  record.GetString("confirmed_by"),
+		"confirmedAt":  record.GetString("confirmed_at"),
+		"scope_digest": record.GetString("scope_digest"),
+		"created":      record.GetString("created"),
 	}
 }
 
@@ -637,47 +643,73 @@ func (s *importService) getAdoptionBatch(c *core.RequestEvent) error {
 }
 
 func (s *importService) deleteAdoptionBatch(c *core.RequestEvent) error {
-	record, _, _, err := s.loadAdoptionBatch(c)
+	var result any
+	err := s.app.RunInTransaction(func(app core.App) error {
+		var err error
+		result, err = s.deleteAdoptionBatchInApp(app, c)
+		return err
+	})
 	if err != nil {
 		return err
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (s *importService) deleteAdoptionBatchInApp(app core.App, c *core.RequestEvent) (any, error) {
+	record, _, _, err := s.loadAdoptionBatchInApp(app, c)
+	if err != nil {
+		return nil, err
 	}
 	// 已确认的批次不能删：它是 E 侧交付包的入选依据，删掉等于抹掉曾经的范围声明。
 	// 要重做就再开一批（确认后不占 idx_adoption_batches_open 的位）。
 	if record.GetString("status") == adoptionBatchConfirmed {
-		return apis.NewBadRequestError("已确认的编选批次不能删除；要改范围请新开一批。", nil)
+		return nil, apis.NewBadRequestError("已确认的编选批次不能删除；要改范围请新开一批。", nil)
 	}
-	if err := s.app.Delete(record); err != nil {
-		return apis.NewBadRequestError("删除编选批次失败。", err)
+	if err := app.Delete(record); err != nil {
+		return nil, apis.NewBadRequestError("删除编选批次失败。", err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"id": record.Id, "deleted": true})
+	return map[string]any{"id": record.Id, "deleted": true}, nil
 }
 
 func (s *importService) previewAdoptionBatch(c *core.RequestEvent) error {
-	record, _, _, err := s.loadAdoptionBatch(c)
+	var result any
+	err := s.app.RunInTransaction(func(app core.App) error {
+		var err error
+		result, err = s.previewAdoptionBatchInApp(app, c)
+		return err
+	})
 	if err != nil {
 		return err
 	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (s *importService) previewAdoptionBatchInApp(app core.App, c *core.RequestEvent) (any, error) {
+	record, _, _, err := s.loadAdoptionBatchInApp(app, c)
+	if err != nil {
+		return nil, err
+	}
 	status := record.GetString("status")
 	if status == adoptionBatchConfirmed {
-		return apis.NewBadRequestError("已确认的批次不能再预览；要改范围请新开一批。", nil)
+		return nil, apis.NewBadRequestError("已确认的批次不能再预览；要改范围请新开一批。", nil)
 	}
 	rule, err := parseAdoptionRule(json.RawMessage(record.GetString("rule_json")))
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+		return nil, apis.NewBadRequestError(err.Error(), nil)
 	}
-	computation, err := s.computeAdoption(record.GetString("project"), record.GetString("purpose"), record.Id, rule)
+	computation, err := s.computeAdoption(app, record.GetString("project"), record.GetString("purpose"), record.Id, rule)
 	if err != nil {
-		return apis.NewBadRequestError("计算编选范围失败。", err)
+		return nil, apis.NewBadRequestError("计算编选范围失败。", err)
 	}
 	if err := s.saveAdoptionCounts(record, computation); err != nil {
-		return apis.NewBadRequestError("保存预览结果失败。", err)
+		return nil, apis.NewBadRequestError("保存预览结果失败。", err)
 	}
 	record.Set("status", adoptionBatchPreviewed)
 	record.Set("previewed_at", time.Now().UTC())
-	if err := s.app.Save(record); err != nil {
-		return apis.NewBadRequestError("保存预览结果失败。", err)
+	if err := app.Save(record); err != nil {
+		return nil, apis.NewBadRequestError("保存预览结果失败。", err)
 	}
-	return c.JSON(http.StatusOK, adoptionBatchView(record))
+	return adoptionBatchView(record), nil
 }
 
 func (s *importService) saveAdoptionCounts(record *core.Record, computation adoptionComputation) error {
@@ -695,53 +727,51 @@ func (s *importService) saveAdoptionCounts(record *core.Record, computation adop
 }
 
 func (s *importService) confirmAdoptionBatch(c *core.RequestEvent) error {
-	record, auth, _, err := s.loadAdoptionBatch(c)
+	var result any
+	err := s.app.RunInTransaction(func(app core.App) error {
+		var err error
+		result, err = s.confirmAdoptionBatchInApp(app, c)
+		return err
+	})
 	if err != nil {
 		return err
 	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (s *importService) confirmAdoptionBatchInApp(app core.App, c *core.RequestEvent) (any, error) {
+	record, auth, _, err := s.loadAdoptionBatchInApp(app, c)
+	if err != nil {
+		return nil, err
+	}
 	if record.GetString("status") != adoptionBatchPreviewed {
-		return apis.NewBadRequestError("必须先预览数量再确认本批采用范围。", nil)
+		return nil, apis.NewBadRequestError("必须先预览数量再确认本批采用范围。", nil)
 	}
 	rule, err := parseAdoptionRule(json.RawMessage(record.GetString("rule_json")))
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+		return nil, apis.NewBadRequestError(err.Error(), nil)
 	}
-	computation, err := s.computeAdoption(record.GetString("project"), record.GetString("purpose"), record.Id, rule)
+	computation, err := s.computeAdoption(app, record.GetString("project"), record.GetString("purpose"), record.Id, rule)
 	if err != nil {
-		return apis.NewBadRequestError("计算编选范围失败。", err)
+		return nil, apis.NewBadRequestError("计算编选范围失败。", err)
 	}
 	// 预览之后数据变了：不把新数字悄悄写进「已确认」，而是要求重新预览。否则
 	// 「确认时看到多少」与「确认后库里记着多少」会悄悄不同，D4.2 的诚实性就没了。
 	if drifted := adoptionCountsDrifted(record, computation); drifted != "" {
-		return c.JSON(http.StatusConflict, map[string]any{
-			"message": "预览之后数据变了（" + drifted + "），请重新预览再确认。",
-			"stored": map[string]any{
-				"total":    record.GetInt("total_count"),
-				"selected": record.GetInt("selected_count"),
-				"excluded": record.GetInt("excluded_count"),
-				"pending":  record.GetInt("pending_count"),
-			},
-			"current": map[string]any{
-				"total":    computation.Total,
-				"selected": computation.Selected,
-				"excluded": computation.Excluded,
-				"pending":  computation.Pending,
-			},
-		})
+		return nil, apis.NewApiError(http.StatusConflict, "预览之后数据变了（"+drifted+"），请重新预览再确认。", nil)
 	}
 	if err := s.saveAdoptionCounts(record, computation); err != nil {
-		return apis.NewBadRequestError("保存确认结果失败。", err)
+		return nil, apis.NewBadRequestError("保存确认结果失败。", err)
 	}
 	record.Set("status", adoptionBatchConfirmed)
 	record.Set("confirmed_by", auth.Id)
 	record.Set("confirmed_at", time.Now().UTC())
-	if err := s.app.Save(record); err != nil {
-		return apis.NewBadRequestError("确认编选批次失败。", err)
+	if err := app.Save(record); err != nil {
+		return nil, apis.NewBadRequestError("确认编选批次失败。", err)
 	}
-	return c.JSON(http.StatusOK, adoptionBatchView(record))
+	return adoptionBatchView(record), nil
 }
 
-// adoptionCountsDrifted 返回第一处不一致的说明，空串表示一致。
 func adoptionCountsDrifted(record *core.Record, computation adoptionComputation) string {
 	switch {
 	case record.GetInt("total_count") != computation.Total:
@@ -770,48 +800,89 @@ func (s *importService) listAdoptionExceptions(c *core.RequestEvent) error {
 	if err != nil {
 		return apis.NewBadRequestError(err.Error(), nil)
 	}
-	computation, err := s.computeAdoption(record.GetString("project"), record.GetString("purpose"), record.Id, rule)
+	computation, err := s.computeAdoption(s.app, record.GetString("project"), record.GetString("purpose"), record.Id, rule)
 	if err != nil {
 		return apis.NewBadRequestError("计算编选范围失败。", err)
 	}
-	// 例外候选只列「规则判不了」的那些，且上限 200：D2.4 明确例外不许变成逐条
-	// 审批的后门，把不确定的范围整份倒给管理员正是那种后门。
 	pending := make([]adoptionEntry, 0)
 	for _, entry := range computation.Entries {
-		if !entry.Pending {
-			continue
+		if entry.Pending {
+			pending = append(pending, entry)
 		}
-		if len(pending) == 200 {
-			break
-		}
-		pending = append(pending, entry)
 	}
-	records, err := s.app.FindRecordsByFilter(
-		"adoption_exceptions", "batch = {:batch}", "created", 2000, 0,
-		dbx.Params{"batch": record.Id},
-	)
+	page := pageArgument(c.Request.URL.Query().Get("page"), 1, 1000000)
+	perPage := pageArgument(c.Request.URL.Query().Get("perPage"), 25, 100)
+	totalPages := max(1, (len(pending)+perPage-1)/perPage)
+	page = min(page, totalPages)
+	start := (page - 1) * perPage
+	pending = pending[start:min(start+perPage, len(pending))]
+	decidedTotal, err := s.app.CountRecords("adoption_exceptions", dbx.HashExp{"batch": record.Id})
 	if err != nil {
-		return apis.NewBadRequestError("读取例外失败。", err)
+		return err
+	}
+	decidedPage := pageArgument(c.Request.URL.Query().Get("decidedPage"), 1, 1000000)
+	decidedPages := max(1, (int(decidedTotal)+perPage-1)/perPage)
+	decidedPage = min(decidedPage, decidedPages)
+	records, err := s.app.FindRecordsByFilter("adoption_exceptions", "batch = {:batch}", "created,id", perPage, (decidedPage-1)*perPage, dbx.Params{"batch": record.Id})
+	if err != nil {
+		return err
 	}
 	decided := make([]map[string]any, 0, len(records))
 	for _, item := range records {
 		decided = append(decided, adoptionExceptionView(item))
 	}
-	return c.JSON(http.StatusOK, map[string]any{
-		"exceptions":   decided,
-		"pending":      pending,
-		"pendingTotal": computation.Pending,
-		"reasons":      adoptionReasonCodes(),
-	})
+	return c.JSON(http.StatusOK, map[string]any{"exceptions": decided, "pending": pending, "pendingTotal": computation.Pending, "reasons": adoptionReasonCodes(), "page": page, "perPage": perPage, "totalItems": computation.Pending, "totalPages": totalPages, "decidedPage": decidedPage, "decidedTotal": decidedTotal, "decidedPages": decidedPages})
 }
 
-func (s *importService) decideAdoptionException(c *core.RequestEvent) error {
-	record, auth, project, err := s.loadAdoptionBatch(c)
+func (s *importService) getAdoptionExceptionByPage(c *core.RequestEvent) error {
+	record, _, _, err := s.loadAdoptionBatch(c)
 	if err != nil {
 		return err
 	}
+	rule, err := parseAdoptionRule(json.RawMessage(record.GetString("rule_json")))
+	if err != nil {
+		return err
+	}
+	computation, err := s.computeAdoption(s.app, record.GetString("project"), record.GetString("purpose"), record.Id, rule)
+	if err != nil {
+		return err
+	}
+	for _, entry := range computation.Entries {
+		if entry.PageID == c.Request.PathValue("pageId") {
+			var decision any
+			records, err := s.app.FindRecordsByFilter("adoption_exceptions", "batch = {:batch} && page = {:page}", "", 1, 0, dbx.Params{"batch": record.Id, "page": entry.PageID})
+			if err != nil {
+				return err
+			}
+			if len(records) > 0 {
+				decision = adoptionExceptionView(records[0])
+			}
+			return c.JSON(http.StatusOK, map[string]any{"entry": entry, "exception": decision})
+		}
+	}
+	return apis.NewNotFoundError("条目不在本批范围中。", nil)
+}
+
+func (s *importService) decideAdoptionException(c *core.RequestEvent) error {
+	var result any
+	err := s.app.RunInTransaction(func(app core.App) error {
+		var err error
+		result, err = s.decideAdoptionExceptionInApp(app, c)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (s *importService) decideAdoptionExceptionInApp(app core.App, c *core.RequestEvent) (any, error) {
+	record, auth, project, err := s.loadAdoptionBatchInApp(app, c)
+	if err != nil {
+		return nil, err
+	}
 	if record.GetString("status") == adoptionBatchConfirmed {
-		return apis.NewBadRequestError("已确认的批次不能再改例外；要改范围请新开一批。", nil)
+		return nil, apis.NewBadRequestError("已确认的批次不能再改例外；要改范围请新开一批。", nil)
 	}
 	payload := struct {
 		Page       string `json:"page"`
@@ -820,38 +891,38 @@ func (s *importService) decideAdoptionException(c *core.RequestEvent) error {
 		Note       string `json:"note"`
 	}{}
 	if err := c.BindBody(&payload); err != nil {
-		return apis.NewBadRequestError("请求内容无法解析。", err)
+		return nil, apis.NewBadRequestError("请求内容无法解析。", err)
 	}
 	pageID := strings.TrimSpace(payload.Page)
 	if !looksLikeRecordID(pageID) {
-		return apis.NewBadRequestError("条目标识无效。", nil)
+		return nil, apis.NewBadRequestError("条目标识无效。", nil)
 	}
-	page, err := s.app.FindRecordById("pages", pageID)
+	page, err := app.FindRecordById("pages", pageID)
 	if err != nil || page == nil || page.GetString("project") != project.Id {
-		return apis.NewNotFoundError("条目不存在。", err)
+		return nil, apis.NewNotFoundError("条目不存在。", err)
 	}
 	decision := strings.TrimSpace(payload.Decision)
 	if decision != adoptionDecisionSelect && decision != adoptionDecisionExclude {
-		return apis.NewBadRequestError("例外结论只能是 select 或 exclude。", nil)
+		return nil, apis.NewBadRequestError("例外结论只能是 select 或 exclude。", nil)
 	}
 	reasonCode := strings.TrimSpace(payload.ReasonCode)
 	if decision == adoptionDecisionExclude && !containsStr(adoptionReasonCodes(), reasonCode) {
-		return apis.NewBadRequestError(fmt.Sprintf("排除理由必须是枚举内的取值：%s。", strings.Join(adoptionReasonCodes(), "、")), nil)
+		return nil, apis.NewBadRequestError(fmt.Sprintf("排除理由必须是枚举内的取值：%s。", strings.Join(adoptionReasonCodes(), "、")), nil)
 	}
 	note := strings.TrimSpace(payload.Note)
 	if note == "" {
-		return apis.NewBadRequestError("处理例外必须写明依据。", nil)
+		return nil, apis.NewBadRequestError("处理例外必须写明依据。", nil)
 	}
 	if utf8.RuneCountInString(note) > adoptionNoteMax {
-		return apis.NewBadRequestError(fmt.Sprintf("依据最多 %d 个字符。", adoptionNoteMax), nil)
+		return nil, apis.NewBadRequestError(fmt.Sprintf("依据最多 %d 个字符。", adoptionNoteMax), nil)
 	}
 	rule, err := parseAdoptionRule(json.RawMessage(record.GetString("rule_json")))
 	if err != nil {
-		return apis.NewBadRequestError(err.Error(), nil)
+		return nil, apis.NewBadRequestError(err.Error(), nil)
 	}
-	rows, err := s.adoptionRows(project.Id, record.GetString("purpose"))
+	rows, err := s.adoptionRows(app, project.Id, record.GetString("purpose"))
 	if err != nil {
-		return apis.NewBadRequestError("计算编选范围失败。", err)
+		return nil, apis.NewBadRequestError("计算编选范围失败。", err)
 	}
 	var target *adoptionRow
 	for index := range rows {
@@ -861,23 +932,23 @@ func (s *importService) decideAdoptionException(c *core.RequestEvent) error {
 		}
 	}
 	if target == nil {
-		return apis.NewNotFoundError("条目不在本项目的编选范围里。", nil)
+		return nil, apis.NewNotFoundError("条目不在本项目的编选范围里。", nil)
 	}
 	if !adoptionExceptionCandidate(*target, rule) {
 		_, ruleReason := adoptionRuleVerdict(*target, rule)
-		return apis.NewBadRequestError(fmt.Sprintf("该条目不在本批例外范围内（%s）：状态、质量、阻塞或拼音前置条件未满足，请先修规则或上游数据。", ruleReason), nil)
+		return nil, apis.NewBadRequestError(fmt.Sprintf("该条目不在本批例外范围内（%s）：状态、质量、阻塞或拼音前置条件未满足，请先修规则或上游数据。", ruleReason), nil)
 	}
 	if decision == adoptionDecisionSelect {
 		if rightsReason := adoptionRightsFailure(*target); rightsReason != "" {
-			return apis.NewBadRequestError(fmt.Sprintf("该用途的权利结论不是 allow（%s）。例外说明不能替代授权记录，请先在来源登记中更新用途结论。", rightsReason), nil)
+			return nil, apis.NewBadRequestError(fmt.Sprintf("该用途的权利结论不是 allow（%s）。例外说明不能替代授权记录，请先在来源登记中更新用途结论。", rightsReason), nil)
 		}
 	}
 
-	collection, err := s.app.FindCollectionByNameOrId("adoption_exceptions")
+	collection, err := app.FindCollectionByNameOrId("adoption_exceptions")
 	if err != nil {
-		return apis.NewBadRequestError("例外存储尚未初始化。", err)
+		return nil, apis.NewBadRequestError("例外存储尚未初始化。", err)
 	}
-	existing, findErr := s.app.FindRecordsByFilter(
+	existing, findErr := app.FindRecordsByFilter(
 		"adoption_exceptions",
 		`batch = {:batch} && page = {:page}`,
 		"", 1, 0,
@@ -896,21 +967,21 @@ func (s *importService) decideAdoptionException(c *core.RequestEvent) error {
 	item.Set("note", note)
 	item.Set("decided_by", auth.Id)
 	item.Set("decided_at", time.Now().UTC())
-	if err := s.app.Save(item); err != nil {
-		return apis.NewBadRequestError("保存例外失败。", err)
+	if err := app.Save(item); err != nil {
+		return nil, apis.NewBadRequestError("保存例外失败。", err)
 	}
 	// 例外一变，预览过的数量就过期了：退回 draft，逼调用方重新预览。否则确认时
 	// 会拿一份「例外改动之前」的数量去圈范围，正是 D4.2 要防的那种静默偏差。
 	if record.GetString("status") == adoptionBatchPreviewed {
 		record.Set("status", adoptionBatchDraft)
-		if err := s.app.Save(record); err != nil {
-			return apis.NewBadRequestError("保存例外失败。", err)
+		if err := app.Save(record); err != nil {
+			return nil, apis.NewBadRequestError("保存例外失败。", err)
 		}
 	}
-	return c.JSON(http.StatusOK, map[string]any{
+	return map[string]any{
 		"exception": adoptionExceptionView(item),
 		"batch":     adoptionBatchView(record),
-	})
+	}, nil
 }
 
 func (s *importService) exportAdoptionManifest(c *core.RequestEvent) error {
@@ -936,7 +1007,7 @@ func (s *importService) exportAdoptionManifest(c *core.RequestEvent) error {
 	if err != nil {
 		return apis.NewBadRequestError(err.Error(), nil)
 	}
-	computation, err := s.computeAdoption(project.Id, record.GetString("purpose"), record.Id, rule)
+	computation, err := s.computeAdoption(s.app, project.Id, record.GetString("purpose"), record.Id, rule)
 	if err != nil {
 		return apis.NewBadRequestError("计算编选范围失败。", err)
 	}
@@ -952,13 +1023,14 @@ func (s *importService) exportAdoptionManifest(c *core.RequestEvent) error {
 		"batch":       adoptionBatchView(record),
 		"rule":        rule,
 		"coverage": map[string]any{
-			"project":     project.Id,
-			"purpose":     record.GetString("purpose"),
-			"recipient":   record.GetString("recipient"),
-			"statuses":    rule.Statuses,
-			"importJobs":  rule.ImportJobs,
-			"confirmedBy": record.GetString("confirmed_by"),
-			"confirmedAt": record.GetString("confirmed_at"),
+			"project":      project.Id,
+			"purpose":      record.GetString("purpose"),
+			"recipient":    record.GetString("recipient"),
+			"statuses":     rule.Statuses,
+			"importJobs":   rule.ImportJobs,
+			"confirmedBy":  record.GetString("confirmed_by"),
+			"confirmedAt":  record.GetString("confirmed_at"),
+			"scope_digest": record.GetString("scope_digest"),
 		},
 		"counts": map[string]any{
 			"total":    computation.Total,
@@ -1002,9 +1074,9 @@ func adoptionEntryIncluded(entry adoptionEntry, include string) bool {
 	}
 }
 
-func (s *importService) adoptionExceptions(batchID string) (map[string]adoptionExceptionRecord, error) {
-	records, err := s.app.FindRecordsByFilter(
-		"adoption_exceptions", "batch = {:batch}", "", 2000, 0,
+func (s *importService) adoptionExceptions(app core.App, batchID string) (map[string]adoptionExceptionRecord, error) {
+	records, err := app.FindRecordsByFilter(
+		"adoption_exceptions", "batch = {:batch}", "", 0, 0,
 		dbx.Params{"batch": batchID},
 	)
 	if err != nil {
@@ -1048,9 +1120,9 @@ LEFT JOIN source_usages su
 WHERE p.project = {:project}
 ORDER BY p.page_number, p.id`
 
-func (s *importService) adoptionRows(projectID, purpose string) ([]adoptionRow, error) {
+func (s *importService) adoptionRows(app core.App, projectID, purpose string) ([]adoptionRow, error) {
 	rows := []adoptionRow{}
-	if err := s.app.DB().NewQuery(adoptionRowsSQL).
+	if err := app.DB().NewQuery(adoptionRowsSQL).
 		Bind(dbx.Params{"project": projectID, "purpose": purpose}).
 		All(&rows); err != nil {
 		return nil, err
@@ -1058,12 +1130,12 @@ func (s *importService) adoptionRows(projectID, purpose string) ([]adoptionRow, 
 	return rows, nil
 }
 
-func (s *importService) computeAdoption(projectID, purpose, batchID string, rule adoptionRule) (adoptionComputation, error) {
-	rows, err := s.adoptionRows(projectID, purpose)
+func (s *importService) computeAdoption(app core.App, projectID, purpose, batchID string, rule adoptionRule) (adoptionComputation, error) {
+	rows, err := s.adoptionRows(app, projectID, purpose)
 	if err != nil {
 		return adoptionComputation{}, err
 	}
-	exceptions, err := s.adoptionExceptions(batchID)
+	exceptions, err := s.adoptionExceptions(app, batchID)
 	if err != nil {
 		return adoptionComputation{}, err
 	}

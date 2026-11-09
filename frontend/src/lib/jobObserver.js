@@ -1,5 +1,6 @@
 export const JOB_POLL_ACTIVE_MS = 2000
 export const JOB_POLL_HIDDEN_MS = 15000
+export const JOB_READ_DEADLINE_MS = 10000
 const FAILURE_DELAYS = [2000, 4000, 8000, 15000]
 const FINISHED = new Set(['completed', 'completed_with_errors', 'failed', 'cancelled'])
 
@@ -60,8 +61,11 @@ export function createJobObserverRegistry({
   }
   function cancel(entry) {
     clearTimer(entry.timer)
-    entry.timer = null
+    clearTimer(entry.deadline)
+    entry.timer = entry.deadline = null
     entry.generation++
+    entry.cancelRead?.()
+    entry.cancelRead = null
     entry.controller?.abort()
     entry.controller = null
     entry.request = null
@@ -102,10 +106,21 @@ export function createJobObserverRegistry({
     entry.value.refreshing = true
     if (!entry.value.snapshot) entry.value.state = 'loading'
     emit(entry)
-    const current = () =>
-      !entry.closed && generation === entry.generation && !controller.signal.aborted
-    entry.request = Promise.resolve()
-      .then(() => entry.read({ signal: controller.signal }))
+    // Cancellation always advances the generation. A deadline abort keeps its
+    // generation so the failed read can publish stale feedback and schedule a retry.
+    const current = () => !entry.closed && generation === entry.generation
+    let deadline
+    const timeout = new Promise((_, reject) => {
+      entry.cancelRead = () => reject(new Error('作业状态读取已取消。'))
+      deadline = setTimer(() => {
+        controller.abort()
+        reject(new Error('作业状态读取超时。'))
+      }, JOB_READ_DEADLINE_MS)
+      entry.deadline = deadline
+    })
+    const request = Promise.resolve().then(() => entry.read({ signal: controller.signal }))
+    // Race the transport, rather than relying on it to honor AbortSignal.
+    entry.request = Promise.race([request, timeout])
       .then((snapshot) => {
         if (!current()) return
         if (
@@ -141,8 +156,11 @@ export function createJobObserverRegistry({
         }
       })
       .finally(() => {
+        clearTimer(deadline)
+        if (entry.deadline === deadline) entry.deadline = null
         if (!current()) return
         entry.request = null
+        entry.cancelRead = null
         entry.controller = null
         entry.value.refreshing = false
         emit(entry)
@@ -180,8 +198,10 @@ export function createJobObserverRegistry({
           failures: 0,
           generation: 0,
           controller: null,
+          cancelRead: null,
           request: null,
           timer: null,
+          deadline: null,
           closed: false
         }
         if (initial?.id === identity.jobId && initial?.project === identity.projectId) {

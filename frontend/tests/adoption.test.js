@@ -154,15 +154,13 @@ test('编选页把「不得静默遗漏」写进界面，而不是只留在接�
   assert.doesNotMatch(view, /style="/)
 })
 
-test('切换批次同时刷新例外与事件，并丢弃迟到响应', () => {
+test('批次详情以 URL 和独立 ID 请求恢复，分页历史不决定当前批次', () => {
   const view = read('../src/views/admin/AdoptionView.vue')
-  const start = view.indexOf('async function selectBatch')
-  assert.notEqual(start, -1, 'selectBatch not found')
-  const body = view.slice(start, view.indexOf('\n}\n', start) + 3)
-  assert.match(body, /reloadDetails\(id\)/)
-  assert.match(body, /batchLoadGeneration/)
-  assert.match(body, /EMPTY_EVENTS/)
-  assert.doesNotMatch(body, /loadExceptions\(\)\s*$/)
+  assert.match(view, /function selectBatch\(id\)[\s\S]*?navigate\(\{ batch: id/)
+  assert.match(view, /getAdoptionBatch\(batchId, \{ signal \}\)/)
+  assert.match(view, /const nextId = selectedId/)
+  assert.match(view, /record.project !== projectId.value/)
+  assert.match(view, /WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false"/)
 })
 
 test('路由与项目页入口都指向编选页', () => {
