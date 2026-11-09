@@ -6,6 +6,7 @@ These run without booting a server, so the mutation cases the reviewer asked for
 keep. The round trip itself is verified by running check_migrations.py.
 """
 import importlib.util
+from contextlib import closing
 import json
 import shutil
 import tempfile
@@ -87,7 +88,7 @@ class FieldAssertions(unittest.TestCase):
         """collections: {name: [field dicts]} -> a data.db shaped like PocketBase's."""
         import sqlite3
         path = self.temp / 'data.db'
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             # 一个用例里可能连建两次库（正反两个方向各一份数据），所以先清掉旧表。
             db.execute('DROP TABLE IF EXISTS _collections')
             db.execute('CREATE TABLE _collections (name TEXT PRIMARY KEY, fields TEXT)')
@@ -130,6 +131,49 @@ class FieldAssertions(unittest.TestCase):
         problems = []
         guard._assert_fields(stuck, 'm.js', spec, problems, expect=True)
         self.assertTrue(any('required should be False when applied' in p for p in problems), problems)
+
+
+class InternalCollectionAssertions(unittest.TestCase):
+    def setUp(self):
+        self.temp = Path(tempfile.mkdtemp(prefix='fangji-internal-collection-'))
+        self.addCleanup(shutil.rmtree, self.temp, ignore_errors=True)
+
+    def database(self, rule=None, unique=True, columns='auth_collection,email_sha256'):
+        import sqlite3
+        with closing(sqlite3.connect(self.temp / 'data.db')) as db, db:
+            db.execute('CREATE TABLE _collections (name TEXT, listRule TEXT, viewRule TEXT, createRule TEXT, updateRule TEXT, deleteRule TEXT)')
+            db.execute('INSERT INTO _collections VALUES (?,?,?,?,?,?)', ('bootstrap_bindings', None, None, rule, None, None))
+            db.execute('CREATE TABLE bootstrap_bindings (auth_collection TEXT, email_sha256 TEXT, record_id TEXT)')
+            db.execute(f'CREATE {"UNIQUE " if unique else ""}INDEX idx_bootstrap_identity ON bootstrap_bindings ({columns})')
+
+    def test_native_null_rules_accept_but_open_create_is_rejected(self):
+        self.database()
+        problems = []
+        guard._assert_locked_rules(self.temp, 'binding.js', 'bootstrap_bindings', problems)
+        self.assertEqual(problems, [])
+        import sqlite3
+        with closing(sqlite3.connect(self.temp / 'data.db')) as db, db:
+            db.execute("UPDATE _collections SET createRule=''")
+        guard._assert_locked_rules(self.temp, 'binding.js', 'bootstrap_bindings', problems)
+        self.assertEqual(len(problems), 1)
+
+    def test_same_named_nonunique_index_is_rejected(self):
+        self.database(unique=False)
+        problems = []
+        guard._assert_unique_indexes(self.temp, 'binding.js', [('bootstrap_bindings', 'idx_bootstrap_identity', ('auth_collection', 'email_sha256'))], problems)
+        self.assertEqual(len(problems), 1)
+
+    def test_unique_index_with_wrong_columns_is_rejected(self):
+        self.database(columns='email_sha256')
+        problems = []
+        guard._assert_unique_indexes(self.temp, 'binding.js', [('bootstrap_bindings', 'idx_bootstrap_identity', ('auth_collection', 'email_sha256'))], problems)
+        self.assertEqual(len(problems), 1)
+
+    def test_expected_unique_index_passes(self):
+        self.database()
+        problems = []
+        guard._assert_unique_indexes(self.temp, 'binding.js', [('bootstrap_bindings', 'idx_bootstrap_identity', ('auth_collection', 'email_sha256'))], problems)
+        self.assertEqual(problems, [])
 
 
 if __name__ == '__main__':
