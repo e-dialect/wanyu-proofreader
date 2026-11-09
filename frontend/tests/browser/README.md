@@ -164,3 +164,10 @@ Screenshots and the numeric receipt are in `output/playwright/job-observer/`.
 
 
 `--only delivery` 复用 delivery_integration.mjs 生成的真实临时实例，自动启动原生编选/交付深链与未保存保护浏览器回归；不依赖手工设置外部fixture。完整runner也会执行此组，输出位于output/playwright/frontend-quality/delivery。repository组包含主动退出七项检查：小于500ms的草稿同步保存、失败返回、切账号失效和唯一副本保留。
+`workspace-ready.cjs` runs in `components` and mounts the real workspace with
+synthetic API responses. It verifies that required queue/management failures and
+a held retry do not report `workspace_ready`; successful retry reports once,
+and a later refresh does not duplicate it. Proofreaders require access and queue
+data, while management data is required only when the successful access context
+selected that reader. Set `REVIEW_BASE_URL` and `WORKSPACE_READY_OUTPUT` to override
+the local fixture server and `output/playwright/workspace-ready/` receipt path.
