@@ -563,3 +563,127 @@ func TestAssistConcurrentReadersNeverSeeStagedOrHalfPublishedResults(t *testing.
 		t.Fatalf("after commit must see exactly one complete replacement: current=%d retired=%d", current, previous)
 	}
 }
+
+func TestAssistNativeUTF8BudgetMatchesFallback(t *testing.T) {
+	app, _, _ := newAssistAtomicFixture(t)
+	value, err := runAssistScript(app, `(() => {
+ const writer=require(__hooks+"/lib/assist_writer.js");
+ const values=["ASCII","中文","e\u0301","𰻞","a\\uEE00","\ud800","\udc00",JSON.stringify({text:"中𰻞e\u0301\ud800"})];
+ const native=values.map(writer.utf8Bytes), binding=toBytes;
+ globalThis.toBytes=undefined;
+ const fallback=values.map(writer.utf8Bytes);
+ globalThis.toBytes=binding;
+ return JSON.stringify({native,fallback});
+ })()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct{ Native, Fallback []int }
+	if err := json.Unmarshal([]byte(value.String()), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(result.Native, result.Fallback) || !reflect.DeepEqual(result.Native[:7], []int{5, 6, 3, 4, 7, 3, 3}) {
+		t.Fatalf("native UTF-8 counting changed budget semantics: %s", value)
+	}
+}
+
+func TestAssistPreparationCannotResurrectExpiredStage(t *testing.T) {
+	app, project, _ := newAssistAtomicFixture(t)
+	if err := runAssistWriter(app, "recomputeProject", project); err != nil {
+		t.Fatal(err)
+	}
+	before := assistDatabaseState(t, app)
+	value, err := runAssistScript(app, `(() => {
+ const p=require(__hooks+"/lib/assist_publication.js");
+ try { p.execute(dao,"rules","`+project+`","",()=>{
+   p.cleanup(dao,Date.now()+2*60*60*1000);
+   return {findings:[],events:[],derivations:[],kinds:["missing_field"],stageSizes:{findings:[],events:[],derivations:[]},summary:{}};
+ }); return "unexpected success" } catch(e) { return JSON.stringify({status:e.status,reason:e.data?.reasonCode}) }
+ })()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(value.String(), `"status":409`) || !strings.Contains(value.String(), "ASSIST_BASIS_CHANGED") {
+		t.Fatalf("expired preparation must conflict: %s", value)
+	}
+	if !reflect.DeepEqual(before, assistDatabaseState(t, app)) {
+		t.Fatal("expired preparation replaced last complete publication")
+	}
+	markers, err := app.FindRecordsByFilter("assist_publications", `state="aborted"`, "", 0, 0)
+	if err != nil || len(markers) != 1 || markers[0].GetString("failure_code") != "STAGING_EXPIRED" {
+		t.Fatalf("expired marker must remain aborted: %v %v", markers, err)
+	}
+}
+
+func TestAssistPersistedStageSurvivesReopenInvisible(t *testing.T) {
+	app := newAssistVisibilityApp(t)
+	_, _, page := newAssistVisibilityFixture(t, app)
+	jsvm.MustRegister(app, jsvm.Config{HooksDir: "pb_hooks", MigrationsFilesPattern: `a^`})
+	if err := runAssistWriter(app, "recomputeProject", page.GetString("project")); err != nil {
+		t.Fatal(err)
+	}
+	before := assistDatabaseState(t, app)
+	marker := visibilityPublication(t, app, page, "staging")
+	finding := visibilityFinding(t, app, page, marker.Id, "")
+	visibilityEvent(t, app, page, marker.Id, "machine_analysis", "machine")
+	// Close all connections and reopen the persisted DB. This models restart
+	// after the committed staging chunk, not a claim of process-kill coverage.
+	if err := app.ResetBootstrapState(); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Bootstrap(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, assistDatabaseState(t, app)) {
+		t.Fatal("reopen exposed unpublished payload")
+	}
+	if _, err := runAssistScript(app, `require(__hooks+"/lib/assist_publication.js").cleanup(dao)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.FindRecordById("review_findings", finding.Id); err != nil {
+		t.Fatal("cleanup removed active staging work")
+	}
+	if _, err := runAssistScript(app, `require(__hooks+"/lib/assist_publication.js").cleanup(dao,Date.now()+2*60*60*1000)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.FindRecordById("review_findings", finding.Id); err == nil {
+		t.Fatal("expired staging payload was not cleaned")
+	}
+	retained, err := app.FindRecordById("assist_publications", marker.Id)
+	if err != nil || retained.GetString("state") != "aborted" {
+		t.Fatal("expired marker was deleted or resurrected")
+	}
+	if !reflect.DeepEqual(before, assistDatabaseState(t, app)) {
+		t.Fatal("reopen/cleanup changed published results")
+	}
+}
+
+func TestAssistRuleBudgetStopsBeforeWholeResultAllocation(t *testing.T) {
+	app, _, _ := newAssistAtomicFixture(t)
+	value, err := runAssistScript(app, `(() => {
+ const rules=require(__hooks+"/lib/assist_rules.js"), identity=require(__hooks+"/lib/assist_identity.js");
+ const entries=Array.from({length:10},(_,i)=>({pageId:"p"+i,id:"p"+i,row:{"词条":"甲","拼音":"ka1","莆田IPA":"a𰻞","释义":"义"+i},pdfPage:1}));
+ const ctx=rules.makeContext({});
+ const expected=rules.runProjectRules(ctx,entries), observed=[];
+ const actual=rules.runProjectRules(ctx,entries,item=>observed.push(item));
+ let reserved=0, refused=false;
+ try{rules.runProjectRules(ctx,entries,()=>{if(++reserved===3)throw Error("synthetic budget")})}catch(e){refused=e.message==="synthetic budget"}
+ const original=identity.findIdentityConflicts(entries), guarded=identity.findIdentityConflicts(entries,new Set(),undefined,null,()=>{});
+ let identityReserved=0, identityRefused=false;
+ try{identity.findIdentityConflicts(entries,new Set(),undefined,null,()=>{if(++identityReserved===3)throw Error("synthetic budget")})}catch(e){identityRefused=e.message==="synthetic budget"}
+ return JSON.stringify({same:JSON.stringify(expected)===JSON.stringify(actual)&&JSON.stringify(actual)===JSON.stringify(observed),reserved,refused,identitySame:JSON.stringify(original)===JSON.stringify(guarded),identityReserved,identityRefused});
+ })()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Same, Refused, IdentitySame, IdentityRefused bool
+		Reserved, IdentityReserved                   int
+	}
+	if err = json.Unmarshal([]byte(value.String()), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Same || !result.Refused || result.Reserved != 3 || !result.IdentitySame || !result.IdentityRefused || result.IdentityReserved != 3 {
+		t.Fatalf("budget changed successful results or accumulated whole result: %s", value)
+	}
+}

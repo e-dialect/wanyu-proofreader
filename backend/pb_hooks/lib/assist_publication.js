@@ -74,18 +74,27 @@ function stageDerivations(tx, publication, rows) {
   })
   tx.db().newQuery(`INSERT INTO _assist_page_derivations(publication,page,difficulty_tier,difficulty_basis_json,difficulty_version,entry_identity_key) VALUES ${values.join(',')}`).bind(params).execute()
 }
-function publish(tx, publication, prepared, authorize) {
+function publish(tx, publication, prepared, authorize, metrics) {
+  // Millisecond-resolution, pre-COMMIT SQL segments. A measured 0 is retained,
+  // not interpreted as missing; transaction().phases.final includes COMMIT.
+  const steps = metrics.final_precommit_steps_ms = {}
+  metrics.final_step_resolution_ms = 1
+  let previousStep = Date.now()
+  const step = name => { const now = Date.now(); steps[name] = now - previousStep; previousStep = now }
+
   const id = publication.id, project = publication.getString('project')
   const current = tx.findRecordById('assist_publications', id)
   if (current.getString('state') !== 'staging' || basis(tx, project) !== current.getString('basis_json')) throw conflict()
   for (const [field, value] of [['expected_findings', prepared.findings.length], ['expected_events', prepared.events.length], ['expected_pages', prepared.derivations.length]]) if (current.getInt(field) !== value) throw conflict()
   if (authorize) authorize(tx)
   tx.findRecordById('projects', project)
+  step('authority_and_basis')
   const params = { publication: id, project, page: publication.getString('page'), retired_at: new Date().toISOString() }
   for (const [table, expected] of [['review_findings', prepared.findings.length], ['verification_events', prepared.events.length]]) {
     if (count(tx, `SELECT COUNT(*) AS total FROM ${table} WHERE assist_publication={:publication}`, params) !== expected) throw conflict()
   }
   if (count(tx, 'SELECT COUNT(*) AS total FROM _assist_page_derivations WHERE publication={:publication}', params) !== prepared.derivations.length) throw conflict()
+  step('staged_counts')
   const { currentSQL } = require(`${__hooks}/lib/assist_visibility.js`)
   const scope = [`f.project={:project}`, "f.producer='rule'", `f.kind IN (${prepared.kinds.map((kind, i) => { params['kind' + i] = kind; return '{:kind' + i + '}' }).join(',')})`]
   if (publication.getString('scope') === 'page') {
@@ -95,6 +104,7 @@ function publish(tx, publication, prepared, authorize) {
   tx.db().newQuery(`INSERT INTO _assist_finding_retirements(finding,publication,retired_at)
     SELECT f.id,{:publication},{:retired_at} FROM review_findings f WHERE ${scope.join(' AND ')} AND ${currentSQL('f')}`).bind(params).execute()
   const superseded = count(tx, 'SELECT COUNT(*) AS total FROM _assist_finding_retirements WHERE publication={:publication}', params)
+  step('retirement')
   // Only these four derived fields may bypass model Save. Human source/content,
   // consensus, permission and judgment columns are never assigned here.
   const fields = publication.getString('scope') === 'identity' ? ['entry_identity_key'] : ['difficulty_tier', 'difficulty_basis_json', 'difficulty_version']
@@ -102,9 +112,11 @@ function publish(tx, publication, prepared, authorize) {
   tx.db().newQuery(`UPDATE pages SET ${fields.map(field => `${field}=${expr(field)}`).join(',')},updated=strftime('%Y-%m-%d %H:%M:%fZ','now')
     WHERE project={:project} AND EXISTS(SELECT 1 FROM _assist_page_derivations d WHERE d.publication={:publication} AND d.page=pages.id)
       AND (${fields.map(field => `pages.${field} IS NOT ${expr(field)}`).join(' OR ')})`).bind(params).execute()
+  step('derived_pages')
   current.set('state', 'published')
   current.set('published_at', params.retired_at)
   tx.save(current)
+  step('publication_save')
   return superseded
 }
 function abort(dao, id, code, metrics = null) {
@@ -154,7 +166,7 @@ function execute(dao, scope, project, page, prepare, authorize) {
       }
     }
     const started = Date.now()
-    const superseded = transaction(dao, tx => publish(tx, publication, prepared, authorize), metrics, 'final')
+    const superseded = transaction(dao, tx => publish(tx, publication, prepared, authorize, metrics), metrics, 'final')
     metrics.publish_ms = Date.now() - started
     return { ...prepared.summary, superseded, settled: 0, publication: publication.id, publication_metrics: metrics }
   } catch (error) {

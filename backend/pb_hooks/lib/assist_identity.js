@@ -181,7 +181,7 @@ function crossSourceFields(bucket, columns = DEFAULT_COLUMNS) {
   return fields
 }
 
-function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT_COLUMNS, reservePartnerBytes = null) {
+function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT_COLUMNS, reservePartnerBytes = null, reserveFinding = null) {
   const groups = new Map()
   let noKey = 0
   for (const entry of entries) {
@@ -247,7 +247,7 @@ function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT
     if (others.some((field) => !cross.includes(field))) unattributed += 1
     for (const item of bucket) {
       const partners = bucket.filter((other) => other.id !== item.id).map((other) => other.id)
-      findings.push({
+      const finding = {
         kind: cross.length ? "cross_source_conflict" : "duplicate_identity",
         severity: "strong",
         field: columns.meaningField && differsOn.includes(columns.meaningField) ? columns.meaningField : differsOn[0],
@@ -263,7 +263,9 @@ function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT
           sources
         },
         evidence: { anchor: ANCHOR_ENTRY, page: item.id, partners }
-      })
+      }
+      if (reserveFinding) reserveFinding(finding)
+      findings.push(finding)
     }
   }
   return {

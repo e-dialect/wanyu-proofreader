@@ -460,10 +460,11 @@ function columnsOf(entries) {
   return columns
 }
 
-function runProjectRules(ctx, entries) {
+function runProjectRules(ctx, entries, reserveFinding = null) {
   const list = entries ?? []
   const columns = columnsOf(list)
   const out = []
+  const append = item => { if (reserveFinding) reserveFinding(item); out.push(item) }
   for (const entry of list) {
     // 项目级只算一次共享上下文，但「这一列在不在当前行里」必须按条判断。
     // 不传 roles 的旧调用仍用共享 ctx，避免把未出现的列并进每一行。
@@ -476,16 +477,16 @@ function runProjectRules(ctx, entries) {
         // 别处（项目级疑点被单条重算吃掉），所以在这里直接抛错。
         throw new Error(`规则产出 ${item.message_key} 未归类到 CELL/PROJECT_ONLY key 清单`)
       }
-      out.push(anchored(item, entry.pageId, ANCHOR_ENTRY))
+      append(anchored(item, entry.pageId, ANCHOR_ENTRY))
     }
   }
   const columnAnchor = list.length ? list[0].pageId : ""
   for (const item of [...ruleColumnForms(columns), ...rulePunctuationMix(columns)]) {
-    out.push(anchored(item, columnAnchor, ANCHOR_COLUMN))
+    append(anchored(item, columnAnchor, ANCHOR_COLUMN))
   }
   for (const item of [...rulePageOrderBacktrack(list), ...rulePageDensityOutliers(list)]) {
     const owner = list.find((entry) => (Number(entry.pdfPage) || 0) === item.evidence?.page)
-    out.push(anchored(item, owner?.pageId, ANCHOR_PDF_PAGE))
+    append(anchored(item, owner?.pageId, ANCHOR_PDF_PAGE))
   }
   return out
 }

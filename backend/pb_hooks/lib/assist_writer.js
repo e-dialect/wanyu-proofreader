@@ -23,9 +23,21 @@ const PREPARE_TEXT_FIELDS = [...INPUT_FIELDS, "entry_identity_key", "blocked_rea
 // consumed by rules, identity, difficulty and source_fidelity.contextFor(false).
 const PREPARE_PAGE_FIELDS = ["id", "created", "project", "page_number", "pdf_page", "project_file", "import_job", ...PREPARE_TEXT_FIELDS, "proofread_round", "verification_source_revision"]
 function utf8Bytes(value) {
+  const text = String(value || "")
+  // PocketBase converts a string directly to []byte; unlike its reader branch,
+  // this does not have a read limit. Keep the pure-JS fallback for Node tests.
+  if (typeof toBytes === "function") return toBytes(text).length
   let bytes = 0
-  for (const char of String(value || "")) { const cp=char.codePointAt(0); bytes += cp<=0x7f?1:cp<=0x7ff?2:cp<=0xffff?3:4 }
+  for (const char of text) { const cp=char.codePointAt(0); bytes += cp<=0x7f?1:cp<=0x7ff?2:cp<=0xffff?3:4 }
   return bytes
+}
+function findingBudget() {
+  let bytes = 0
+  return item => {
+    const size = utf8Bytes(JSON.stringify(item))
+    bytes += size
+    if (size > ITEM_BYTES_LIMIT || bytes > PREPARATION_BYTES_LIMIT) refuseBytes()
+  }
 }
 function pageInputBytes(page) { return INPUT_FIELDS.reduce((sum, field) => sum + utf8Bytes(page.getString(field)), 0) }
 function pagePrepareBytes(page) { return PREPARE_TEXT_FIELDS.reduce((sum, field) => sum + utf8Bytes(page.getString(field)), 0) }
@@ -439,7 +451,7 @@ function recomputeProjectBatch(dao, projectId) {
   const entries = pages.map((page, index) => ({ pageId: page.id, order: index + 1, pdfPage: Number(page.get("pdf_page")) || 0,
     row: rowForRules(page), roles: rolesForRules(storedRoles, rowForRules(page)) }))
   const shared = pages.length ? contextFor(dao, pages[0], storedRoles) : makeContext({ projectId, keyboards: [], roles: null })
-  const findings = runProjectRules({ ...shared, roles: null }, entries)
+  const findings = runProjectRules({ ...shared, roles: null }, entries, findingBudget())
   const byId = new Map(pages.map(page => [page.id, page])), rowByPage = new Map(entries.map(entry => [entry.pageId, entry.row]))
   const offsetsDropped = dropUnfaithfulOffsets(findings, item => byId.has(item.page)
     ? { row: rowByPage.get(item.page), shown: parseRow(byId.get(item.page).get("ocr_row_json")) } : null)
@@ -624,12 +636,15 @@ function recomputeIdentityBatch(dao, projectId) {
   ).map((row) => row.getString("group_key")))
 
   let partnerBytes = 0
+  const reserveFinding = findingBudget()
   const identityResult = findIdentityConflicts(entries, dismissed, columns, bytes => {
     partnerBytes += bytes
     if (partnerBytes > PREPARATION_BYTES_LIMIT) refuseBytes()
-  })
+  }, reserveFinding)
   const findings = [...identityResult.findings]
-  for (const entry of entries) findings.push(...findRowShapeAnomalies(entry, columns))
+  for (const entry of entries) for (const item of findRowShapeAnomalies(entry, columns)) {
+    reserveFinding(item); findings.push(item)
+  }
   // #178 的 merged_columns 两类区间也走同一道闸门：跨行检出的 row 来自 rowForRules，
   // 与校对端切的 ocr_row_json 不是同一份串时，宁可只给字段不给高亮。
   const entryById = new Map(entries.map((entry) => [entry.id, entry]))
@@ -688,6 +703,7 @@ function safeRecomputePage(dao, pageId, row, label) {
 }
 
 module.exports = {
+  utf8Bytes,
   safeRecomputePage,
   PRODUCER,
   RETIRE_CHUNK,

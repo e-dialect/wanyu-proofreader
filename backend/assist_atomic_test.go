@@ -452,6 +452,9 @@ func TestAssistBatchScaleContention(t *testing.T) {
 			"publication_metrics":           summary["publication_metrics"], "findings": summary["findings"], "superseded": summary["superseded"],
 		})
 		t.Logf("ASSIST_STAGED_SCALE %s", metrics)
+		if resources["status"] != "complete" {
+			t.Errorf("resource evidence incomplete: %v", resources)
+		}
 		if maxWait > 500*time.Millisecond {
 			t.Errorf("%s independent writer waited %v > 500ms engineering target", method, maxWait)
 		}
@@ -526,6 +529,12 @@ func startAssistResourceSampler() func() map[string]any {
 				result["rss_sample_errors"] = rssErrors
 				result["target_interval_ms"] = 1000
 				result["max_sample_gap_ms"] = float64(maxGap.Microseconds()) / 1000
+				// Evidence completeness tolerance, not a product latency target.
+				result["maximum_evidence_gap_ms"] = 2500
+				result["status"] = "complete"
+				if rssSamples == 0 || rssErrors > 0 || maxGap > 2500*time.Millisecond {
+					result["status"] = "incomplete"
+				}
 				return
 			}
 		}
