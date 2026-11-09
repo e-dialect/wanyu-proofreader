@@ -45,6 +45,15 @@ onRecordUpdateRequest((e) => {
   } catch {
     throw new BadRequestError("疑点记录不存在或已被删除")
   }
+  const publicationId = original.getString("assist_publication")
+  if (publicationId) {
+    // A staged row still counts toward publication even if the native API
+    // retires it. Keep private payloads immutable until they are published.
+    const publication = e.app.findRecordById("assist_publications", publicationId)
+    if (publication.getString("state") !== "published") {
+      throw new ForbiddenError("未发布的分析载荷不可通过记录 API 修改")
+    }
+  }
   for (const name of FINDING_IMMUTABLE_FIELDS) {
     if (e.record.getString(name) !== original.getString(name)) {
       throw new ForbiddenError("疑点记录不可覆写，只能标 superseded_at 后写新批次")

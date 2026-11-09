@@ -278,6 +278,28 @@ func testAssistPublicationNativeAPIsCannotRevealStaging(t *testing.T, app core.A
 	accountTestRequest(t, h, "POST", "/api/collections/assist_publications/records", superToken, map[string]any{"project": page.GetString("project"), "scope": "rules", "state": "published", "basis_json": "[]"}, 403)
 	accountTestRequest(t, h, "POST", "/api/collections/review_findings/records", superToken, map[string]any{"assist_publication": publication.Id}, 403)
 	accountTestRequest(t, h, "POST", "/api/collections/verification_events/records", superToken, map[string]any{"assist_publication": publication.Id, "kind": "machine_analysis"}, 403)
+	// Retiring hidden payloads would evade the final publication COUNT checks.
+	// Legacy and already-published findings retain their existing API behavior.
+	for _, state := range []string{"staging", "aborted", "published", "legacy"} {
+		t.Run("native_retirement_"+state, func(t *testing.T) {
+			publicationID := ""
+			if state != "legacy" {
+				publicationID = visibilityPublication(t, app, page, state).Id
+			}
+			row := visibilityFinding(t, app, page, publicationID, "")
+			path := "/api/collections/review_findings/records/" + row.Id
+			stamp := "2026-11-09 00:00:01.000Z"
+			wantStatus, wantStamp := 403, ""
+			if state == "published" || state == "legacy" {
+				wantStatus, wantStamp = 200, stamp
+			}
+			accountTestRequest(t, h, "PATCH", path, superToken, map[string]any{"superseded_at": stamp}, wantStatus)
+			stored, err := app.FindRecordById("review_findings", row.Id)
+			if err != nil || stored.GetString("superseded_at") != wantStamp || stored.GetString("assist_publication") != publicationID {
+				t.Fatalf("native retirement changed protected payload or broke compatibility: %v", err)
+			}
+		})
+	}
 	// Project cascades are still legitimate. A retained text marker must never
 	// force the project to remain, nor clear a staged relation into legacy data.
 	project, _ := app.FindRecordById("projects", page.GetString("project"))

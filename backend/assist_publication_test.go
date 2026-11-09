@@ -17,6 +17,68 @@ import (
 	"github.com/pocketbase/pocketbase/plugins/jsvm"
 )
 
+func TestAssistStagedFindingNativeUpdateCannotBreakPublication(t *testing.T) {
+	app, project, _ := newAssistAtomicFixture(t)
+	supers, err := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	superuser := core.NewRecord(supers)
+	superuser.SetEmail("synthetic-publication-guard@example.test")
+	superuser.SetPassword("SyntheticPublicationGuard123!")
+	if err := app.Save(superuser); err != nil {
+		t.Fatal(err)
+	}
+	jsvm.MustRegister(app, jsvm.Config{HooksDir: "pb_hooks", HooksFilesPattern: `^(findings|source_fidelity)\.pb\.js$`, MigrationsFilesPattern: `a^`})
+	router := accountTestRouter(t, app)
+	token, err := superuser.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempted := false
+	hook := app.OnRecordAfterCreateSuccess("review_findings").BindFunc(func(e *core.RecordEvent) error {
+		if err := e.Next(); err != nil {
+			return err
+		}
+		if attempted || e.Record.GetString("assist_publication") == "" {
+			return nil
+		}
+		// A real staging chunk has committed, but final publication has not run.
+		marker, err := app.FindRecordById("assist_publications", e.Record.GetString("assist_publication"))
+		if err != nil || marker.GetString("state") != "staging" {
+			t.Fatalf("native update probe did not run during staging: %v", err)
+		}
+		attempted = true
+		accountTestRequest(t, router, "PATCH", "/api/collections/review_findings/records/"+e.Record.Id, token,
+			map[string]any{"superseded_at": "2026-11-09 00:00:01.000Z"}, 403)
+		return nil
+	})
+	t.Cleanup(func() { app.OnRecordAfterCreateSuccess("review_findings").Unbind(hook) })
+	value, err := runAssistScript(app, `JSON.stringify(require(__hooks+'/lib/assist_writer.js').recomputeProject(dao,"`+project+`"))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Findings    int
+		Publication string
+	}
+	if err := json.Unmarshal([]byte(value.String()), &result); err != nil {
+		t.Fatal(err)
+	}
+	marker, err := app.FindRecordById("assist_publications", result.Publication)
+	if err != nil || marker.GetString("state") != "published" {
+		t.Fatalf("rejected native update prevented publication: %v", err)
+	}
+	var current int
+	if err := app.DB().NewQuery("SELECT COUNT(*) FROM review_findings WHERE assist_publication={:publication} AND " + assistCurrentSQLForTest).
+		Bind(dbx.Params{"publication": result.Publication}).Row(&current); err != nil {
+		t.Fatal(err)
+	}
+	if !attempted || result.Findings == 0 || current != result.Findings {
+		t.Fatalf("publication summary and current findings diverged: attempted=%v summary=%d current=%d", attempted, result.Findings, current)
+	}
+}
+
 func TestAssistPreparedBasisChangeKeepsPreviousPublication(t *testing.T) {
 	for _, change := range []string{"source_row", "roles", "current_finding", "dismissal"} {
 		t.Run(change, func(t *testing.T) {
