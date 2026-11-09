@@ -52,13 +52,41 @@
     >
     <AppModal :open="helpOpen" title-id="app-help-title" @close="helpOpen = false">
       <h2 id="app-help-title">开始你的校勘工作</h2>
-      <ol class="shell-help-steps">
-        <li>在工作台继续当前任务，或从「项目」加入一项工作。</li>
-        <li>对照来源逐字段核对。需要特殊字符时，打开字符键盘。</li>
-        <li>完成后检查并提交；无法判断时保存未完成工作并报告问题。</li>
-      </ol>
-      <p class="text-sm text-muted">
-        草稿保存在当前设备。来源、质量与交付状态分别记录，完成校对不等于可以外发。
+      <section aria-labelledby="help-proofreader-title">
+        <h3 id="help-proofreader-title">校对者：从领取到提交</h3>
+        <ol class="shell-help-steps">
+          <li>从工作台继续当前任务，或在项目中领取条目。</li>
+          <li>对照来源逐字段核对，保留难字、空值和组合字符；不确定时记录问题。</li>
+          <li>使用字符键盘输入特殊字符，检查来源页与必填字段后提交。</li>
+          <li>暂时离开时确认草稿已保存；本机草稿不等于正式提交。</li>
+        </ol>
+      </section>
+      <section
+        v-if="auth.hasManagedProjects || auth.isPlatformAdmin"
+        aria-labelledby="help-manager-title"
+      >
+        <h3 id="help-manager-title">项目管理员：从资料到交付</h3>
+        <ol class="shell-help-steps">
+          <li>先登记来源与使用范围；上传 PDF 校验完成后，再预检 CSV 或提取文字层。</li>
+          <li>核对预览、错误行和绑定来源后确认导入，安排独立校对并处理差异。</li>
+          <li>分别检查来源保真、质量与授权条件，再从已编选批次准备交付。</li>
+        </ol>
+        <RouterLink to="/admin/guide/project-files" @click="helpOpen = false"
+          >查看文件准备与能力边界</RouterLink
+        >
+      </section>
+      <p class="text-sm mt-3">
+        <a href="/examples/proofreading-practice.csv" download>下载虚构练习 CSV</a
+        >：在单独的练习项目试用，勿与真实资料混用。无需 PDF 也能练习字段输入与流程。
+      </p>
+      <section v-if="auth.isPlatformAdmin" aria-labelledby="help-platform-title">
+        <h3 id="help-platform-title">平台管理员</h3>
+        <p>
+          管理建项目资格与平台规则；项目内的成员角色决定各项操作权限。权限调整后，请重新核对受影响项目。
+        </p>
+      </section>
+      <p class="text-sm text-muted mt-4">
+        状态暂时失联时可重新读取原作业，不必再次上传。完成校对、通过质量检查和允许外发是分别记录的结果。
       </p>
       <template #actions
         ><button type="button" class="btn btn-primary" @click="helpOpen = false">

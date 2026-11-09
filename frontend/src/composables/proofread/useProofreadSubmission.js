@@ -1,4 +1,5 @@
 import { nextTick } from 'vue'
+import { measureBusiness } from '../../lib/businessMetrics.js'
 import { claimNextProjectPage, submitTwoPassProofread } from '../../services/pagesService.js'
 import { clearTaskDraft, setTaskFlash } from '../../lib/taskDraft.js'
 import { PAGE_STATUS } from '../../constants/pageStatus.js'
@@ -66,6 +67,7 @@ export function useProofreadSubmission({
       if (!isCurrentCase(scope)) return
       const telemetry = await researchTelemetry.value?.flush()
       if (!isCurrentCase(scope)) return
+      const submittedAt = performance.now()
       const result = await submitTwoPassProofread(pageId, userId, {
         rowJson,
         text,
@@ -79,6 +81,7 @@ export function useProofreadSubmission({
       initialRowJson.value = rowJson
       page.value.status = result.status
       submittedHere.value = true
+      measureBusiness('submit_ack', performance.now() - submittedAt)
       resetNeighbors()
       clearTaskDraft(window.localStorage, {
         userId,

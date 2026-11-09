@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { jobObserverScope } from './helpers/jobObserverScope.js'
 import { projectDetailSource } from './helpers/projectDetailSource.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -16,36 +18,37 @@ assert.ok(upload)
 assert.match(view, /v-if="pdfError && pdfRetryable && pdfFile && !uploadingPdf"/)
 
 function setup(createProjectPdf) {
-  const ref = (value) => ({ value })
-  const state = {
-    pdfInput: ref({ value: '' }),
-    pdfFile: ref(null),
-    pdfSuccess: ref(false),
-    pdfMetadata: ref(null),
-    pdfProcessing: ref(false),
-    pdfError: ref(''),
-    pdfRetryable: ref(false),
-    pdfUploadProgress: ref(0),
-    pdfResume: ref(null),
-    uploadingPdf: ref(false)
-  }
-  const deps = {
-    ...state,
+  const cleanup = []
+  const scope = {
+    ...jobObserverScope(cleanup),
+    defineProps: () => ({ projectId: 'project-1' }),
+    defineExpose: () => {},
     validatePdfFile,
-    createProjectPdf,
+    createProjectPdf: async (...args) => ({
+      project: 'project-1',
+      ...(await createProjectPdf(...args))
+    }),
     getPbStatus,
     getUploadErrorMessage,
     isRetryablePdfUploadError,
-    projectId: 'project-1',
     currentUserId: () => 'user-1',
-    pollDelay: async () => {},
     getProjectFile: async () => assert.fail('unexpected poll'),
-    loadPdfResume: async () => {}
+    listProjectPdfUploads: async () => ({ items: [] }),
+    loadPdfUploadResume: () => null,
+    clearPdfUploadResume: () => {},
+    PDF_UPLOAD_PAUSED: 'pause'
   }
-  const names = Object.keys(deps)
-  const source = `let pdfUploadController = null; let pdfPollGeneration = 0;\n${selection[0].replace(/\n\nfunction onCsvSelected$/, '')}\n${upload[0].replace(/\n\nasync function uploadCsv$/, '')}\nreturn { onPdfSelected, uploadPdf }`
-  const actions = new Function(...names, source)(...Object.values(deps))
-  return { ...state, ...actions }
+  const script = readFileSync(
+    new URL('../src/components/admin/project/ProjectPdfUpload.vue', import.meta.url),
+    'utf8'
+  )
+    .split('<script setup>')[1]
+    .split('</script>')[0]
+    .replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*;?\n/gm, '')
+  return new Function(
+    ...Object.keys(scope),
+    `${script};return {onPdfSelected,uploadPdf,pdfFile,pdfRetryable,pdfError,pdfSuccess}`
+  )(...Object.values(scope))
 }
 
 const file = { name: 'book.pdf', size: 100 }
@@ -82,7 +85,7 @@ test('transient failure offers retry and the retry starts only one upload', asyn
   await ui.onPdfSelected(selected)
   assert.equal(selected.target.value, '')
   assert.equal(ui.pdfRetryable.value, true)
-  assert.equal(ui.pdfFile.value, file)
+  assert.deepEqual(ui.pdfFile.value, file)
   await Promise.all([ui.uploadPdf(), ui.uploadPdf()])
   assert.equal(attempts, 2)
   assert.equal(ui.pdfSuccess.value, true)

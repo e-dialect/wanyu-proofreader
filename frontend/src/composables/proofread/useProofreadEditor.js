@@ -1,3 +1,4 @@
+import { measureBusiness } from '../../lib/businessMetrics.js'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useFieldNavigation } from '@/composables/useFieldNavigation'
@@ -496,6 +497,7 @@ export function useProofreadEditor() {
   })
 
   async function loadPage() {
+    const editorStartedAt = performance.now()
     const version = ++caseVersion
     const pageId = route.params.id
     clearDraftTimer()
@@ -567,6 +569,13 @@ export function useProofreadEditor() {
       if (version === caseVersion) {
         draftReady.value = Boolean(page.value) && !ownReview.value
         loadingPage.value = false
+        if (page.value && !saveError.value) {
+          await nextTick()
+          requestAnimationFrame(() => {
+            if (version === caseVersion)
+              measureBusiness('editor_ready', performance.now() - editorStartedAt)
+          })
+        }
       }
     }
   }
