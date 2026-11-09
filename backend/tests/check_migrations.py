@@ -19,6 +19,9 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204600_import_inspection_budget.js': {
+        'fields': ('import_jobs', {'inspection_json': {'max': 524288}}),
+    },
     '1794204500_bootstrap_bindings.js': {
         'objects': [('table', 'bootstrap_bindings')],
         'indexes': ['idx_bootstrap_identity'],
