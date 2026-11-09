@@ -98,7 +98,7 @@ func TestAssistPreparedBasisChangeKeepsPreviousPublication(t *testing.T) {
 				t.Fatal("rejected prepared result changed prior findings")
 			}
 			var retired int
-			if err = app.DB().NewQuery("SELECT COUNT(*) FROM _assist_finding_retirements").Row(&retired); err != nil {
+			if err = app.DB().NewQuery("SELECT COUNT(*) FROM _assist_finding_retirements r JOIN assist_publications p ON p.id=r.publication WHERE p.state='published'").Row(&retired); err != nil {
 				t.Fatal(err)
 			}
 			if retired != 0 {
@@ -129,7 +129,7 @@ func TestAssistFinalSaveFailureDoesNotRetireOldBatch(t *testing.T) {
 		t.Fatal("final failure exposed a partial publication")
 	}
 	var retired int
-	if err = app.DB().NewQuery("SELECT COUNT(*) FROM _assist_finding_retirements").Row(&retired); err != nil {
+	if err = app.DB().NewQuery("SELECT COUNT(*) FROM _assist_finding_retirements r JOIN assist_publications p ON p.id=r.publication WHERE p.state='published'").Row(&retired); err != nil {
 		t.Fatal(err)
 	}
 	if retired != 0 {

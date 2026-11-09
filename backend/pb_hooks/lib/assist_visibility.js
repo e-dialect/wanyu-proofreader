@@ -11,7 +11,7 @@ function historySQL(alias = "review_findings") {
 }
 
 function retirementSQL(alias = "review_findings") {
-  return `SELECT _assist_retirement.retired_at FROM _assist_finding_retirements _assist_retirement JOIN assist_publications _assist_retiring_publication ON _assist_retiring_publication.id = _assist_retirement.publication AND _assist_retiring_publication.state = 'published' WHERE _assist_retirement.finding = ${column(alias, "id")}`
+  return `SELECT _assist_retiring_publication.published_at FROM _assist_finding_retirements _assist_retirement JOIN assist_publications _assist_retiring_publication ON _assist_retiring_publication.id = _assist_retirement.publication AND _assist_retiring_publication.state = 'published' WHERE _assist_retirement.finding = ${column(alias, "id")} ORDER BY _assist_retiring_publication.published_at,_assist_retirement.publication LIMIT 1`
 }
 
 function currentSQL(alias = "review_findings") {

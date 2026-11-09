@@ -214,7 +214,7 @@ func TestAssistConcurrentBatchesKeepExactCharacterResults(t *testing.T) {
 			err := <-results
 			if err == nil {
 				successes++
-			} else if !strings.Contains(err.Error(), "分析依据已变化") {
+			} else if !strings.Contains(err.Error(), "分析依据已变化") && !strings.Contains(err.Error(), "已有全量辅助分析正在准备") {
 				t.Fatal(err)
 			}
 		}

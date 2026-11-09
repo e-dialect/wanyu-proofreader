@@ -336,7 +336,7 @@ function preparedPayload(dao, pages, anchored, events, derivations, kinds, summa
     preparationBytes += size + bytes
     if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes()
   }
-  const stageSizes = { findings: [], events: [], derivations: [] }
+  const stageSizes = { findings: [], events: [], derivations: [], retirements: [] }
   const findingCounts = new Map()
   for (const item of anchored) findingCounts.set(item.page, (findingCounts.get(item.page) || 0) + 1)
   const reserve = (kind, memoryBytes, recordBytes) => {
@@ -349,6 +349,12 @@ function preparedPayload(dao, pages, anchored, events, derivations, kinds, summa
   summary = { ...summary, input_bytes: inputBytes, preparation_bytes: preparationBytes, estimated_payload_bytes: payloadBytes }
   return {
     findings: anchored, events, derivations, kinds, projectOnlyKeys, summary, stageSizes,
+    reserveRetirement(item) {
+      const size = utf8Bytes(JSON.stringify(item))
+      reserve('retirements', size, size + 128)
+      summary.preparation_bytes = preparationBytes
+      summary.estimated_payload_bytes = payloadBytes
+    },
     saveFinding(tx, item, publication) {
       const page = byId.get(item.page)
       const record = insertFinding(tx, tx.findCollectionByNameOrId("review_findings"), page, item.row, at, version,

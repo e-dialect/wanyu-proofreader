@@ -22,11 +22,11 @@ migrate((app) => {
     new SelectField({ name: 'scope', values: ['page', 'rules', 'identity'], maxSelect: 1, required: true }),
     new SelectField({ name: 'state', values: ['staging', 'published', 'aborted'], maxSelect: 1, required: true }),
     new TextField({ name: 'basis_json', required: true, max: 4096 }),
-    ...['expected_findings', 'expected_events', 'expected_pages'].map(name => new NumberField({ name, onlyInt: true, min: 0 })),
+    ...['expected_findings', 'expected_events', 'expected_pages', 'expected_retirements'].map(name => new NumberField({ name, onlyInt: true, min: 0 })),
     new DateField({ name: 'published_at' }), new TextField({ name: 'failure_code', max: 80 }),
     new AutodateField({ name: 'created', onCreate: true, onUpdate: false }), new AutodateField({ name: 'updated', onCreate: true, onUpdate: true })
   )
-  publication.indexes = ['CREATE INDEX idx_assist_publications_project ON assist_publications(project,state)', 'CREATE INDEX idx_assist_publications_cleanup ON assist_publications(state,updated)']
+  publication.indexes = ["CREATE UNIQUE INDEX idx_assist_single_bulk ON assist_publications(state) WHERE state='staging' AND scope IN ('rules','identity')", 'CREATE INDEX idx_assist_publications_project ON assist_publications(project,state)', 'CREATE INDEX idx_assist_publications_cleanup ON assist_publications(state,updated)']
   app.save(publication)
   for (const name of ['review_findings', 'verification_events']) {
     const collection = app.findCollectionByNameOrId(name)
@@ -34,7 +34,7 @@ migrate((app) => {
     collection.indexes = [...collection.indexes, `CREATE INDEX idx_${name}_publication ON ${name}(assist_publication)`]
     app.save(collection)
   }
-  execute(`CREATE TABLE _assist_finding_retirements(finding TEXT PRIMARY KEY, publication TEXT NOT NULL, retired_at TEXT NOT NULL) WITHOUT ROWID`)
+  execute(`CREATE TABLE _assist_finding_retirements(finding TEXT NOT NULL, publication TEXT NOT NULL, staged_at TEXT NOT NULL, PRIMARY KEY(finding,publication)) WITHOUT ROWID`)
   execute('CREATE INDEX _assist_retirements_publication ON _assist_finding_retirements(publication)')
   execute(`CREATE TABLE _assist_page_derivations(publication TEXT NOT NULL,page TEXT NOT NULL,
     difficulty_tier TEXT CHECK(difficulty_tier IS NULL OR difficulty_tier IN ('A','B','C','unknown')),

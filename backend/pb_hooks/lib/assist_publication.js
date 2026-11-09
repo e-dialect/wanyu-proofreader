@@ -55,10 +55,16 @@ function authorizeRequest(dao, snapshot, scope, project, pageId = "") {
     throw new ForbiddenError('该条目当前不在你手上')
   }
 }
+function bulkBusy() {
+  const error = new ApiError(409, '已有全量辅助分析正在准备，请稍后重试；普通单页校对仍可继续')
+  error.data.reasonCode = 'ASSIST_BULK_BUSY'
+  return error
+}
 function begin(dao, scope, project, page, authorize, metrics) {
   return transaction(dao, tx => {
     if (authorize) authorize(tx)
     tx.findRecordById('projects', project)
+    if (scope !== 'page' && count(tx, "SELECT COUNT(*) AS total FROM assist_publications WHERE state='staging' AND scope IN ('rules','identity')", {})) throw bulkBusy()
     const publication = new Record(tx.findCollectionByNameOrId('assist_publications'))
     for (const [key, value] of Object.entries({ project, page, scope, state: 'staging', basis_json: basis(tx, project) })) publication.set(key, value)
     tx.save(publication)
@@ -73,6 +79,37 @@ function stageDerivations(tx, publication, rows) {
     return `({:publication},{:page${i}},{:difficulty_tier${i}},{:difficulty_basis_json${i}},{:difficulty_version${i}},{:entry_identity_key${i}})`
   })
   tx.db().newQuery(`INSERT INTO _assist_page_derivations(publication,page,difficulty_tier,difficulty_basis_json,difficulty_version,entry_identity_key) VALUES ${values.join(',')}`).bind(params).execute()
+}
+function prepareRetirements(dao, publication, prepared) {
+  const current = dao.findRecordById('assist_publications', publication.id)
+  if (current.getString('state') !== 'staging' || basis(dao, publication.getString('project')) !== current.getString('basis_json')) throw conflict()
+
+  const params = { publication: publication.id, project: publication.getString('project'), page: publication.getString('page'), cursor: '' }
+  const scope = ['f.project={:project}', "f.producer='rule'", 'f.id>{:cursor}', 'f.assist_publication!={:publication}',
+    `f.kind IN (${prepared.kinds.map((kind, i) => { params['kind' + i] = kind; return '{:kind' + i + '}' }).join(',')})`]
+  if (publication.getString('scope') === 'page') {
+    scope.push('f.page={:page}')
+    for (const [i, key] of prepared.projectOnlyKeys.entries()) { params['key' + i] = key; scope.push(`f.message_key!={:key${i}}`) }
+  }
+  const { currentSQL } = require(`${__hooks}/lib/assist_visibility.js`)
+  prepared.retirements = []
+  prepared.stageSizes.retirements = []
+  for (;;) {
+    const rows = arrayOf(new DynamicModel({ id: '' }))
+    dao.db().newQuery(`SELECT f.id FROM review_findings f WHERE ${scope.join(' AND ')} AND ${currentSQL('f')} ORDER BY f.id LIMIT 1000`).bind(params).all(rows)
+    for (const row of rows) {
+      const item = { finding: row.id }
+      prepared.reserveRetirement(item)
+      prepared.retirements.push(item)
+    }
+    if (rows.length < 1000) break
+    params.cursor = rows[rows.length - 1].id
+  }
+}
+function stageRetirements(tx, publication, rows) {
+  const params = { publication, staged: new Date().toISOString() }
+  const values = rows.map((row, i) => { params['finding' + i] = row.finding; return `({:finding${i}},{:publication},{:staged})` })
+  tx.db().newQuery(`INSERT INTO _assist_finding_retirements(finding,publication,staged_at) VALUES ${values.join(',')}`).bind(params).execute()
 }
 function derivationUpdateSQL(scope) {
   // Only these four derived fields may bypass model Save. Human source/content,
@@ -94,7 +131,7 @@ function publish(tx, publication, prepared, authorize, metrics) {
   const id = publication.id, project = publication.getString('project')
   const current = tx.findRecordById('assist_publications', id)
   if (current.getString('state') !== 'staging' || basis(tx, project) !== current.getString('basis_json')) throw conflict()
-  for (const [field, value] of [['expected_findings', prepared.findings.length], ['expected_events', prepared.events.length], ['expected_pages', prepared.derivations.length]]) if (current.getInt(field) !== value) throw conflict()
+  for (const [field, value] of [['expected_findings', prepared.findings.length], ['expected_events', prepared.events.length], ['expected_pages', prepared.derivations.length], ['expected_retirements', prepared.retirements.length]]) if (current.getInt(field) !== value) throw conflict()
   if (authorize) authorize(tx)
   tx.findRecordById('projects', project)
   step('authority_and_basis')
@@ -104,16 +141,9 @@ function publish(tx, publication, prepared, authorize, metrics) {
   }
   if (count(tx, 'SELECT COUNT(*) AS total FROM _assist_page_derivations WHERE publication={:publication}', params) !== prepared.derivations.length) throw conflict()
   step('staged_counts')
-  const { currentSQL } = require(`${__hooks}/lib/assist_visibility.js`)
-  const scope = [`f.project={:project}`, "f.producer='rule'", `f.kind IN (${prepared.kinds.map((kind, i) => { params['kind' + i] = kind; return '{:kind' + i + '}' }).join(',')})`]
-  if (publication.getString('scope') === 'page') {
-    scope.push('f.page={:page}')
-    for (const [i, key] of prepared.projectOnlyKeys.entries()) { params['key' + i] = key; scope.push(`f.message_key!={:key${i}}`) }
-  }
-  tx.db().newQuery(`INSERT INTO _assist_finding_retirements(finding,publication,retired_at)
-    SELECT f.id,{:publication},{:retired_at} FROM review_findings f WHERE ${scope.join(' AND ')} AND ${currentSQL('f')}`).bind(params).execute()
   const superseded = count(tx, 'SELECT COUNT(*) AS total FROM _assist_finding_retirements WHERE publication={:publication}', params)
-  step('retirement')
+  if (superseded !== prepared.retirements.length) throw conflict()
+  step('retirement_count')
   if (prepared.derivations.length) tx.db().newQuery(derivationUpdateSQL(publication.getString('scope'))).bind(params).execute()
   step('derived_pages')
   current.set('state', 'published')
@@ -146,15 +176,17 @@ function execute(dao, scope, project, page, prepare, authorize) {
     // All expensive source reads, rule evaluation and context construction occur
     // before entering a staging write transaction.
     const prepared = prepare(dao, publication.id)
+    prepareRetirements(dao, publication, prepared)
     transaction(dao, tx => {
       const current = tx.findRecordById('assist_publications', publication.id)
       if (current.getString('state') !== 'staging' || basis(tx, project) !== current.getString('basis_json')) throw conflict()
       current.set('expected_findings', prepared.findings.length)
       current.set('expected_events', prepared.events.length)
       current.set('expected_pages', prepared.derivations.length)
+      current.set('expected_retirements', prepared.retirements.length)
       tx.save(current)
     }, metrics, 'expected')
-    for (const [items, save, phase] of [[prepared.findings, prepared.saveFinding, 'findings'], [prepared.events, prepared.saveEvent, 'events'], [prepared.derivations, null, 'derivations']]) {
+    for (const [items, save, phase] of [[prepared.findings, prepared.saveFinding, 'findings'], [prepared.events, prepared.saveEvent, 'events'], [prepared.derivations, null, 'derivations'], [prepared.retirements, null, 'retirements']]) {
       for (let offset = 0; offset < items.length;) {
         const { part, end, bytes } = stageSlice(items, offset, prepared.stageSizes[phase])
         offset = end
@@ -163,6 +195,7 @@ function execute(dao, scope, project, page, prepare, authorize) {
           const current = tx.findRecordById('assist_publications', publication.id)
           if (current.getString('state') !== 'staging') throw conflict()
           if (save) for (const item of part) save(tx, item, publication.id)
+          else if (phase === 'retirements') stageRetirements(tx, publication.id, part)
           else stageDerivations(tx, publication.id, part)
           tx.save(current) // heartbeat; no basis bump for staging writes
         }, metrics, phase)
@@ -193,6 +226,8 @@ function cleanup(dao, now = Date.now()) {
   })
   transaction(dao, tx => tx.db().newQuery(`DELETE FROM _assist_page_derivations WHERE (publication,page) IN
     (SELECT d.publication,d.page FROM _assist_page_derivations d JOIN assist_publications p ON p.id=d.publication WHERE p.state='aborted' LIMIT ${STAGE_CHUNK})`).execute())
+  transaction(dao, tx => tx.db().newQuery(`DELETE FROM _assist_finding_retirements WHERE (finding,publication) IN
+    (SELECT r.finding,r.publication FROM _assist_finding_retirements r JOIN assist_publications p ON p.id=r.publication WHERE p.state='aborted' LIMIT ${STAGE_CHUNK})`).execute())
   return removed
 }
 module.exports = { derivationUpdateSQL, STAGE_CHUNK, STAGE_BYTES, stageSlice, basis, conflict, execute, cleanup, authorizeRequest }

@@ -50,7 +50,7 @@ func assistReadDuring(t *testing.T, app core.App, h http.Handler, method, path, 
 
 func assistReadPublish(app core.App, publication, oldFinding string, extra func(core.App) error) error {
 	return app.RunInTransaction(func(tx core.App) error {
-		if _, err := tx.DB().NewQuery("INSERT INTO _assist_finding_retirements(finding,publication,retired_at) VALUES({:finding},{:publication},'2026-11-09 00:01:00.000Z')").Bind(dbx.Params{"finding": oldFinding, "publication": publication}).Execute(); err != nil {
+		if _, err := tx.DB().NewQuery("INSERT INTO _assist_finding_retirements(finding,publication,staged_at) VALUES({:finding},{:publication},'2026-11-09 00:01:00.000Z')").Bind(dbx.Params{"finding": oldFinding, "publication": publication}).Execute(); err != nil {
 			return err
 		}
 		marker, err := tx.FindRecordById("assist_publications", publication)
@@ -58,6 +58,7 @@ func assistReadPublish(app core.App, publication, oldFinding string, extra func(
 			return err
 		}
 		marker.Set("state", "published")
+		marker.Set("published_at", "2026-11-09 00:01:00.000Z")
 		if err := tx.Save(marker); err != nil {
 			return err
 		}

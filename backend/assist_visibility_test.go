@@ -148,6 +148,10 @@ func testAssistVisibilityCurrentHistoryAndEvents(t *testing.T, app core.App) {
 	visibilityFinding(t, app, page, staging.Id, "")
 	visibilityFinding(t, app, page, aborted.Id, "")
 	retiredAt := "2026-11-09 00:00:02.000Z"
+	published.Set("published_at", retiredAt)
+	if err := app.Save(published); err != nil {
+		t.Fatal(err)
+	}
 	for _, row := range []struct{ finding, publication string }{{retired.Id, published.Id}, {active.Id, staging.Id}} {
 		_, err := app.DB().NewQuery("INSERT INTO _assist_finding_retirements VALUES ({:finding},{:publication},{:at})").Bind(dbx.Params{"finding": row.finding, "publication": row.publication, "at": retiredAt}).Execute()
 		if err != nil {
