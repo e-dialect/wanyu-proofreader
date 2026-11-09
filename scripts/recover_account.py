@@ -85,6 +85,7 @@ def checked_plan(container):
 def isolated_command(plan):
     return ['docker', 'run', '--rm', '--pull=never', '--network=none', '--read-only',
             '--cap-drop=ALL', '--security-opt=no-new-privileges', '--user', plan['user'],
+            '--cpus=1', '--memory=512m', '--pids-limit=64',
             '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=16m', '--entrypoint', '/pb/pocketbase']
 
 

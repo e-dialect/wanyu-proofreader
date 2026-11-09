@@ -1,0 +1,52 @@
+{
+  "after": {
+    "actor_equivalence_count": 26,
+    "exact_result_hashes_equal": true,
+    "max_ms": 93.112,
+    "p50_ms": 91.83,
+    "plan": [
+      "CO-ROUTINE queues",
+      "MATERIALIZE classified",
+      "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+      "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+      "SEARCH p USING COVERING INDEX idx_pages_queue_projection (project=?)",
+      "SCAN l LEFT-JOIN",
+      "CORRELATED SCALAR SUBQUERY 2",
+      "SEARCH a USING COVERING INDEX idx_attempt_page_round_user_kind (page=? AND round=? AND proofreader=? AND kind=?)",
+      "CORRELATED SCALAR SUBQUERY 3",
+      "SEARCH a USING COVERING INDEX idx_attempts_page_round_kind_user (page=? AND round=? AND kind=?)",
+      "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+      "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+      "SCAN c LEFT-JOIN",
+      "USE TEMP B-TREE FOR GROUP BY",
+      "SCAN queues",
+      "USE TEMP B-TREE FOR ORDER BY"
+    ],
+    "query_rows": 2
+  },
+  "before": {
+    "actor_equivalence_count": 26,
+    "exact_result_hashes_equal": true,
+    "max_ms": 166.698,
+    "p50_ms": 163.491,
+    "plan": [
+      "CO-ROUTINE queues",
+      "MATERIALIZE classified",
+      "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+      "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+      "SEARCH p USING INDEX idx_pages_claim_active (project=?)",
+      "SCAN l LEFT-JOIN",
+      "CORRELATED SCALAR SUBQUERY 2",
+      "SEARCH a USING COVERING INDEX idx_attempt_page_round_user_kind (page=? AND round=? AND proofreader=? AND kind=?)",
+      "CORRELATED SCALAR SUBQUERY 3",
+      "SEARCH a USING COVERING INDEX idx_attempts_page_round_kind_user (page=? AND round=? AND kind=?)",
+      "SEARCH m USING COVERING INDEX idx_membership_user_role_project (user=? AND role=?)",
+      "SEARCH p USING INDEX sqlite_autoindex_projects_1 (id=?)",
+      "SEARCH c USING AUTOMATIC COVERING INDEX (project=?) LEFT-JOIN",
+      "USE TEMP B-TREE FOR GROUP BY",
+      "SCAN queues",
+      "USE TEMP B-TREE FOR ORDER BY"
+    ],
+    "query_rows": 2
+  }
+}

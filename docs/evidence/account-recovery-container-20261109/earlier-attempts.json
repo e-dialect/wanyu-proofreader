@@ -1,0 +1,88 @@
+{
+  "attempts": [
+    {
+      "status": "fail",
+      "synthetic": true,
+      "gates": {
+        "isolation": "not_run",
+        "running_refused": "not_run",
+        "shared_mount_refused": "not_run",
+        "stopped_recovered": "not_run",
+        "old_password_rejected": "not_run",
+        "old_token_rejected": "not_run",
+        "new_password_accepted": "not_run",
+        "identity_preserved": "not_run",
+        "bootstrap_did_not_elevate": "not_run",
+        "no_secret_output": "not_run",
+        "cleanup": "pass"
+      },
+      "wrapper_sha256": "ca8eeb478794500bd5703d5b3ca3c7053d23e07760fbd6717230a4d5475c7783",
+      "runner_sha256": "12d235525a9388182eb5ecd435fc8a6d464456e244427cb0f8de1b64725618f5",
+      "image_id": "sha256:8fadc8921943aea78636da99582fe52cb0f380d1e18f3323e341fb460f322589",
+      "image_revision": "a8d44dd1ab5906ad8ca35dd6b6af6da967b23bc2",
+      "docker_server": "29.8.2",
+      "python_version": "3.13.16",
+      "error_phase": "create",
+      "error_code": "docker_command_failed",
+      "attempt": 1
+    },
+    {
+      "status": "fail",
+      "synthetic": true,
+      "gates": {
+        "isolation": "not_run",
+        "running_refused": "not_run",
+        "shared_mount_refused": "not_run",
+        "stopped_recovered": "not_run",
+        "old_password_rejected": "not_run",
+        "old_token_rejected": "not_run",
+        "new_password_accepted": "not_run",
+        "identity_preserved": "not_run",
+        "bootstrap_did_not_elevate": "not_run",
+        "no_secret_output": "not_run",
+        "cleanup": "pass"
+      },
+      "wrapper_sha256": "ca8eeb478794500bd5703d5b3ca3c7053d23e07760fbd6717230a4d5475c7783",
+      "runner_sha256": "12d235525a9388182eb5ecd435fc8a6d464456e244427cb0f8de1b64725618f5",
+      "image_id": "sha256:8fadc8921943aea78636da99582fe52cb0f380d1e18f3323e341fb460f322589",
+      "image_revision": "a8d44dd1ab5906ad8ca35dd6b6af6da967b23bc2",
+      "docker_server": "29.8.2",
+      "python_version": "3.13.16",
+      "error_phase": "create",
+      "error_code": "docker_command_failed",
+      "attempt": 2,
+      "safe_diagnostic_category": "docker_default_address_pools_exhausted"
+    },
+    {
+      "status": "fail",
+      "synthetic": true,
+      "gates": {
+        "isolation": "pass",
+        "running_refused": "not_run",
+        "shared_mount_refused": "not_run",
+        "stopped_recovered": "not_run",
+        "old_password_rejected": "not_run",
+        "old_token_rejected": "not_run",
+        "new_password_accepted": "not_run",
+        "identity_preserved": "not_run",
+        "bootstrap_did_not_elevate": "not_run",
+        "no_secret_output": "not_run",
+        "cleanup": "pass"
+      },
+      "wrapper_sha256": "ca8eeb478794500bd5703d5b3ca3c7053d23e07760fbd6717230a4d5475c7783",
+      "runner_sha256": "bc89e1c9efa26b6a38faa1d4e40b96521a68d9af3b7f94e209a3f6cf97bcc48b",
+      "image_id": "sha256:8fadc8921943aea78636da99582fe52cb0f380d1e18f3323e341fb460f322589",
+      "image_revision": "a8d44dd1ab5906ad8ca35dd6b6af6da967b23bc2",
+      "docker_server": "29.8.2",
+      "python_version": "3.13.16",
+      "error_phase": "bootstrap",
+      "error_code": "invalid_loopback_binding",
+      "attempt": 3
+    }
+  ],
+  "all_owned_resources_after_run": {
+    "containers": 0,
+    "volumes": 0,
+    "networks": 0
+  }
+}
