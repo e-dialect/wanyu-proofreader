@@ -1,0 +1,37 @@
+{
+  "grouped_without_materialization": {
+    "before_p50_ms": 116.114,
+    "after_p50_ms": 240.466,
+    "actors": 26,
+    "all_fields_equal": true,
+    "reason": "Rejected: optimizer repeated both attempt subqueries eight times; slower."
+  },
+  "safe_eligibility_case": {
+    "before_p50_ms": 91.924,
+    "after_p50_ms": 88.507,
+    "actors": 26,
+    "all_fields_equal": true,
+    "reason": "Rejected: only 3.7% further gain; not needed in final query."
+  },
+  "min_filter": {
+    "before_p50_ms": 81.048,
+    "after_p50_ms": 81.161,
+    "actors": 26,
+    "all_fields_equal": true,
+    "reason": "Rejected: no meaningful benefit; original printf/CASE key semantics retained."
+  },
+  "limit_minus_one_stream": {
+    "before_p50_ms": 80.631,
+    "after_p50_ms": 80.843,
+    "actors": 26,
+    "all_fields_equal": true,
+    "reason": "Rejected: EXPLAIN still materialized classified and latency did not improve."
+  },
+  "split_aggregates_full_materialization": {
+    "before_p50_ms": 82.702,
+    "after_p50_ms": 81.391,
+    "actors": 26,
+    "all_fields_equal": true,
+    "reason": "Rejected: still materialized all page rows; no meaningful benefit."
+  }
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/dbx"
@@ -34,7 +35,7 @@ func TestProofreadingQueueFiltersPaginateAuthorizedProjects(t *testing.T) {
 			if i == 23 {
 				admin = reader.Id
 			}
-			params := dbx.Params{"id": projectID(i), "name": fmt.Sprintf("Queue %02d", i), "owner": admin, "user": reader.Id}
+			params := dbx.Params{"id": projectID(i), "name": "Same queue name", "owner": admin, "user": reader.Id}
 			if _, err := tx.DB().NewQuery(`INSERT INTO projects(id,name,admin,required_proofreads,access_mode) VALUES ({:id},{:name},{:owner},2,'members_only')`).Bind(params).Execute(); err != nil {
 				return err
 			}
@@ -80,6 +81,10 @@ func TestProofreadingQueueFiltersPaginateAuthorizedProjects(t *testing.T) {
 	}
 	service := newImportService(app)
 	service.registerPagination()
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		e.Router.GET("/legacy-proofreading-queues", service.legacyProofreadingQueues).Bind(apis.RequireAuth("users"))
+		return e.Next()
+	})
 	router, err := apis.NewRouter(app)
 	if err != nil {
 		t.Fatal(err)
@@ -107,6 +112,17 @@ func TestProofreadingQueueFiltersPaginateAuthorizedProjects(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &value); err != nil {
 			t.Fatal(err)
 		}
+		legacyRequest := httptest.NewRequest(http.MethodGet, "/legacy-proofreading-queues"+query, nil)
+		legacyRequest.Header = req.Header.Clone()
+		legacyResponse := httptest.NewRecorder()
+		mux.ServeHTTP(legacyResponse, legacyRequest)
+		var legacy map[string]any
+		if err := json.Unmarshal(legacyResponse.Body.Bytes(), &legacy); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != legacyResponse.Code || !reflect.DeepEqual(value, legacy) {
+			t.Fatalf("full response differs from frozen two-query oracle for %s: got %s; old %s", query, rec.Body.String(), legacyResponse.Body.String())
+		}
 		return value
 	}
 	check := func(result map[string]any, count, page, rows int) {
@@ -115,7 +131,22 @@ func TestProofreadingQueueFiltersPaginateAuthorizedProjects(t *testing.T) {
 			t.Fatalf("unexpected filtered pagination: %v", result)
 		}
 	}
+	queries := []string{}
+	db := app.ConcurrentDB().(*dbx.DB)
+	oldLog := db.LogFunc
+	db.LogFunc = func(format string, args ...any) { queries = append(queries, fmt.Sprintf(format, args...)) }
 	all := request("?perPage=50", reader, 200)
+	db.LogFunc = oldLog
+	aggregations := 0
+	for _, statement := range queries {
+		if strings.Contains(statement, "WITH accessible AS") {
+			aggregations++
+		}
+	}
+	// One optimized statement plus exactly two statements from the frozen oracle.
+	if aggregations != 3 {
+		t.Fatalf("unexpected queue aggregation statements: %d", aggregations)
+	}
 	check(all, 21, 1, 21)
 	explicitAll := request("?filter=all&perPage=50", reader, 200)
 	if !reflect.DeepEqual(all, explicitAll) {
@@ -166,6 +197,12 @@ func TestProofreadingQueueFiltersPaginateAuthorizedProjects(t *testing.T) {
 		if result["summary"].(map[string]any)["totalItems"] != float64(0) {
 			t.Fatal("project selector leaked an unauthorized summary")
 		}
+	}
+	for _, query := range []string{
+		"?page=9999999&perPage=0", "?page=invalid&perPage=99999",
+		"?filter=active&page=999&perPage=1", "?project=" + projectID(21) + "&page=999",
+	} {
+		request(query, reader, 200)
 	}
 	request("?filter=not-a-filter", reader, 400)
 	request("?filter=available", nil, 401)

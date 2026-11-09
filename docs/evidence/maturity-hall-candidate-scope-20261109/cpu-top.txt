@@ -1,0 +1,38 @@
+File: wanyu-hall-profile
+Type: cpu
+Time: 2026-11-09 04:28:07 CST
+Duration: 18.46s, Total samples = 16.05s (86.94%)
+Showing nodes accounting for 13.31s, 82.93% of 16.05s total
+Dropped 203 nodes (cum <= 0.08s)
+Showing top 30 nodes out of 123
+      flat  flat%   sum%        cum   cum%
+     6.43s 40.06% 40.06%     14.84s 92.46%  modernc.org/sqlite/lib._sqlite3VdbeExec
+     0.79s  4.92% 44.98%      0.79s  4.92%  modernc.org/libc.Xmemcmp (inline)
+     0.65s  4.05% 49.03%      0.65s  4.05%  runtime.pthread_cond_signal
+     0.41s  2.55% 51.59%      0.93s  5.79%  modernc.org/sqlite/lib._balance_nonroot
+     0.37s  2.31% 53.89%      0.37s  2.31%  modernc.org/libc.(*TLS).Free
+     0.36s  2.24% 56.14%      0.36s  2.24%  modernc.org/libc.(*TLS).Alloc
+     0.34s  2.12% 58.26%      0.53s  3.30%  modernc.org/sqlite/lib._vdbeCompareMemString
+     0.34s  2.12% 60.37%      0.34s  2.12%  runtime.memmove
+     0.27s  1.68% 62.06%      1.44s  8.97%  modernc.org/sqlite/lib._sqlite3BtreeIndexMoveto
+     0.25s  1.56% 63.61%      0.44s  2.74%  modernc.org/libc.Xmemcpy (inline)
+     0.25s  1.56% 65.17%      0.30s  1.87%  modernc.org/sqlite/lib._btreeParseCellPtr
+     0.24s  1.50% 66.67%      0.76s  4.74%  modernc.org/sqlite/lib._vdbeRecordCompareString
+     0.20s  1.25% 67.91%      0.64s  3.99%  modernc.org/libc.X__builtin___memcpy_chk
+     0.19s  1.18% 69.10%      0.19s  1.18%  modernc.org/sqlite/lib._sqlite3VdbeBooleanValue
+     0.18s  1.12% 70.22%      0.71s  4.42%  modernc.org/sqlite/lib._sqlite3MemCompare
+     0.18s  1.12% 71.34%      0.53s  3.30%  modernc.org/sqlite/lib._vdbeSorterCompareText
+     0.16s     1% 72.34%      0.16s     1%  modernc.org/sqlite/lib._sqlite3BtreeCursorHasMoved
+     0.16s     1% 73.33%      0.30s  1.87%  modernc.org/sqlite/lib._sqlite3VdbeRecordCompareWithSkip
+     0.15s  0.93% 74.27%      0.26s  1.62%  modernc.org/sqlite/lib._sqlite3BtreeNext
+     0.14s  0.87% 75.14%      0.43s  2.68%  modernc.org/sqlite/lib._memIntValue
+     0.14s  0.87% 76.01%      0.14s  0.87%  modernc.org/sqlite/lib._out2Prerelease
+     0.14s  0.87% 76.88%      0.14s  0.87%  modernc.org/sqlite/lib._sqlite3VdbeSerialGet
+     0.14s  0.87% 77.76%      0.68s  4.24%  modernc.org/sqlite/lib._vdbeSorterMerge
+     0.13s  0.81% 78.57%      0.16s     1%  modernc.org/sqlite/lib.Xsqlite3_str_vappendf
+     0.13s  0.81% 79.38%      0.55s  3.43%  modernc.org/sqlite/lib._btreeParseCell
+     0.12s  0.75% 80.12%      0.12s  0.75%  modernc.org/sqlite/lib._btreeParseCellPtrIndex
+     0.12s  0.75% 80.87%      0.12s  0.75%  modernc.org/sqlite/lib._sqlite3Atoi64
+     0.12s  0.75% 81.62%      0.22s  1.37%  sync.(*Mutex).Unlock (partial-inline)
+     0.11s  0.69% 82.31%      0.14s  0.87%  modernc.org/sqlite/lib._pcache1FetchNoMutex
+     0.10s  0.62% 82.93%      0.10s  0.62%  internal/sync.(*Mutex).Lock (inline)
