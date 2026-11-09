@@ -26,6 +26,9 @@ func newDeliveryCompletion(app core.App, hooksDir string) (func(*core.Record) (b
 	vm := goja.New()
 	new(require.Registry).Enable(vm)
 	jsvm.BindCore(vm)
+	// completion -> eventsFor -> assist_visibility needs DB expressions as
+	// well as BindCore's Record/arrayOf. Keep the same visibility SQL as JSVM.
+	jsvm.BindDbx(vm)
 	jsvm.BindSecurity(vm)
 	if err := vm.Set("__hooks", absHooksDir); err != nil {
 		return nil, err

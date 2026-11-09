@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "status": "pass",
+  "base_commit": "92c00efb65c79cef6bc80236cd6d4e75e1222440",
+  "scope": "Go-to-JavaScript delivery completion dependency repair; synthetic functional acceptance only",
+  "product_change": "Bind PocketBase DB expression helpers in the existing per-transaction delivery VM; no SQL, authorization, visibility, source-completion or transaction changes.",
+  "source_audit": {
+    "only_product_custom_goja_vm": "backend/delivery_completion.go:newDeliveryCompletion",
+    "verification_export": "backend/pb_hooks/source_fidelity.pb.js uses the fully bound registered PocketBase JSVM",
+    "go_project_export": "backend/export_service.go does not instantiate a JavaScript VM",
+    "existing_bindings": "BindCore already supplies Record/arrayOf; BindSecurity supplies $security",
+    "new_binding": "jsvm.BindDbx(vm)"
+  },
+  "regression": {
+    "test": "TestDeliveryCompletionBridgeVisibilityAndTransaction",
+    "before": {
+      "exit_code": 1,
+      "package_seconds": 1.171,
+      "error": "ReferenceError: $dbx is not defined at source_fidelity.js:109 eventsFor"
+    },
+    "normal": {
+      "exit_code": 0,
+      "package_seconds": 1.232,
+      "test_seconds": 1.15
+    },
+    "race": {
+      "exit_code": 0,
+      "package_seconds": 27.124,
+      "test_seconds": 25.99
+    },
+    "assertions": [
+      "Actual newDeliveryCompletion bridge executes its dependency chain without missing runtime globals.",
+      "Staging, aborted, and malformed published non-analysis events cannot supply a human revalidation declaration.",
+      "The VM sees its transaction app's uncommitted human review event; after rollback completion remains false.",
+      "A valid committed human review event makes completion true."
+    ]
+  },
+  "commands": [
+    "GOMAXPROCS=2 go test -C backend . -run '^TestDeliveryCompletionBridgeVisibilityAndTransaction$' -count=1 -v",
+    "GOMAXPROCS=2 go test -C backend -race . -run '^TestDeliveryCompletionBridgeVisibilityAndTransaction$' -count=1 -v",
+    "PYTHON=/usr/local/bin/python3 GOMAXPROCS=2 NODE_PATH=/private/tmp/wanyu-playwright-runtime/node_modules BROWSER_CHANNEL=chrome /usr/local/bin/python3 backend/tests/run_frontend_quality_browser.py --only delivery"
+  ],
+  "real_delivery": {
+    "exit_code": 0,
+    "http_and_mounted_browser": "pass",
+    "browser_channel": "chrome",
+    "gates": [
+      "whole-batch coverage and rights/transfer gates",
+      "archive/provenance/value integrity and excluded-text absence",
+      "five-role authorization and immutable evidence",
+      "deletion protection and required responsible parties",
+      "concurrent duplicate-resolution rejection",
+      "native selection, digest drift and concurrent request-id idempotency",
+      "paged detail/history and permission-before-replay",
+      "mounted adoption/delivery deep links, reload/back and dirty-query guards",
+      "receipt states, versioned resend, rights impact and withdrawal",
+      "source recheck/deferred review/changed basis/blocking reports; stale previews write nothing"
+    ],
+    "first_local_browser_attempt": {
+      "exit_code": 1,
+      "classification": "environment",
+      "message": "HTTP checks passed; default Playwright chromium_headless_shell-1254 executable was absent. Repeated with existing supported BROWSER_CHANNEL=chrome without changing assertions."
+    }
+  },
+  "source_hashes": {
+    "files_verified": 428,
+    "changed_after_success": [],
+    "canonical_backend_manifest_sha256": "6b67721e1c86e18feaa37a7afba03c2cf934d0f8b887153022dfe559af7a355e",
+    "delivery_completion_go": "61e35e54f91039c2a71eefac8db585ec533eaccd5f3802a9f10e518e01e8b93d",
+    "delivery_completion_test_go": "be669c57b1c25d7b0e2cfe75ce67b3aa16c487d08733632e6894085c1b52cf8a"
+  },
+  "preserved_logs": {
+    "original_combination_failure_sha256": "7e29a99b53aebb6bc7e82f2479fe25d0bac8b757e546cc6d2261852aa9903b4e",
+    "local": {
+      "after.log": "9d9fbf3df62eaccc1bfdb5cdf043615f3ee18946e0b513422d259f4f101abf6e",
+      "before.log": "20ba2798526450ad4f6b3feab105c7ffe1f7c5e45d69a760126adbe112137186",
+      "delivery-browser-chrome.log": "0b674d2649c8aab6448fed3889a684c9ea1d9bfd73947de30030a0206cfb2a39",
+      "delivery-browser.log": "47d4b1197c6b50b7764f193a07efa58bf231c3b4c8f6afa23a223e114236c015",
+      "race.log": "4b90d1bc1ab8cfb5302e3c74c07aaed941db7d02dc7e5bd50d17ea988c41501e"
+    }
+  },
+  "cleanup": {
+    "all_runners_exited": true,
+    "normal_harness_server_and_browser_finally_completed": true,
+    "post_run_process_inspection": "No command matched this worktree, delivery suite, browser script, or quality runner other than the inspection itself. No unrelated process was signalled."
+  },
+  "limitations": [
+    "No formal capacity acceptance, deployment, production data, real external consumer signature/dry-run, or full-suite replacement is claimed.",
+    "The malformed publication-linked human events are internal DAO fixtures for defensive read visibility, not writes exposed through the product API.",
+    "The complete frontend-quality runner was restricted to delivery; the root agent owns final repository-wide integration."
+  ]
+}
