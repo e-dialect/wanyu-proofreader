@@ -1,0 +1,99 @@
+# Frozen engineering source digests, not credentials. See the CI repair receipt.
+# Keep all built-in rules. A match requires BOTH the exact report path AND one
+# complete, reviewed source-path/digest line; no commit SHA or broad hash pattern.
+title = "WanYu secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Verified source SHA-256 lines in final-engineering-probe.json"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^docs/evidence/assist\-publication\-main\-20261109/final\-engineering\-probe\.json$''']
+regexes = [
+  '''^\s*"backend/pb_hooks/initial_password\.pb\.js":\s*"2e5e834ce2d738c31c4db84b2de729cabb3ca837d58df13f7aa6e562726db43e",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/project_access\.js":\s*"fb5b6b9f830bbb062be749cc6503d3e58dd4a8c1bcbd115d5e1b6caa314368f7",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/source_fidelity_access\.js":\s*"8ffbebc08ca5d47803f243d37aed5d467f54787224b5b721db0f42e3a082ef5c",?\s*$''',
+  '''^\s*"backend/pb_hooks/project_access\.pb\.js":\s*"e1c4cfbb1fe401b4bc4b617e4c90f20efed5f8c309785ba100575371619fb49a",?\s*$''',
+  '''^\s*"backend/pb_migrations/1789200500_bundle_entry_keys\.js":\s*"6f96357d48f555c92754373ec63be6322d344e6773abced7aeb83fa5b47d37bc",?\s*$''',
+  '''^\s*"backend/pdf_access\.go":\s*"a2140f9c92f28adc9554a81c155c0477a9b60c2bbccaec71b40d413041c420a5",?\s*$''',
+  '''^\s*"backend/pdf_access_test\.go":\s*"03c2eead082831b2996223a4bdc96debec65b2671e2b20cdc8ce8a6ad05e4959",?\s*$''',
+  '''^\s*"backend/project_access_migration_test\.go":\s*"b331765a449b947431c2195ae0b57dd4d7df7fb177764a6eac2759cb9e271373",?\s*$''',
+  '''^\s*"backend/tests/pdf_access_integration\.mjs":\s*"aba02fd646091c0dbf4628878c7f0b553171a70518ac25cc7987141cd6b3079b",?\s*$''',
+  '''^\s*"backend/tests/project_access_integration\.mjs":\s*"b9262a1ebf6dc49252a07ff811ba1b3b7df8713af5154bd06e65fb1fd2f863e0",?\s*$''',
+  '''^\s*"backend/legacy_migrations/12_reapply_two_pass_access_rules\.js":\s*"b77a3970a10e59b5df67632f80d42fa8e1fc48332b395bee1000068ac3c31571",?\s*$''',
+  '''^\s*"backend/legacy_migrations/20_project_access\.js":\s*"53e1250ddc4728e6fd71f2f5b680eac6334b8d9cc6374dd889cf26cb35708f1f",?\s*$''',
+  '''^\s*"backend/legacy_migrations/2_apply_access_rules\.js":\s*"ebf2b9af8b3ae93671c8864f515309ff9de3801ba5ae2442f35d48ce1540d3d7",?\s*$''',
+  '''^\s*"backend/legacy_migrations/3_fix_projects_access_rules\.js":\s*"6b2a6b72582feda7fddc608d8c4e7540612d9484dd5b156951372568495f16b3",?\s*$''',
+]
+
+[[allowlists]]
+description = "Verified source SHA-256 lines in from-20k.json"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^docs/evidence/assist\-publication\-main\-20261109/from\-20k\.json$''']
+regexes = [
+  '''^\s*"backend/pb_hooks/initial_password\.pb\.js":\s*"2e5e834ce2d738c31c4db84b2de729cabb3ca837d58df13f7aa6e562726db43e",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/project_access\.js":\s*"fb5b6b9f830bbb062be749cc6503d3e58dd4a8c1bcbd115d5e1b6caa314368f7",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/source_fidelity_access\.js":\s*"8ffbebc08ca5d47803f243d37aed5d467f54787224b5b721db0f42e3a082ef5c",?\s*$''',
+  '''^\s*"backend/pb_hooks/project_access\.pb\.js":\s*"e1c4cfbb1fe401b4bc4b617e4c90f20efed5f8c309785ba100575371619fb49a",?\s*$''',
+  '''^\s*"backend/pb_migrations/1789200500_bundle_entry_keys\.js":\s*"6f96357d48f555c92754373ec63be6322d344e6773abced7aeb83fa5b47d37bc",?\s*$''',
+  '''^\s*"backend/pdf_access\.go":\s*"a2140f9c92f28adc9554a81c155c0477a9b60c2bbccaec71b40d413041c420a5",?\s*$''',
+  '''^\s*"backend/pdf_access_test\.go":\s*"03c2eead082831b2996223a4bdc96debec65b2671e2b20cdc8ce8a6ad05e4959",?\s*$''',
+  '''^\s*"backend/project_access_migration_test\.go":\s*"b331765a449b947431c2195ae0b57dd4d7df7fb177764a6eac2759cb9e271373",?\s*$''',
+  '''^\s*"backend/tests/pdf_access_integration\.mjs":\s*"aba02fd646091c0dbf4628878c7f0b553171a70518ac25cc7987141cd6b3079b",?\s*$''',
+  '''^\s*"backend/tests/project_access_integration\.mjs":\s*"b9262a1ebf6dc49252a07ff811ba1b3b7df8713af5154bd06e65fb1fd2f863e0",?\s*$''',
+  '''^\s*"backend/legacy_migrations/12_reapply_two_pass_access_rules\.js":\s*"b77a3970a10e59b5df67632f80d42fa8e1fc48332b395bee1000068ac3c31571",?\s*$''',
+  '''^\s*"backend/legacy_migrations/20_project_access\.js":\s*"53e1250ddc4728e6fd71f2f5b680eac6334b8d9cc6374dd889cf26cb35708f1f",?\s*$''',
+  '''^\s*"backend/legacy_migrations/2_apply_access_rules\.js":\s*"ebf2b9af8b3ae93671c8864f515309ff9de3801ba5ae2442f35d48ce1540d3d7",?\s*$''',
+  '''^\s*"backend/legacy_migrations/3_fix_projects_access_rules\.js":\s*"6b2a6b72582feda7fddc608d8c4e7540612d9484dd5b156951372568495f16b3",?\s*$''',
+]
+
+[[allowlists]]
+description = "Verified source SHA-256 lines in full-schema-before-sql-optimization.json"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^docs/evidence/assist\-publication\-main\-20261109/full\-schema\-before\-sql\-optimization\.json$''']
+regexes = [
+  '''^\s*"backend/pb_hooks/initial_password\.pb\.js":\s*"2e5e834ce2d738c31c4db84b2de729cabb3ca837d58df13f7aa6e562726db43e",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/project_access\.js":\s*"fb5b6b9f830bbb062be749cc6503d3e58dd4a8c1bcbd115d5e1b6caa314368f7",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/source_fidelity_access\.js":\s*"8ffbebc08ca5d47803f243d37aed5d467f54787224b5b721db0f42e3a082ef5c",?\s*$''',
+  '''^\s*"backend/pb_hooks/project_access\.pb\.js":\s*"e1c4cfbb1fe401b4bc4b617e4c90f20efed5f8c309785ba100575371619fb49a",?\s*$''',
+  '''^\s*"backend/pb_migrations/1789200500_bundle_entry_keys\.js":\s*"6f96357d48f555c92754373ec63be6322d344e6773abced7aeb83fa5b47d37bc",?\s*$''',
+  '''^\s*"backend/pdf_access\.go":\s*"a2140f9c92f28adc9554a81c155c0477a9b60c2bbccaec71b40d413041c420a5",?\s*$''',
+  '''^\s*"backend/pdf_access_test\.go":\s*"03c2eead082831b2996223a4bdc96debec65b2671e2b20cdc8ce8a6ad05e4959",?\s*$''',
+  '''^\s*"backend/project_access_migration_test\.go":\s*"b331765a449b947431c2195ae0b57dd4d7df7fb177764a6eac2759cb9e271373",?\s*$''',
+  '''^\s*"backend/tests/pdf_access_integration\.mjs":\s*"aba02fd646091c0dbf4628878c7f0b553171a70518ac25cc7987141cd6b3079b",?\s*$''',
+  '''^\s*"backend/tests/project_access_integration\.mjs":\s*"b9262a1ebf6dc49252a07ff811ba1b3b7df8713af5154bd06e65fb1fd2f863e0",?\s*$''',
+  '''^\s*"backend/legacy_migrations/12_reapply_two_pass_access_rules\.js":\s*"b77a3970a10e59b5df67632f80d42fa8e1fc48332b395bee1000068ac3c31571",?\s*$''',
+  '''^\s*"backend/legacy_migrations/20_project_access\.js":\s*"53e1250ddc4728e6fd71f2f5b680eac6334b8d9cc6374dd889cf26cb35708f1f",?\s*$''',
+  '''^\s*"backend/legacy_migrations/2_apply_access_rules\.js":\s*"ebf2b9af8b3ae93671c8864f515309ff9de3801ba5ae2442f35d48ce1540d3d7",?\s*$''',
+  '''^\s*"backend/legacy_migrations/3_fix_projects_access_rules\.js":\s*"6b2a6b72582feda7fddc608d8c4e7540612d9484dd5b156951372568495f16b3",?\s*$''',
+]
+
+[[allowlists]]
+description = "Verified source SHA-256 lines in old-sql-breakdown-20k.json"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^docs/evidence/assist\-publication\-main\-20261109/old\-sql\-breakdown\-20k\.json$''']
+regexes = [
+  '''^\s*"backend/pb_hooks/initial_password\.pb\.js":\s*"2e5e834ce2d738c31c4db84b2de729cabb3ca837d58df13f7aa6e562726db43e",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/project_access\.js":\s*"fb5b6b9f830bbb062be749cc6503d3e58dd4a8c1bcbd115d5e1b6caa314368f7",?\s*$''',
+  '''^\s*"backend/pb_hooks/lib/source_fidelity_access\.js":\s*"8ffbebc08ca5d47803f243d37aed5d467f54787224b5b721db0f42e3a082ef5c",?\s*$''',
+  '''^\s*"backend/pb_hooks/project_access\.pb\.js":\s*"e1c4cfbb1fe401b4bc4b617e4c90f20efed5f8c309785ba100575371619fb49a",?\s*$''',
+  '''^\s*"backend/pb_migrations/1789200500_bundle_entry_keys\.js":\s*"6f96357d48f555c92754373ec63be6322d344e6773abced7aeb83fa5b47d37bc",?\s*$''',
+  '''^\s*"backend/pdf_access\.go":\s*"a2140f9c92f28adc9554a81c155c0477a9b60c2bbccaec71b40d413041c420a5",?\s*$''',
+  '''^\s*"backend/pdf_access_test\.go":\s*"03c2eead082831b2996223a4bdc96debec65b2671e2b20cdc8ce8a6ad05e4959",?\s*$''',
+  '''^\s*"backend/project_access_migration_test\.go":\s*"b331765a449b947431c2195ae0b57dd4d7df7fb177764a6eac2759cb9e271373",?\s*$''',
+  '''^\s*"backend/tests/pdf_access_integration\.mjs":\s*"aba02fd646091c0dbf4628878c7f0b553171a70518ac25cc7987141cd6b3079b",?\s*$''',
+  '''^\s*"backend/tests/project_access_integration\.mjs":\s*"b9262a1ebf6dc49252a07ff811ba1b3b7df8713af5154bd06e65fb1fd2f863e0",?\s*$''',
+  '''^\s*"backend/legacy_migrations/12_reapply_two_pass_access_rules\.js":\s*"b77a3970a10e59b5df67632f80d42fa8e1fc48332b395bee1000068ac3c31571",?\s*$''',
+  '''^\s*"backend/legacy_migrations/20_project_access\.js":\s*"53e1250ddc4728e6fd71f2f5b680eac6334b8d9cc6374dd889cf26cb35708f1f",?\s*$''',
+  '''^\s*"backend/legacy_migrations/2_apply_access_rules\.js":\s*"ebf2b9af8b3ae93671c8864f515309ff9de3801ba5ae2442f35d48ce1540d3d7",?\s*$''',
+  '''^\s*"backend/legacy_migrations/3_fix_projects_access_rules\.js":\s*"6b2a6b72582feda7fddc608d8c4e7540612d9484dd5b156951372568495f16b3",?\s*$''',
+]

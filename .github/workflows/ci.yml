@@ -529,6 +529,7 @@ jobs:
         working-directory: .
         run: |
           sh scripts/install_security_tool.sh gitleaks "$RUNNER_TEMP/security-tools"
+          GITLEAKS_BIN="$RUNNER_TEMP/security-tools/gitleaks" python3 -m unittest discover -s scripts -p 'test_gitleaks_allowlist.py'
           "$RUNNER_TEMP/security-tools/gitleaks" git . --redact --log-opts=--all
 
       - name: Frontend coverage (reports on every file the suites load)
