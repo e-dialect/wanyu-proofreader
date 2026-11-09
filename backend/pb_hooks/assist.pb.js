@@ -19,7 +19,7 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/findings/recompute", (c) => 
   const projectId = proofAssertId(c.request.pathValue("projectId"), "项目")
   proofRequireManager($app, projectId, auth)
 
-  const summary = assistRecomputeProject($app, projectId)
+  const summary = assistRecomputeProject($app, projectId, tx => require(`${__hooks}/lib/assist_publication.js`).authorizeRequest(tx, auth, "rules", projectId))
   console.log("assist_recompute", JSON.stringify({ project: projectId, ...summary }))
   return c.json(200, summary)
 }, $apis.requireAuth("users"))
@@ -54,7 +54,7 @@ routerAdd("POST", "/api/fangji/pages/{pageId}/findings/recompute", (c) => {
   }
 
   const startedAt = Date.now()
-  const summary = assistRecomputePage($app, pageId)
+  const summary = assistRecomputePage($app, pageId, null, tx => require(`${__hooks}/lib/assist_publication.js`).authorizeRequest(tx, auth, "page", projectId, pageId))
   return c.json(200, { ...summary, duration_ms: Date.now() - startedAt })
 }, $apis.requireAuth("users"))
 
@@ -71,7 +71,7 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/identity/recompute", (c) => 
   if (auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
   const projectId = proofAssertId(c.request.pathValue("projectId"), "项目")
   proofRequireManager($app, projectId, auth)
-  return c.json(200, assistRecomputeIdentity($app, projectId))
+  return c.json(200, assistRecomputeIdentity($app, projectId, tx => require(`${__hooks}/lib/assist_publication.js`).authorizeRequest(tx, auth, "identity", projectId)))
 }, $apis.requireAuth("users"))
 
 // POST /api/fangji/projects/{projectId}/dismissals   { group_key, kind, note }

@@ -181,7 +181,7 @@ function crossSourceFields(bucket, columns = DEFAULT_COLUMNS) {
   return fields
 }
 
-function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT_COLUMNS) {
+function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT_COLUMNS, reservePartnerBytes = null) {
   const groups = new Map()
   let noKey = 0
   for (const entry of entries) {
@@ -220,6 +220,16 @@ function findIdentityConflicts(entries, dismissed = new Set(), columns = DEFAULT
       continue
     }
     if (!others.length) continue
+    if (reservePartnerBytes) {
+      // Every member lists every other member. Refuse oversized whole batches
+      // before allocating the quadratic partner arrays; never truncate evidence.
+      let quotedIdBytes = 0
+      for (const item of bucket) for (const char of JSON.stringify(String(item.id))) {
+        const cp = char.codePointAt(0)
+        quotedIdBytes += cp <= 0x7f ? 1 : cp <= 0x7ff ? 2 : cp <= 0xffff ? 3 : 4
+      }
+      reservePartnerBytes(quotedIdBytes * (bucket.length - 1) + bucket.length * Math.max(0, bucket.length - 2) + 2 * bucket.length)
+    }
     // 同词头不同拼音的两条根本不会落进同一个 key，所以 R-DEDUP 的反向用例由分组保证，
     // 不是靠"记得判断"。这里断言的是一次比较都发生在身份相同的前提下。
     compared += bucket.length

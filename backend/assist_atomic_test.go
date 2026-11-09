@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -14,9 +17,16 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/plugins/jsvm"
 )
+
+// Independently expressed business-current query; raw superseded_at alone is
+// intentionally not authority after migration 4700.
+const assistCurrentSQLForTest = `review_findings.superseded_at='' AND
+(review_findings.assist_publication='' OR EXISTS(SELECT 1 FROM assist_publications p WHERE p.id=review_findings.assist_publication AND p.state='published')) AND
+NOT EXISTS(SELECT 1 FROM _assist_finding_retirements r JOIN assist_publications p ON p.id=r.publication AND p.state='published' WHERE r.finding=review_findings.id)`
 
 // Run the actual JS writer and rules against PocketBase/SQLite. The injected
 // failure is a database create hook, not a replacement for the production code.
@@ -25,7 +35,8 @@ func newAssistAtomicFixture(t *testing.T) (core.App, string, string) {
 	app := newSchemaTestApp(t)
 	for _, name := range []string{
 		"1789113600_review_findings.js", "1789113700_page_difficulty.js",
-		"1789113800_entry_identity.js", "1792627200_source_fidelity.js",
+		"1789113800_entry_identity.js", "1789200000_source_registry.js", "1789200100_column_roles.js",
+		"1792627200_source_fidelity.js", "1794204700_assist_publications.js",
 	} {
 		vm := goja.New()
 		jsvm.BindCore(vm)
@@ -79,25 +90,35 @@ func newAssistAtomicFixture(t *testing.T) (core.App, string, string) {
 }
 
 func runAssistWriter(app core.App, method, id string) error {
+	_, err := runAssistScript(app, `require(__hooks + "/lib/assist_writer.js").`+method+`(dao, "`+id+`")`)
+	return err
+}
+
+func runAssistScript(app core.App, script string) (goja.Value, error) {
 	vm := goja.New()
 	new(require.Registry).Enable(vm)
 	jsvm.BindCore(vm)
+	jsvm.BindDbx(vm)
+	jsvm.BindApis(vm)
 	jsvm.BindSecurity(vm)
 	jsvm.BindOS(vm)
 	hooks, _ := filepath.Abs("pb_hooks")
 	vm.Set("__hooks", hooks)
 	vm.Set("dao", app)
-	vm.Set("target", id)
 	vm.Set("console", map[string]any{"log": func(...any) {}, "warn": func(...any) {}})
-	_, err := vm.RunString(`require(__hooks + "/lib/assist_writer.js").` + method + `(dao, target)`)
-	return err
+	return vm.RunString(script)
 }
 
 func assistDatabaseState(t *testing.T, app core.App) map[string]string {
 	t.Helper()
 	state := map[string]string{}
 	for _, name := range []string{"pages", "review_findings", "verification_events"} {
-		rows, err := app.FindRecordsByFilter(name, "", "id", 0, 0)
+		rows := []*core.Record{}
+		query := app.RecordQuery(name).OrderBy("id")
+		if name != "pages" {
+			query.AndWhere(dbx.NewExp("assist_publication='' OR EXISTS(SELECT 1 FROM assist_publications p WHERE p.id=" + name + ".assist_publication AND p.state='published')"))
+		}
+		err := query.All(&rows)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +172,8 @@ func TestAssistConcurrentBatchesKeepExactCharacterResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	projection := func() []string {
-		rows, err := app.FindRecordsByFilter("review_findings", `superseded_at = ""`, "page,field_name,kind,message_key", 0, 0)
+		rows := []*core.Record{}
+		err := app.RecordQuery("review_findings").AndWhere(dbx.NewExp(assistCurrentSQLForTest)).OrderBy("page", "field_name", "kind", "message_key").All(&rows)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -187,10 +209,17 @@ func TestAssistConcurrentBatchesKeepExactCharacterResults(t *testing.T) {
 		}
 		ready.Wait()
 		close(start)
+		successes := 0
 		for range 8 {
-			if err := <-results; err != nil {
+			err := <-results
+			if err == nil {
+				successes++
+			} else if !strings.Contains(err.Error(), "分析依据已变化") {
 				t.Fatal(err)
 			}
+		}
+		if successes == 0 {
+			t.Fatal("concurrent batch must publish at least one complete result")
 		}
 		if got := projection(); !reflect.DeepEqual(got, want) {
 			t.Fatalf("wave %d changed exact finding/character evidence: got %d rows, want %d", wave, len(got), len(want))
@@ -219,6 +248,73 @@ func TestAssistNestedTransactionKeepsCallerRollback(t *testing.T) {
 	}
 }
 
+func TestAssistCaughtNestedFailureKeepsBusinessCommit(t *testing.T) {
+	for _, failure := range []string{"second_finding", "publish_save"} {
+		t.Run(failure, func(t *testing.T) {
+			app, project, page := newAssistAtomicFixture(t)
+			if err := runAssistWriter(app, "recomputePage", page); err != nil {
+				t.Fatal(err)
+			}
+			before := assistDatabaseState(t, app)
+			var tombstonesBefore int
+			if err := app.DB().NewQuery("SELECT COUNT(*) FROM _assist_finding_retirements").Row(&tombstonesBefore); err != nil {
+				t.Fatal(err)
+			}
+			created := 0
+			createHook := app.OnRecordCreate("review_findings").BindFunc(func(e *core.RecordEvent) error {
+				created++
+				if failure == "second_finding" && created == 2 {
+					return errors.New("synthetic nested finding failure")
+				}
+				return e.Next()
+			})
+			publishHook := app.OnRecordUpdate("assist_publications").BindFunc(func(e *core.RecordEvent) error {
+				if failure == "publish_save" && e.Record.GetString("state") == "published" {
+					return errors.New("synthetic nested publication failure")
+				}
+				return e.Next()
+			})
+			err := app.RunInTransaction(func(tx core.App) error {
+				business, err := tx.FindRecordById("projects", project)
+				if err != nil {
+					return err
+				}
+				business.Set("name", "outer business committed")
+				if err = tx.Save(business); err != nil {
+					return err
+				}
+				result, err := runAssistScript(tx, `require(__hooks+"/lib/assist_writer.js").safeRecomputePage(dao,"`+page+`",null,"synthetic")`)
+				if err != nil {
+					return err
+				}
+				if !goja.IsNull(result) {
+					return fmt.Errorf("safe wrapper must expose failure as null, got %v", result)
+				}
+				return nil
+			})
+			app.OnRecordCreate("review_findings").Unbind(createHook)
+			app.OnRecordUpdate("assist_publications").Unbind(publishHook)
+			if err != nil {
+				t.Fatal(err)
+			}
+			business, err := app.FindRecordById("projects", project)
+			if err != nil || business.GetString("name") != "outer business committed" {
+				t.Fatalf("business did not commit: %v", err)
+			}
+			if !reflect.DeepEqual(assistDatabaseState(t, app), before) {
+				t.Fatal("caught optional analysis failure partially changed committed findings/events/tier")
+			}
+			var tombstonesAfter int
+			if err = app.DB().NewQuery("SELECT COUNT(*) FROM _assist_finding_retirements").Row(&tombstonesAfter); err != nil {
+				t.Fatal(err)
+			}
+			if tombstonesAfter != tombstonesBefore {
+				t.Fatal("caught publication failure left retirement tombstones")
+			}
+		})
+	}
+}
+
 // Explicit local contention diagnostic, excluded from ordinary CI runs. It
 // uses the existing scale fixture's 1/4 shared identities and records writer
 // wait separately; these timings are not production capacity acceptance.
@@ -226,14 +322,35 @@ func TestAssistBatchScaleContention(t *testing.T) {
 	if os.Getenv("ASSIST_SCALE_10K") != "1" {
 		t.Skip("set ASSIST_SCALE_10K=1 for the synthetic 10k writer-wait diagnostic")
 	}
-	app, project, _ := newAssistAtomicFixture(t)
+	rows := 10000
+	if raw := os.Getenv("ASSIST_SCALE_ROWS"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || (value != 10000 && value != 20000) {
+			t.Fatal("ASSIST_SCALE_ROWS must be 10000 or 20000")
+		}
+		rows = value
+	}
+	var app core.App
+	var project string
+	schemaMode := os.Getenv("ASSIST_SCALE_SCHEMA")
+	if schemaMode == "full" {
+		app = newAssistVisibilityApp(t)
+		_, _, firstPage := newAssistVisibilityFixture(t, app)
+		project = firstPage.GetString("project")
+		jsvm.MustRegister(app, jsvm.Config{HooksDir: "pb_hooks", MigrationsFilesPattern: `a^`})
+	} else if schemaMode == "" || schemaMode == "minimal" {
+		schemaMode = "minimal"
+		app, project, _ = newAssistAtomicFixture(t)
+	} else {
+		t.Fatal("ASSIST_SCALE_SCHEMA must be minimal or full")
+	}
 	pages, _ := app.FindCollectionByNameOrId("pages")
 	if err := app.RunInTransaction(func(tx core.App) error {
 		existing, err := tx.FindRecordsByFilter("pages", "", "page_number", 0, 0)
 		if err != nil {
 			return err
 		}
-		for i := range 10000 {
+		for i := range rows {
 			page := core.NewRecord(pages)
 			if i < len(existing) {
 				page = existing[i]
@@ -243,7 +360,7 @@ func TestAssistBatchScaleContention(t *testing.T) {
 			page.Set("pdf_page", i/5+1)
 			page.Set("status", "pending")
 			page.Set("proofread_round", 1)
-			group := i % 2500
+			group := i % (rows / 4)
 			page.Set("ocr_row_json", fmt.Sprintf(`{"词条":"词%d","拼音":"pin%d","莆田IPA":"ipa%d","释义":"义%d"}`, group, group, group, i))
 			if err := tx.Save(page); err != nil {
 				return err
@@ -257,43 +374,104 @@ func TestAssistBatchScaleContention(t *testing.T) {
 	if err := app.Save(probe); err != nil {
 		t.Fatal(err)
 	}
-	for _, method := range []string{"recomputeProject", "recomputeIdentity"} {
+	for index, method := range []string{"recomputeProject", "recomputeIdentity", "recomputeProject", "recomputeIdentity"} {
 		started := time.Now()
-		publishing := make(chan struct{})
+		var firstWrite time.Time
 		var once sync.Once
-		hook := app.OnRecordCreate("review_findings").BindFunc(func(e *core.RecordEvent) error {
-			once.Do(func() { close(publishing) })
-			return e.Next()
-		})
-		completed := make(chan error, 1)
-		go func() { completed <- runAssistWriter(app, method, project) }()
-		select {
-		case <-publishing:
-		case err := <-completed:
-			t.Fatalf("scale did not reach finding writes: %v", err)
-		case <-time.After(2 * time.Minute):
-			t.Fatal("scale preparation exceeded diagnostic limit")
+		hook := app.OnRecordCreate("review_findings").BindFunc(func(e *core.RecordEvent) error { once.Do(func() { firstWrite = time.Now() }); return e.Next() })
+		type result struct {
+			raw string
+			err error
 		}
-		writeStarted := time.Now()
-		var acquired time.Time
-		writeErr := app.RunInTransaction(func(tx core.App) error {
-			acquired = time.Now()
-			return tx.Save(core.NewRecord(probe))
-		})
-		writeEnded := time.Now()
-		err := <-completed
+		completed := make(chan result, 1)
+		go func() {
+			value, err := runAssistScript(app, `JSON.stringify(require(__hooks+"/lib/assist_writer.js").`+method+`(dao,"`+project+`"))`)
+			if err != nil {
+				completed <- result{err: err}
+				return
+			}
+			completed <- result{raw: value.String()}
+		}()
+		var memory runtime.MemStats
+		runtime.ReadMemStats(&memory)
+		heapStart, heapMax := memory.HeapAlloc, memory.HeapAlloc
+		rssMax := int64(0)
+		lastMemory := time.Time{}
+		maxWait := time.Duration(0)
+		maxWrite := time.Duration(0)
+		samples := 0
+		ticker := time.NewTicker(5 * time.Millisecond)
+		timeout := time.NewTimer(3 * time.Minute)
+		var outcome result
+	wait:
+		for {
+			select {
+			case outcome = <-completed:
+				break wait
+			case <-timeout.C:
+				t.Fatal("scale publication exceeded diagnostic limit")
+			case <-ticker.C:
+				if time.Since(lastMemory) >= time.Second {
+					runtime.ReadMemStats(&memory)
+					if memory.HeapAlloc > heapMax {
+						heapMax = memory.HeapAlloc
+					}
+					if raw, err := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(os.Getpid())).Output(); err == nil {
+						if kb, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64); err == nil && kb*1024 > rssMax {
+							rssMax = kb * 1024
+						}
+					}
+					lastMemory = time.Now()
+				}
+				writeStarted := time.Now()
+				var acquired time.Time
+				if err := app.RunInTransaction(func(tx core.App) error { acquired = time.Now(); return tx.Save(core.NewRecord(probe)) }); err != nil {
+					t.Fatal(err)
+				}
+				if wait := acquired.Sub(writeStarted); wait > maxWait {
+					maxWait = wait
+				}
+				if duration := time.Since(writeStarted); duration > maxWrite {
+					maxWrite = duration
+				}
+				samples++
+			}
+		}
+		ticker.Stop()
+		timeout.Stop()
 		ended := time.Now()
 		app.OnRecordCreate("review_findings").Unbind(hook)
-		if err != nil || writeErr != nil {
-			t.Fatalf("scale %s: %v; concurrent write: %v", method, err, writeErr)
+		if outcome.err != nil {
+			t.Fatal(outcome.err)
+		}
+		summary := map[string]any{}
+		if err := json.Unmarshal([]byte(outcome.raw), &summary); err != nil {
+			t.Fatal(err)
+		}
+		var persistedJSONBytes int64
+		if err := app.DB().NewQuery(`SELECT COALESCE(SUM(bytes),0) FROM (
+          SELECT length(CAST(verification_context_json AS BLOB))+length(CAST(params_json AS BLOB))+length(CAST(evidence_json AS BLOB)) AS bytes FROM review_findings WHERE assist_publication={:publication}
+          UNION ALL SELECT length(CAST(context_json AS BLOB))+length(CAST(payload_json AS BLOB)) FROM verification_events WHERE assist_publication={:publication}
+          UNION ALL SELECT COALESCE(length(CAST(difficulty_basis_json AS BLOB)),0)+COALESCE(length(CAST(entry_identity_key AS BLOB)),0) FROM _assist_page_derivations WHERE publication={:publication}
+        )`).Bind(dbx.Params{"publication": summary["publication"]}).Row(&persistedJSONBytes); err != nil {
+			t.Fatal(err)
 		}
 		metrics, _ := json.Marshal(map[string]any{
-			"method": method, "rows": 10000, "dev_mode": app.IsDev(),
-			"total_ms":                  ended.Sub(started).Milliseconds(),
-			"pre_publish_ms":            writeStarted.Sub(started).Milliseconds(),
-			"concurrent_writer_wait_ms": acquired.Sub(writeStarted).Milliseconds(),
-			"concurrent_write_total_ms": writeEnded.Sub(writeStarted).Milliseconds(),
+			"method": method, "iteration": index/2 + 1, "rows": rows, "schema_mode": schemaMode, "dev_mode": app.IsDev(), "total_ms": ended.Sub(started).Milliseconds(),
+			"heap_start_bytes": heapStart, "heap_sampled_max_bytes": heapMax, "rss_sampled_max_bytes": rssMax, "resources_sample_interval_ms": 1000,
+			"input_bytes": summary["input_bytes"], "preparation_bytes": summary["preparation_bytes"], "estimated_payload_bytes": summary["payload_bytes"], "persisted_json_bytes": persistedJSONBytes,
+			"pre_stage_ms": firstWrite.Sub(started).Milliseconds(), "probe_samples": samples, "probe_interval_ms": 5,
+			"concurrent_writer_wait_max_ms": float64(maxWait.Microseconds()) / 1000,
+			"concurrent_write_total_max_ms": float64(maxWrite.Microseconds()) / 1000,
+			"publication_metrics":           summary["publication_metrics"], "findings": summary["findings"], "superseded": summary["superseded"],
 		})
-		t.Logf("ASSIST_ATOMIC_SCALE %s", metrics)
+		t.Logf("ASSIST_STAGED_SCALE %s", metrics)
+		if maxWait > 500*time.Millisecond {
+			t.Errorf("%s independent writer waited %v > 500ms engineering target", method, maxWait)
+		}
+		measured := summary["publication_metrics"].(map[string]any)
+		if measured["max_transaction_ms"].(float64) > 500 {
+			t.Errorf("%s held a staging/final write transaction >500ms: %v", method, measured)
+		}
 	}
 }

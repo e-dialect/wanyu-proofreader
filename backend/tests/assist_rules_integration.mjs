@@ -572,10 +572,12 @@ assert.ok(ctx.repertoire.size > 120, `repertoire too small: ${ctx.repertoire.siz
   const start = writerSource.indexOf('function recomputeProjectBatch(')
   assert.ok(start >= 0, 'assist_writer.js 里找不到 recomputeProject')
   const projectBody = writerSource.slice(start, writerSource.indexOf('\n}\n', start))
-  const scanAt = projectBody.indexOf('loadAllPages(dao, projectId)')
-  const firstWrite = Math.min(projectBody.indexOf('supersede('), projectBody.indexOf('insertFinding('))
-  assert.ok(scanAt >= 0, 'recomputeProject 必须用分批游标读条目，不能有硬上限')
-  assert.ok(firstWrite > scanAt, `第一次写必须晚于整批扫描：scan@${scanAt} firstWrite@${firstWrite}`)
+  const scanAt = projectBody.indexOf('loadAllPages(dao, projectId, { budgeted: true })')
+  assert.ok(scanAt >= 0, 'recomputeProject 必须用有界分批游标读条目，不能有硬上限')
+  assert.ok(!/\b(?:supersede|insertFinding)\(/.test(projectBody), 'prepare 不得直接发布或退役结果')
+  const publisher = readFileSync(new URL('../pb_hooks/lib/assist_publication.js', import.meta.url), 'utf8')
+  assert.ok(publisher.indexOf('const prepared = prepare(dao, publication.id)') < publisher.indexOf('for (const [items, save]'),
+    '完整有界准备必须先于第一块真实finding/event保存；真实故障回滚另由Go/PB用例验证')
 }
 
 // 已知取舍（不是 bug，但必须写下来）：R1 的放行集合是「启用键盘字符 ∪ 固定区段」，
@@ -828,10 +830,19 @@ try {
     // Awaited recomputations are settled before this read; every historical row
     // must be counted even when several concurrent waves exceed one API page.
     assert.equal(items.length, list.totalItems, `读取被分页截断：${items.length}/${list.totalItems}`)
-    return { ...list, items }
+    const pageRecord = await request(`/api/collections/pages/records/${pageId}`, { token: superAuth.token })
+    const visible = new Set()
+    for (let page = 1; ; page++) {
+      const batch = await request(`/api/fangji/projects/${pageRecord.project}/findings?page=${page}&per=200`, { token: platformAuth.token })
+      for (const item of batch.items) visible.add(item.id)
+      if (!batch.hasMore) break
+    }
+    // Native records retain original bytes. Business current membership comes
+    // from the authoritative current endpoint after publication migration 4700.
+    return { ...list, items: items.map(item => ({ ...item, _current: visible.has(item.id) })) }
   }
   const anchorOfRaw = (row) => JSON.parse(row.evidence_json || '{}').anchor ?? ''
-  const current = (rows) => rows.filter((row) => row.superseded_at === '')
+  const current = (rows) => rows.filter((row) => row._current === true)
   const entryRows = (rows) => current(rows).filter((row) => anchorOfRaw(row) === rules.ANCHOR_ENTRY)
   const columnRows = (rows) => current(rows).filter((row) => anchorOfRaw(row) === rules.ANCHOR_COLUMN)
   const keysOfRaw = (rows) => rows.map((row) => `${row.kind}/${row.message_key}`).sort()
@@ -858,7 +869,7 @@ try {
     '回退那条的格级疑点各归各条目')
   assert.deepEqual(pageLevelOf(backRows.items).map((row) => row.message_key), [],
     '页级(R7)疑点挂在 pdf_page 的第一条目上，不该分到回退那条自己')
-  assert.ok(afterRuleRows.items.filter((row) => row.superseded_at !== '').length >= expectedFor(trappedRow).length,
+  assert.ok(afterRuleRows.items.filter((row) => !row._current).length >= expectedFor(trappedRow).length,
     '旧批次必须留在库里')
   assert.ok(freshRuleRows.every((row) => row.produced_at !== ''))
   const ocrAfter = await request(`/api/collections/review_findings/records/${ocrRow.id}`, { token: superAuth.token })
@@ -910,8 +921,8 @@ try {
     }
   })
   assert.ok(submit)
-  const submitted = await request(`/api/collections/review_findings/records?filter=${encodeURIComponent(`page = "${trapped.id}" && producer = "rule" && superseded_at = ""`)}`, { token: superAuth.token })
-  const runs = submitted.items.filter((row) => row.message_key === 'long_digit_run')
+  const submitted = await ruleRowsOf(trapped.id)
+  const runs = current(submitted.items).filter((row) => row.message_key === 'long_digit_run')
   assert.equal(runs.length, 1)
   assert.deepEqual(JSON.parse(runs[0].params_json).runs, ['9999'], '应对刚提交的行重算，而不是导入原文')
 
@@ -1031,10 +1042,8 @@ try {
     const hintKeys = (body) => body.hints.map((hint) => hint.message.key).sort()
     // 基准只在服务端与库里流动（见下面校对端那条断言），所以取证要读原始记录而不是响应。
     const currentFindingRow = async (pageId, key) => {
-      const { items } = await request(
-        `/api/collections/review_findings/records?filter=${encodeURIComponent(
-          `page = "${pageId}" && message_key = "${key}" && superseded_at = ""`)}`,
-        { token: superAuth.token })
+      const batch = await ruleRowsOf(pageId)
+      const items = current(batch.items).filter(item => item.message_key === key)
       assert.equal(items.length, 1,
         `这一页上 ${key} 应当只有一条当前批次：${JSON.stringify(items.map((item) => item.id))}`)
       return items[0]

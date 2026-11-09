@@ -1,6 +1,6 @@
 // #177 的写入侧：把纯函数规则的输出落成 #176 的 review_findings 批次。
 //
-// 只追加，不改写：重算 = 插入新批次 + 把**同 producer 的**旧批次标 superseded_at。
+// 只追加，不改写：重算准备不可见载荷，短事务发布并为旧有效行写派生退役证明。
 // 只标同 producer 是有意的——规则重算不该把 OCR(#125) 或 bundle_import(#124) 的
 // 疑点一起下线，三类生产者各有各的批次生命周期。
 //
@@ -9,6 +9,25 @@
 
 // 依赖在函数内 require：仓内 lib 之间的互相引用一律发生在调用期，
 // 顶层 require 在本机 JSVM 没有先例（.pb.js 的顶层绑定在回调里读不到）。
+
+// Explicit analysis budgets, not truncation. Original source remains intact
+// when a batch is refused. Serialized bytes are measured as UTF-8, not UTF-16.
+const INPUT_BYTES_LIMIT = 32 * 1024 * 1024
+const PREPARATION_BYTES_LIMIT = 64 * 1024 * 1024
+const ROW_BYTES_LIMIT = 2 * 1024 * 1024
+const INPUT_FIELDS = ["ocr_row_json", "proofread_row_json", "ocr_text", "row_headers_json"]
+const PREPARE_TEXT_FIELDS = [...INPUT_FIELDS, "entry_identity_key", "blocked_reason"]
+// Read-only partial Records never go through Save. These are every page field
+// consumed by rules, identity, difficulty and source_fidelity.contextFor(false).
+const PREPARE_PAGE_FIELDS = ["id", "created", "project", "page_number", "pdf_page", "project_file", "import_job", ...PREPARE_TEXT_FIELDS, "proofread_round", "verification_source_revision"]
+function utf8Bytes(value) {
+  let bytes = 0
+  for (const char of String(value || "")) { const cp=char.codePointAt(0); bytes += cp<=0x7f?1:cp<=0x7ff?2:cp<=0xffff?3:4 }
+  return bytes
+}
+function pageInputBytes(page) { return INPUT_FIELDS.reduce((sum, field) => sum + utf8Bytes(page.getString(field)), 0) }
+function pagePrepareBytes(page) { return PREPARE_TEXT_FIELDS.reduce((sum, field) => sum + utf8Bytes(page.getString(field)), 0) }
+function refuseBytes() { throw new BadRequestError("分析准备数据超过当前安全预算（输入32MiB、单行2MiB、准备64MiB）；未发布新结果，请拆分项目后重试") }
 
 const PRODUCER = "rule"
 // 条目游标：每次读 PAGE_SCAN_CHUNK 条，翻完为止——#177 与 #178 都要求 10k 行项目能全量跑通，
@@ -151,8 +170,9 @@ function findingContexts(dao) {
   }
 }
 
-function insertFinding(dao, collection, page, row, at, producerVersion, contextForPage) {
+function insertFinding(dao, collection, page, row, at, producerVersion, contextForPage, publication = "") {
   const record = new Record(collection)
+  record.set("assist_publication", publication)
   record.set("project", page.getString("project"))
   record.set("page", page.id)
   record.set("field_name", row.field || "")
@@ -235,7 +255,21 @@ function supersede(dao, collection, clauses, at, kinds) {
 // 已处于事务的调用方也必须传其 txApp，PocketBase 会复用它而不是回到全局 $app。
 function atomicBatch(app, operation) {
   let result
-  app.runInTransaction((tx) => { result = operation(tx) })
+  app.runInTransaction((tx) => {
+    // PocketBase nests by reusing txApp, not by opening a SAVEPOINT. The safe
+    // submit wrapper catches analysis errors, so protect this optional work
+    // even when the outer business transaction will still commit.
+    const name = "assist_" + $security.randomStringWithAlphabet(15, "abcdefghijklmnopqrstuvwxyz")
+    tx.db().newQuery(`SAVEPOINT ${name}`).execute()
+    try {
+      result = operation(tx)
+      tx.db().newQuery(`RELEASE SAVEPOINT ${name}`).execute()
+    } catch (error) {
+      tx.db().newQuery(`ROLLBACK TO SAVEPOINT ${name}`).execute()
+      tx.db().newQuery(`RELEASE SAVEPOINT ${name}`).execute()
+      throw error
+    }
+  })
   return result
 }
 
@@ -253,34 +287,75 @@ function pageScope(pageId, projectOnlyKeys) {
 // rowOverride：提交路径传进来的「校对员刚打的那一行」。
 // 不传就用库里的当前值——pages.proofread_row_json 只在凑够票数后才写，
 // 第一遍提交时若不用 override，规则算的还是导入原文，等于没算刚提交的内容。
-function recomputePage(app, pageId, rowOverride = null) {
-  return atomicBatch(app, (tx) => recomputePageBatch(tx, pageId, rowOverride))
+function recomputePage(app, pageId, rowOverride = null, authorize = null) {
+  // Small submit/arbiter work stays inside its caller's transaction. An HTTP
+  // page recompute gets the same boundary; no staged state escapes on failure.
+  return atomicBatch(app, tx => {
+    const page = tx.findRecordById("pages", pageId)
+    return require(`${__hooks}/lib/assist_publication.js`).execute(tx, "page", page.getString("project"), pageId,
+      dao => preparePage(dao, pageId, rowOverride), authorize)
+  })
 }
 
-function recomputePageBatch(dao, pageId, rowOverride) {
+function preparedPayload(dao, pages, anchored, events, derivations, kinds, summary, version, projectOnlyKeys = []) {
+  const at = nowStamp(), contexts = findingContexts(dao), byId = new Map(pages.map(page => [page.id, page]))
+  const contextJson = new Map(), inserted = new Map()
+  let inputBytes = 0, preparationBytes = 0, payloadBytes = 0
+  const contextBytes = new Map()
+  for (const page of pages) {
+    const bytes = pagePrepareBytes(page)
+    inputBytes += pageInputBytes(page)
+    if (bytes > ROW_BYTES_LIMIT || inputBytes > INPUT_BYTES_LIMIT) refuseBytes()
+    const context = contexts(page), size = utf8Bytes(context)
+    contextJson.set(page.id, context); contextBytes.set(page.id, size); inserted.set(page.id, [])
+    preparationBytes += size + bytes
+    if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes()
+  }
+  for (const item of anchored) { const size = utf8Bytes(JSON.stringify(item.row)); preparationBytes += size; payloadBytes += size + contextBytes.get(item.page); if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes() }
+  for (const item of events) { const size = utf8Bytes(JSON.stringify(item)); preparationBytes += size; payloadBytes += size + contextBytes.get(item.page); if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes() }
+  for (const item of derivations) { const size = utf8Bytes(JSON.stringify(item)); preparationBytes += size; payloadBytes += size; if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes() }
+  summary = { ...summary, input_bytes: inputBytes, preparation_bytes: preparationBytes, payload_bytes: payloadBytes }
+  return {
+    findings: anchored, events, derivations, kinds, projectOnlyKeys, summary,
+    saveFinding(tx, item, publication) {
+      const page = byId.get(item.page)
+      const record = insertFinding(tx, tx.findCollectionByNameOrId("review_findings"), page, item.row, at, version,
+        value => contextJson.get(value.id), publication)
+      inserted.get(page.id).push(record.id)
+    },
+    saveEvent(tx, item, publication) {
+      const page = byId.get(item.page)
+      require(`${__hooks}/lib/source_fidelity.js`).appendEvent(tx, {
+        project: page.getString("project"), page: page.id, kind: "machine_analysis", actor: "machine", publication,
+        context: JSON.parse(contextJson.get(page.id)), payload: {
+          producer: PRODUCER, producer_version: version, produced_at: at, input: item.input,
+          raw_count: item.raw_count, ...(item.scope ? { scope: item.scope } : { finding_ids: inserted.get(page.id) })
+        }
+      })
+    }
+  }
+}
+function effectiveFindings(dao, project, page = "") {
+  const where = page ? $dbx.exp("page={:page}", { page }) : $dbx.exp("project={:project}", { project })
+  return require(`${__hooks}/lib/assist_visibility.js`).list(dao, "review_findings", where, "id", "current")
+}
+function findingSignal(record) { return { kind: record.getString("kind"), severity: record.getString("severity"), field: record.getString("field_name") } }
+function derivationRow(page, derived) {
+  return { page: page.id, difficulty_tier: derived.tier, difficulty_basis_json: JSON.stringify(derived.basis), difficulty_version: derived.version }
+}
+function preparePage(dao, pageId, rowOverride) {
   const { runEntryRules, RULES_VERSION, PROJECT_ONLY_MESSAGE_KEYS } = require(`${__hooks}/lib/assist_rules.js`)
-  const collection = dao.findCollectionByNameOrId("review_findings")
   const page = dao.findRecordById("pages", pageId)
-  const at = nowStamp()
   const row = rowOverride && Object.keys(rowOverride).length ? rowOverride : rowForRules(page)
   const findings = runEntryRules(contextFor(dao, page), row, pageId)
-  const offsetsDropped = dropUnfaithfulOffsets(findings, () => ({
-    row, shown: parseRow(page.get("ocr_row_json"))
-  }))
-  const scope = pageScope(pageId, PROJECT_ONLY_MESSAGE_KEYS)
-  const superseded = supersede(dao, collection, scope, at, RULE_KINDS)
-  const contexts = findingContexts(dao)
-  const insertedIds = findings.map(item => insertFinding(dao, collection, page, item, at, RULES_VERSION, contexts).id)
-  const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-  fidelity.appendEvent(dao, { project: page.getString("project"), page: page.id, kind: "machine_analysis", actor: "machine", context: JSON.parse(contexts(page)), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: row, finding_ids: insertedIds, raw_count: findings.length } })
-  // 难度与完整新批次一起提交；任一保存失败都会保留之前的批次和难度。
-  const difficulty = refreshDifficulty(dao, page)
-  return {
-    page: pageId, findings: findings.length, superseded, settled: 0,
-    offsets_dropped: offsetsDropped,
-    producer_version: RULES_VERSION,
-    difficulty_tier: difficulty.tier, difficulty_version: difficulty.version
-  }
+  const offsetsDropped = dropUnfaithfulOffsets(findings, () => ({ row, shown: parseRow(page.get("ocr_row_json")) }))
+  const retained = effectiveFindings(dao, page.getString("project"), page.id).filter(record =>
+    record.getString("producer") !== PRODUCER || !RULE_KINDS.includes(record.getString("kind")) || PROJECT_ONLY_MESSAGE_KEYS.includes(record.getString("message_key")))
+  const difficulty = derivePageDifficulty(dao, page, [...retained.map(findingSignal), ...findings])
+  return preparedPayload(dao, [page], findings.map(item => ({ page: page.id, row: item })),
+    [{ page: page.id, input: row, raw_count: findings.length }], [derivationRow(page, difficulty)], RULE_KINDS,
+    { page: pageId, findings: findings.length, offsets_dropped: offsetsDropped, producer_version: RULES_VERSION,
+      difficulty_tier: difficulty.tier, difficulty_version: difficulty.version }, RULES_VERSION, PROJECT_ONLY_MESSAGE_KEYS)
 }
 
 // 分批读全项目的条目；游标翻到某一批不满额为止。超限抛错，调用方因此一条都不会写。
@@ -288,7 +363,34 @@ function recomputePageBatch(dao, pageId, rowOverride) {
 // 保险丝必须在读取**过程中**判，不能"读全再判"：这条线要防的就是把整项目的行吸进
 // JSVM 内存，读完才判等于先付全额成本再拒算。上一版正是这个形状（#212 复审阻断）。
 // 走 readAllInChunks 的 onBatch：命中即抛，最多只会比 refusal 多吸进一批（chunk）的行。
-function loadAllPages(dao, projectId, { chunk = PAGE_SCAN_CHUNK, refusal = PROJECT_SCAN_REFUSAL } = {}) {
+function loadAllPages(dao, projectId, { chunk = PAGE_SCAN_CHUNK, refusal = PROJECT_SCAN_REFUSAL, budgeted = false } = {}) {
+  if (budgeted) {
+    const bytesSQL = PREPARE_TEXT_FIELDS.map(field => `length(CAST(COALESCE(${field},'') AS BLOB))`).join('+')
+    const totals = new DynamicModel({ total: 0, bytes: 0, largest: 0 })
+    dao.db().newQuery(`SELECT COUNT(*) AS total,COALESCE(SUM(${bytesSQL}),0) AS bytes,COALESCE(MAX(${bytesSQL}),0) AS largest FROM pages WHERE project={:project}`)
+      .bind({ project: projectId }).one(totals)
+    if (totals.total >= refusal) throw new Error(`项目条目数 ${totals.total} 已达全量重算保险丝 ${refusal}，拒绝执行（未改动任何疑点）`)
+    if (totals.bytes > INPUT_BYTES_LIMIT || totals.largest > ROW_BYTES_LIMIT) refuseBytes()
+    const rows = []
+    let bytes = 0
+    // A concurrent input replacement cannot make one fetched chunk unbounded:
+    // filter oversized rows in SQL, then reject a mismatching count, never use a
+    // partial result. The final epoch guard rejects any concurrent input change.
+    let cursor = null
+    for (;;) {
+      const part = arrayOf(new Record(dao.findCollectionByNameOrId("pages")))
+      const query = dao.recordQuery("pages").select(...PREPARE_PAGE_FIELDS.map(field => "pages." + field)).andWhere($dbx.exp(`project={:project} AND (${bytesSQL})<=${ROW_BYTES_LIMIT}`, { project: projectId }))
+      if (cursor) query.andWhere($dbx.exp('page_number>={:number} AND (page_number>{:number} OR (page_number={:number} AND created>{:created}) OR (page_number={:number} AND created={:created} AND id>{:id}))', cursor))
+      query.orderBy("page_number", "created", "id").limit(16).all(part)
+      for (const page of part) { bytes += pagePrepareBytes(page); if (bytes > INPUT_BYTES_LIMIT) refuseBytes(); rows.push(page) }
+      if (rows.length >= refusal) throw new Error(`项目条目数已达全量重算保险丝 ${refusal}，拒绝执行（未改动任何疑点）`)
+      if (part.length < 16) break
+      const last = part[part.length - 1]
+      cursor = { number: last.getInt("page_number"), created: last.getString("created"), id: last.id }
+    }
+    if (rows.length !== totals.total) throw require(`${__hooks}/lib/assist_publication.js`).conflict()
+    return rows
+  }
   return readAllInChunks(dao, "pages", `project = "${projectId}"`, "page_number,created", {
     chunk,
     onBatch: (rows) => {
@@ -301,84 +403,50 @@ function loadAllPages(dao, projectId, { chunk = PAGE_SCAN_CHUNK, refusal = PROJE
 
 // 项目级：列级(R3/R4) 与页级(R7) 规则要看到全量才能判，所以只在批处理里跑。
 // 返回耗时供 #177 的规模验收引用（10k 行项目的实测值写进 docs/plans/2026-09-25-assist-rules.md）。
-function recomputeProject(app, projectId) {
-  return atomicBatch(app, (tx) => recomputeProjectBatch(tx, projectId))
+function recomputeProject(app, projectId, authorize = null) {
+  const startedAt = Date.now()
+  const result = require(`${__hooks}/lib/assist_publication.js`).execute(app, "rules", projectId, "",
+    dao => recomputeProjectBatch(dao, projectId), authorize)
+  return { ...result, duration_ms: Date.now() - startedAt }
 }
-
 function recomputeProjectBatch(dao, projectId) {
   const { runProjectRules, makeContext, RULES_VERSION } = require(`${__hooks}/lib/assist_rules.js`)
   const { loadProjectRoles, rolesForRules } = require(`${__hooks}/lib/column_roles.js`)
-  const startedAt = new Date()
-  const collection = dao.findCollectionByNameOrId("review_findings")
-  const pages = loadAllPages(dao, projectId)
-  // 角色在全批内是常量，只读一次。每一行再按自己的列过滤，不能拿第一条的列集合代表整批。
+  const pages = loadAllPages(dao, projectId, { budgeted: true })
   const storedRoles = loadProjectRoles(dao, projectId)
-  const entries = pages.map((page, index) => {
-    const row = rowForRules(page)
-    return {
-      pageId: page.id,
-      order: index + 1,
-      pdfPage: Number(page.get("pdf_page")) || 0,
-      row,
-      roles: rolesForRules(storedRoles, row)
-    }
-  })
-  const shared = pages.length
-    ? contextFor(dao, pages[0], storedRoles)
-    : makeContext({ projectId, keyboards: [], roles: null })
-  const ctx = { ...shared, roles: null }
-  const findings = runProjectRules(ctx, entries)
-  const at = nowStamp()
-  // 下线仍然按 project 收口：游标已经保证「要么整批扫完、要么写入前抛错」，
-  // 被扫到的集合恒等于全项目，所以这里不需要再按条目列表拼 filter。
-  const superseded = supersede(dao, collection,
-    [`project = "${projectId}"`, `producer = "${PRODUCER}"`], at, RULE_KINDS)
-  const byId = new Map(pages.map((page) => [page.id, page]))
-  // 项目级路径同样要过诚实性闸门：`rowForRules` 优先返回 `proofread_row_json`（凑够票之后），
-  // 而校对端原文面板切的仍是 `ocr_row_json`。列级(R3/R4)与页级(R7)疑点的区间因此可能整体错位。
-  const rowByPage = new Map(entries.map((entry) => [entry.pageId, entry.row]))
-  const shownByPage = new Map(pages.map((page) => [page.id, parseRow(page.get("ocr_row_json"))]))
-  const offsetsDropped = dropUnfaithfulOffsets(findings, (item) => {
-    const pageId = item.page
-    if (!pageId || !rowByPage.has(pageId)) return null
-    return { row: rowByPage.get(pageId), shown: shownByPage.get(pageId) }
-  })
-  let inserted = 0
-  let unanchored = 0
-  const contexts = findingContexts(dao)
-  for (const item of findings) {
-    const anchor = byId.get(item.page)
-    if (!anchor) {
-      // 挂靠解析不出来就跳过并计数，绝不退化成"挂到第一条"——那正是上一轮的缺陷形状。
-      unanchored += 1
-      continue
-    }
-    insertFinding(dao, collection, anchor, item, at, RULES_VERSION, contexts)
-    inserted += 1
+  const entries = pages.map((page, index) => ({ pageId: page.id, order: index + 1, pdfPage: Number(page.get("pdf_page")) || 0,
+    row: rowForRules(page), roles: rolesForRules(storedRoles, rowForRules(page)) }))
+  const shared = pages.length ? contextFor(dao, pages[0], storedRoles) : makeContext({ projectId, keyboards: [], roles: null })
+  const findings = runProjectRules({ ...shared, roles: null }, entries)
+  const byId = new Map(pages.map(page => [page.id, page])), rowByPage = new Map(entries.map(entry => [entry.pageId, entry.row]))
+  const offsetsDropped = dropUnfaithfulOffsets(findings, item => byId.has(item.page)
+    ? { row: rowByPage.get(item.page), shown: parseRow(byId.get(item.page).get("ocr_row_json")) } : null)
+  const anchored = findings.filter(item => byId.has(item.page)).map(item => ({ page: item.page, row: item }))
+  const signals = new Map(pages.map(page => [page.id, []]))
+  // Tier only consumes these four scalar fields. Loading every historical
+  // context/payload via OFFSET made the second 10k run unnecessarily expensive.
+  const visibility = require(`${__hooks}/lib/assist_visibility.js`)
+  const params = { project: projectId, cursor: "" }
+  const excluded = RULE_KINDS.map((kind, i) => { params["kind" + i] = kind; return "{:kind" + i + "}" }).join(",")
+  for (;;) {
+    const rows = arrayOf(new DynamicModel({ id: "", page: "", kind: "", severity: "", field: "" }))
+    dao.db().newQuery(`SELECT id,page,kind,severity,field_name AS field FROM review_findings
+      WHERE project={:project} AND id>{:cursor} AND (producer!='rule' OR kind NOT IN (${excluded}))
+        AND ${visibility.currentSQL()} ORDER BY id LIMIT 1000`).bind(params).all(rows)
+    for (const row of rows) signals.get(row.page)?.push({ kind: row.kind, severity: row.severity, field: row.field })
+    if (rows.length < 1000) break
+    params.cursor = rows[rows.length - 1].id
   }
-  if (require(`${__hooks}/lib/source_research.js`).enabled()) {
-    const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-    const counts = new Map()
-    for (const item of findings) counts.set(item.page, (counts.get(item.page) || 0) + 1)
-    for (const page of pages) fidelity.appendEvent(dao, { project: projectId, page: page.id, kind: "machine_analysis", actor: "machine", context: JSON.parse(contexts(page)), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: rowByPage.get(page.id), raw_count: counts.get(page.id) || 0, scope: "project_batch" } })
-  }
-  if (unanchored) console.warn("assist_recompute unanchored findings", projectId, unanchored)
-  // 全项目的 tier 与当前批次一同提交。
-  const stats = projectShapeStats(pages)
-  const tiers = { A: 0, B: 0, C: 0, unknown: 0 }
-  for (const page of pages) tiers[refreshDifficulty(dao, page, stats, storedRoles).tier] += 1
-  return {
-    project: projectId,
-    pages: pages.length,
-    difficulty_tiers: tiers,
-    findings: inserted,
-    offsets_dropped: offsetsDropped,
-    unanchored,
-    superseded,
-    settled: 0,
-    duration_ms: new Date() - startedAt,
-    producer_version: RULES_VERSION
-  }
+  for (const item of anchored) signals.get(item.page).push(item.row)
+  const stats = projectShapeStats(pages), tiers = { A: 0, B: 0, C: 0, unknown: 0 }
+  const derivations = pages.map(page => { const derived = derivePageDifficulty(dao, page, signals.get(page.id), stats, storedRoles); tiers[derived.tier] += 1; return derivationRow(page, derived) })
+  const counts = new Map()
+  for (const item of anchored) counts.set(item.page, (counts.get(item.page) || 0) + 1)
+  const events = require(`${__hooks}/lib/source_research.js`).enabled()
+    ? pages.map(page => ({ page: page.id, input: rowByPage.get(page.id), raw_count: counts.get(page.id) || 0, scope: "project_batch" })) : []
+  return preparedPayload(dao, pages, anchored, events, derivations, RULE_KINDS,
+    { project: projectId, pages: pages.length, difficulty_tiers: tiers, findings: anchored.length,
+      offsets_dropped: offsetsDropped, unanchored: findings.length - anchored.length, producer_version: RULES_VERSION }, RULES_VERSION)
 }
 
 // ---------- #180 难度标签 ----------
@@ -397,16 +465,15 @@ function recomputeProjectBatch(dao, projectId) {
 // `row_shape_outlier` 两条判据都读不到中位数，不会因此给出错的 tier。但将来把 stats 传进
 // 单条路径，这里就会静默拿到过期形状，届时要把它改成 (page, rowOverride) 两路取值。
 function refreshDifficulty(dao, page, stats = null, storedRoles) {
-  const { deriveDifficulty, blockedReasonFromFindings, BLOCKED_BUCKETS, DIFFICULTY_VERSION } =
-    require(`${__hooks}/lib/assist_difficulty.js`)
+  const derived = derivePageDifficulty(dao, page, effectiveFindings(dao, page.getString("project"), page.id).map(findingSignal), stats, storedRoles)
+  if (page.getString("difficulty_tier") !== derived.tier || page.getString("difficulty_version") !== derived.version || page.getString("difficulty_basis_json") !== JSON.stringify(derived.basis)) {
+    page.set("difficulty_tier", derived.tier); page.set("difficulty_basis_json", JSON.stringify(derived.basis)); page.set("difficulty_version", derived.version); dao.save(page)
+  }
+  return derived
+}
+function derivePageDifficulty(dao, page, findings, stats = null, storedRoles) {
+  const { deriveDifficulty, blockedReasonFromFindings, BLOCKED_BUCKETS } = require(`${__hooks}/lib/assist_difficulty.js`)
   const { loadProjectRoles, rolesForRules } = require(`${__hooks}/lib/column_roles.js`)
-  const findings = readAllInChunks(
-    dao, "review_findings", `page = "${page.id}" && superseded_at = ""`, "kind"
-  ).map((row) => ({
-    kind: row.getString("kind"),
-    severity: row.getString("severity"),
-    field: row.getString("field_name")
-  }))
   const row = rowForRules(page)
   const valueLengths = Object.values(row).map((value) => Array.from(String(value ?? "")).length)
   // `blocked_reason` 只由人写，机器算出的桶**不 stamp 回库**（见下面为什么）。
@@ -434,16 +501,7 @@ function refreshDifficulty(dao, page, stats = null, storedRoles) {
     valueLengths,
     projectStats: stats,
   }
-  const derived = deriveDifficulty(signal)
-  if (page.getString("difficulty_tier") !== derived.tier
-    || page.getString("difficulty_version") !== derived.version
-    || page.getString("difficulty_basis_json") !== JSON.stringify(derived.basis)) {
-    page.set("difficulty_tier", derived.tier)
-    page.set("difficulty_basis_json", JSON.stringify(derived.basis))
-    page.set("difficulty_version", derived.version)
-    dao.save(page)
-  }
-  return derived
+  return deriveDifficulty(signal)
 }
 
 // 项目级统计：整行形状离群要拿全项目比，单条路径拿不到，所以只在全量重算里算一次。
@@ -491,8 +549,11 @@ function sourceOfPage(dao, page, projectSource, cache) {
   return value
 }
 
-function recomputeIdentity(app, projectId) {
-  return atomicBatch(app, (tx) => recomputeIdentityBatch(tx, projectId))
+function recomputeIdentity(app, projectId, authorize = null) {
+  const startedAt = Date.now()
+  const result = require(`${__hooks}/lib/assist_publication.js`).execute(app, "identity", projectId, "",
+    dao => recomputeIdentityBatch(dao, projectId), authorize)
+  return { ...result, difficulty_stale: result.findings > 0 || result.superseded > 0, duration_ms: Date.now() - startedAt }
 }
 
 function recomputeIdentityBatch(dao, projectId) {
@@ -501,8 +562,7 @@ function recomputeIdentityBatch(dao, projectId) {
     findIdentityConflicts, findRowShapeAnomalies, entryIdentityKey, identityColumns, IDENTITY_VERSION
   } = require(`${__hooks}/lib/assist_identity.js`)
   const { parseStoredRoles } = require(`${__hooks}/lib/column_roles.js`)
-  const collection = dao.findCollectionByNameOrId("review_findings")
-  const pages = loadAllPages(dao, projectId)
+  const pages = loadAllPages(dao, projectId, { budgeted: true })
   let projectSource = ""
   let columns = identityColumns(null)
   try {
@@ -514,14 +574,13 @@ function recomputeIdentityBatch(dao, projectId) {
   }
   const sourceCache = new Map()
 
-  const entries = []
+  const entries = [], derivations = []
   let backfilled = 0
   for (const page of pages) {
     const row = rowForRules(page)
     const key = entryIdentityKey(row, columns) ?? ""
     if (page.getString("entry_identity_key") !== key) {
-      page.set("entry_identity_key", key)
-      dao.save(page) // 可重算的回填：键由列内容推导，不是原始证据
+      derivations.push({ page: page.id, entry_identity_key: key })
       backfilled += 1
     }
     // 这里曾经把 project_file 当 source 传进去（#169 落地前的替身）。文件不是来源：
@@ -541,7 +600,11 @@ function recomputeIdentityBatch(dao, projectId) {
     dao, "finding_dismissals", `project = "${projectId}" && status = "not_conflict"`, "group_key"
   ).map((row) => row.getString("group_key")))
 
-  const identityResult = findIdentityConflicts(entries, dismissed, columns)
+  let partnerBytes = 0
+  const identityResult = findIdentityConflicts(entries, dismissed, columns, bytes => {
+    partnerBytes += bytes
+    if (partnerBytes > PREPARATION_BYTES_LIMIT) refuseBytes()
+  })
   const findings = [...identityResult.findings]
   for (const entry of entries) findings.push(...findRowShapeAnomalies(entry, columns))
   // #178 的 merged_columns 两类区间也走同一道闸门：跨行检出的 row 来自 rowForRules，
@@ -553,30 +616,14 @@ function recomputeIdentityBatch(dao, projectId) {
     return { row: entry.row, shown: parseRow(entry.page.get("ocr_row_json")) }
   })
 
-  const at = nowStamp()
-  const superseded = supersede(dao, collection,
-    [`project = "${projectId}"`, `producer = "${PRODUCER}"`], at, IDENTITY_KINDS)
-  const byId = new Map(entries.map((entry) => [entry.id, entry.page]))
-  let inserted = 0
-  // 挂靠解析不出来就计数并跳过，绝不退化成"挂到第一条"；与 recomputeProject 同一形状，
-  // 这样两条批处理路径在"规则产了但写入端没接住"这件事上都会留下痕迹。
-  let unanchored = 0
-  const contexts = findingContexts(dao)
-  for (const item of findings) {
-    const anchor = byId.get(item.evidence?.page) ?? null
-    if (!anchor) {
-      unanchored += 1
-      continue
-    }
-    insertFinding(dao, collection, anchor, item, at, IDENTITY_VERSION, contexts)
-    inserted += 1
-  }
+  const byId = new Map(entries.map(entry => [entry.id, entry.page]))
+  const anchored = findings.filter(item => byId.has(item.evidence?.page)).map(item => ({ page: item.evidence.page, row: item }))
+  const inserted = anchored.length, unanchored = findings.length - inserted
   const summary = {
     project: projectId,
     pages: pages.length,
     findings: inserted,
     unanchored,
-    superseded,
     backfilled_keys: backfilled,
     offsets_dropped: identityOffsetsDropped,
     dismissed_groups: dismissed.size,
@@ -596,12 +643,11 @@ function recomputeIdentityBatch(dao, projectId) {
     // 本路径**不刷 tier**（每页刷一次的 N+1 代价见 docs §耗时那一节），而 duplicate_identity
     // 与 merged_columns 都是 strong、会进判定表。所以这一批之后每一页的 difficulty_tier 描述的是
     // 跨行检出之前的疑点集合。字段让调用方看得见这件事，runbook 是"再跑一次 findings/recompute"。
-    difficulty_stale: inserted > 0 || superseded > 0,
+    difficulty_stale: inserted > 0,
     duration_ms: new Date() - startedAt
   }
   if (unanchored) console.warn("identity_recompute unanchored findings", projectId, unanchored)
-  console.log("identity_recompute", JSON.stringify(summary))
-  return summary
+  return preparedPayload(dao, pages, anchored, [], derivations, IDENTITY_KINDS, summary, IDENTITY_VERSION)
 }
 
 // 提交/仲裁路径用的安全包装：疑点生产失败绝不能把已落库的提交变成错误。

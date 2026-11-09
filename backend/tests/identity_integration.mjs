@@ -4,6 +4,24 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const identity = require('../pb_hooks/lib/assist_identity.js')
+
+// Refuse a genuinely conflicting large group before allocating n*(n-1)
+// partners. Dismissed and identical-content groups must not be falsely refused.
+{
+  const rows = Array.from({ length: 5000 }, (_, i) => ({ id: String(i).padStart(15, '0'), row: { 词条: '同词', 拼音: 'same1', 释义: `合成${i}` } }))
+  let observed = 0
+  assert.throws(() => identity.findIdentityConflicts(rows, new Set(), undefined, bytes => {
+    observed = bytes
+    if (bytes > 64 * 1024 * 1024) throw new Error('synthetic preparation budget')
+  }), /synthetic preparation budget/)
+  assert.ok(observed > 400 * 1024 * 1024, 'must account for the actual quadratic partner payload before allocation')
+  const key = identity.entryIdentityKey(rows[0].row)
+  assert.equal(identity.findIdentityConflicts(rows, new Set([key]), undefined, () => { throw new Error('dismissed group must not reserve partners') }).findings.length, 0)
+  const same = rows.map(item => ({ ...item, row: { ...item.row, 释义: '相同' } }))
+  assert.equal(identity.findIdentityConflicts(same, new Set(), undefined, () => { throw new Error('identical group must not reserve partners') }).findings.length, 0)
+  const small = rows.slice(0, 4)
+  assert.deepEqual(identity.findIdentityConflicts(small), identity.findIdentityConflicts(small, new Set(), undefined, () => {}), 'budgeting must preserve every successful rule result')
+}
 const rules = require('../pb_hooks/lib/assist_rules.js')
 // 挂靠口径的词表由 assist_rules.js 拥有（#208 那边所有疑点都过 anchored()）。#178 也要求
 // 每条疑点带 anchor，两边的字面量必须是同一个值，否则改名会各自漂移而谁都不红。
