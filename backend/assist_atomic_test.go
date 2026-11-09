@@ -392,11 +392,8 @@ func TestAssistBatchScaleContention(t *testing.T) {
 			}
 			completed <- result{raw: value.String()}
 		}()
-		var memory runtime.MemStats
-		runtime.ReadMemStats(&memory)
-		heapStart, heapMax := memory.HeapAlloc, memory.HeapAlloc
-		rssMax := int64(0)
-		lastMemory := time.Time{}
+		stopResources := startAssistResourceSampler()
+		defer stopResources()
 		maxWait := time.Duration(0)
 		maxWrite := time.Duration(0)
 		samples := 0
@@ -411,18 +408,6 @@ func TestAssistBatchScaleContention(t *testing.T) {
 			case <-timeout.C:
 				t.Fatal("scale publication exceeded diagnostic limit")
 			case <-ticker.C:
-				if time.Since(lastMemory) >= time.Second {
-					runtime.ReadMemStats(&memory)
-					if memory.HeapAlloc > heapMax {
-						heapMax = memory.HeapAlloc
-					}
-					if raw, err := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(os.Getpid())).Output(); err == nil {
-						if kb, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64); err == nil && kb*1024 > rssMax {
-							rssMax = kb * 1024
-						}
-					}
-					lastMemory = time.Now()
-				}
 				writeStarted := time.Now()
 				var acquired time.Time
 				if err := app.RunInTransaction(func(tx core.App) error { acquired = time.Now(); return tx.Save(core.NewRecord(probe)) }); err != nil {
@@ -440,6 +425,7 @@ func TestAssistBatchScaleContention(t *testing.T) {
 		ticker.Stop()
 		timeout.Stop()
 		ended := time.Now()
+		resources := stopResources()
 		app.OnRecordCreate("review_findings").Unbind(hook)
 		if outcome.err != nil {
 			t.Fatal(outcome.err)
@@ -458,8 +444,8 @@ func TestAssistBatchScaleContention(t *testing.T) {
 		}
 		metrics, _ := json.Marshal(map[string]any{
 			"method": method, "iteration": index/2 + 1, "rows": rows, "schema_mode": schemaMode, "dev_mode": app.IsDev(), "total_ms": ended.Sub(started).Milliseconds(),
-			"heap_start_bytes": heapStart, "heap_sampled_max_bytes": heapMax, "rss_sampled_max_bytes": rssMax, "resources_sample_interval_ms": 1000,
-			"input_bytes": summary["input_bytes"], "preparation_bytes": summary["preparation_bytes"], "estimated_payload_bytes": summary["payload_bytes"], "persisted_json_bytes": persistedJSONBytes,
+			"resources":   resources,
+			"input_bytes": summary["input_bytes"], "preparation_bytes": summary["preparation_bytes"], "estimated_payload_bytes": summary["estimated_payload_bytes"], "persisted_json_bytes": persistedJSONBytes,
 			"pre_stage_ms": firstWrite.Sub(started).Milliseconds(), "probe_samples": samples, "probe_interval_ms": 5,
 			"concurrent_writer_wait_max_ms": float64(maxWait.Microseconds()) / 1000,
 			"concurrent_write_total_max_ms": float64(maxWrite.Microseconds()) / 1000,
@@ -474,4 +460,75 @@ func TestAssistBatchScaleContention(t *testing.T) {
 			t.Errorf("%s held a staging/final write transaction >500ms: %v", method, measured)
 		}
 	}
+}
+
+// Sampling runs independently of the write probe, so a blocked writer cannot
+// silently suppress memory observations. Actual sample gap and failed ps reads
+// remain explicit; unavailable RSS is null, never a misleading zero.
+func startAssistResourceSampler() func() map[string]any {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	var once sync.Once
+	result := map[string]any{}
+	go func() {
+		defer close(finished)
+		var memory runtime.MemStats
+		var heapStart, heapMax uint64
+		var rssMax int64
+		samples, rssSamples, rssErrors := 0, 0, 0
+		var last time.Time
+		maxGap := time.Duration(0)
+		sample := func() {
+			now := time.Now()
+			if !last.IsZero() && now.Sub(last) > maxGap {
+				maxGap = now.Sub(last)
+			}
+			last = now
+			runtime.ReadMemStats(&memory)
+			if samples == 0 {
+				heapStart = memory.HeapAlloc
+			}
+			if memory.HeapAlloc > heapMax {
+				heapMax = memory.HeapAlloc
+			}
+			samples++
+			raw, err := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(os.Getpid())).Output()
+			if err != nil {
+				rssErrors++
+				return
+			}
+			kb, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
+			if err != nil {
+				rssErrors++
+				return
+			}
+			rssSamples++
+			if kb*1024 > rssMax {
+				rssMax = kb * 1024
+			}
+		}
+		sample()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sample()
+			case <-done:
+				result["heap_start_bytes"] = heapStart
+				result["heap_sampled_max_bytes"] = heapMax
+				result["rss_sampled_max_bytes"] = nil
+				if rssSamples > 0 {
+					result["rss_sampled_max_bytes"] = rssMax
+				}
+				result["sample_count"] = samples
+				result["rss_sample_count"] = rssSamples
+				result["rss_sample_errors"] = rssErrors
+				result["target_interval_ms"] = 1000
+				result["max_sample_gap_ms"] = float64(maxGap.Microseconds()) / 1000
+				return
+			}
+		}
+	}()
+	return func() map[string]any { once.Do(func() { close(done); <-finished }); return result }
 }

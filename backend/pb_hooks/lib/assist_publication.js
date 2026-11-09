@@ -1,6 +1,7 @@
 // Private, bounded staging followed by one atomic visibility switch. Payloads
 // still use ordinary PocketBase Save and all its validation/model hooks.
 const STAGE_CHUNK = 100
+const STAGE_BYTES = 256 * 1024
 const MAX_AGE_MS = 60 * 60 * 1000
 function conflict() {
   const error = new ApiError(409, '分析依据已变化，请刷新后重新计算；上一批完整结果仍保留')
@@ -113,6 +114,16 @@ function abort(dao, id, code, metrics = null) {
     record.set('state', 'aborted'); record.set('failure_code', code); tx.save(record)
   }, metrics, 'abort')
 }
+function stageSlice(items, offset, sizes) {
+  let end = offset, bytes = 0
+  while (end < items.length && end - offset < STAGE_CHUNK) {
+    const size = sizes[end]
+    if (!Number.isSafeInteger(size) || size < 0 || size > STAGE_BYTES) throw new BadRequestError('单条辅助分析结果超过256KiB安全预算；上一批结果保留，原貌校对与交付不受影响')
+    if (end > offset && bytes + size > STAGE_BYTES) break
+    bytes += size; end += 1
+  }
+  return { part: items.slice(offset, end), end, bytes }
+}
 function execute(dao, scope, project, page, prepare, authorize) {
   const metrics = { transaction_count: 0, max_transaction_ms: 0, max_acquire_ms: 0, publish_ms: 0, phases: {} }
   const publication = begin(dao, scope, project, page, authorize, metrics)
@@ -121,14 +132,18 @@ function execute(dao, scope, project, page, prepare, authorize) {
     // before entering a staging write transaction.
     const prepared = prepare(dao, publication.id)
     transaction(dao, tx => {
-      publication.set('expected_findings', prepared.findings.length)
-      publication.set('expected_events', prepared.events.length)
-      publication.set('expected_pages', prepared.derivations.length)
-      tx.save(publication)
+      const current = tx.findRecordById('assist_publications', publication.id)
+      if (current.getString('state') !== 'staging' || basis(tx, project) !== current.getString('basis_json')) throw conflict()
+      current.set('expected_findings', prepared.findings.length)
+      current.set('expected_events', prepared.events.length)
+      current.set('expected_pages', prepared.derivations.length)
+      tx.save(current)
     }, metrics, 'expected')
     for (const [items, save, phase] of [[prepared.findings, prepared.saveFinding, 'findings'], [prepared.events, prepared.saveEvent, 'events'], [prepared.derivations, null, 'derivations']]) {
-      for (let offset = 0; offset < items.length; offset += STAGE_CHUNK) {
-        const part = items.slice(offset, offset + STAGE_CHUNK)
+      for (let offset = 0; offset < items.length;) {
+        const { part, end, bytes } = stageSlice(items, offset, prepared.stageSizes[phase])
+        offset = end
+        metrics.max_stage_estimated_bytes = Math.max(metrics.max_stage_estimated_bytes || 0, bytes)
         transaction(dao, tx => {
           const current = tx.findRecordById('assist_publications', publication.id)
           if (current.getString('state') !== 'staging') throw conflict()
@@ -150,7 +165,7 @@ function execute(dao, scope, project, page, prepare, authorize) {
   }
 }
 function cleanup(dao, now = Date.now()) {
-  const cutoff = new Date(now - MAX_AGE_MS).toISOString()
+  const cutoff = new Date(now - MAX_AGE_MS).toISOString().replace("T", " ")
   const expired = dao.findRecordsByFilter('assist_publications', 'state="staging" && updated < {:cutoff}', 'updated,id', 10, 0, { cutoff })
   for (const publication of expired) abort(dao, publication.id, 'STAGING_EXPIRED')
   // Marker retention is deliberate. At most 100 unpublished payloads of each
@@ -165,4 +180,4 @@ function cleanup(dao, now = Date.now()) {
     (SELECT d.publication,d.page FROM _assist_page_derivations d JOIN assist_publications p ON p.id=d.publication WHERE p.state='aborted' LIMIT ${STAGE_CHUNK})`).execute())
   return removed
 }
-module.exports = { STAGE_CHUNK, basis, conflict, execute, cleanup, authorizeRequest }
+module.exports = { STAGE_CHUNK, STAGE_BYTES, stageSlice, basis, conflict, execute, cleanup, authorizeRequest }

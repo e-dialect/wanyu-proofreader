@@ -15,6 +15,8 @@
 const INPUT_BYTES_LIMIT = 32 * 1024 * 1024
 const PREPARATION_BYTES_LIMIT = 64 * 1024 * 1024
 const ROW_BYTES_LIMIT = 2 * 1024 * 1024
+const PAYLOAD_BYTES_LIMIT = 128 * 1024 * 1024
+const ITEM_BYTES_LIMIT = 256 * 1024
 const INPUT_FIELDS = ["ocr_row_json", "proofread_row_json", "ocr_text", "row_headers_json"]
 const PREPARE_TEXT_FIELDS = [...INPUT_FIELDS, "entry_identity_key", "blocked_reason"]
 // Read-only partial Records never go through Save. These are every page field
@@ -27,7 +29,18 @@ function utf8Bytes(value) {
 }
 function pageInputBytes(page) { return INPUT_FIELDS.reduce((sum, field) => sum + utf8Bytes(page.getString(field)), 0) }
 function pagePrepareBytes(page) { return PREPARE_TEXT_FIELDS.reduce((sum, field) => sum + utf8Bytes(page.getString(field)), 0) }
-function refuseBytes() { throw new BadRequestError("分析准备数据超过当前安全预算（输入32MiB、单行2MiB、准备64MiB）；未发布新结果，请拆分项目后重试") }
+function refuseBytes() { throw new BadRequestError("辅助分析超过当前安全预算（输入32MiB、单行2MiB、准备64MiB、结果128MiB、单结果256KiB）；未发布新结果，原貌校对与交付不受影响") }
+function assertSharedMetadata(dao, project) {
+  // Do not parse an unbounded policy or keyboard definition before the budget
+  // exists. These SQL length checks return only numbers, not source payloads.
+  const row = new DynamicModel({ context: 0, keyboard: 0 })
+  dao.db().newQuery(`SELECT length(CAST(COALESCE(p.column_roles_json,'') AS BLOB))+
+    COALESCE((SELECT length(CAST(v.spec_json AS BLOB)) FROM verification_policies v WHERE v.id=p.verification_policy),0) AS context,
+    COALESCE((SELECT SUM(length(CAST(k.definition_json AS BLOB))) FROM project_keyboards l JOIN keyboards k ON k.id=l.keyboard
+      WHERE l.project=p.id AND l.enabled=1 AND k.active=1),0) AS keyboard FROM projects p WHERE p.id={:project}`)
+    .bind({ project }).one(row)
+  if (row.context > ITEM_BYTES_LIMIT || row.keyboard > ROW_BYTES_LIMIT) refuseBytes()
+}
 
 const PRODUCER = "rule"
 // 条目游标：每次读 PAGE_SCAN_CHUNK 条，翻完为止——#177 与 #178 都要求 10k 行项目能全量跑通，
@@ -311,12 +324,19 @@ function preparedPayload(dao, pages, anchored, events, derivations, kinds, summa
     preparationBytes += size + bytes
     if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes()
   }
-  for (const item of anchored) { const size = utf8Bytes(JSON.stringify(item.row)); preparationBytes += size; payloadBytes += size + contextBytes.get(item.page); if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes() }
-  for (const item of events) { const size = utf8Bytes(JSON.stringify(item)); preparationBytes += size; payloadBytes += size + contextBytes.get(item.page); if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes() }
-  for (const item of derivations) { const size = utf8Bytes(JSON.stringify(item)); preparationBytes += size; payloadBytes += size; if (preparationBytes > PREPARATION_BYTES_LIMIT) refuseBytes() }
-  summary = { ...summary, input_bytes: inputBytes, preparation_bytes: preparationBytes, payload_bytes: payloadBytes }
+  const stageSizes = { findings: [], events: [], derivations: [] }
+  const findingCounts = new Map()
+  for (const item of anchored) findingCounts.set(item.page, (findingCounts.get(item.page) || 0) + 1)
+  const reserve = (kind, memoryBytes, recordBytes) => {
+    preparationBytes += memoryBytes; payloadBytes += recordBytes; stageSizes[kind].push(recordBytes)
+    if (recordBytes > ITEM_BYTES_LIMIT || preparationBytes > PREPARATION_BYTES_LIMIT || payloadBytes > PAYLOAD_BYTES_LIMIT) refuseBytes()
+  }
+  for (const item of anchored) { const size = utf8Bytes(JSON.stringify(item.row)); reserve('findings', size, size + contextBytes.get(item.page) + 512) }
+  for (const item of events) { const size = utf8Bytes(JSON.stringify(item)); reserve('events', size, size + contextBytes.get(item.page) + (item.scope ? 0 : (findingCounts.get(item.page) || 0) * 18) + 512) }
+  for (const item of derivations) { const size = utf8Bytes(JSON.stringify(item)); reserve('derivations', size, size + 64) }
+  summary = { ...summary, input_bytes: inputBytes, preparation_bytes: preparationBytes, estimated_payload_bytes: payloadBytes }
   return {
-    findings: anchored, events, derivations, kinds, projectOnlyKeys, summary,
+    findings: anchored, events, derivations, kinds, projectOnlyKeys, summary, stageSizes,
     saveFinding(tx, item, publication) {
       const page = byId.get(item.page)
       const record = insertFinding(tx, tx.findCollectionByNameOrId("review_findings"), page, item.row, at, version,
@@ -346,6 +366,7 @@ function derivationRow(page, derived) {
 function preparePage(dao, pageId, rowOverride) {
   const { runEntryRules, RULES_VERSION, PROJECT_ONLY_MESSAGE_KEYS } = require(`${__hooks}/lib/assist_rules.js`)
   const page = dao.findRecordById("pages", pageId)
+  assertSharedMetadata(dao, page.getString("project"))
   const row = rowOverride && Object.keys(rowOverride).length ? rowOverride : rowForRules(page)
   const findings = runEntryRules(contextFor(dao, page), row, pageId)
   const offsetsDropped = dropUnfaithfulOffsets(findings, () => ({ row, shown: parseRow(page.get("ocr_row_json")) }))
@@ -412,6 +433,7 @@ function recomputeProject(app, projectId, authorize = null) {
 function recomputeProjectBatch(dao, projectId) {
   const { runProjectRules, makeContext, RULES_VERSION } = require(`${__hooks}/lib/assist_rules.js`)
   const { loadProjectRoles, rolesForRules } = require(`${__hooks}/lib/column_roles.js`)
+  assertSharedMetadata(dao, projectId)
   const pages = loadAllPages(dao, projectId, { budgeted: true })
   const storedRoles = loadProjectRoles(dao, projectId)
   const entries = pages.map((page, index) => ({ pageId: page.id, order: index + 1, pdfPage: Number(page.get("pdf_page")) || 0,
@@ -562,6 +584,7 @@ function recomputeIdentityBatch(dao, projectId) {
     findIdentityConflicts, findRowShapeAnomalies, entryIdentityKey, identityColumns, IDENTITY_VERSION
   } = require(`${__hooks}/lib/assist_identity.js`)
   const { parseStoredRoles } = require(`${__hooks}/lib/column_roles.js`)
+  assertSharedMetadata(dao, projectId)
   const pages = loadAllPages(dao, projectId, { budgeted: true })
   let projectSource = ""
   let columns = identityColumns(null)

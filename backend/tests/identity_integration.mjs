@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { currentFindings } from './current_findings.mjs'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
@@ -478,8 +479,7 @@ try {
   const p4 = await mk(4, { 词条: '甲 乙', 拼音: 'ka1', 莆田IPA: 'ua5333', 释义: '两个词头挤在一列' })
 
   const first = await request(`/api/fangji/projects/${project.id}/identity/recompute`, { method: 'POST', token: boss.token })
-  const current = async () => (await request(`/api/collections/review_findings/records?filter=${encodeURIComponent('superseded_at = ""')}`, { token: superAuth.token }))
-    .items.filter((item) => item.project === project.id)
+  const current = () => currentFindings(request, project.id, boss.token, superAuth.token)
 
   let findings = await current()
   const dup = findings.filter((item) => item.kind === 'duplicate_identity')
@@ -625,10 +625,8 @@ try {
     for (const item of dismissals.items) {
       await request(`/api/collections/finding_dismissals/records/${item.id}`, { method: 'DELETE', token: superAuth.token, expected: 204 })
     }
-    const findings = await request(`/api/collections/review_findings/records?filter=${encodeURIComponent(`project = "${project.id}"`)}`, { token: superAuth.token })
-    for (const item of findings.items) {
-      await request(`/api/collections/review_findings/records/${item.id}`, { method: 'DELETE', token: superAuth.token, expected: 204 })
-    }
+    // Published payloads are immutable through the record API. Legal project
+    // deletion owns cascading cleanup; do not bypass the new history guard.
     await request(`/api/fangji/projects/${project.id}`, { method: 'DELETE', token: platformAuth.token, expected: 204 })
   }
   for (const id of userIds.reverse()) {

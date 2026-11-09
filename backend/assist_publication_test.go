@@ -1,14 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/dop251/goja"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/plugins/jsvm"
 )
 
 func TestAssistPreparedBasisChangeKeepsPreviousPublication(t *testing.T) {
@@ -301,5 +307,259 @@ func TestAssistRetirementEpochTracksOnlyVisibleChanges(t *testing.T) {
 	}
 	if epoch(project) <= oldEpoch || epoch(otherPage.GetString("project")) <= newEpoch {
 		t.Fatal("moving visible retirement must invalidate both old and new finding projects")
+	}
+}
+
+func TestAssistStageChunksRespectLargeValidContextBytes(t *testing.T) {
+	app, project, _ := newAssistAtomicFixture(t)
+	policies, _ := app.FindCollectionByNameOrId("verification_policies")
+	owner, err := app.FindRecordById("projects", project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := core.NewRecord(policies)
+	policy.Set("project", project)
+	policy.Set("actor", owner.GetString("admin"))
+	policy.Set("reason", "Synthetic large context")
+	spec := map[string]any{"reading_fields": []string{}, "sources": []any{}, "instructions": strings.Repeat("练习", 10000)}
+	payload, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy.Set("spec_json", string(payload))
+	if err = app.Save(policy); err != nil {
+		t.Fatal(err)
+	}
+	owner.Set("verification_policy", policy.Id)
+	if err = app.Save(owner); err != nil {
+		t.Fatal(err)
+	}
+	pages, _ := app.FindCollectionByNameOrId("pages")
+	for i := 2; i < 20; i++ {
+		page := core.NewRecord(pages)
+		page.Set("project", project)
+		page.Set("page_number", i+1)
+		page.Set("pdf_page", 1)
+		page.Set("status", "pending")
+		page.Set("ocr_row_json", fmt.Sprintf(`{"词条":"甲、乙%d","拼音":"ka1","莆田IPA":"a𰻞\uEE009999","释义":"合成%d"}`, i, i))
+		if err = app.Save(page); err != nil {
+			t.Fatal(err)
+		}
+	}
+	value, err := runAssistScript(app, `JSON.stringify(require(__hooks+"/lib/assist_writer.js").recomputeProject(dao,"`+project+`"))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var summary struct {
+		Findings int `json:"findings"`
+		Metrics  struct {
+			MaxBytes int `json:"max_stage_estimated_bytes"`
+			Phases   map[string]struct {
+				Count int `json:"count"`
+			} `json:"phases"`
+		} `json:"publication_metrics"`
+	}
+	if err = json.Unmarshal([]byte(value.String()), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary.Metrics.MaxBytes > 256*1024 || summary.Metrics.MaxBytes < 60*1024 {
+		t.Fatalf("stage byte accounting invalid: %+v", summary)
+	}
+	if summary.Metrics.Phases["findings"].Count <= (summary.Findings+99)/100 {
+		t.Fatal("large valid context still used count-only batches")
+	}
+}
+
+func TestAssistFinalAuthorizationIsRechecked(t *testing.T) {
+	for _, change := range []string{"role", "membership"} {
+		t.Run(change, func(t *testing.T) {
+			app, project, _ := newAssistAtomicFixture(t)
+			if err := runAssistWriter(app, "recomputeProject", project); err != nil {
+				t.Fatal(err)
+			}
+			users, _ := app.FindCollectionByNameOrId("users")
+			actor := core.NewRecord(users)
+			actor.Set("role", "user")
+			actor.SetPassword("SyntheticManager123!")
+			if err := app.Save(actor); err != nil {
+				t.Fatal(err)
+			}
+			members, _ := app.FindCollectionByNameOrId("project_memberships")
+			member := core.NewRecord(members)
+			member.Set("project", project)
+			member.Set("user", actor.Id)
+			member.Set("role", "manager")
+			member.Set("source", "assigned")
+			member.Set("created_by", actor.Id)
+			if err := app.Save(member); err != nil {
+				t.Fatal(err)
+			}
+			before := assistDatabaseState(t, app)
+			changed := false
+			hook := app.OnRecordCreate("review_findings").BindFunc(func(e *core.RecordEvent) error {
+				if !changed {
+					changed = true
+					if change == "membership" {
+						row, err := e.App.FindRecordById("project_memberships", member.Id)
+						if err != nil {
+							return err
+						}
+						if err = e.App.Delete(row); err != nil {
+							return err
+						}
+					} else {
+						row, err := e.App.FindRecordById("users", actor.Id)
+						if err != nil {
+							return err
+						}
+						row.Set("role", "platform_admin")
+						if err = e.App.Save(row); err != nil {
+							return err
+						}
+					}
+				}
+				return e.Next()
+			})
+			script := `(()=>{const actor=dao.findRecordById("users","` + actor.Id + `");try{return require(__hooks+"/lib/assist_writer.js").recomputeProject(dao,"` + project + `",tx=>require(__hooks+"/lib/assist_publication.js").authorizeRequest(tx,actor,"rules","` + project + `"))}catch(e){return e.status}})()`
+			result, err := runAssistScript(app, script)
+			app.OnRecordCreate("review_findings").Unbind(hook)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := int64(403)
+			if change == "role" {
+				want = 401
+			}
+			if result.ToInteger() != want {
+				t.Fatalf("final authority change got %v, want %d", result, want)
+			}
+			if !reflect.DeepEqual(assistDatabaseState(t, app), before) {
+				t.Fatal("revoked preparation changed current findings/tier/events")
+			}
+		})
+	}
+}
+
+func TestAssistMigrationRoundTripAndUnsafeDown(t *testing.T) {
+	app, project, pageID := newAssistAtomicFixture(t)
+	page, err := app.FindRecordById("pages", pageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := visibilityFinding(t, app, page, "", "")
+	vm := goja.New()
+	jsvm.BindCore(vm)
+	var up, down func(core.App) error
+	vm.Set("migrate", func(apply, rollback func(core.App) error) { up = apply; down = rollback })
+	raw, err := os.ReadFile("pb_migrations/1794204700_assist_publications.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = vm.RunString(string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if err = app.RunInTransaction(down); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = app.FindRecordById("review_findings", legacy.Id); err != nil {
+		t.Fatal("safe empty-marker down lost legacy finding")
+	}
+	if err = app.RunInTransaction(up); err != nil {
+		t.Fatal(err)
+	}
+	if err = runAssistWriter(app, "recomputeProject", project); err != nil {
+		t.Fatal(err)
+	}
+	if err = app.RunInTransaction(down); err == nil || !strings.Contains(err.Error(), "publications exist") {
+		t.Fatalf("unsafe down was not refused: %v", err)
+	}
+	if _, err = app.FindCollectionByNameOrId("assist_publications"); err != nil {
+		t.Fatal("unsafe down partially removed publication schema")
+	}
+}
+
+func TestAssistConcurrentReadersNeverSeeStagedOrHalfPublishedResults(t *testing.T) {
+	app, project, _ := newAssistAtomicFixture(t)
+	pages, _ := app.FindCollectionByNameOrId("pages")
+	for i := 2; i < 70; i++ {
+		page := core.NewRecord(pages)
+		page.Set("project", project)
+		page.Set("page_number", i+1)
+		page.Set("pdf_page", 1)
+		page.Set("status", "pending")
+		page.Set("ocr_row_json", fmt.Sprintf(`{"词条":"甲、乙%d","拼音":"ka1","莆田IPA":"a𰻞\uEE009999","释义":"合成%d"}`, i, i))
+		if err := app.Save(page); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runAssistWriter(app, "recomputeProject", project); err != nil {
+		t.Fatal(err)
+	}
+	before := assistDatabaseState(t, app)
+	stageReady, stageResume, finalReady, finalResume := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var releaseStage, releaseFinal sync.Once
+	defer releaseStage.Do(func() { close(stageResume) })
+	defer releaseFinal.Do(func() { close(finalResume) })
+	created := 0
+	stageHook := app.OnRecordCreate("review_findings").BindFunc(func(e *core.RecordEvent) error {
+		created++
+		if created == 101 {
+			close(stageReady)
+			<-stageResume
+		}
+		return e.Next()
+	})
+	finalHook := app.OnRecordUpdate("assist_publications").BindFunc(func(e *core.RecordEvent) error {
+		err := e.Next()
+		if err == nil && e.Record.GetString("state") == "published" {
+			close(finalReady)
+			<-finalResume
+		}
+		return err
+	})
+	defer app.OnRecordCreate("review_findings").Unbind(stageHook)
+	defer app.OnRecordUpdate("assist_publications").Unbind(finalHook)
+	completed := make(chan error, 1)
+	go func() { completed <- runAssistWriter(app, "recomputeProject", project) }()
+	await := func(ready chan struct{}, label string) {
+		t.Helper()
+		select {
+		case <-ready:
+		case err := <-completed:
+			t.Fatalf("%s barrier not reached: %v", label, err)
+		case <-time.After(15 * time.Second):
+			t.Fatalf("%s barrier timeout", label)
+		}
+	}
+	await(stageReady, "committed staging")
+	var staged int
+	if err := app.DB().NewQuery("SELECT COUNT(*) FROM review_findings WHERE assist_publication IN (SELECT id FROM assist_publications WHERE state='staging')").Row(&staged); err != nil {
+		t.Fatal(err)
+	}
+	if staged == 0 {
+		t.Fatal("fixture did not actually commit a staging chunk")
+	}
+	if !reflect.DeepEqual(assistDatabaseState(t, app), before) {
+		t.Fatal("reader observed staged data before publication")
+	}
+	releaseStage.Do(func() { close(stageResume) })
+	await(finalReady, "uncommitted final switch")
+	if !reflect.DeepEqual(assistDatabaseState(t, app), before) {
+		t.Fatal("reader observed partial retirement/tier/publication state before commit")
+	}
+	releaseFinal.Do(func() { close(finalResume) })
+	if err := <-completed; err != nil {
+		t.Fatal(err)
+	}
+	var current int
+	if err := app.DB().NewQuery("SELECT COUNT(*) FROM review_findings WHERE " + assistCurrentSQLForTest).Row(&current); err != nil {
+		t.Fatal(err)
+	}
+	var previous int
+	if err := app.DB().NewQuery("SELECT COUNT(*) FROM _assist_finding_retirements").Row(&previous); err != nil {
+		t.Fatal(err)
+	}
+	if current == 0 || current != previous {
+		t.Fatalf("after commit must see exactly one complete replacement: current=%d retired=%d", current, previous)
 	}
 }

@@ -576,7 +576,7 @@ assert.ok(ctx.repertoire.size > 120, `repertoire too small: ${ctx.repertoire.siz
   assert.ok(scanAt >= 0, 'recomputeProject 必须用有界分批游标读条目，不能有硬上限')
   assert.ok(!/\b(?:supersede|insertFinding)\(/.test(projectBody), 'prepare 不得直接发布或退役结果')
   const publisher = readFileSync(new URL('../pb_hooks/lib/assist_publication.js', import.meta.url), 'utf8')
-  assert.ok(publisher.indexOf('const prepared = prepare(dao, publication.id)') < publisher.indexOf('for (const [items, save]'),
+  assert.ok(publisher.indexOf('const prepared = prepare(dao, publication.id)') < publisher.indexOf('for (const [items, save, phase]'),
     '完整有界准备必须先于第一块真实finding/event保存；真实故障回滚另由Go/PB用例验证')
 }
 
