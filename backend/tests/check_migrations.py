@@ -19,6 +19,12 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794203000_delivery_adoption.js': {
+        'indexes': ['idx_delivery_job_version', 'idx_delivery_request'],
+        'collection_indexes': ('release_deliveries', 'idx_delivery_job_version'),
+        'fields': ('release_deliveries', {'request_id': {'required': False}, 'request_fingerprint': {'required': False}, 'reconciliation_json': {'required': False}}),
+        'plans': [('release_deliveries', 'SELECT id FROM release_deliveries WHERE project=? AND recipient=? AND purpose=? AND import_job=? ORDER BY version DESC LIMIT 1', ('p','r','public_display','j'), 'idx_delivery_job_version')],
+    },
     '1793926800_ocr_runtime.js': {
         'indexes': ['idx_import_jobs_ocr_request'],
         'collection_indexes': ('import_jobs', 'idx_import_jobs_ocr_request'),
@@ -392,6 +398,8 @@ def index_names(data):
 def assert_applied(data, migration, problems):
     spec = SPECS.get(migration, {})
     present = index_names(data)
+    if migration == '1792281600_release_deliveries.js' and 'idx_delivery_job_version' in present:
+        spec = {**spec, 'indexes': [n for n in spec['indexes'] if n != 'idx_delivery_version'], 'collection_indexes': ('release_deliveries', 'idx_delivery_job_version'), 'plans': []}
     for name in spec.get('indexes', []):
         if name not in present:
             problems.append(f'{migration}: index {name} missing after up')

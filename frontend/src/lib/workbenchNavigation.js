@@ -3,7 +3,7 @@ export function navigationArea(route) {
   if (path === '/workspace') return 'workspace'
   if (path === '/admin/sources') return 'sources'
   if (['/admin/gate-rules', '/admin/creator-grants'].includes(path)) return 'platform'
-  if (path === '/tasks/profile') return 'profile'
+  if (path === '/tasks/profile' || path.startsWith('/account/')) return 'profile'
   if (path.startsWith('/tasks')) return 'tasks'
   return 'projects'
 }

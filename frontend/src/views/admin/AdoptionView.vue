@@ -1,5 +1,6 @@
 <template>
   <main class="container page adoption-workspace">
+    <WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false" />
     <ProjectWorkspaceNav :project-id="projectId" active="delivery" />
     <header class="page-heading adoption-heading">
       <div>
@@ -21,7 +22,7 @@
           type="button"
           class="btn btn-secondary"
           :disabled="busy"
-          @click="screen = 'list'"
+          @click="navigate({ page: historyPage })"
         >
           返回批次列表
         </button>
@@ -59,7 +60,7 @@
       :message="loadError"
       retry-label="重试批次详情"
       :busy="loading"
-      @retry="selectBatch(currentId)"
+      @retry="load()"
     />
 
     <template v-if="loaded">
@@ -163,7 +164,7 @@
           type="button"
           :class="detailTab === 'overview' ? 'is-active' : ''"
           :aria-current="detailTab === 'overview' ? 'page' : undefined"
-          @click="detailTab = 'overview'"
+          @click="changeTab('overview')"
         >
           范围与确认
         </button>
@@ -171,7 +172,7 @@
           type="button"
           :class="detailTab === 'exceptions' ? 'is-active' : ''"
           :aria-current="detailTab === 'exceptions' ? 'page' : undefined"
-          @click="detailTab = 'exceptions'"
+          @click="changeTab('exceptions')"
         >
           处理例外 <span v-if="exceptions.pendingTotal">{{ exceptions.pendingTotal }}</span>
         </button>
@@ -179,7 +180,7 @@
           type="button"
           :class="detailTab === 'history' ? 'is-active' : ''"
           :aria-current="detailTab === 'history' ? 'page' : undefined"
-          @click="detailTab = 'history'"
+          @click="changeTab('history')"
         >
           判断与历史
         </button>
@@ -239,6 +240,15 @@
           </details>
 
           <div class="adoption-actions">
+            <RouterLink
+              v-if="current.status === 'confirmed'"
+              class="btn btn-primary"
+              :to="{
+                path: `/admin/projects/${projectId}/deliveries`,
+                query: { view: 'prepare', adoption: current.id }
+              }"
+              >准备交付包</RouterLink
+            >
             <button
               v-if="current.status === 'confirmed'"
               class="btn btn-primary"
@@ -251,7 +261,7 @@
               v-else-if="counts.pending > 0 && current.status === 'previewed'"
               class="btn btn-primary"
               :disabled="busy || loading"
-              @click="detailTab = 'exceptions'"
+              @click="changeTab('exceptions')"
             >
               处理 {{ counts.pending }} 条待定条目
             </button>
@@ -316,6 +326,13 @@
           <p class="adoption-hint">导出默认只含进入本批的条目；清单另附未采用与待处理的数量。</p>
         </template>
         <template v-if="detailTab === 'history'">
+          <AppPagination
+            :page="batchEvents.page || 1"
+            :total-pages="batchEvents.totalPages || 1"
+            :busy="loading || busy"
+            label="编选事件分页"
+            @change="changePage"
+          />
           <p v-if="!batchEvents.events.length" class="text-muted">
             这一批还没有重评或权利变更记录。
           </p>
@@ -341,14 +358,25 @@
         class="card mb-4"
       >
         <h2>处理例外</h2>
+        <AppPagination
+          :page="exceptions.page || 1"
+          :total-pages="exceptions.totalPages || 1"
+          :busy="loading || busy"
+          label="待处理例外分页"
+          @change="changePage"
+        />
         <p v-if="exceptions.pendingTotal">
-          {{ exceptions.pendingTotal }} 条待处理。下面是其中前 {{ exceptions.pending.length }} 条：
+          {{ exceptions.pendingTotal }} 条待处理。当前页 {{ exceptions.pending.length }} 条：
           给结论、选理由、写依据，三样都留痕。改动例外会把批次退回草稿，需要重新预览再确认。
         </p>
         <p v-else class="empty-state-text">没有待处理的例外。</p>
         <AppField v-if="exceptions.pending.length"
           ><template #label>选择待处理条目</template
-          ><select v-model="activeExceptionId" class="form-control">
+          ><select
+            :value="activeExceptionId"
+            class="form-control"
+            @change="navigate({ ...route.query, entry: $event.target.value })"
+          >
             <option v-for="item in exceptions.pending" :key="item.page" :value="item.page">
               第 {{ item.pageNumber }} 条 · {{ reasonLabel(item.reason) }}
             </option>
@@ -392,8 +420,21 @@
           </button>
         </article>
 
-        <details v-if="exceptions.exceptions.length" class="mt-3">
-          <summary>已处理的例外（{{ exceptions.exceptions.length }}）</summary>
+        <details
+          v-if="exceptions.exceptions.length"
+          class="mt-3"
+          :open="Boolean(route.query.entry)"
+        >
+          <summary>
+            已处理的例外（{{ exceptions.decidedTotal || exceptions.exceptions.length }}）
+          </summary>
+          <AppPagination
+            :page="exceptions.decidedPage || 1"
+            :total-pages="exceptions.decidedPages || 1"
+            :busy="loading || busy"
+            label="已处理例外分页"
+            @change="navigate({ ...route.query, decidedPage: $event })"
+          />
           <ul class="adoption-reasons">
             <li v-for="item in exceptions.exceptions" :key="item.page">
               {{ DECISION_LABELS[item.decision] || item.decision }}
@@ -444,7 +485,7 @@
           :busy="busy || loading"
           label="编选历史分页"
           button-class="btn btn-secondary btn-sm"
-          @change="load"
+          @change="changePage"
         >
           <template #position
             >第 {{ historyPage }} / {{ historyTotalPages }} 页 · 共
@@ -572,11 +613,12 @@ import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
 import ImportBatchPicker from '@/components/admin/project/ImportBatchPicker.vue'
+import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import AppField from '@/components/AppField.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import {
   DECISION_LABELS,
   DEFAULT_STATUSES,
@@ -602,6 +644,8 @@ import {
   exportAdoptionManifest,
   decideAdoptionException,
   getAdoptionSummary,
+  getAdoptionBatch,
+  getAdoptionExceptionByPage,
   listAdoptionBatches,
   listAdoptionEvents,
   listAdoptionExceptions,
@@ -612,6 +656,17 @@ import { downloadText } from '@/lib/downloadText'
 import { getPbMessage } from '@/utils/pbErrors'
 
 const route = useRoute()
+const router = useRouter()
+const queryPage = computed(() => Math.max(1, Number.parseInt(route.query.page, 10) || 1))
+function navigate(query) {
+  return router.push({ query })
+}
+function changeTab(tab) {
+  return navigate({ batch: currentId.value, tab, page: 1 })
+}
+function changePage(page) {
+  return navigate({ ...route.query, page, entry: undefined })
+}
 const projectId = computed(() => String(route.params.id))
 const screen = ref('list')
 const createStep = ref(1)
@@ -640,7 +695,7 @@ const {
   async ({ signal }, id, page, selectedId) => {
     const data = await listAdoptionBatches(id, { page, perPage: 25, signal })
     const nextBatches = data.batches || []
-    const nextId = nextBatches.some((item) => item.id === selectedId) ? selectedId : ''
+    const nextId = selectedId
     const [details, nextSummary] = await Promise.all([
       loadBatchDetails(nextId, signal),
       getAdoptionSummary(id, { signal })
@@ -649,16 +704,8 @@ const {
   },
   { formatError: (cause) => getPbMessage(cause, '加载编选批次失败') }
 )
-const {
-  pending: loadingDetails,
-  error: detailsError,
-  reload: reloadDetails,
-  cancel: cancelDetails
-} = useAsyncResource(({ signal }, id) => loadBatchDetails(id, signal), {
-  formatError: (cause) => getPbMessage(cause, '加载批次详情失败')
-})
-const loading = computed(() => loadingBatches.value || loadingDetails.value)
-const loadError = computed(() => batchError.value || detailsError.value)
+const loading = loadingBatches
+const loadError = batchError
 const loaded = ref(false)
 const busy = ref(false)
 const operationError = ref('')
@@ -672,6 +719,7 @@ const historyTotalItems = ref(0)
 const purposes = ref([])
 const reasonCodes = ref([])
 const currentId = ref('')
+const currentRecord = ref(null)
 const exceptions = ref({ exceptions: [], pending: [], pendingTotal: 0 })
 const batchEvents = ref({ events: [], stale: false })
 const summary = ref(null)
@@ -695,7 +743,7 @@ const visibleExceptions = computed(() => {
 })
 
 function openCreate() {
-  screen.value = 'create'
+  navigate({ view: 'create' })
   createStep.value = 1
 }
 function nextCreateStep() {
@@ -705,24 +753,48 @@ function applyScopePreset() {
   if (scopePreset.value === 'ready') createForm.statuses = [...DEFAULT_STATUSES]
 }
 
-const current = computed(() => batches.value.find((item) => item.id === currentId.value) || null)
+const current = computed(() =>
+  currentRecord.value?.id === currentId.value
+    ? currentRecord.value
+    : batches.value.find((item) => item.id === currentId.value) || null
+)
+const dirty = computed(
+  () =>
+    (screen.value === 'create' &&
+      Boolean(createForm.recipient || createForm.note || createForm.importJobsText)) ||
+    Object.values(decisionDrafts).some(
+      (draft) => draft.note || draft.reason || draft.decision !== 'select'
+    )
+)
 const counts = computed(() => normalizeCounts(current.value?.counts))
 const consistent = computed(() => countsConsistent(current.value?.counts))
 const EMPTY_EXCEPTIONS = { exceptions: [], pending: [], pendingTotal: 0 }
 const EMPTY_EVENTS = { events: [], stale: false }
-let batchLoadGeneration = 0
 let projectGeneration = 0
 
 watch(projectId, resetProject, { immediate: true })
+watch(
+  () => route.query,
+  async () => {
+    for (const key of Object.keys(decisionDrafts)) delete decisionDrafts[key]
+    syncQuery()
+    await load(screen.value === 'list' ? queryPage.value : historyPage.value)
+  }
+)
+function syncQuery() {
+  currentId.value = typeof route.query.batch === 'string' ? route.query.batch : ''
+  screen.value = currentId.value ? 'detail' : route.query.view === 'create' ? 'create' : 'list'
+  detailTab.value = ['overview', 'exceptions', 'history'].includes(route.query.tab)
+    ? route.query.tab
+    : 'overview'
+  activeExceptionId.value = typeof route.query.entry === 'string' ? route.query.entry : ''
+}
 onBeforeUnmount(() => {
-  ++batchLoadGeneration
   ++projectGeneration
 })
 
 function resetProject() {
   cancelBatchLoad()
-  cancelDetails()
-  ++batchLoadGeneration
   ++projectGeneration
   loaded.value = false
   screen.value = 'list'
@@ -751,12 +823,12 @@ function resetProject() {
     requirePinyin: false,
     importJobsText: ''
   })
-  return load(1)
+  currentRecord.value = null
+  syncQuery()
+  return load(screen.value === 'list' ? queryPage.value : 1)
 }
 
 async function load(page = requestedHistoryPage.value) {
-  ++batchLoadGeneration
-  cancelDetails()
   requestedHistoryPage.value = page
   const result = await reloadBatches(projectId.value, page, currentId.value)
   if (!result.ok) return
@@ -776,15 +848,38 @@ async function load(page = requestedHistoryPage.value) {
 }
 
 async function loadBatchDetails(batchId, signal) {
-  if (!batchId) return { exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } }
-  const [exceptionsData, eventsData] = await Promise.all([
-    listAdoptionExceptions(batchId, { signal }),
-    listAdoptionEvents(batchId, { signal })
+  if (!batchId)
+    return { record: null, exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } }
+  const [record, exceptionsData, eventsData, exact] = await Promise.all([
+    getAdoptionBatch(batchId, { signal }),
+    listAdoptionExceptions(batchId, {
+      signal,
+      page: detailTab.value === 'exceptions' ? queryPage.value : 1,
+      decidedPage: Number(route.query.decidedPage) || 1
+    }),
+    listAdoptionEvents(batchId, {
+      signal,
+      page: detailTab.value === 'history' ? queryPage.value : 1
+    }),
+    route.query.entry ? getAdoptionExceptionByPage(batchId, route.query.entry, { signal }) : null
   ])
-  return { exceptions: exceptionsData, events: eventsData }
+  if (record.project !== projectId.value) throw new Error('编选批次不属于当前项目')
+  if (
+    exact?.entry?.pending &&
+    !exceptionsData.pending.some((item) => item.page === exact.entry.page)
+  )
+    exceptionsData.pending.push(exact.entry)
+  if (
+    exact?.exception &&
+    !exceptionsData.exceptions.some((item) => item.page === exact.exception.page)
+  ) {
+    exceptionsData.exceptions.push(exact.exception)
+  }
+  return { record, exceptions: exceptionsData, events: eventsData }
 }
 
 function applyBatchDetails(details) {
+  if (Object.hasOwn(details, 'record')) currentRecord.value = details.record
   exceptions.value = details.exceptions || { ...EMPTY_EXCEPTIONS }
   batchEvents.value = details.events || { ...EMPTY_EVENTS }
   for (const item of exceptions.value.pending) draftFor(item.page)
@@ -840,6 +935,9 @@ async function create() {
     // must retry this batch instead of silently creating another one.
     batches.value = [batch, ...batches.value.filter((item) => item.id !== batch.id)]
     currentId.value = batch.id
+    currentRecord.value = batch
+    if (createForm.note === submittedNote) createForm.note = ''
+    await navigate({ batch: batch.id, tab: 'overview', page: 1 })
     requestedHistoryPage.value = 1
     screen.value = 'detail'
     detailTab.value = 'overview'
@@ -884,7 +982,7 @@ async function remove() {
     await deleteAdoptionBatch(batchId)
     if (isCurrent()) {
       currentId.value = ''
-      screen.value = 'list'
+      await navigate({ page: historyPage.value })
     }
   }, '草稿已删除。')
   if (!operationError.value) removeOpen.value = false
@@ -936,18 +1034,8 @@ async function decide(pageId) {
   }, '例外已记录；批次退回草稿，请重新预览再确认。')
 }
 
-async function selectBatch(id) {
-  screen.value = 'detail'
-  detailTab.value = 'overview'
-  requestedHistoryPage.value = historyPage.value
-  currentId.value = id
-  const generation = ++batchLoadGeneration
-  // Clear old details immediately: they must never appear under a new batch.
-  exceptions.value = { ...EMPTY_EXCEPTIONS }
-  batchEvents.value = { ...EMPTY_EVENTS }
-  const result = await reloadDetails(id)
-  if (!result.ok || generation !== batchLoadGeneration) return
-  applyBatchDetails(result.data)
+function selectBatch(id) {
+  return navigate({ batch: id, tab: 'overview', page: 1 })
 }
 </script>
 

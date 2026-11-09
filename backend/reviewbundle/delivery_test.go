@@ -183,3 +183,29 @@ func TestDeliveryChangesDeclarationCoverage(t *testing.T) {
 		t.Fatalf("reordering declarations changed summary: %+v", got)
 	}
 }
+
+// Golden hash captured from baseline 6a306ea before optional native metadata
+// fields were introduced. Historical ZIPs must remain replayable byte-for-byte.
+func TestDeliveryLegacyArchiveBytesUnchanged(t *testing.T) {
+	archive, err := BuildDelivery(syntheticDelivery(), "2026-10-18T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Digest(archive); got != "306a349c63bb7204a90c725de0c7592ad6385f65458ccfe8514eea5023c6a52a" {
+		t.Fatalf("legacy archive bytes changed: %s", got)
+	}
+	native := syntheticDelivery()
+	native.SelectionAuthority = "adoption_batch_v1"
+	native.SelectionScopeDigest = "synthetic-digest"
+	native.ConfirmedAt = "2026-11-08T00:00:00Z"
+	native.RuleJSON = []byte(`{"statuses":["approved"]}`)
+	native.AdapterVersion = "adoption-delivery/v1"
+	archive, err = BuildDelivery(native, "2026-11-08T01:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, snap, err := ReplayDelivery(archive, Digest(archive))
+	if err != nil || !bytes.Equal(replayed, archive) || snap.SelectionScopeDigest != native.SelectionScopeDigest {
+		t.Fatalf("native evidence replay failed: %v", err)
+	}
+}

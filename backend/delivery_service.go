@@ -14,30 +14,32 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tools/filesystem"
 )
 
-// deliveryHandoff is an explicit, provisional boundary to #315, not a second
-// adoption UI or status model. All rows of ONE completed inbound batch must be
+// deliveryHandoff retains the legacy manual handoff boundary. Native adoption
+// derives this internal input from the confirmed batch instead of trusting client entries. All rows of ONE completed inbound batch must be
 // accounted for. Counts and content are always read from the server.
+type deliveryEntry struct {
+	PageID string `json:"page_id"`
+	Scope  string `json:"scope"`
+	Reason string `json:"reason"`
+}
+
 type deliveryHandoff struct {
-	ImportJob     string                   `json:"import_job"`
-	SelectionRef  string                   `json:"selection_ref"`
-	SelectionRule string                   `json:"selection_rule"`
-	ConfirmedBy   string                   `json:"confirmed_by"`
-	Recipient     string                   `json:"recipient"`
-	Purpose       string                   `json:"purpose"`
-	Reviewer      string                   `json:"reviewer"`
-	Expected      reviewbundle.ScopeCounts `json:"expected"`
-	Entries       []struct {
-		PageID string `json:"page_id"`
-		Scope  string `json:"scope"`
-		Reason string `json:"reason"`
-	} `json:"entries"`
-	Previous       string `json:"previous"`
-	ChangeReason   string `json:"change_reason"`
-	PreviewSHA     string `json:"preview_sha256"`
-	IncludeOutside bool   `json:"include_outside"`
+	NativeBatch    *core.Record             `json:"-"`
+	ImportJob      string                   `json:"import_job"`
+	SelectionRef   string                   `json:"selection_ref"`
+	SelectionRule  string                   `json:"selection_rule"`
+	ConfirmedBy    string                   `json:"confirmed_by"`
+	Recipient      string                   `json:"recipient"`
+	Purpose        string                   `json:"purpose"`
+	Reviewer       string                   `json:"reviewer"`
+	Expected       reviewbundle.ScopeCounts `json:"expected"`
+	Entries        []deliveryEntry          `json:"entries"`
+	Previous       string                   `json:"previous"`
+	ChangeReason   string                   `json:"change_reason"`
+	PreviewSHA     string                   `json:"preview_sha256"`
+	IncludeOutside bool                     `json:"include_outside"`
 }
 
 func (s *importService) registerDeliveries(hooksDir string) {
@@ -78,8 +80,12 @@ func (s *importService) registerDeliveries(hooksDir string) {
 		})
 	}
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		e.Router.POST("/api/fangji/projects/{projectId}/deliveries/preflight", s.deliveryPreflight).Bind(apis.RequireAuth("users"), apis.BodyLimit(2<<20))
-		e.Router.POST("/api/fangji/projects/{projectId}/deliveries", s.createDelivery).Bind(apis.RequireAuth("users"), apis.BodyLimit(2<<20))
+		e.Router.POST("/api/fangji/projects/{projectId}/deliveries/from-adoption/preflight", s.limitDeliveryPreparation(s.adoptionDeliveryPreflight)).Bind(apis.RequireAuth("users"), apis.BodyLimit(16384))
+		e.Router.POST("/api/fangji/projects/{projectId}/deliveries/from-adoption", s.limitDeliveryPreparation(s.createAdoptionDelivery)).Bind(apis.RequireAuth("users"), apis.BodyLimit(16384))
+		e.Router.GET("/api/fangji/deliveries/{deliveryId}", s.getDelivery).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/fangji/deliveries/{deliveryId}/events", s.listDeliveryEvents).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/fangji/projects/{projectId}/deliveries/preflight", s.limitDeliveryPreparation(s.deliveryPreflight)).Bind(apis.RequireAuth("users"), apis.BodyLimit(2<<20))
+		e.Router.POST("/api/fangji/projects/{projectId}/deliveries", s.limitDeliveryPreparation(s.createDelivery)).Bind(apis.RequireAuth("users"), apis.BodyLimit(2<<20))
 		e.Router.GET("/api/fangji/projects/{projectId}/deliveries", s.listDeliveries).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/deliveries/impacts", s.deliveryImpacts).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/deliveries/{deliveryId}/download", s.downloadDelivery).Bind(apis.RequireAuth("users"))
@@ -173,13 +179,20 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 	}
 	snap = reviewbundle.DeliverySnapshot{Project: projectID, ImportJob: h.ImportJob, ResultOf: job.GetString("bundle_id"), RightsRef: source.GetString("logical_id"), Recipient: strings.TrimSpace(h.Recipient), Purpose: h.Purpose, SelectionRef: h.SelectionRef, SelectionRule: h.SelectionRule, SelectionConfirmedBy: h.ConfirmedBy, Operator: operator, Reviewer: h.Reviewer, Expected: h.Expected, Version: 1, Previous: h.Previous, ChangeReason: h.ChangeReason}
 	snap.SelectionAuthority = "manual_handoff_pending_315"
-	latest, err := app.FindRecordsByFilter("release_deliveries", "project = {:project} && recipient = {:recipient} && purpose = {:purpose}", "-version", 1, 0, dbx.Params{"project": projectID, "recipient": snap.Recipient, "purpose": h.Purpose})
+	if h.NativeBatch != nil {
+		snap.SelectionAuthority = "adoption_batch_v1"
+		snap.SelectionScopeDigest = h.NativeBatch.GetString("scope_digest")
+		snap.ConfirmedAt = h.NativeBatch.GetString("confirmed_at")
+		snap.RuleJSON = json.RawMessage(h.NativeBatch.GetString("rule_json"))
+		snap.AdapterVersion = "adoption-delivery/v1"
+	}
+	latest, err := app.FindRecordsByFilter("release_deliveries", "project = {:project} && recipient = {:recipient} && purpose = {:purpose} && import_job = {:job}", "-version,-id", 1, 0, dbx.Params{"project": projectID, "recipient": snap.Recipient, "purpose": h.Purpose, "job": h.ImportJob})
 	if err != nil {
 		return snap, err
 	}
 	if len(latest) > 0 {
 		if h.Previous != latest[0].Id && h.Previous != latest[0].GetString("package_id") {
-			return snap, fmt.Errorf("再次出包必须关联同一接收方／用途的最新包。")
+			return snap, fmt.Errorf("再次出包必须关联同一接收方／用途／导入批次的最新包。")
 		}
 		snap.Previous = latest[0].Id
 		events, err := deliveryEvents(app, latest[0].Id)
@@ -220,7 +233,11 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 		if system == "" || id == "" || version == "" || system != snap.SourceSystem || id != snap.SourceID || version != snap.SourceVersion || p.GetString("source_entry_id") == "" {
 			return snap, fmt.Errorf("批次来源三元组缺失或不一致，退回 A 线补齐。")
 		}
-		if item.Scope != "adopted" && !containsStr(reasonField.Values, item.Reason) {
+		reasons := reasonField.Values
+		if h.NativeBatch != nil {
+			reasons = adoptionReasonCodes()
+		}
+		if item.Scope != "adopted" && !containsStr(reasons, item.Reason) {
 			return snap, fmt.Errorf("范围外与待处理理由必须来自 D 侧同源的 blocked_reason 词表。")
 		}
 		snap.Declarations = append(snap.Declarations, reviewbundle.Declaration{EntryID: p.GetString("source_entry_id"), Scope: item.Scope, Reason: item.Reason})
@@ -337,7 +354,7 @@ func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
 		r.Status = "inconsistent"
 		r.Problems = append(r.Problems, buildErr.Error())
 	}
-	return c.JSON(200, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "release_decision": "human_required", "can_generate": buildErr == nil, "dependency_gaps": []string{"#315 原生批次编选尚未接入；当前接受人工核查的交接清单", "#184 独立导出列整合待接入；旧 CSV 不是本交付包", "X 侧真实 dry-run 与双方签字尚待实测"}})
+	return c.JSON(200, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "release_decision": "human_required", "can_generate": buildErr == nil, "dependency_gaps": []string{"当前使用旧人工交接清单兼容模式；建议改用已确认编选批次", "#184 独立导出列整合待接入；旧 CSV 不是本交付包", "X 侧真实 dry-run 与双方签字尚待实测"}})
 }
 
 func (s *importService) createDelivery(c *core.RequestEvent) error {
@@ -361,27 +378,8 @@ func (s *importService) createDelivery(c *core.RequestEvent) error {
 		if h.PreviewSHA == "" || h.PreviewSHA != reviewbundle.SnapshotDigest(snap) {
 			return fmt.Errorf("检查结果已过期或缺失，请重新检查并由人确认出包。")
 		}
-		archive, err := reviewbundle.BuildDelivery(snap, time.Now().UTC().Format(time.RFC3339))
-		if err != nil {
-			return err
-		}
-		collection, err := app.FindCollectionByNameOrId("release_deliveries")
-		if err != nil {
-			return err
-		}
-		record = core.NewRecord(collection)
-		file, err := filesystem.NewFileFromBytes(archive, "ReviewResultBundle.zip")
-		if err != nil {
-			return err
-		}
-		data, err := json.Marshal(snap)
-		if err != nil {
-			return err
-		}
-		for key, value := range map[string]any{"project": snap.Project, "operator": auth.Id, "package_id": "delivery-" + reviewbundle.SnapshotDigest(snap)[:32], "sha256": reviewbundle.Digest(archive), "purpose": snap.Purpose, "recipient": snap.Recipient, "source_ref": snap.RightsRef, "import_job": snap.ImportJob, "previous": snap.Previous, "version": snap.Version, "snapshot": string(data), "archive": file} {
-			record.Set(key, value)
-		}
-		return app.Save(record)
+		record, err = saveDeliveryArchive(app, snap, "", "")
+		return err
 	})
 	if err != nil {
 		return apis.NewBadRequestError(err.Error(), nil)
@@ -431,7 +429,7 @@ func deliveryView(record *core.Record, events []*core.Record) map[string]any {
 			noticeState = "manual_notice_recorded"
 		}
 	}
-	return map[string]any{"id": record.Id, "package_id": record.GetString("package_id"), "version": snap.Version, "previous": snap.Previous, "change_reason": snap.ChangeReason, "purpose": snap.Purpose, "recipient": snap.Recipient, "import_job": snap.ImportJob, "source_ref": snap.RightsRef, "created": record.GetString("created"), "sha256": record.GetString("sha256"), "reconciliation": reviewbundle.Reconcile(snap), "receipt_state": state, "receipt_channel": channel, "waiting_seconds": waitSeconds, "withdrawn": withdrawn, "notice_state": noticeState, "pending_actions": deliveryPendingActions(events), "events": views, "release_decision": "human_required"}
+	return map[string]any{"id": record.Id, "package_id": record.GetString("package_id"), "version": snap.Version, "previous": snap.Previous, "change_reason": snap.ChangeReason, "purpose": snap.Purpose, "recipient": snap.Recipient, "import_job": snap.ImportJob, "source_ref": snap.RightsRef, "created": record.GetString("created"), "sha256": record.GetString("sha256"), "reconciliation": reviewbundle.Reconcile(snap), "receipt_state": state, "receipt_channel": channel, "waiting_seconds": waitSeconds, "withdrawn": withdrawn, "notice_state": noticeState, "pending_actions": deliveryPendingActions(events), "events": views, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_ref": snap.SelectionRef, "selection_scope_digest": snap.SelectionScopeDigest}
 }
 
 func deliveryPendingActions(events []*core.Record) []string {
@@ -465,6 +463,9 @@ func (s *importService) listDeliveries(c *core.RequestEvent) error {
 	projectID := c.Request.PathValue("projectId")
 	if _, err := s.deliveryManager(c, projectID); err != nil {
 		return err
+	}
+	if c.Request.URL.Query().Has("page") || c.Request.URL.Query().Has("perPage") {
+		return s.listPagedDeliveries(c)
 	}
 	records, err := s.app.FindRecordsByFilter("release_deliveries", "project = {:project}", "-created,-id", 0, 0, dbx.Params{"project": projectID})
 	if err != nil {
@@ -503,7 +504,9 @@ func (s *importService) listDeliveries(c *core.RequestEvent) error {
 		}
 		items = append(items, v)
 	}
-	return c.JSON(200, map[string]any{"items": items, "metrics": map[string]any{"scope": "generated_packages_only", "package_count": len(items), "receipt_states": states, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliationStates}, "dependency_gaps": []string{"#315 原生编选接入", "#184 导出整合", "X 侧 dry-run 与双方签字", "未保存失败检查次数与全生产线周吞吐"}})
+	total := len(items)
+	page, perPage, totalPages := 1, total, 1
+	return c.JSON(200, map[string]any{"items": items, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages, "metrics": map[string]any{"scope": "generated_packages_only", "reconciliation_scope": "immutable_package_snapshot", "rights_scope": "current_source_permissions", "package_count": total, "receipt_states": states, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliationStates}, "dependency_gaps": []string{"X 侧 dry-run 与双方签字", "未保存失败检查次数与全生产线周吞吐"}})
 }
 
 func (s *importService) loadManagedDelivery(c *core.RequestEvent) (*core.Record, error) {
