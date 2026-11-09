@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-09T07:29:42.452645+00:00",
+  "status": "pass",
+  "scope": "Actual isolated production main lifecycle acceptance; not capacity or deployment acceptance",
+  "source": {
+    "base_commit": "967eac7fa8eea2c1e05937491bae5e744674989d",
+    "product_commit": "727b829d17de91f1084e28b32018ad8bed17c781",
+    "product_diff_from_727b829": [],
+    "files_hashed": 422,
+    "changed_after_race": [],
+    "canonical_manifest_sha256": "06b8cfd0024ba13074b38a42d416cc2d1cb5b76c44a44916b71b397509039257",
+    "key_file_sha256": {
+      "backend/main.go": "fbed6cb0b8cd9b06dfbef3614b12900ede54bb1686b03672db8c6f1440ac88d7",
+      "backend/assist_publication_recovery.go": "19a72dc11fe084262d30287aa5bda218db22590c10a3a354bbb833739a2bd7e4",
+      "backend/pb_hooks/lib/assist_publication.js": "74c2713b06a39a1c1acd69a509ac28bc76d940e9ba0e4c0993a4496ada067d94",
+      "backend/pb_hooks/assist_publication.pb.js": "b346e88444624b6bca868f332d34018706901da74ce9203e2ac0ed9cb8545b92",
+      "backend/pb_migrations/1794204700_assist_publications.js": "5f974b673726374716be8527ac696b40c5ae8d5ad0cf19c98d45b9c05fbc9bd1",
+      "backend/assist_process_recovery_test.go": "91c315c2522f49d0a84437f30a904884fcf6dd464fe032f09f0e66c85cc81a41",
+      "backend/instance_ownership.go": "17473538ad53be23f61adc07233e84e481ae2cd4e55cfa75ba194aa3f10170f7",
+      "backend/instance_ownership_unix.go": "32af99abccf550298174351da88209b212d16242ed289a67f2cfd5408170b71c",
+      "backend/instance_ownership_windows.go": "b99aed225a041cdab9c1a28de5d334cd5a028c5ca1e782e667eb7dcd840d709d"
+    }
+  },
+  "runtime": {
+    "go": "go version go1.27.3 darwin/amd64",
+    "gomaxprocs": 2,
+    "gomemlimit": "768MiB (soft runtime limit)",
+    "dev": false,
+    "loopback_only": true,
+    "temporary_synthetic_data": true
+  },
+  "initialization": {
+    "command": "actual main migrate up --migrationsDir=<all repository migrations> --dev=false; then actual main serve --dev=false",
+    "skip_admin_bootstrap_during_migration": true,
+    "individual_numeric_migration_order_tested_here": false,
+    "raw_serve_initial_attempts": {
+      "count": 2,
+      "status": "failed before crash scenario",
+      "http_status": 400,
+      "sanitized_reason": "bootstrap_identity_refused users/_superusers query_or_persistence_failed",
+      "cause": "PocketBase Bootstrap runs system migrations before JS account bootstrap; app migrations are applied afterward by Serve. Empty data directory therefore requires the existing migrate-before-serve initialization.",
+      "owned_processes_reaped": true
+    }
+  },
+  "tests": [
+    {
+      "command": "GOMAXPROCS=2 go test -C backend . -run '^TestAssistActualProcessCrashRecoveryAndExclusiveDataDirectory$' -count=1 -v -timeout=4m",
+      "exit_code": 0,
+      "package_seconds": 59.276,
+      "test_seconds": 59.2,
+      "note": "Before the additional explicit failure_code=PROCESS_RESTARTED assertion; the final race run includes it.",
+      "log_sha256": "ccf50481fd537c475a51a874f4ed5cbc704e84896a51118ad361ccbe7d713591"
+    },
+    {
+      "command": "GOMAXPROCS=2 go test -C backend -race . -run '^TestAssistActualProcessCrashRecoveryAndExclusiveDataDirectory$' -count=1 -v -timeout=5m",
+      "exit_code": 0,
+      "package_seconds": 75.197,
+      "test_seconds": 74.08,
+      "cleanup_and_followup_observation_seconds": 32.111,
+      "race_warnings": 0,
+      "log_sha256": "86fa2ea8af512db3feac9622a85f255d441e413fa82d558f579d32b1a177ef87"
+    }
+  ],
+  "private_hook_instrumentation": {
+    "original_files_modified": false,
+    "all_repository_hooks_copied": true,
+    "symlinks_rejected": true,
+    "barrier_position": "Immediately after successful runInTransaction return; independently confirmed committed payload through a mode=ro SQLite connection.",
+    "barrier_accepts_phases": [
+      "findings",
+      "events",
+      "derivations",
+      "retirements"
+    ],
+    "observed_phase": "findings",
+    "modified_private_publication_hook_sha256": "56fcc5e00a05fee51a3c0225ce743d8ee7dcd5be6582b5979f30b6dbd22dbe77",
+    "private_bootstrap_sentinel_sha256": "1e05ef9622baa0c00731997ac755ea11c3de439975d614511101d8045d207453",
+    "new_product_endpoints_or_test_flags": false
+  },
+  "fixture": {
+    "pages": 120,
+    "old_published_findings": 480,
+    "private_payloads_at_crash": {
+      "review_findings": 100,
+      "verification_events": 0,
+      "_assist_page_derivations": 0,
+      "_assist_finding_retirements": 0
+    },
+    "research_mode": false
+  },
+  "gates": {
+    "owner_bootstrap_positive_control": "pass: sentinel=true",
+    "second_instance_rejected": "pass: exact ownership error and nonzero exit",
+    "second_instance_before_bootstrap": "pass: sentinel absent; first marker remains staging and payload/current/history/pages unchanged",
+    "committed_stage": "pass: independent SQLite read saw 100 private findings",
+    "kill_and_wait": "pass: retained direct child handle, nonzero killed exit, HTTP interrupted",
+    "startup_recovery": "pass: retained marker aborted with PROCESS_RESTARTED",
+    "visible_state_byte_equality": "pass: canonical full-row JSON of current/history/events/pages/published markers unchanged across stage, rejection, restart and cleanup",
+    "real_existing_cron": "pass: all 100 private findings removed within 70-second observation deadline, no marker/history deletion",
+    "subsequent_real_http_recompute": "pass: new publication and complete 480 findings",
+    "all_owned_processes_reaped": "pass: one Wait per direct child; post-run ps found only inspection commands",
+    "source_freeze": "pass: 422 hashes unchanged"
+  },
+  "limitations": [
+    "Functional test on Darwin; not a production deployment, isolated 4-core capacity acceptance, or an RSS/latency benchmark.",
+    "This crash stops at the first committed findings chunk; events, derivations and retirements counts at crash are zero. Other stage/byte-budget cases remain covered by the dedicated publication tests, not claimed by this process fixture.",
+    "The test binary invokes the actual production main in subprocesses with all repository hooks/migrations, plus the documented private hook barrier/sentinel. It does not test a built container image.",
+    "One full-directory migrate up does not replace existing Docker numeric per-file migration-order acceptance.",
+    "Cleanup gate proves removal of this one bounded committed chunk; it does not measure multi-minute backlog drain."
+  ],
+  "cleanup": {
+    "servers_started": 3,
+    "migration_processes_started": 1,
+    "all_direct_children_waited": true,
+    "temporary_data_and_private_hooks": "removed by testing.TempDir cleanup",
+    "production_or_remote_resources_touched": false
+  }
+}
