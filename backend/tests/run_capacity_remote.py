@@ -24,6 +24,7 @@ from capacity_remote_contract import (VERSION, MAX_LINE, ARTIFACTS, canonical_ha
     host_identity, validate_budget, validate_init, evaluate_evidence, same_source, observation_seconds, strict_json_loads,
     CapacityFailure, failure_from_frame, safe_failure, valid_fault_evidence)
 from capacity_target import stop_process
+from capacity_process_ownership import ProcessRegistry
 
 
 def transport_environment(ssh=False):
@@ -35,8 +36,21 @@ def transport_environment(ssh=False):
     return env
 
 
-def stop_generator_group(process):
+def stop_generator_group(process, registry=None):
     """Stop inherited and Playwright-detached descendants before idle sampling."""
+    if registry is not None:
+        # An unreaped live Popen child retains its PID. Do not signal its group
+        # after exit: detached groups have their own stable guardian receipts.
+        if process.poll() is None:
+            try: os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError: pass
+            stop_process(process)
+        registry.stop()
+        return
+    if process.poll() is not None:
+        if getattr(process, '_capacity_group_cleaned', False):
+            return
+        raise RuntimeError('generator_registry_required_after_exit')
     groups = {process.pid}
     if process.poll() is None:
         try:
@@ -63,6 +77,7 @@ def stop_generator_group(process):
         rows = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=2).splitlines()
         live = [r.split() for r in rows if r.split() and int(r.split()[0]) in groups and not r.split()[1].startswith(('Z', 'X'))]
         if not live:
+            process._capacity_group_cleaned = True
             return
         if attempt == 10:
             for group in groups:
@@ -228,20 +243,32 @@ def run_once(args, output, source, budget):
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             with os.fdopen(fd, 'w') as file: json.dump(config, file)
             env = {**clean_environment(), 'CAPACITY_FIXTURE': str(path)}
+            registry = ProcessRegistry(Path(temporary).resolve()/'owned-processes', create=True)
+            env.update(CAPACITY_PROCESS_REGISTRY=str(registry.root), CAPACITY_GUARDIAN_PYTHON=sys.executable)
             for key in ('NODE_PATH', 'BROWSER_CHANNEL', 'PLAYWRIGHT_BROWSERS_PATH'):
                 if key in os.environ: env[key] = os.environ[key]
-            for script in ('capacity_scenarios.mjs', 'capacity_browser.cjs'):
-                processes.append(subprocess.Popen(['node', str(harness.BACKEND/'tests'/script)], env=env,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
-            codes = []
-            deadline = time.monotonic()+args.duration+120
-            for process in processes:
-                try: codes.append(process.wait(timeout=max(1, deadline-time.monotonic())))
-                except subprocess.TimeoutExpired:
-                    stop_generator_group(process)
-                    codes.append(124)
-            for process in processes:
-                stop_generator_group(process)
+            try:
+                for script in ('capacity_scenarios.mjs', 'capacity_browser.cjs'):
+                    processes.append(subprocess.Popen(['node', '--require', str(harness.BACKEND/'tests/capacity_owned_spawn.cjs'),
+                        str(harness.BACKEND/'tests'/script)], env=env,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True))
+                codes = []
+                deadline = time.monotonic()+args.duration+120
+                for process in processes:
+                    try: codes.append(process.wait(timeout=max(1, deadline-time.monotonic())))
+                    except subprocess.TimeoutExpired:
+                        stop_generator_group(process, registry)
+                        codes.append(124)
+            finally:
+                # Keep the private registry alive through cleanup, including
+                # exceptions while launching the second generator or waiting.
+                errors = []
+                for process in processes:
+                    try: stop_generator_group(process, registry)
+                    except (Exception, KeyboardInterrupt) as error: errors.append(error)
+                processes.clear()
+                if errors:
+                    raise safe_failure('cleanup', errors[0]) from None
         http = capacity_report.lines(output/'requests.jsonl')+capacity_report.lines(output/'browser-http.jsonl')
         submissions = [row for row in http if row.get('operation') == 'submit' and row.get('status') == 200 and row.get('ok')]
         phase = 'observation'
