@@ -30,6 +30,7 @@ import {
 import { formatClaimConflict, getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 import { useProofreadDrafts } from './useProofreadDrafts.js'
+import { useDraftExitRegistration } from '../useDraftLogout.js'
 import { useProofreadLease } from './useProofreadLease.js'
 import { useProofreadReturn } from './useProofreadReturn.js'
 import { useProofreadFields } from './useProofreadFields.js'
@@ -112,6 +113,7 @@ export function useProofreadEditor() {
   const locatedSpan = ref(null)
 
   const currentUserId = computed(() => getCurrentUserId() || '')
+  const editorUserId = currentUserId.value
   const readOnly = computed(
     () =>
       ownReview.value || saving.value || submittedHere.value || leaseLost.value || !leaseToken.value
@@ -312,6 +314,36 @@ export function useProofreadEditor() {
     replaceEditedRow,
     originalRow
   })
+  useDraftExitRegistration({
+    userId: editorUserId,
+    flush: () => flushDraft({ preserveExisting: true }),
+    captureReturn() {
+      const field = activeField.value || currentField.value || rowHeaders.value[0]
+      const target = textareaRefs.get(field)
+      const pageId = page.value?.id
+      const start = target?.selectionStart,
+        end = target?.selectionEnd
+      const direction = target?.selectionDirection
+      return () => {
+        if (
+          !target?.isConnected ||
+          page.value?.id !== pageId ||
+          getCurrentUserId() !== editorUserId
+        )
+          return
+        target.focus({ preventScroll: true })
+        if (Number.isInteger(start) && Number.isInteger(end))
+          target.setSelectionRange(start, end, direction)
+      }
+    },
+    allowNavigation() {
+      const previous = leaseNavigationAllowed.value
+      leaseNavigationAllowed.value = true
+      return () => {
+        leaseNavigationAllowed.value = previous
+      }
+    }
+  })
   const {
     saveClaimedLease,
     clearStoredLease,
@@ -462,11 +494,13 @@ export function useProofreadEditor() {
   )
 
   onBeforeRouteLeave(() => {
+    if (getCurrentUserId() !== editorUserId) return true
     if (leaseNavigationAllowed.value) return true
     if (!confirmDiscardChanges()) return false
   })
 
   onBeforeRouteUpdate((to, from) => {
+    if (getCurrentUserId() !== editorUserId) return true
     if (leaseNavigationAllowed.value) return true
     if (to.params.id !== from.params.id && !confirmDiscardChanges()) return false
   })
@@ -485,7 +519,7 @@ export function useProofreadEditor() {
   onBeforeUnmount(() => {
     caseVersion += 1
     invalidateFindings()
-    flushDraft()
+    flushDraft({ preserveExisting: true })
     clearDraftTimer()
     stopLeaseRenewal()
     window.removeEventListener('beforeunload', handleBeforeUnload)

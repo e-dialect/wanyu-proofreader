@@ -169,6 +169,66 @@ func TestDeliveryArchiveTransactionFailureCleansFiles(t *testing.T) {
 	}
 }
 
+func TestLegacyDeliveryRechecksQueuedActorInTransaction(t *testing.T) {
+	for _, change := range []string{"token-key", "platform-role"} {
+		t.Run(change, func(t *testing.T) {
+			app := newSchemaTestApp(t)
+			for _, path := range []string{"pb_migrations/1792281600_release_deliveries.js", "pb_migrations/1794203000_delivery_adoption.js"} {
+				up, _ := deliveryMigration(t, path)
+				if err := app.RunInTransaction(up); err != nil {
+					t.Fatal(err)
+				}
+			}
+			actor := deliveryArchiveFixture(t, app)
+			target := deliveryArchiveFixture(t, app)
+			archive, err := saveDeliveryArchive(app, target, "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot, _ := app.FindRecordById("users", actor.Operator)
+			current, _ := app.FindRecordById("users", actor.Operator)
+			expected := 401
+			if change == "token-key" {
+				current.RefreshTokenKey()
+			} else {
+				current.Set("role", "user")
+				expected = 403
+			}
+			if err := app.Save(current); err != nil {
+				t.Fatal(err)
+			}
+			s := newImportService(app)
+			app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+				e.Router.POST("/test-queued/{action}", func(c *core.RequestEvent) error {
+					// Model a request authenticated before the actor's state changed.
+					c.Auth = snapshot
+					c.Request.SetPathValue("projectId", target.Project)
+					c.Request.SetPathValue("deliveryId", archive.Id)
+					switch c.Request.PathValue("action") {
+					case "preflight":
+						return s.deliveryPreflight(c)
+					case "create":
+						return s.createDelivery(c)
+					default:
+						return s.appendDeliveryEvent(c)
+					}
+				})
+				return e.Next()
+			})
+			h := accountTestRouter(t, app)
+			for _, action := range []string{"preflight", "create", "event"} {
+				body := map[string]any{"kind": "receipt", "status": "success", "affected": 1, "reason": "synthetic", "reviewer": "synthetic-reviewer"}
+				accountTestRequest(t, h, "POST", "/test-queued/"+action, "", body, expected)
+			}
+			packages, _ := app.CountRecords("release_deliveries")
+			events, _ := app.CountRecords("release_events")
+			if packages != 1 || events != 0 {
+				t.Fatalf("stale actor mutated delivery evidence: packages=%d events=%d", packages, events)
+			}
+		})
+	}
+}
+
 func TestDeliveryPagedReadsUseSmallSummariesAndLegacyFallback(t *testing.T) {
 	app := newSchemaTestApp(t)
 	for _, name := range []string{"1792281600_release_deliveries.js", "1794203000_delivery_adoption.js"} {

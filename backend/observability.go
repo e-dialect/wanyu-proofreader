@@ -12,12 +12,14 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/hook"
 	"github.com/pocketbase/pocketbase/tools/router"
 )
 
@@ -25,9 +27,17 @@ type operationWriter struct{}
 
 func (operationWriter) Write(p []byte) (int, error) { return log.Writer().Write(p) }
 
-var operationLogger = slog.New(slog.NewJSONHandler(operationWriter{}, nil))
+var operationLogger = slog.New(slog.NewJSONHandler(operationWriter{}, &slog.HandlerOptions{
+	ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+		if len(groups) == 0 && attr.Key == slog.TimeKey {
+			attr.Key = "ts"
+		}
+		return attr
+	},
+}))
 var safeRequestID = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,80}$`)
 var telemetryID = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,80}$`)
+var safeOperationErrorCode = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,79}$`)
 
 func writeOperation(level, component, event string, fields map[string]any) {
 	attrs := []any{"component", component, "event", event, "build_sha", commit}
@@ -60,8 +70,12 @@ func (r *measuredResponse) Unwrap() http.ResponseWriter { return r.ResponseWrite
 
 func registerObservability(app core.App, importer *importService) {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		e.Router.BindFunc(func(c *core.RequestEvent) error {
-			if strings.HasPrefix(c.Request.URL.Path, "/api/realtime") {
+		// PocketBase's default activity logger persists the raw URI, referrer and
+		// error details into logs.db. Replace that request logger (not system or
+		// business logs) so file tokens and search text cannot enter a second sink.
+		e.Router.Unbind(apis.DefaultActivityLoggerMiddlewareId)
+		e.Router.Bind(&hook.Handler[*core.RequestEvent]{Id: "fangjiOperationLogger", Priority: apis.DefaultActivityLoggerMiddlewarePriority, Func: func(c *core.RequestEvent) error {
+			if c.Request.Method == http.MethodGet && strings.HasPrefix(c.Request.URL.Path, "/api/realtime") {
 				return c.Next()
 			}
 			started := time.Now()
@@ -84,9 +98,19 @@ func registerObservability(app core.App, importer *importService) {
 			if pattern == "" {
 				pattern = "unmatched"
 			}
-			writeOperation("info", "http", "http_completed", map[string]any{"request_id": requestID, "route_template": pattern, "method": c.Request.Method, "status": status, "duration_ms": float64(time.Since(started).Microseconds()) / 1000, "response_bytes": writer.bytes})
+			errorCode := ""
+			if err != nil {
+				var apiErr *router.ApiError
+				if errors.As(err, &apiErr) {
+					errorCode, _ = apiErr.Data["reasonCode"].(string)
+				}
+				if !safeOperationErrorCode.MatchString(errorCode) {
+					errorCode = "HTTP_" + strconv.Itoa(status)
+				}
+			}
+			writeOperation("info", "http", "http_completed", map[string]any{"request_id": requestID, "route_template": pattern, "method": c.Request.Method, "status": status, "duration_ms": float64(time.Since(started).Microseconds()) / 1000, "response_bytes": writer.bytes, "error_code": errorCode})
 			return err
-		})
+		}})
 		limiter := &telemetryLimiter{buckets: map[string]telemetryBucket{}}
 		e.Router.POST("/api/fangji/telemetry/web-vitals", func(c *core.RequestEvent) error {
 			if os.Getenv("FANGJI_TELEMETRY_ENABLED") != "1" {

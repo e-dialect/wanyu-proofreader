@@ -23,6 +23,13 @@ def timestamp(raw):
         return None
 
 
+def timestamp_argument(raw):
+    value = timestamp(raw)
+    if value is None:
+        raise argparse.ArgumentTypeError('a timestamp with timezone is required')
+    return value
+
+
 def summarize(lines, since=None, until=None):
     operations = defaultdict(list)
     failures = defaultdict(int)
@@ -88,8 +95,24 @@ def summarize(lines, since=None, until=None):
         value = sample.get('value')
         if isinstance(value, (int, float)) and math.isfinite(value) and value >= 0:
             metrics[(sample.get('buildSha'), sample.get('name'), sample.get('entryRoute'), sample.get('viewportClass'))].append(value)
+    cache_peaks = defaultdict(int)
+    backup_states = []
+    cpu = []
+    for sample in runtime:
+        for name, value in sample.get('cache_usage', {}).get('directories', {}).items():
+            if isinstance(value.get('bytes'), (int, float)):
+                cache_peaks[name] = max(cache_peaks[name], value['bytes'])
+        if sample.get('backup'):
+            backup_states.append(sample['backup'])
+        try:
+            value = float(str(sample.get('cpu_percent', '')).rstrip('%'))
+            if math.isfinite(value) and value >= 0:
+                cpu.append(value)
+        except ValueError:
+            pass
+    backup_gaps = sum(value.get('status') != 'current' for value in backup_states)
     return {
-        'status': 'incomplete' if gaps or malformed or audit_gaps or missing_timestamps else 'observed',
+        'status': 'incomplete' if gaps or malformed or audit_gaps or missing_timestamps or backup_gaps else 'observed',
         'collection_gaps': gaps, 'malformed_lines': malformed,
         'audit_persistence_gaps': audit_gaps, 'missing_timestamps': missing_timestamps,
         'window': {'first': min(stamps).isoformat() if stamps else None, 'last': max(stamps).isoformat() if stamps else None},
@@ -101,6 +124,13 @@ def summarize(lines, since=None, until=None):
         'runtime_samples': len(runtime),
         'peak_heap_bytes': max((e.get('heap_bytes', 0) for e in runtime), default=0),
         'peak_container_memory_bytes': max((e.get('container_memory_bytes', 0) for e in runtime), default=0),
+        'peak_wal_bytes': max((e.get('wal_bytes', 0) for e in runtime), default=0),
+        'peak_database_bytes': max((e.get('database_bytes', 0) for e in runtime), default=0),
+        'min_disk_free_bytes': min((e['disk_free_bytes'] for e in runtime if 'disk_free_bytes' in e), default=None),
+        'peak_cpu_percent': max(cpu, default=None),
+        'peak_cache_bytes': dict(cache_peaks),
+        'latest_backup_observation': backup_states[-1] if backup_states else None,
+        'backup_evidence_gaps': backup_gaps,
         'jobs': [{'build': k[0], 'kind': k[1], 'started_samples': len(v['wait']), 'finished_samples': len(v['duration']),
                   'queue_wait_p50_ms': percentile(v['wait'], .5), 'queue_wait_p95_ms': percentile(v['wait'], .95),
                   'execution_p50_ms': percentile(v['duration'], .5), 'execution_p95_ms': percentile(v['duration'], .95),
@@ -112,8 +142,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--since', type=timestamp)
-    parser.add_argument('--until', type=timestamp)
+    parser.add_argument('--since', type=timestamp_argument)
+    parser.add_argument('--until', type=timestamp_argument)
     args = parser.parse_args()
     if args.since and args.until and args.since > args.until:
         parser.error('since must be before until')

@@ -138,6 +138,7 @@ let resizeObserver = null
 let pdfjsLib = null
 let loadGeneration = 0
 let renderGeneration = 0
+let sourceReadController = null
 // Keep the access time stable while reading; renew it for a new viewer or
 // asset without changing the underlying shared image/PDF.
 const accessedAt = ref('')
@@ -195,6 +196,8 @@ onMounted(() => {
 
 async function loadPdf(src) {
   const generation = ++loadGeneration
+  sourceReadController?.abort()
+  sourceReadController = null
   cleanupRenderOnly()
   error.value = ''
   fullscreenError.value = ''
@@ -207,15 +210,16 @@ async function loadPdf(src) {
   }
 
   if (props.pageImage) {
-    if (pdfDocTask) {
+    const previousTask = pdfDocTask
+    if (previousTask) {
       try {
-        await pdfDocTask.destroy()
+        await previousTask.destroy()
       } catch {
         /* already gone */
       }
     }
     if (generation !== loadGeneration) return
-    pdfDocTask = null
+    if (pdfDocTask === previousTask) pdfDocTask = null
     pdfDoc = null
     loading.value = false
     await nextTick()
@@ -227,26 +231,43 @@ async function loadPdf(src) {
   loading.value = true
   zoom.value = 1
   rotation.value = 0
+  let readController = null
   try {
     const lib = await ensurePdfJsLib()
     if (generation !== loadGeneration) return
     lib.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js'
 
-    if (pdfDocTask) {
+    const previousTask = pdfDocTask
+    if (previousTask) {
       try {
-        await pdfDocTask.destroy()
+        await previousTask.destroy()
       } catch {
         /* the previous document may already be gone */
       }
     }
-    pdfDocTask = lib.getDocument({
-      url: src,
+    // Source replacement/unmount can happen while the previous worker exits.
+    // An obsolete loader must never create or take ownership of a new worker.
+    if (generation !== loadGeneration) return
+    if (pdfDocTask === previousTask) pdfDocTask = null
+    // The parent already fetched this authorized preview into a bounded blob.
+    // Read it before creating PDF.js's worker: cancelling its URL transport
+    // during ReaderHeadersReady makes PDF.js 3.11 throw from onFailure after
+    // Terminate. The public data API transfers these unchanged bytes instead.
+    readController = new AbortController()
+    sourceReadController = readController
+    const response = await fetch(src, { signal: readController.signal })
+    if (!response.ok) throw new Error(`读取 PDF 原文失败（${response.status}）`)
+    const data = new Uint8Array(await response.arrayBuffer())
+    if (generation !== loadGeneration) return
+    const loadingTask = lib.getDocument({
+      data,
       cMapUrl: '/pdfjs/cmaps/',
       cMapPacked: true,
       standardFontDataUrl: '/pdfjs/standard_fonts/',
       isEvalSupported: false
     })
-    const document = await pdfDocTask.promise
+    pdfDocTask = loadingTask
+    const document = await loadingTask.promise
     if (generation !== loadGeneration) {
       await document.destroy()
       return
@@ -261,6 +282,7 @@ async function loadPdf(src) {
     pdfDoc = null
     error.value = e?.message || 'PDF 加载失败'
   } finally {
+    if (sourceReadController === readController) sourceReadController = null
     if (generation === loadGeneration) loading.value = false
   }
 }
@@ -425,19 +447,22 @@ function cleanupRenderOnly() {
 
 onBeforeUnmount(async () => {
   loadGeneration++
+  sourceReadController?.abort()
+  sourceReadController = null
   cleanupRenderOnly()
   document.removeEventListener('fullscreenchange', syncFullscreenState)
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
   }
-  if (pdfDocTask) {
+  const previousTask = pdfDocTask
+  if (previousTask) {
     try {
-      await pdfDocTask.destroy()
+      await previousTask.destroy()
     } catch {
       /* the previous document may already be gone */
     }
-    pdfDocTask = null
+    if (pdfDocTask === previousTask) pdfDocTask = null
   }
   pdfDoc = null
 })

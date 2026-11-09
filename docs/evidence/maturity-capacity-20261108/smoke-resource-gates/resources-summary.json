@@ -1,0 +1,303 @@
+{
+  "sample_interval_seconds": 5,
+  "samples": 8,
+  "complete_samples": 8,
+  "sampling_status": "pass",
+  "resource_budget_status": "incomplete",
+  "cooldown_recovery_status": "incomplete",
+  "separate_generator_host": false,
+  "separate_generator_status": "incomplete",
+  "phases": {
+    "warmup": {
+      "server_rss_bytes": {
+        "samples": 1,
+        "first": 276824064,
+        "last": 276824064,
+        "peak": 276824064,
+        "delta": 0,
+        "per_second": null
+      },
+      "wal_bytes": {
+        "samples": 1,
+        "first": 200000000,
+        "last": 200000000,
+        "peak": 200000000,
+        "delta": 0,
+        "per_second": null
+      },
+      "data_directory_bytes": {
+        "samples": 1,
+        "first": 522950471,
+        "last": 522950471,
+        "peak": 522950471,
+        "delta": 0,
+        "per_second": null
+      },
+      "disk_free_bytes": {
+        "samples": 1,
+        "first": 61593681920,
+        "last": 61593681920,
+        "peak": 61593681920,
+        "delta": 0,
+        "per_second": null
+      },
+      "unfinished_jobs": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      },
+      "heap_bytes": {
+        "samples": 0
+      },
+      "queue_length": {
+        "samples": 0
+      },
+      "ocr_queue_length": {
+        "samples": 0
+      },
+      "image_queue_length": {
+        "samples": 0
+      }
+    },
+    "ramp": {
+      "server_rss_bytes": {
+        "samples": 0
+      },
+      "wal_bytes": {
+        "samples": 0
+      },
+      "data_directory_bytes": {
+        "samples": 0
+      },
+      "disk_free_bytes": {
+        "samples": 0
+      },
+      "unfinished_jobs": {
+        "samples": 0
+      },
+      "heap_bytes": {
+        "samples": 0
+      },
+      "queue_length": {
+        "samples": 0
+      },
+      "ocr_queue_length": {
+        "samples": 0
+      },
+      "image_queue_length": {
+        "samples": 0
+      }
+    },
+    "steady": {
+      "server_rss_bytes": {
+        "samples": 4,
+        "first": 413855744,
+        "last": 440037376,
+        "peak": 440037376,
+        "delta": 26181632,
+        "per_second": 1744860.5275790554
+      },
+      "wal_bytes": {
+        "samples": 4,
+        "first": 200000000,
+        "last": 200000000,
+        "peak": 200000000,
+        "delta": 0,
+        "per_second": 0.0
+      },
+      "data_directory_bytes": {
+        "samples": 4,
+        "first": 532295021,
+        "last": 563695991,
+        "peak": 563695991,
+        "delta": 31400970,
+        "per_second": 2092700.450479714
+      },
+      "disk_free_bytes": {
+        "samples": 4,
+        "first": 61584195584,
+        "last": 61538840576,
+        "peak": 61584195584,
+        "delta": -45355008,
+        "per_second": -3022659.671758899
+      },
+      "unfinished_jobs": {
+        "samples": 4,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": 0.0
+      },
+      "heap_bytes": {
+        "samples": 0
+      },
+      "queue_length": {
+        "samples": 0
+      },
+      "ocr_queue_length": {
+        "samples": 0
+      },
+      "image_queue_length": {
+        "samples": 0
+      }
+    },
+    "cooldown": {
+      "server_rss_bytes": {
+        "samples": 1,
+        "first": 456777728,
+        "last": 456777728,
+        "peak": 456777728,
+        "delta": 0,
+        "per_second": null
+      },
+      "wal_bytes": {
+        "samples": 1,
+        "first": 200000000,
+        "last": 200000000,
+        "peak": 200000000,
+        "delta": 0,
+        "per_second": null
+      },
+      "data_directory_bytes": {
+        "samples": 1,
+        "first": 574518272,
+        "last": 574518272,
+        "peak": 574518272,
+        "delta": 0,
+        "per_second": null
+      },
+      "disk_free_bytes": {
+        "samples": 1,
+        "first": 61528223744,
+        "last": 61528223744,
+        "peak": 61528223744,
+        "delta": 0,
+        "per_second": null
+      },
+      "unfinished_jobs": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      },
+      "heap_bytes": {
+        "samples": 1,
+        "first": 85812568,
+        "last": 85812568,
+        "peak": 85812568,
+        "delta": 0,
+        "per_second": null
+      },
+      "queue_length": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      },
+      "ocr_queue_length": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      },
+      "image_queue_length": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      }
+    },
+    "recovery": {
+      "server_rss_bytes": {
+        "samples": 1,
+        "first": 456982528,
+        "last": 456982528,
+        "peak": 456982528,
+        "delta": 0,
+        "per_second": null
+      },
+      "wal_bytes": {
+        "samples": 1,
+        "first": 200000000,
+        "last": 200000000,
+        "peak": 200000000,
+        "delta": 0,
+        "per_second": null
+      },
+      "data_directory_bytes": {
+        "samples": 1,
+        "first": 577248192,
+        "last": 577248192,
+        "peak": 577248192,
+        "delta": 0,
+        "per_second": null
+      },
+      "disk_free_bytes": {
+        "samples": 1,
+        "first": 61528928256,
+        "last": 61528928256,
+        "peak": 61528928256,
+        "delta": 0,
+        "per_second": null
+      },
+      "unfinished_jobs": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      },
+      "heap_bytes": {
+        "samples": 1,
+        "first": 85812568,
+        "last": 85812568,
+        "peak": 85812568,
+        "delta": 0,
+        "per_second": null
+      },
+      "queue_length": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      },
+      "ocr_queue_length": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      },
+      "image_queue_length": {
+        "samples": 1,
+        "first": 0,
+        "last": 0,
+        "peak": 0,
+        "delta": 0,
+        "per_second": null
+      }
+    }
+  },
+  "limitations": [
+    "RSS/WAL/disk/job counts sampled every 5 s; runtime heap and in-memory queue fields come from existing 30 s server samples.",
+    "Resource ceilings and recovery tolerance/dwell time have not been frozen, so measured trends do not manufacture a pass.",
+    "Server, HTTP generator and browser are on the same host. A separate-host remote harness is still required for formal capacity acceptance.",
+    "server_cpu_percent is ps process CPU; it is diagnostic and has no invented acceptance ceiling."
+  ]
+}

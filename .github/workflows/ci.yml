@@ -615,6 +615,8 @@ jobs:
               raise SystemExit('Missing or empty UI evidence: ' + ', '.join(missing))
           print('PASS: workbench/editor/bundle runtime evidence and reviewed comparison files exist')
           PY
+      - name: Verify full-directory restore and recovered business workflows
+        run: python3 backend/tests/run_restore_business.py --output output/maturity/restore-business.json
       - name: Attach mounted frontend synthetic evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -622,6 +624,7 @@ jobs:
           name: frontend-quality-browser
           path: |
             output/playwright/
+            output/maturity/restore-business.json
             docs/evidence/workbench-experience-20261107/before-after/
           if-no-files-found: ignore
       - name: Audit reachable Go vulnerabilities
@@ -673,8 +676,8 @@ jobs:
         env:
           TRAEFIK_HOST: fangji.example.com
         run: |
-          env -u ENABLE_POCKETBASE_ADMIN_UI docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "true"'
-          ENABLE_POCKETBASE_ADMIN_UI=false docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "false"'
+          env -u ENABLE_POCKETBASE_ADMIN_UI docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "false"'
+          ENABLE_POCKETBASE_ADMIN_UI=true docker compose -f docker-compose.traefik.yml config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "true"'
           env -u ENABLE_POCKETBASE_ADMIN_UI docker compose config --format json | jq -e '.services.frontend.environment.ENABLE_POCKETBASE_ADMIN_UI == "false"'
 
       - name: Verify Compose entry point behavior
@@ -773,6 +776,11 @@ jobs:
           done
           FRONTEND_URL=http://127.0.0.1:18080 node frontend/scripts/test-font-cache.mjs
           FRONTEND_URL=http://127.0.0.1:18080 node frontend/scripts/test-account-http.mjs
+          docker logs "$container" > "$RUNNER_TEMP/fangji-nginx-contract.log" 2>&1
+          if grep -q 'NGINX_LOG_SECRET_SENTINEL' "$RUNNER_TEMP/fangji-nginx-contract.log"; then
+            echo 'Nginx logged a token-bearing test URL' >&2
+            exit 1
+          fi
 
       - name: Scan built images and generate CycloneDX SBOMs
         run: |

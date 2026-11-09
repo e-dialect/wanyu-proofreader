@@ -19,6 +19,10 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204100_field_summary_projection.js': {
+        'objects': [('table', name) for name in ['_field_audit_contributions', '_field_audit_totals', '_field_audit_projection_meta']] + [('trigger', '_field_audit_' + name) for name in ['contribution_insert', 'contribution_delete', 'attempt_insert', 'attempt_update', 'attempt_delete', 'event_insert', 'event_update', 'event_delete']],
+        'plans': [('_field_audit_totals', 'SELECT field_name,submitted_fields FROM _field_audit_totals WHERE project=?', ('p',), 'PRIMARY KEY')],
+    },
     '1794204000_field_summary_judgment_index.js': {
         'indexes': ['idx_verification_judgment_latest'],
         'collection_indexes': ('verification_events', 'idx_verification_judgment_latest'),
@@ -37,6 +41,11 @@ SPECS = {
         'plans': [('security_events', "SELECT id FROM security_events WHERE subject_user_id=? ORDER BY created DESC,id DESC LIMIT 25", ('u',), 'idx_security_subject')],
     },
     '1794201100_account_mail_pages.js': {'mail_links': True},
+    '1794201200_security_retention_index.js': {
+        'indexes': ['idx_security_outcome_created'],
+        'collection_indexes': ('security_events', 'idx_security_outcome_created'),
+        'plans': [('security_events', "SELECT id FROM security_events WHERE outcome=? AND created<? ORDER BY created,id LIMIT 500", ('failed', '2026-01-01'), 'idx_security_outcome_created')],
+    },
     '1793926800_ocr_runtime.js': {
         'indexes': ['idx_import_jobs_ocr_request'],
         'collection_indexes': ('import_jobs', 'idx_import_jobs_ocr_request'),
@@ -410,6 +419,11 @@ def index_names(data):
 def assert_applied(data, migration, problems):
     spec = SPECS.get(migration, {})
     present = index_names(data)
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        objects = {(row[0], row[1]) for row in db.execute('SELECT type,name FROM sqlite_master')}
+    for kind, name in spec.get('objects', []):
+        if (kind, name) not in objects:
+            problems.append(f'{migration}: {kind} {name} missing after up')
     if migration == '1792281600_release_deliveries.js' and 'idx_delivery_job_version' in present:
         spec = {**spec, 'indexes': [n for n in spec['indexes'] if n != 'idx_delivery_version'], 'collection_indexes': ('release_deliveries', 'idx_delivery_job_version'), 'plans': []}
     for name in spec.get('indexes', []):
@@ -438,6 +452,11 @@ def assert_absent(data, migration, problems, context):
     if SPECS.get(migration, {}).get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=False)
     present = index_names(data)
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        objects = {(row[0], row[1]) for row in db.execute('SELECT type,name FROM sqlite_master')}
+    for kind, name in SPECS.get(migration, {}).get('objects', []):
+        if (kind, name) in objects:
+            problems.append(f'{migration}: {kind} {name} survived {context}')
     for name in SPECS.get(migration, {}).get('indexes', []):
         if name in present:
             problems.append(f'{migration}: index {name} survived {context}')

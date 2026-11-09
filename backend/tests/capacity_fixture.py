@@ -91,10 +91,16 @@ def hardware():
 
 
 def source_manifest(backend):
-    files = sorted(backend.glob('tests/*capacity*'))
+    root = backend.parent
+    # Include both tracked and new application/runtime sources. Git's ignored
+    # output, node_modules, dist and local databases are never traversed.
+    paths = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--',
+        'backend', 'frontend/src', 'frontend/index.html', 'frontend/package.json',
+        'frontend/package-lock.json', 'frontend/vite.config.js'], cwd=root).decode().split('\0')
+    source_files = sorted({p for p in paths if p and (root/p).is_file()})
     return {'baseline_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=backend, text=True).strip(),
             'dirty_diff_sha256': hashlib.sha256(subprocess.check_output(['git', 'diff', 'HEAD', '--binary'], cwd=backend)).hexdigest(),
-            'source_sha256': {str(p.relative_to(backend)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files if p.is_file()}}
+            'source_sha256': {p: hashlib.sha256((root/p).read_bytes()).hexdigest() for p in source_files}}
 
 
 def phases(duration):

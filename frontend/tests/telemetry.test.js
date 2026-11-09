@@ -49,3 +49,28 @@ test('telemetry never retries failed sends and ignores disabled or disposed sess
   disabled.record({ id: 'id', name: 'CLS', value: 1 })
   await disabled.flush()
 })
+
+test('document vitals retain entry route while SPA timings use only the current route name', async () => {
+  let route = 'WorkspaceHome',
+    sent
+  const q = createTelemetryQueue({
+    enabled: true,
+    pageViewId: 'p',
+    entryRoute: route,
+    currentRoute: () => route,
+    send: (value) => {
+      sent = value
+    }
+  })
+  route = 'ProofreadEditor'
+  q.record({ id: 'lcp', name: 'LCP', value: 1 })
+  q.record({ id: 'ready', name: 'editor_ready', value: 2, navigationType: 'business' })
+  route = '/private/material?token=secret'
+  q.record({ id: 'unsafe', name: 'source_visible', value: 3, navigationType: 'business' })
+  await q.flush()
+  assert.deepEqual(
+    sent.metrics.map((m) => m.entryRoute),
+    ['WorkspaceHome', 'ProofreadEditor', 'Unknown']
+  )
+  assert.ok(!JSON.stringify(sent).includes('private'))
+})

@@ -114,6 +114,13 @@ class GuardFailsOnRealViolations(unittest.TestCase):
         self.write(root, 'docker-compose.yml', broken)
         self.assertEqual(self.run_guard(root), 1)
 
+    def test_traefik_admin_ui_on_by_default_fails(self):
+        root = self.scaffold()
+        broken = (guard.ROOT / 'docker-compose.traefik.yml').read_text(encoding='utf-8').replace(
+            'ENABLE_POCKETBASE_ADMIN_UI:-false', 'ENABLE_POCKETBASE_ADMIN_UI:-true')
+        self.write(root, 'docker-compose.traefik.yml', broken)
+        self.assertEqual(self.run_guard(root), 1)
+
     def test_privileged_frontend_fails(self):
         # `privileged` was once checked for the backend only, so a frontend
         # override passed every assertion in this file.

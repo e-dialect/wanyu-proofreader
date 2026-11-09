@@ -192,7 +192,8 @@ def server(binary, root, extra_env=None, data=None, migrations=MIGRATIONS, hooks
                     time.sleep(.1)
             else:
                 raise RuntimeError('Temporary server did not become ready\n' + _log_tail(root))
-            yield env
+            # Read-only process identity for local capacity samplers; never sent to clients.
+            yield {**env, 'PB_TEST_SERVER_PID': str(process.pid)}
         finally:
             stopped_by_harness = process.poll() is None
             process.terminate()

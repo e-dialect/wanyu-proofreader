@@ -34,7 +34,7 @@
 只读资源采集（在有权限的部署环境执行）：
 
 ```sh
-python3 ops/collect_runtime.py --data-dir /private/path/pb_data --container BACKEND_CONTAINER --output /private/path/runtime.jsonl
+python3 ops/collect_runtime.py --data-dir /private/path/pb_data --container BACKEND_CONTAINER --cache-interval 300 --backup-receipt /private/path/backup/receipt.json --backup-max-age 86400 --output /private/path/runtime.jsonl
 python3 ops/summarize_metrics.py /private/path/application.jsonl --output /private/path/summary.json
 ```
 
@@ -45,11 +45,14 @@ python3 ops/summarize_metrics.py /private/path/application.jsonl --output /priva
 脚本只接受自己创建的临时服务，拒绝外部URL和已有数据目录。批量准备克隆真实HTTP产生的工作流模板，实际负载经普通用户领取、读取、提交和仲裁；批量夹具构造不算业务吞吐。
 
 ```sh
-GOMAXPROCS=2 python3 backend/tests/run_capacity_baseline.py --entries 200 --users 3 --duration 180 --output output/maturity/smoke
-GOMAXPROCS=2 python3 backend/tests/run_capacity_baseline.py --entries 20000 --users 30 --duration 3600 --output output/maturity/capacity
+GOMAXPROCS=2 python3 backend/tests/run_capacity_baseline.py --profile smoke --entries 2000 --users 30 --duration 30 --output output/maturity/smoke
+GOMAXPROCS=2 python3 backend/tests/run_capacity_faults.py --profile full --output output/maturity/faults
+GOMAXPROCS=2 python3 backend/tests/run_capacity_baseline.py --profile full --fault-report output/maturity/faults/faults.json --output output/maturity/capacity
 ```
 
-当前协议探针明确输出`full_acceptance:false`：它不能单独证明大PDF、浏览器可读时间、并行导入、限速下载、故障演练或生产规格验收。完整发布必须补齐这些独立门禁，不能把短探针改名为完整压力验收。
+混合驱动已覆盖200页约20MiB的实际PDF、两名真实UI校对者、其他独立HTTP身份、并行CSV和消费端1MiB/s慢导出。原文冷/热状态须有浏览器证据，无法确认者单列unknown；成功延迟只统计2xx，预期409单列。固定full为20,000条、30个actor、60分钟×3，HTTP指标取稳态，另附独立15分钟故障结果；短smoke不是正式容量验收。
+
+每5秒采集测试后端RSS、WAL、磁盘与作业数，保留回落趋势。当前同机驱动的`separate_generator_host=false`，资源预算/恢复容差未冻结时为incomplete，不能仅靠延迟全绿获得`full_acceptance:true`。真正分机、生产共享规格和资源回落评审仍是发布门禁。命令的系统依赖与完整说明见容量证据README。
 
 门槛：读API p95≤500ms；领取/提交/仲裁p95≤800ms、p99≤2s；字段汇总p95≤1s；热原文可读p95≤1s、冷原文≤3s；意外5xx/超时≤0.1%；无丢写/重复提交/泄漏/字符变化/OOM。测量失败才触发对应查询、锁、导出和资源争用优化。
 
@@ -70,3 +73,23 @@ GOMAXPROCS=2 python3 backend/tests/run_capacity_baseline.py --entries 20000 --us
 `ops/release_preflight.py`接收维护者留存的验证回执（status/pass、verified_at、必要的build_sha），对缺失/过期/版本不符报告not_ready。它不伪造回执、不发送通知，也不是密码学证明；镜像/迁移兼容仍使用既有部署工具的实际回放证据。备份与异地验证要求24小时内，恢复90天内且匹配版本；真人与容量回执匹配待发布版本。
 
 资源采集输出按10MiB×6份轮转（当前文件与5个旧文件），可显式配置上限；不要对长期运行的采集器使用无界重定向。Docker MemUsage是容器内存用量，不冒充操作系统RSS。
+
+## 测量触发的架构调整
+
+2万条、约24万条判断记录下，先完成最新判断覆盖索引与单次展开，真实Go HTTP仍超过1秒。按测量结果增加1794204100派生读模型：每个attempt/field的计数贡献与project/field总计，由8个SQLite触发器与源记录同事务维护；没有复制正文、判断原因或来源context。初始化回填、触发器和启用标志在同一个迁移事务中发布，失败完整回滚。
+
+字段汇总仍先检查项目管理权限。模型缺表/缺触发器或显式禁用时回退原SQL；禁用读取不会停维护，恢复启用不用接受过期统计。最新判断遮盖、非法JSON、同时间revision/id排序、跨项目移动、删除及回滚均与历史SQL逐步对账。legacy已完成但无提交的计数继续实时读取。派生数据可以重建，不能反向改写业务原记录。
+
+独立20,000条基准中，真实HTTP p95约16.5ms，派生空间约13.7MiB；这是本机合成基准，不能推导共享生产机混合负载已达标。保留优化前失败与最终测量报告，避免只展示有利的SQL微基准。
+
+## 安全与评审边界
+
+账户与权限操作的成功审计同事务提交；导出授权在发送正文前记录，传输完成只表示服务端写完，不能作为接收方回执。原生和旧清单交付都在事务内复核当前身份与项目权限。恢复能力、审计字段与限制见account-security.md；适用标准映射见security-asvs-mapping.md，未覆盖项保持开放。
+
+
+派生读模型和权限代际补丁集成后，已实际通过完整常规门禁、41个默认集成套件与账户/Bundle/转换重启生命周期。后续新增的退出保护、例外URL兼容、Nginx默认关闭与备份运行证据会在最终集成证据中分别列出，不能沿用早期测试数量冒充最终检查。
+
+
+HTTP观测替代PocketBase默认请求activity logger：新请求以路由模板、状态、时延、字节和request_id写JSONL，不再把原始URI/query/Referer写入logs.db；PocketBase系统/业务日志与已有历史不改写。Nginx访问日志同样只写固定路由类别和数值字段，实际容器已用token查询哨兵验证。原生管理UI两种生产入口均默认关闭，API权限边界单独验收。
+
+失败审计的三个账户/权限入口及导出流失败共用来源与时间窗预算，固定词表的汇总日志可见；成功事件不走失败预算。37号迁移序列中的1794201200增加保留查询索引，清理按failed/denied/success独立每批至多500条，不能删除原校勘审计。管理员安全记录投影保留资源和原因码，mine继续限制字段。
