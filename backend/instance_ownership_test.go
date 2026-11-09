@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/hook"
 )
@@ -74,14 +75,124 @@ func TestDataDirectoryOwnershipRefusesSymlink(t *testing.T) {
 func ownershipTestApp(t *testing.T, dir string) core.App {
 	t.Helper()
 	app := core.NewBaseApp(core.BaseAppConfig{DataDir: dir})
-	registerDataDirectoryOwnership(app)
+	owner := registerDataDirectoryOwnership(app)
 	t.Cleanup(func() {
 		app.OnTerminate().Unbind("ownershipTerminationVeto")
+		app.OnBootstrapClear().Unbind("ownershipClearVeto")
 		_ = app.OnTerminate().Trigger(&core.TerminateEvent{App: app}, func(e *core.TerminateEvent) error {
 			return e.App.ClearBootstrap()
 		})
+		_ = owner.release()
 	})
 	return app
+}
+
+func TestDataDirectoryOwnershipCleansPostBootstrapFailure(t *testing.T) {
+	dir := t.TempDir()
+	app := ownershipTestApp(t, dir)
+	failure := errors.New("synthetic post-bootstrap failure")
+	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
+		if err := e.Next(); err != nil {
+			return err
+		}
+		return failure
+	})
+	if err := app.Bootstrap(); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	if !appDatabasesClosed(app) || app.Store().Get(dataDirectoryOwnerKey) != false {
+		t.Fatal("post-bootstrap failure must close its DBs before releasing ownership")
+	}
+	other := &dataDirectoryOwnership{}
+	defer other.release()
+	if err := other.acquire(dir); err != nil {
+		t.Fatal("successfully cleaned failed startup retained its lock", err)
+	}
+}
+
+func TestDataDirectoryOwnershipKeepsFailedCleanupOwned(t *testing.T) {
+	dir := t.TempDir()
+	app := ownershipTestApp(t, dir)
+	failure := errors.New("synthetic post-bootstrap failure")
+	veto := errors.New("synthetic bootstrap cleanup veto")
+	app.OnBootstrapClear().Bind(&hook.Handler[*core.BootstrapEvent]{
+		Id: "ownershipClearVeto", Func: func(*core.BootstrapEvent) error { return veto },
+	})
+	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
+		if err := e.Next(); err != nil {
+			return err
+		}
+		return failure
+	})
+	if err := app.Bootstrap(); !errors.Is(err, failure) || !errors.Is(err, veto) {
+		t.Fatalf("must preserve both failures: %v", err)
+	}
+	if !app.IsBootstrapped() || app.Store().Get(dataDirectoryOwnerKey) != false {
+		t.Fatal("test requires open DBs but no recovery authority after failure")
+	}
+	other := &dataDirectoryOwnership{}
+	defer other.release()
+	if err := other.acquire(dir); !errors.Is(err, errDataDirectoryInUse) {
+		t.Fatal("failed cleanup released a still-open database", err)
+	}
+	if err := app.OnTerminate().Trigger(&core.TerminateEvent{App: app}, func(e *core.TerminateEvent) error {
+		return e.App.ClearBootstrap()
+	}); !errors.Is(err, veto) {
+		t.Fatal(err)
+	}
+	if err := other.acquire(dir); !errors.Is(err, errDataDirectoryInUse) {
+		t.Fatal("vetoed termination released database ownership", err)
+	}
+}
+
+func TestDataDirectoryOwnershipKeepsPartiallyInitializedDataOwned(t *testing.T) {
+	dir := t.TempDir()
+	failure := errors.New("synthetic auxiliary database initialization failure")
+	var opened []*dbx.DB
+	app := core.NewBaseApp(core.BaseAppConfig{
+		DataDir: dir,
+		DBConnect: func(path string) (*dbx.DB, error) {
+			if filepath.Base(path) == "auxiliary.db" {
+				return nil, failure
+			}
+			db, err := core.DefaultDBConnect(path)
+			if err == nil {
+				opened = append(opened, db)
+			}
+			return db, err
+		},
+	})
+	owner := registerDataDirectoryOwnership(app)
+	t.Cleanup(func() {
+		// PocketBase ClearBootstrap is a no-op for this partial state.
+		// Test teardown owns and closes the actual injected connections.
+		for _, db := range opened {
+			_ = db.Close()
+		}
+		_ = owner.release()
+	})
+	if err := app.Bootstrap(); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	if app.IsBootstrapped() || app.ConcurrentDB() == nil || appDatabasesClosed(app) {
+		t.Fatal("test requires a real data-only partial initialization")
+	}
+	if _, err := app.ConcurrentDB().NewQuery("SELECT 1").Execute(); err != nil {
+		t.Fatal("partial initialization must still have a live DB builder", err)
+	}
+	other := &dataDirectoryOwnership{}
+	defer other.release()
+	if err := other.acquire(dir); !errors.Is(err, errDataDirectoryInUse) {
+		t.Fatal("partial bootstrap released live data ownership", err)
+	}
+	if err := app.OnTerminate().Trigger(&core.TerminateEvent{App: app}, func(e *core.TerminateEvent) error {
+		return e.App.ClearBootstrap()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.acquire(dir); !errors.Is(err, errDataDirectoryInUse) {
+		t.Fatal("partial termination must not confuse IsBootstrapped=false with closed DBs", err)
+	}
 }
 
 func TestDataDirectoryOwnershipPrecedesBootstrapAndReleasesOnFailure(t *testing.T) {

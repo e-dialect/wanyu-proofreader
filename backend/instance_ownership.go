@@ -89,7 +89,14 @@ func (o *dataDirectoryOwnership) release() error {
 	return f.Close()
 }
 
-func registerDataDirectoryOwnership(app core.App) {
+func appDatabasesClosed(app core.App) bool {
+	// IsBootstrapped requires both data and aux. It is false when only one
+	// database initialized, which does not prove that the other is closed.
+	return app.ConcurrentDB() == nil && app.NonconcurrentDB() == nil &&
+		app.AuxConcurrentDB() == nil && app.AuxNonconcurrentDB() == nil
+}
+
+func registerDataDirectoryOwnership(app core.App) *dataDirectoryOwnership {
 	owner := &dataDirectoryOwnership{}
 	app.Store().Set(dataDirectoryOwnerKey, false)
 	app.OnBootstrap().Bind(&hook.Handler[*core.BootstrapEvent]{
@@ -101,7 +108,15 @@ func registerDataDirectoryOwnership(app core.App) {
 			e.App.Store().Set(dataDirectoryOwnerKey, true)
 			if err := e.Next(); err != nil {
 				e.App.Store().Set(dataDirectoryOwnerKey, false)
-				return errors.Join(err, owner.release())
+				// A later hook can fail after opening the DBs, and PocketBase
+				// does not automatically clean up that failed bootstrap.
+				cleanupErr := e.App.ClearBootstrap()
+				if appDatabasesClosed(e.App) {
+					return errors.Join(err, cleanupErr, owner.release())
+				}
+				// Cleanup may be vetoed or initialization may be partial.
+				// Keep the OS lock until real termination/process exit.
+				return errors.Join(err, cleanupErr)
 			}
 			return nil
 		},
@@ -113,11 +128,12 @@ func registerDataDirectoryOwnership(app core.App) {
 			// A failed execve restart can rebootstrap the same App. Its lock
 			// must remain held; a successful execve releases it in the kernel.
 			// Also keep ownership if termination was vetoed before DB cleanup.
-			if !e.IsRestart && !e.App.IsBootstrapped() {
+			if !e.IsRestart && appDatabasesClosed(e.App) {
 				e.App.Store().Set(dataDirectoryOwnerKey, false)
 				err = errors.Join(err, owner.release())
 			}
 			return err
 		},
 	})
+	return owner
 }
