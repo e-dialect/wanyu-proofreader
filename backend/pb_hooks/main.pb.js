@@ -47,102 +47,28 @@ onBootstrap((e) => {
     return
   }
 
-  const trimEnv = (name) => ($os.getenv(name) || "").trim()
-
-  const ensureInitialAppAdmin = () => {
-    const email = trimEnv("APP_ADMIN_EMAIL").toLowerCase()
-    const password = $os.getenv("APP_ADMIN_PASSWORD") || ""
-    const name = trimEnv("APP_ADMIN_NAME") || "管理员"
-    const username = `admin_${email.split("@")[0]}`
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, "_")
-
-    if (!email && !password) {
-      return
-    }
-    if (!email || !password) {
-      console.warn("APP_ADMIN_EMAIL and APP_ADMIN_PASSWORD must be set together; skipping app admin bootstrap.")
-      return
-    }
-    if (password.length < 8) {
-      console.warn("APP_ADMIN_PASSWORD must be at least 8 characters; skipping app admin bootstrap.")
-      return
-    }
-
-    const dao = $app
-    let users = null
+  const bootstrap = require(`${__hooks}/lib/bootstrap_identity.js`)
+  for (const config of [
+    { collection: "users", email: $os.getenv("APP_ADMIN_EMAIL"), password: $os.getenv("APP_ADMIN_PASSWORD"), name: $os.getenv("APP_ADMIN_NAME") },
+    { collection: "_superusers", email: $os.getenv("PB_ADMIN_EMAIL"), password: $os.getenv("PB_ADMIN_PASSWORD") }
+  ]) {
     try {
-      users = dao.findCollectionByNameOrId("users")
+      const result = bootstrap.ensure(e.app, config)
+      if (result.status === "refused") console.warn("bootstrap_identity_refused", config.collection, result.reason)
+      else if (result.status === "created" || result.status === "bound") console.log("bootstrap_identity_bound", config.collection, result.reason)
     } catch {
-      console.warn("users collection is not ready yet; skipping app admin bootstrap until migrations finish.")
-      return
+      // Database and validation errors can contain identifiers or SQL values.
+      // Keep bootstrap fail-closed and the operator reason fixed and secret-free.
+      console.warn("bootstrap_identity_refused", config.collection, "query_or_persistence_failed")
     }
-    if (!users.fields.getByName("role")) {
-      console.warn("users.role is not ready yet; skipping app admin bootstrap until migrations finish.")
-      return
-    }
-
-    let existing = null
-    try {
-      existing = dao.findAuthRecordByEmail("users", email)
-    } catch {}
-
-    // Bootstrap never resets an existing password, role or verified state.
-    if (existing) return
-
-    const record = new Record(users)
-    record.set("username", username)
-    record.setEmail(email)
-    record.setEmailVisibility(true)
-    record.setPassword(password)
-    record.setVerified(true)
-    record.set("name", name)
-    record.set("role", "platform_admin")
-    dao.save(record)
-    console.log("Created initial app admin:", record.id)
-  }
-
-  const ensureInitialPocketBaseAdmin = () => {
-    const email = trimEnv("PB_ADMIN_EMAIL").toLowerCase()
-    const password = $os.getenv("PB_ADMIN_PASSWORD") || ""
-
-    if (!email && !password) {
-      return
-    }
-    if (!email || !password) {
-      console.warn("PB_ADMIN_EMAIL and PB_ADMIN_PASSWORD must be set together; skipping PocketBase admin bootstrap.")
-      return
-    }
-    if (password.length < 10) {
-      console.warn("PB_ADMIN_PASSWORD must be at least 10 characters; skipping PocketBase admin bootstrap.")
-      return
-    }
-
-    const dao = $app
-    try {
-      dao.findAuthRecordByEmail("_superusers", email)
-      return
-    } catch {}
-
-    const admin = new Record(dao.findCollectionByNameOrId("_superusers"))
-    admin.setEmail(email)
-    admin.setPassword(password)
-    dao.save(admin)
-    console.log("Created initial PocketBase admin:", admin.id)
-  }
-
-  try {
-    ensureInitialAppAdmin()
-  } catch (err) {
-    console.warn("App admin bootstrap skipped:", err)
-  }
-
-  try {
-    ensureInitialPocketBaseAdmin()
-  } catch (err) {
-    console.warn("PocketBase admin bootstrap skipped:", err)
   }
 })
+
+// These markers are internal state, not an administrator-editable record API.
+// Server model saves used by bootstrap and migrations are unaffected.
+onRecordCreateRequest(() => { throw new ForbiddenError("初始化身份绑定不可通过记录 API 修改") }, "bootstrap_bindings")
+onRecordUpdateRequest(() => { throw new ForbiddenError("初始化身份绑定不可通过记录 API 修改") }, "bootstrap_bindings")
+onRecordDeleteRequest(() => { throw new ForbiddenError("初始化身份绑定不可通过记录 API 修改") }, "bootstrap_bindings")
 
 // Hook: when a project_file is created, log it (actual OCR processing
 // would be done by an external worker or manual upload)
