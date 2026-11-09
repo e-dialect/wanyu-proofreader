@@ -1,0 +1,605 @@
+{
+  "schema_version": "wanyu-publication/v1",
+  "date": "2026-11-09",
+  "repository": "e-dialect/wanyu-proofreader",
+  "original_implementation_sha": "314630c94dacc88922492f71eb0cf52b29cc08f2",
+  "main_at_stack_creation": "03b3bea6f11b4f8684ab24f29072eca48189f6fe",
+  "initial_stack_sha": "0991fab18b8e80c27744a707fa1614dbd34528ab",
+  "validated_code_sha": "2ed3373978d023f0620a8188d709d69260e1e921",
+  "human_verification": "Not manually verified",
+  "pull_requests": [
+    {
+      "index": 1,
+      "original_cut": "864d60c1ded064f237cec056d15cfbb33c242275",
+      "head_sha": "13bf463da56eb14803ed8d577a7b3e4edf95cf75",
+      "branch": "feat/maturity-01-observability",
+      "title": "feat(ops): add bounded runtime and experience measurement",
+      "base_branch": "main",
+      "scope": "ops",
+      "changed_files": 32,
+      "additions": 1424,
+      "deletions": 50,
+      "binary_files": 0,
+      "initial_head_sha": "8d8ef2f675924ce6c4df14e51e7f9c378610dac1",
+      "number": 404,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/404",
+      "draft": true
+    },
+    {
+      "index": 2,
+      "original_cut": "3931cec8e3475f0bbab325ef8881d0613d3451e8",
+      "head_sha": "e57d67063fda9327b3d544d4705ab484ebd1c5de",
+      "branch": "feat/maturity-02-job-workspace",
+      "title": "feat(import): unify job observation and preparation guidance",
+      "base_branch": "feat/maturity-01-observability",
+      "scope": "import",
+      "changed_files": 48,
+      "additions": 2006,
+      "deletions": 497,
+      "binary_files": 2,
+      "initial_head_sha": "78112917cd9bb59479925420d73e11f2d551a6ed",
+      "number": 405,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/405",
+      "draft": true
+    },
+    {
+      "index": 3,
+      "original_cut": "3baf4e9907a8b6dc11b02dc29316f120f434d0c2",
+      "head_sha": "42012c20a0cc779b3d646044cee5fb5886e3ae4f",
+      "branch": "feat/maturity-03-delivery",
+      "title": "feat(release): derive immutable packages from confirmed adoption",
+      "base_branch": "feat/maturity-02-job-workspace",
+      "scope": "release",
+      "changed_files": 32,
+      "additions": 1996,
+      "deletions": 344,
+      "binary_files": 0,
+      "initial_head_sha": "f56a5dca1ac9655b947cb78c1a5af2e0086e8b7a",
+      "number": 406,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/406",
+      "draft": true
+    },
+    {
+      "index": 4,
+      "original_cut": "3799b1a05505fd439fdaaf61e58549705542aaea",
+      "head_sha": "2fe4706a10e47fccc8def8a533c9b51d977296fd",
+      "branch": "feat/maturity-04-account-security",
+      "title": "feat(auth): add account revocation and recovery workflows",
+      "base_branch": "feat/maturity-03-delivery",
+      "scope": "auth",
+      "changed_files": 91,
+      "additions": 6508,
+      "deletions": 260,
+      "binary_files": 0,
+      "initial_head_sha": "17ebe7ec81c3c1d1349f175769e77600a806f3d9",
+      "number": 407,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/407",
+      "draft": true
+    },
+    {
+      "index": 5,
+      "original_cut": "03a3a3c85d504e652806a2c2a28d7f476e6501b8",
+      "head_sha": "e477de7236b3220ddcd365b110deea341c2238a0",
+      "branch": "fix/maturity-05-permission-transactions",
+      "title": "fix(auth): enforce transactional permissions and preserve account drafts",
+      "base_branch": "feat/maturity-04-account-security",
+      "scope": "auth",
+      "changed_files": 92,
+      "additions": 5470,
+      "deletions": 226,
+      "binary_files": 2,
+      "initial_head_sha": "27bcb90c2939883b608b9ad685acdf6436808c5b",
+      "number": 408,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/408",
+      "draft": true
+    },
+    {
+      "index": 6,
+      "original_cut": "5f2251f5b7e9c3ef85a7c346a3cb49aa1112f555",
+      "head_sha": "3605cb3e529b489bbe8c6afabe65a46b58494819",
+      "branch": "fix/maturity-06-query-isolation",
+      "title": "perf(pagination): bound task scans and isolate read snapshots",
+      "base_branch": "fix/maturity-05-permission-transactions",
+      "scope": "pagination",
+      "changed_files": 74,
+      "additions": 5337,
+      "deletions": 138,
+      "binary_files": 6,
+      "initial_head_sha": "0040f89cd046edccab58944f2a51bd3e12308af5",
+      "number": 409,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/409",
+      "draft": true
+    },
+    {
+      "index": 7,
+      "original_cut": "f35455072c5b0970b82e114cb5d6f9a6a656bcca",
+      "head_sha": "867476c017ed336a418ec5b17f24ff8ed4da3b52",
+      "branch": "fix/maturity-07-runtime-guards",
+      "title": "perf(pagination): cover queue reads and protect runtime state",
+      "base_branch": "fix/maturity-06-query-isolation",
+      "scope": "pagination",
+      "changed_files": 78,
+      "additions": 3991,
+      "deletions": 309,
+      "binary_files": 7,
+      "initial_head_sha": "328912df1275748464da116fde1d3c97f57a91eb",
+      "number": 410,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/410",
+      "draft": true
+    },
+    {
+      "index": 8,
+      "original_cut": "dba63352af18e8c7a97af9f419f1c80a07ea8106",
+      "head_sha": "fa7bab1529c11323761ddf97c4d3bf651bbc3bcf",
+      "branch": "chore/maturity-08-container-recovery",
+      "title": "test(ops): verify bounded recovery with real container images",
+      "base_branch": "fix/maturity-07-runtime-guards",
+      "scope": "ops",
+      "changed_files": 12,
+      "additions": 1136,
+      "deletions": 0,
+      "binary_files": 0,
+      "initial_head_sha": "e784bf515d94e7031f32a710882e50f977ace1ca",
+      "number": 411,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/411",
+      "draft": true
+    },
+    {
+      "index": 9,
+      "original_cut": "e54e0b2c5196933cd4041b46f6f18bf5cb5395a8",
+      "head_sha": "b653f5183ce11d70e27b013d6a2207201235ce9e",
+      "branch": "fix/maturity-09-hall-query",
+      "title": "perf(pagination): aggregate hall results from eligible candidates",
+      "base_branch": "chore/maturity-08-container-recovery",
+      "scope": "pagination",
+      "changed_files": 18,
+      "additions": 3328,
+      "deletions": 56,
+      "binary_files": 0,
+      "initial_head_sha": "e6de69786e486a3c2b058f7dca467f63583e49fb",
+      "number": 412,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/412",
+      "draft": true
+    },
+    {
+      "index": 10,
+      "original_cut": "141588e5a1140cd9fa3f5b6f34d02111e5abe813",
+      "head_sha": "e338d6064f7a98a9f933d02241ddf78215254c5b",
+      "branch": "fix/maturity-10-bootstrap-identity",
+      "title": "fix(auth): preserve bootstrap identity across account changes",
+      "base_branch": "fix/maturity-09-hall-query",
+      "scope": "auth",
+      "changed_files": 10,
+      "additions": 679,
+      "deletions": 98,
+      "binary_files": 0,
+      "initial_head_sha": "29dbda5593ca5e880c58599022b3df76981b20e1",
+      "number": 413,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/413",
+      "draft": true
+    },
+    {
+      "index": 11,
+      "original_cut": "314630c94dacc88922492f71eb0cf52b29cc08f2",
+      "head_sha": "2ed3373978d023f0620a8188d709d69260e1e921",
+      "branch": "chore/maturity-11-acceptance",
+      "title": "test(ops): enforce exact fixture quotas and record acceptance evidence",
+      "base_branch": "fix/maturity-10-bootstrap-identity",
+      "scope": "ops",
+      "changed_files": 19,
+      "additions": 3360,
+      "deletions": 24,
+      "binary_files": 0,
+      "initial_head_sha": "0991fab18b8e80c27744a707fa1614dbd34528ab",
+      "number": 414,
+      "url": "https://github.com/e-dialect/wanyu-proofreader/pull/414",
+      "draft": true
+    }
+  ],
+  "issues": {
+    "initial_total": 162,
+    "initial_open": 44,
+    "initial_closed": 118,
+    "updated_existing": 44,
+    "remaining_original_open": 42,
+    "closed_completed": [
+      299
+    ],
+    "closed_not_planned": [
+      298
+    ],
+    "created": [
+      396,
+      397,
+      398,
+      399,
+      400,
+      401,
+      402,
+      403,
+      415
+    ],
+    "final_total": 171,
+    "final_open": 51,
+    "final_closed": 120,
+    "original_metadata_preserved": true,
+    "unexpected_reopened": [],
+    "body_verification_counts": {
+      "requested_remote_reads": 53,
+      "successful_remote_reads": 53,
+      "original_issues": 44,
+      "original_titles_and_bodies_equal": 44,
+      "original_metadata_preserved": 44,
+      "original_keep_open": 42,
+      "new_issues": 8,
+      "new_open_lin594": 8,
+      "new_titles_and_bodies_equal": 8,
+      "placeholder_free_bodies": 52,
+      "differences": 0
+    },
+    "verification_hashes": {
+      "plan_file": "issue-plan-ready.json",
+      "plan_sha256": "e83c1dd9a50604cd68b7ab15f5a9c31ebaafa6cc8bf3e0497e8cc066576c5053",
+      "applied_file": "issue-updates-applied.json",
+      "applied_sha256": "863a1a97c910a59ccd2372f0c407847e0d15a2a2ac9a32024afa532a70cd3e6e",
+      "remote_canonical_sha256": "bf8cc599101181eebd2021b0ffbcbb2352882f8647ba748b86ed7e42c5a4ca6b"
+    },
+    "updated_items": [
+      {
+        "number": 91,
+        "title": "2027 春节冲刺：真实资料、真人校对与可追溯交付总跟踪",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 92,
+        "title": "资料来源与授权边界：完成真实试点资产与用途矩阵",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 93,
+        "title": "莆仙真实资料试点：独立校对、仲裁与可追溯成果验收",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 94,
+        "title": "蒙古语 20k+ 试点：归档已完成规模验证并收口来源与成果",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 95,
+        "title": "真实校对者体验验收：核心旅程与阻断摩擦收口",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 96,
+        "title": "X/W Review Bundle v0：完成真实小批次往返与双方语义验收",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 97,
+        "title": "Trusted / Gold：冻结 evaluation-only 语料与可复现评测",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 107,
+        "title": "perf(pdf): 提升 PDF 预览速度并控制资料泄露",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 114,
+        "title": "feat(scheme): 莆仙拼音统一输出与真实规则闭环（tracker）",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 120,
+        "title": "spike(ocr): 建立 OCR 与分列验收基线",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 122,
+        "title": "feat(ocr): 明确 OCR 部署与运行边界",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 124,
+        "title": "feat(import): 预览并修正识别结果",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 125,
+        "title": "feat(ocr): 提升 OCR 分列准确率",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 171,
+        "title": "feat(import): 统一资料位置与证据契约（春节后）",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 173,
+        "title": "feat(pdf): 多原文引用与可复用页面资产（春节后）",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 182,
+        "title": "feat(import): Review Bundle v0 契约与双方语义签认",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 187,
+        "title": "feat(quality): 可复现校对结果抽检（真实瓶颈触发，春节后）",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 188,
+        "title": "feat(proofreading): 专家身份与争议委派（春节后）",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 189,
+        "title": "feat(scheme): 补齐真实来源规则、IPA 依据与生产转换验收",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 190,
+        "title": "feat(scheme): 收口批量转换资格门禁、复核与可追溯输出",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 191,
+        "title": "feat(quality): 音频与说话人评测资产治理（春节后）",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 265,
+        "title": "chore(ui): 收口键盘可用性与动态提示可及性",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 272,
+        "title": "chore(ui): UI 架构改造总跟踪",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 295,
+        "title": "docs(keyboards): 补充方言键盘使用说明",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 296,
+        "title": "feat(onboarding): 改进入门引导与纠错流程",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 298,
+        "title": "chore(proofreading): 收口发音消费与审核证据预览边界",
+        "state": "closed",
+        "state_reason": "not_planned"
+      },
+      {
+        "number": 299,
+        "title": "chore(ui): 修正导航与搜索入口",
+        "state": "closed",
+        "state_reason": "completed"
+      },
+      {
+        "number": 314,
+        "title": "产品目标：A→E 资料生产工作台与春节真实闭环",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 315,
+        "title": "feat(adoption): D 批次编选的理由、返工与真实交付范围验收",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 316,
+        "title": "feat(release): E 权威范围对账、真实交付回执与发布前验收",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 317,
+        "title": "feat(import): 资料接入与来源批次对账",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 318,
+        "title": "feat(proofreading): 原貌校对与可追溯成果交付",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 319,
+        "title": "feat(scheme): C 工序真实规则、异常交接与原值保护收口",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 335,
+        "title": "feat(scheme): 多口音／连读来源与候选规则资料集（2027 春节后）",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 361,
+        "title": "feat(import): 核对 PDF 与 CSV 导入数量并定位错误",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 362,
+        "title": "fix(proofreading): 打通独立校对与仲裁的阻断问题",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 364,
+        "title": "feat(scheme): 核验真实规则与来源→IPA 链路并交接可用版本",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 365,
+        "title": "feat(scheme): 收口批量转换资格、异常理由与 C→D 同批交接",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 366,
+        "title": "feat(adoption): 合入原生 D→E 交接并完成同批范围验收",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 367,
+        "title": "feat(release): 合入权威编选出包并核对真实批次数量与来源",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 369,
+        "title": "feat(import): 提示蒙古语导入字段及编码错误",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 371,
+        "title": "feat(scheme): 导出与复核筛选一致的转换异常清单",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 372,
+        "title": "test(workflow): 同一获准真实批次贯通 A→E 并收口阻断",
+        "state": "open",
+        "state_reason": null
+      },
+      {
+        "number": 379,
+        "title": "chore(ui): 打磨桌面校对工作台的视觉层级与操作反馈",
+        "state": "open",
+        "state_reason": null
+      }
+    ]
+  },
+  "local_validation": {
+    "verified_at_utc": "2026-11-09T02:15:41.368004+00:00",
+    "checks": [
+      {
+        "command": "PATH=/private/tmp/wanyu-maturity-venv/bin:$PATH GOMAXPROCS=2 make check",
+        "source_sha": "2ed3373978d023f0620a8188d709d69260e1e921",
+        "exit_code": 0,
+        "status": "pass",
+        "log_path": "/private/tmp/wanyu-pr-fixed-make-check.log",
+        "log_sha256": "95bd23f9c04b12af69afb18f5519db385ae018c15a281b7169062de03d32ffe9"
+      },
+      {
+        "command": "PATH=/private/tmp/wanyu-maturity-venv/bin:$PATH NODE_PATH=/private/tmp/wanyu-playwright-runtime/node_modules BROWSER_CHANNEL=msedge GOMAXPROCS=2 python3 backend/tests/run_frontend_quality_browser.py",
+        "source_sha": "2ed3373978d023f0620a8188d709d69260e1e921",
+        "exit_code": 0,
+        "status": "pass",
+        "log_path": "/private/tmp/wanyu-pr-fixed-browser-all.log",
+        "log_sha256": "97c2670925364f5d10c6b2f462862d664a253ff41517d855ee4fa1da7c7b8d65"
+      }
+    ],
+    "counts": {
+      "frontend": 590,
+      "backend_python": 147,
+      "migrations_up_down_up": 43,
+      "script_tests": 168,
+      "ops_tests": 24,
+      "suite_inventory": 49,
+      "compose_entry_combinations": 6
+    },
+    "dependencies": {
+      "vue": "3.5.45",
+      "vite": "8.3.6",
+      "web-vitals": "6.2.3"
+    },
+    "browser": {
+      "channel": "msedge",
+      "version": "157.0.4341.42",
+      "playwright": "1.65.0",
+      "native_human_verification": false
+    },
+    "gitleaks": {
+      "checked_at": "2026-11-09T02:12:04.896527+00:00",
+      "scanner": "gitleaks 8.30.1",
+      "scope": "03b3bea6f11b4f8684ab24f29072eca48189f6fe..2ed3373978d023f0620a8188d709d69260e1e921",
+      "commits": 11,
+      "exit_code": 0,
+      "findings": 0,
+      "ignore_source": "2ed3373978d023f0620a8188d709d69260e1e921:.gitleaksignore",
+      "ignore_sha256": "84bfe7fece421e50886c17969a1e5472cfe0f537c66b1314a32ca32ae3a9896b",
+      "redacted_report_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "published_or_unpublished_refs_not_scanned": true
+    },
+    "layer4_targeted": {
+      "checked_at_utc": "2026-11-09T02:12:21.162146+00:00",
+      "source_sha": "2fe4706a10e47fccc8def8a533c9b51d977296fd",
+      "worktree": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-maturity-proxy-limit-ci",
+      "checkout": "detached",
+      "preserved_branch": "fix/maturity-proxy-limit-ci",
+      "preserved_branch_sha": "bd6ace066e39da4f2bfb5e2a413ac847d173397f",
+      "results": [
+        {
+          "command": "GOMAXPROCS=2 go test -C backend -race . -run '^TestLocalAndExternalLoginShareIPAndGlobalLimits$' -count=1",
+          "exit_code": 0,
+          "stdout": "ok  \tfangji/backend\t10.480s",
+          "log": "/private/tmp/wanyu-pr-issues-20261109/layer4-shared-limiter-race.log"
+        },
+        {
+          "command": "python3 scripts/test_check_ui_debt.py",
+          "exit_code": 0,
+          "tests": 12,
+          "stdout": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.028s\n\nOK",
+          "log": "/private/tmp/wanyu-pr-issues-20261109/layer4-ui-debt.log"
+        }
+      ],
+      "setup_note": "Initial sandbox attempt could not access Go build cache (operation not permitted), before test execution. Authorized escalation rerun completed successfully.",
+      "working_tree_clean": true,
+      "boundaries": "No source changes, Docker, capacity tests, production access, push or remote mutation."
+    },
+    "boundaries": [
+      "No formal capacity, production, SMTP or offsite backup acceptance performed in this PR publication task.",
+      "Existing Python fixture ResourceWarnings remain visible in the check log.",
+      "Go optional PDF/export cases retain their environment-gated boundaries; this is not a new opt-in suite or full race claim.",
+      "Original stress, image, fault and restore records remain tied to their actual source SHAs."
+    ]
+  },
+  "remote_ci": "Check each current PR head; prior failures are preserved, no blanket pass claim.",
+  "formal_capacity": "deferred_by_user_no_isolated_machine",
+  "merged": false,
+  "auto_merge": false,
+  "deployed": false,
+  "raw_issue_bodies_or_comments_committed": false
+}
