@@ -569,7 +569,7 @@ assert.ok(ctx.repertoire.size > 120, `repertoire too small: ${ctx.repertoire.siz
   // 「超限不会写坏数据」靠的是代码顺序：扫描必须先于第一次写。读源码钉住这个顺序，
   // 因为把 supersede 挪到扫描之前以后，任何黑盒断言都要先造出 5 万条目才看得见。
   const writerSource = readFileSync(new URL('../pb_hooks/lib/assist_writer.js', import.meta.url), 'utf8')
-  const start = writerSource.indexOf('function recomputeProject(')
+  const start = writerSource.indexOf('function recomputeProjectBatch(')
   assert.ok(start >= 0, 'assist_writer.js 里找不到 recomputeProject')
   const projectBody = writerSource.slice(start, writerSource.indexOf('\n}\n', start))
   const scanAt = projectBody.indexOf('loadAllPages(dao, projectId)')
@@ -818,11 +818,17 @@ try {
     }
   })
   const ruleRowsOf = async (pageId) => {
-    const list = await request(`/api/collections/review_findings/records?perPage=200&sort=created&filter=${encodeURIComponent(`page = "${pageId}" && producer = "rule"`)}`, { token: superAuth.token })
-    // 这个口子自己就会静默截断：并发重算一节要看的就是"到底留下了几份批次"，
-    // 读口被 30 条默认分页挡住就会把重复看成"没有重复"。
-    assert.equal(list.items.length, list.totalItems, `读取被分页截断：${list.items.length}/${list.totalItems}`)
-    return list
+    const items = []
+    let list
+    for (let page = 1; ; page++) {
+      list = await request(`/api/collections/review_findings/records?page=${page}&perPage=200&sort=created,id&filter=${encodeURIComponent(`page = "${pageId}" && producer = "rule"`)}`, { token: superAuth.token })
+      items.push(...list.items)
+      if (page >= list.totalPages) break
+    }
+    // Awaited recomputations are settled before this read; every historical row
+    // must be counted even when several concurrent waves exceed one API page.
+    assert.equal(items.length, list.totalItems, `读取被分页截断：${items.length}/${list.totalItems}`)
+    return { ...list, items }
   }
   const anchorOfRaw = (row) => JSON.parse(row.evidence_json || '{}').anchor ?? ''
   const current = (rows) => rows.filter((row) => row.superseded_at === '')
@@ -860,40 +866,40 @@ try {
   const ruleFinding = freshRuleRows.find((row) => row.message_key === 'long_digit_run')
   assert.equal(ruleFinding.severity, 'strong')
 
-  // 同一条目上的并发重算：可观测结果必须仍然是"一份当前批次"。
-  // 上一轮的非阻断项——两边的下线都发生在插入之前，交错时会留下两份批次（hint 成倍重复）。
-  // 插入后按 produced_at 收敛（retainNewestBatch）让结论与交错顺序无关。
-  const concurrent = await Promise.all(Array.from({ length: 8 }, () =>
-    request(`/api/fangji/pages/${trapped.id}/findings/recompute`, { method: 'POST', token: boss.token })))
-  assert.equal(concurrent.length, 8, '并发重算请求不得有失败')
-  const raced = await ruleRowsOf(trapped.id)
-  const currentEntry = entryRows(raced.items)
-  const currentSet = [...new Set(currentEntry.map((row) => `${row.kind}/${row.message_key}`))].sort()
-  const expectedSet = [...new Set(expectedFor(trappedRow))].sort()
-  // 校对端可见的疑点集合必须与规则算出来的一致：不缺席（残缺批次会让某个 key 彻底消失），
-  // 也不多出一个规则根本不产的东西。这是并发交错下唯一稳定成立的不变量——
-  // "恰好一份批次"在 JSVM 让出运行时的 DAO 调用点上不成立（见 assist_writer.js 的收尾注释）。
-  assert.deepEqual(currentSet, expectedSet,
-    `并发重算后的当前批次：${JSON.stringify({ current: currentEntry.map((row) => [row.message_key, row.produced_at]), expected: expectedSet })}`)
-  // 库里至少留着一份完整的批次（同毫秒的几批可以并存，那是重复不是丢信号）。
-  const batches = new Map()
-  for (const row of currentEntry) batches.set(row.produced_at, [...(batches.get(row.produced_at) ?? []), row])
-  const largest = Math.max(...[...batches.values()].map((rows) => rows.length))
-  // 重复量只打印不断言：`produced_at` 是 #176 schema 里唯一的批次标记，同一毫秒开始的
-  // 几批在数据上无法区分（实测见 docs/plans/2026-09-25-assist-rules.md §4）。
-  // 把「不许重复」写成断言要么逼出 #176 的 schema 改动，要么让这个测试随时序飘红。
-  console.log(`ASSIST_CONCURRENCY ${JSON.stringify({
-    requests: concurrent.length, current_rows: currentEntry.length,
-    distinct_keys: currentSet.length, distinct_batches: batches.size,
-    largest_batch: largest, repeat_factor: Number((currentEntry.length / currentSet.length).toFixed(2))
-  })}`)
-  assert.ok([...batches.values()].some((rows) =>
-    [...new Set(rows.map((row) => `${row.kind}/${row.message_key}`))].sort().join() === expectedSet.join()),
-    `当前批次里没有一份是完整的：${JSON.stringify([...batches.keys()])}`)
-  assert.equal(columnRows(raced.items).length, 2, '并发重算同样不得波及列级疑点')
-  assert.ok(raced.totalItems > expectedFor(trappedRow).length + 2 + 5,
-    `8 次并发重算应当在库里留下多份历史批次（否则这个测试没测到交错）：${raced.totalItems}`)
-  assert.equal(columnRows(raced.items).length, 2, '并发重算同样不得波及列级疑点')
+  // Await all HTTP responses, then require one complete current batch. A set
+  // comparison alone hides duplicates and cannot establish per-field evidence.
+  const findingProjection = (field, kind, severity, key, params, offsets) =>
+    JSON.stringify([field, kind, severity, key, params, offsets || null])
+  const expectedProjection = rules.runPageRules(ctx, trappedRow).map((item) =>
+    findingProjection(item.field, item.kind, item.severity, item.message_key,
+      item.params, item.evidence?.char_offsets)).sort()
+  for (let wave = 0; wave < 4; wave++) {
+    const concurrent = await Promise.all(Array.from({ length: 8 }, () =>
+      request(`/api/fangji/pages/${trapped.id}/findings/recompute`, { method: 'POST', token: boss.token })))
+    assert.equal(concurrent.length, 8, '并发重算请求不得有失败')
+    const raced = await ruleRowsOf(trapped.id)
+    const currentEntry = entryRows(raced.items)
+    assert.deepEqual(keysOfRaw(currentEntry), expectedFor(trappedRow),
+      `并发重算后必须恰好一份完整批次：${JSON.stringify(currentEntry.map((row) => [row.message_key, row.produced_at]))}`)
+    const actualProjection = currentEntry.map((row) =>
+      findingProjection(row.field_name, row.kind, row.severity, row.message_key,
+        JSON.parse(row.params_json), JSON.parse(row.evidence_json).char_offsets)).sort()
+    assert.deepEqual(actualProjection, expectedProjection,
+      '并发重算不得改变字符规则、所属字段、参数或码位区间')
+    const batches = new Set(currentEntry.map((row) => row.produced_at))
+    assert.equal(batches.size, 1, '当前批次不得拼接不同重算的残片')
+    assert.equal(columnRows(raced.items).length, 2, '并发重算不得波及列级疑点')
+    assert.deepEqual(pageLevelOf(raced.items).map((row) => row.message_key), ['pdf_page_backtrack'],
+      '并发单条重算必须保留项目级页码疑点')
+    assert.ok(raced.totalItems > expectedFor(trappedRow).length + 2 + 5,
+      `并发请求的历史批次必须保留：${raced.totalItems}`)
+    const preservedOcr = await request(`/api/collections/review_findings/records/${ocrRow.id}`, { token: superAuth.token })
+    assert.equal(preservedOcr.superseded_at, '', '规则重算不得下线 OCR 生产者')
+    console.log(`ASSIST_CONCURRENCY ${JSON.stringify({
+      wave, requests: concurrent.length, current_rows: currentEntry.length,
+      distinct_batches: batches.size, exact_character_evidence: true
+    })}`)
+  }
 
   // 提交路径：刚提交的那一行要立刻参与判定，而不是等全量重算。
   const submit = await request(`/api/fangji/pages/${trapped.id}/submit`, {

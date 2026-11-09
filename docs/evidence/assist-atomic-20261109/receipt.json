@@ -1,0 +1,145 @@
+{
+  "status": "correctness_candidate_performance_blocked",
+  "base_sha": "5d1a9a9ba29a2c2c50ce1a7d283e88deff56c869",
+  "worktree": "/Users/sheeplin/workspace/e-dialect/.worktrees/wanyu-assist-atomic-recompute",
+  "source_sha256": {
+    "backend/pb_hooks/lib/assist_writer.js": "06799dc08e0044e3efe8cc25291137eb6edc84cb41930f8ee259a1e010f5ce20",
+    "backend/assist_atomic_test.go": "dc41a38457e4016814eedbb43283a498a8fc7dc3e8c7cfba3b2e6bfa3cdcbdcc",
+    "backend/tests/assist_rules_integration.mjs": "8b9d83ced1df00998c12defb218d7b88872c39e50d56143064270afaea665572"
+  },
+  "runtime": {
+    "go": "go1.27.3",
+    "node": "v24.11.0",
+    "ci_failed_node": "v24.22.2",
+    "GOMAXPROCS": 2,
+    "platform": "local macOS; not production-equivalent hardware"
+  },
+  "before": {
+    "ci": "8 awaited HTTP recomputations left 6 current rows across 2 milliseconds, missing char_out_of_repertoire/non_ipa_range_codepoints",
+    "local_original_http": "PASS; four repeated waves retained 6–7 current rows across 2–3 batches",
+    "actual_database_regression": "FAIL: page/project/identity second-insert failures changed old committed findings; mixed concurrent wave returned 10 rows instead of 6"
+  },
+  "final_correctness": {
+    "targeted_go": "PASS 2.512s (3 rollback paths, 4x8 mixed recomputation, nested rollback)",
+    "http_suites": {
+      "assist_rules_integration.mjs": "PASS 6.988s; 4x8 exact-batch/character assertions",
+      "difficulty_integration.mjs": "PASS 5.309s",
+      "identity_integration.mjs": "PASS 5.413s",
+      "cross_source_integration.mjs": "PASS 6.691s"
+    },
+    "race": "PASS 40.379s on measured-source-v3; final change only replaces forwarding rest arguments with explicit five arguments for existing inventory guard"
+  },
+  "race_source": {
+    "base": "5d1a9a9ba29a2c2c50ce1a7d283e88deff56c869",
+    "files": {
+      "backend/pb_hooks/lib/assist_writer.js": "c22d131afce19adc7d7f4c9200c3ea0cbbdfcac2021b8c45575891be60284276",
+      "backend/assist_atomic_test.go": "dc41a38457e4016814eedbb43283a498a8fc7dc3e8c7cfba3b2e6bfa3cdcbdcc",
+      "backend/tests/assist_rules_integration.mjs": "8b9d83ced1df00998c12defb218d7b88872c39e50d56143064270afaea665572"
+    }
+  },
+  "final_scale": [
+    {
+      "concurrent_write_total_ms": 16403,
+      "concurrent_writer_wait_ms": 16403,
+      "dev_mode": false,
+      "method": "recomputeProject",
+      "pre_publish_ms": 7456,
+      "rows": 10000,
+      "total_ms": 23913
+    },
+    {
+      "concurrent_write_total_ms": 7192,
+      "concurrent_writer_wait_ms": 7191,
+      "dev_mode": false,
+      "method": "recomputeIdentity",
+      "pre_publish_ms": 10660,
+      "rows": 10000,
+      "total_ms": 17900
+    }
+  ],
+  "exploratory_scale": {
+    "whole_transaction_no_cache": {
+      "source_hash_recorded": false,
+      "measurements": [
+        {
+          "concurrent_write_total_ms": 23283,
+          "concurrent_writer_wait_ms": 23282,
+          "dev_mode": false,
+          "method": "recomputeProject",
+          "pre_publish_ms": 7414,
+          "rows": 10000,
+          "total_ms": 30751
+        },
+        {
+          "concurrent_write_total_ms": 13512,
+          "concurrent_writer_wait_ms": 13511,
+          "dev_mode": false,
+          "method": "recomputeIdentity",
+          "pre_publish_ms": 10977,
+          "rows": 10000,
+          "total_ms": 24614
+        }
+      ]
+    },
+    "per_page_context_cache": {
+      "source_hash_recorded": false,
+      "measurements": [
+        {
+          "concurrent_write_total_ms": 18969,
+          "concurrent_writer_wait_ms": 18969,
+          "dev_mode": false,
+          "method": "recomputeProject",
+          "pre_publish_ms": 7412,
+          "rows": 10000,
+          "total_ms": 26436
+        },
+        {
+          "concurrent_write_total_ms": 9786,
+          "concurrent_writer_wait_ms": 9786,
+          "dev_mode": false,
+          "method": "recomputeIdentity",
+          "pre_publish_ms": 10545,
+          "rows": 10000,
+          "total_ms": 20458
+        }
+      ]
+    },
+    "metadata_cache_v3": {
+      "source": {
+        "base": "5d1a9a9ba29a2c2c50ce1a7d283e88deff56c869",
+        "files": {
+          "backend/pb_hooks/lib/assist_writer.js": "c22d131afce19adc7d7f4c9200c3ea0cbbdfcac2021b8c45575891be60284276",
+          "backend/assist_atomic_test.go": "dc41a38457e4016814eedbb43283a498a8fc7dc3e8c7cfba3b2e6bfa3cdcbdcc",
+          "backend/tests/assist_rules_integration.mjs": "8b9d83ced1df00998c12defb218d7b88872c39e50d56143064270afaea665572"
+        }
+      },
+      "measurements": [
+        {
+          "concurrent_write_total_ms": 16521,
+          "concurrent_writer_wait_ms": 16521,
+          "dev_mode": false,
+          "method": "recomputeProject",
+          "pre_publish_ms": 7624,
+          "rows": 10000,
+          "total_ms": 24199
+        },
+        {
+          "concurrent_write_total_ms": 7212,
+          "concurrent_writer_wait_ms": 7212,
+          "dev_mode": false,
+          "method": "recomputeIdentity",
+          "pre_publish_ms": 10619,
+          "rows": 10000,
+          "total_ms": 17883
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Exploratory uncached/per-page runs have no source hash receipt and are diagnostics only.",
+    "The exact final source still blocks a concurrent independent writer for 16.403s (rules) / 7.191s (identity).",
+    "Probe starts at first finding insertion; preparation can reserve the writer connection earlier. These are not upper bounds on all possible wait times.",
+    "Scale uses actual Goja writer and SQLite with synthetic 10000 rows, not HTTP/production capacity acceptance.",
+    "No production deployment, push, or public branch changes."
+  ]
+}

@@ -125,7 +125,33 @@ function contextFor(dao, page, storedRoles) {
   })
 }
 
-function insertFinding(dao, collection, page, row, at, producerVersion) {
+// Read-only source metadata is stable throughout a batch transaction. The
+// narrow adapter is used only by contextFor(..., false), never for mutations or
+// the changing machine snapshot. It also avoids repeated roles/project reads.
+function findingContexts(dao) {
+  const records = new Map(), queries = new Map(), contexts = new Map()
+  const reader = {
+    findRecordById(collection, id) {
+      const key = JSON.stringify([collection, id])
+      if (!records.has(key)) records.set(key, dao.findRecordById(collection, id))
+      return records.get(key)
+    },
+    findRecordsByFilter: (collection, filter, sort, limit, offset) => {
+      const key = JSON.stringify([collection, filter, sort, limit, offset])
+      if (!queries.has(key)) queries.set(key, dao.findRecordsByFilter(collection, filter, sort, limit, offset))
+      return queries.get(key)
+    }
+  }
+  return (page) => {
+    if (!contexts.has(page.id)) {
+      const { contextFor: verificationContext } = require(`${__hooks}/lib/source_fidelity.js`)
+      contexts.set(page.id, JSON.stringify(verificationContext(reader, page, false)))
+    }
+    return contexts.get(page.id)
+  }
+}
+
+function insertFinding(dao, collection, page, row, at, producerVersion, contextForPage) {
   const record = new Record(collection)
   record.set("project", page.getString("project"))
   record.set("page", page.id)
@@ -137,8 +163,7 @@ function insertFinding(dao, collection, page, row, at, producerVersion) {
   record.set("evidence_json", JSON.stringify(row.evidence ?? {}))
   record.set("producer", PRODUCER)
   record.set("producer_version", producerVersion)
-  const { contextFor: verificationContext } = require(`${__hooks}/lib/source_fidelity.js`)
-  record.set("verification_context_json", JSON.stringify(verificationContext(dao, page, false)))
+  record.set("verification_context_json", contextForPage(page))
   record.set("produced_at", at)
   dao.save(record)
   return record
@@ -204,28 +229,14 @@ function supersede(dao, collection, clauses, at, kinds) {
   return retire(dao, collection, [...clauses, kindClause(kinds)], () => true, at)
 }
 
-// 插入之后的收尾：只下线**严格更早**的批次。
-//
-// 为什么必须有这一步：JSVM 不保证重算请求之间不交错（DAO 调用点就会让出运行时），实测
-// 同一页面 8 个并发重算会留下「A 下线 → B 下线 → A 插入 → B 插入」的形状。
-// 2026-09-25 的记录：库里 52 行里出现过 produced_at=.771 的一批被 .784/.787 陆续标掉，
-// 最后只剩 2 行当前批次——**残缺的一批比重复更难发现**，校对端看到的就是"疑点变少了"。
-//
-// 所以收尾的判据是"比我这一批早"，不是"不是我的"：
-// - 较新的批次永远不会被较旧的收尾抹掉 ⇒ 不会归零、不会残缺，最多同毫秒的几批并存；
-// - 同毫秒互不杀伤（`<` 排除相等），最坏是短暂重复 hint，任何一次后续重算都会清掉；
-// - 全局最后一个开始的请求那一批一定完整在册。
-// 比较用 stampKey 归一化后的字符串：DAO 写回的日期串是 "2026-09-25 13:52:21.771Z"
-// （空格分隔），而 nowStamp() 给的是 ISO 的 "T" 形式，直接比字符串会永远判成"更新"，
-// 让整步收尾静默失效。
-function stampKey(value) {
-  return String(value ?? "").replace("T", " ").replace(/Z$/, "").slice(0, 23)
-}
-
-function settleBatch(dao, collection, clauses, at, kinds) {
-  const mine = stampKey(at)
-  return retire(dao, collection, [...clauses, kindClause(kinds)], (record) =>
-    stampKey(record.getString("produced_at")) < mine, at)
+// 批次替换必须原子提交：旧请求可能在新请求只插入第一条时执行 supersede，
+// 因此按 produced_at 收尾既不能恢复被下线的行，也不能保证同毫秒批次唯一。
+// 三个写入口共用数据库事务；时间只保留作审计，不再承担并发排序。
+// 已处于事务的调用方也必须传其 txApp，PocketBase 会复用它而不是回到全局 $app。
+function atomicBatch(app, operation) {
+  let result
+  app.runInTransaction((tx) => { result = operation(tx) })
+  return result
 }
 
 // 单条目重算的作用域：本条目 + 本生产者，**但要排除项目级 key（列级 + 页级）**。
@@ -242,7 +253,11 @@ function pageScope(pageId, projectOnlyKeys) {
 // rowOverride：提交路径传进来的「校对员刚打的那一行」。
 // 不传就用库里的当前值——pages.proofread_row_json 只在凑够票数后才写，
 // 第一遍提交时若不用 override，规则算的还是导入原文，等于没算刚提交的内容。
-function recomputePage(dao, pageId, rowOverride = null) {
+function recomputePage(app, pageId, rowOverride = null) {
+  return atomicBatch(app, (tx) => recomputePageBatch(tx, pageId, rowOverride))
+}
+
+function recomputePageBatch(dao, pageId, rowOverride) {
   const { runEntryRules, RULES_VERSION, PROJECT_ONLY_MESSAGE_KEYS } = require(`${__hooks}/lib/assist_rules.js`)
   const collection = dao.findCollectionByNameOrId("review_findings")
   const page = dao.findRecordById("pages", pageId)
@@ -254,14 +269,14 @@ function recomputePage(dao, pageId, rowOverride = null) {
   }))
   const scope = pageScope(pageId, PROJECT_ONLY_MESSAGE_KEYS)
   const superseded = supersede(dao, collection, scope, at, RULE_KINDS)
-  const insertedIds = findings.map(item => insertFinding(dao, collection, page, item, at, RULES_VERSION).id)
+  const contexts = findingContexts(dao)
+  const insertedIds = findings.map(item => insertFinding(dao, collection, page, item, at, RULES_VERSION, contexts).id)
   const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-  fidelity.appendEvent(dao, { project: page.getString("project"), page: page.id, kind: "machine_analysis", actor: "machine", context: fidelity.contextFor(dao, page, false), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: row, finding_ids: insertedIds, raw_count: findings.length } })
-  const settled = settleBatch(dao, collection, scope, at, RULE_KINDS)
-  // 难度在收尾之后刷新：tier 由**当前批次**推导，收尾前读到的还是旧批次。
+  fidelity.appendEvent(dao, { project: page.getString("project"), page: page.id, kind: "machine_analysis", actor: "machine", context: JSON.parse(contexts(page)), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: row, finding_ids: insertedIds, raw_count: findings.length } })
+  // 难度与完整新批次一起提交；任一保存失败都会保留之前的批次和难度。
   const difficulty = refreshDifficulty(dao, page)
   return {
-    page: pageId, findings: findings.length, superseded, settled,
+    page: pageId, findings: findings.length, superseded, settled: 0,
     offsets_dropped: offsetsDropped,
     producer_version: RULES_VERSION,
     difficulty_tier: difficulty.tier, difficulty_version: difficulty.version
@@ -286,7 +301,11 @@ function loadAllPages(dao, projectId, { chunk = PAGE_SCAN_CHUNK, refusal = PROJE
 
 // 项目级：列级(R3/R4) 与页级(R7) 规则要看到全量才能判，所以只在批处理里跑。
 // 返回耗时供 #177 的规模验收引用（10k 行项目的实测值写进 docs/plans/2026-09-25-assist-rules.md）。
-function recomputeProject(dao, projectId) {
+function recomputeProject(app, projectId) {
+  return atomicBatch(app, (tx) => recomputeProjectBatch(tx, projectId))
+}
+
+function recomputeProjectBatch(dao, projectId) {
   const { runProjectRules, makeContext, RULES_VERSION } = require(`${__hooks}/lib/assist_rules.js`)
   const { loadProjectRoles, rolesForRules } = require(`${__hooks}/lib/column_roles.js`)
   const startedAt = new Date()
@@ -324,9 +343,9 @@ function recomputeProject(dao, projectId) {
     if (!pageId || !rowByPage.has(pageId)) return null
     return { row: rowByPage.get(pageId), shown: shownByPage.get(pageId) }
   })
-  const projectScope = [`project = "${projectId}"`, `producer = "${PRODUCER}"`]
   let inserted = 0
   let unanchored = 0
+  const contexts = findingContexts(dao)
   for (const item of findings) {
     const anchor = byId.get(item.page)
     if (!anchor) {
@@ -334,18 +353,17 @@ function recomputeProject(dao, projectId) {
       unanchored += 1
       continue
     }
-    insertFinding(dao, collection, anchor, item, at, RULES_VERSION)
+    insertFinding(dao, collection, anchor, item, at, RULES_VERSION, contexts)
     inserted += 1
   }
-  const settled = settleBatch(dao, collection, projectScope, at, RULE_KINDS)
   if (require(`${__hooks}/lib/source_research.js`).enabled()) {
     const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
     const counts = new Map()
     for (const item of findings) counts.set(item.page, (counts.get(item.page) || 0) + 1)
-    for (const page of pages) fidelity.appendEvent(dao, { project: projectId, page: page.id, kind: "machine_analysis", actor: "machine", context: fidelity.contextFor(dao, page, false), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: rowByPage.get(page.id), raw_count: counts.get(page.id) || 0, scope: "project_batch" } })
+    for (const page of pages) fidelity.appendEvent(dao, { project: projectId, page: page.id, kind: "machine_analysis", actor: "machine", context: JSON.parse(contexts(page)), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: rowByPage.get(page.id), raw_count: counts.get(page.id) || 0, scope: "project_batch" } })
   }
   if (unanchored) console.warn("assist_recompute unanchored findings", projectId, unanchored)
-  // 同样放在收尾之后：全项目的 tier 要按最终留在库里的当前批次推导。
+  // 全项目的 tier 与当前批次一同提交。
   const stats = projectShapeStats(pages)
   const tiers = { A: 0, B: 0, C: 0, unknown: 0 }
   for (const page of pages) tiers[refreshDifficulty(dao, page, stats, storedRoles).tier] += 1
@@ -357,7 +375,7 @@ function recomputeProject(dao, projectId) {
     offsets_dropped: offsetsDropped,
     unanchored,
     superseded,
-    settled,
+    settled: 0,
     duration_ms: new Date() - startedAt,
     producer_version: RULES_VERSION
   }
@@ -473,7 +491,11 @@ function sourceOfPage(dao, page, projectSource, cache) {
   return value
 }
 
-function recomputeIdentity(dao, projectId) {
+function recomputeIdentity(app, projectId) {
+  return atomicBatch(app, (tx) => recomputeIdentityBatch(tx, projectId))
+}
+
+function recomputeIdentityBatch(dao, projectId) {
   const startedAt = new Date()
   const {
     findIdentityConflicts, findRowShapeAnomalies, entryIdentityKey, identityColumns, IDENTITY_VERSION
@@ -539,13 +561,14 @@ function recomputeIdentity(dao, projectId) {
   // 挂靠解析不出来就计数并跳过，绝不退化成"挂到第一条"；与 recomputeProject 同一形状，
   // 这样两条批处理路径在"规则产了但写入端没接住"这件事上都会留下痕迹。
   let unanchored = 0
+  const contexts = findingContexts(dao)
   for (const item of findings) {
     const anchor = byId.get(item.evidence?.page) ?? null
     if (!anchor) {
       unanchored += 1
       continue
     }
-    insertFinding(dao, collection, anchor, item, at, IDENTITY_VERSION)
+    insertFinding(dao, collection, anchor, item, at, IDENTITY_VERSION, contexts)
     inserted += 1
   }
   const summary = {
