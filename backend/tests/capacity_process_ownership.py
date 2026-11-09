@@ -93,7 +93,7 @@ class ProcessRegistry:
             pending.unlink()
             return record['state'] == 'ready'
 
-    def stop(self):
+    def stop(self, wait_seconds=3):
         # A child cannot start the real browser after this boundary. Pending
         # wrappers either publish their identity or observe closing and exit.
         with self.lock():
@@ -105,13 +105,13 @@ class ProcessRegistry:
                   if list(self.root.glob('*.pending')) else [])
         for path in self.root.glob('*.json'):
             try:
-                self.stop_record(path)
+                self.stop_record(path, wait_seconds=wait_seconds)
             except (Exception, KeyboardInterrupt) as error:
                 errors.append(error)
         if errors:
             raise RuntimeError('generator_group_cleanup_unconfirmed') from None
 
-    def stop_record(self, path):
+    def stop_record(self, path, wait_seconds=3):
         if path.name in self.cleaned:
             return
         record = json.loads(path.read_text())
@@ -132,7 +132,7 @@ class ProcessRegistry:
         # saved PID. The guardian may exit immediately after a check. Only the
         # still-live guardian can safely signal its own anchored process group.
         path.with_suffix('.stop').write_text(self.nonce)
-        for _ in range(150):
+        for _ in range(max(1, round(wait_seconds/.02))):
             current = birth_identity(pid)
             if current != record['birth']:
                 if (record.get('state') == 'closed' or path.with_suffix('.done').exists() or
@@ -145,7 +145,7 @@ class ProcessRegistry:
             raise RuntimeError('generator_group_cleanup_unconfirmed')
 
 
-def guardian(root, ticket, command):
+def guardian(root, ticket, command, interrupt=False):
     os.umask(0o077)
     registry = ProcessRegistry(root)
     if not registry.register(ticket):
@@ -175,8 +175,9 @@ def guardian(root, ticket, command):
         # lifetime is irrelevant to this ownership anchor.
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
-        os.killpg(os.getpid(), signal.SIGTERM)
-        deadline = time.monotonic()+2
+        # Python fault suites need SIGINT for their existing finally blocks.
+        os.killpg(os.getpid(), signal.SIGINT if interrupt else signal.SIGTERM)
+        deadline = time.monotonic()+(5 if interrupt else 2)
         while time.monotonic() < deadline:
             if child is not None:
                 child.poll()
@@ -189,14 +190,24 @@ def guardian(root, ticket, command):
             # from a guardian disappearing without proving descendant cleanup.
             (registry.root/(ticket+'.killing')).write_text(registry.nonce)
             os.killpg(os.getpid(), signal.SIGKILL)
+    if result is not None and result < 0:
+        # Preserve the wrapped child's signal exit status after proving its
+        # group is drained. In particular, a deliberately crashed suite must
+        # not be relabelled as exit 247 (Python's SystemExit(-9) conversion).
+        original_signal = -result
+        if original_signal not in (signal.SIGKILL, signal.SIGSTOP):
+            signal.signal(original_signal, signal.SIG_DFL)
+        os.kill(os.getpid(), original_signal)
     return result if result is not None else 0
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 5 or sys.argv[3] != '--':
+    interrupt = len(sys.argv) > 3 and sys.argv[3] == '--interrupt'
+    separator = 4 if interrupt else 3
+    if len(sys.argv) < separator+2 or sys.argv[separator] != '--':
         raise SystemExit(2)
     try:
-        raise SystemExit(guardian(sys.argv[1], sys.argv[2], sys.argv[4:]))
+        raise SystemExit(guardian(sys.argv[1], sys.argv[2], sys.argv[separator+1:], interrupt=interrupt))
     except Exception:
         # No child argv, paths, credentials or traceback in generator logs.
         raise SystemExit(2) from None

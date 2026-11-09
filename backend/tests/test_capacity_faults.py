@@ -40,33 +40,47 @@ finally:
             self.assertTrue(not status or status.startswith('Z'), 'descendant remained running')
             self.assertIn('FAULT_GATE_TIMEOUT', (root/'gate.log').read_text())
 
-    def test_detached_descendant_is_stopped_after_timeout_or_parent_exit(self):
-        for timeout, exit_code in ((.5, 124), (3, 7)):
+    def test_detached_node_descendant_stops_after_timeout_or_fast_parent_exit(self):
+        # This is the real fault-suite shape: Python -> Node -> detached browser.
+        for timeout, wait, exit_code in ((3, 10, 124), (5, 0, 7), (5, 0, -9)):
             with self.subTest(timeout=timeout), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                command = [sys.executable, '-c', r'''
-import pathlib, subprocess, sys, time
-root = pathlib.Path(sys.argv[1])
-child = subprocess.Popen([sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGINT, signal.SIG_IGN); time.sleep(60)'], start_new_session=True)
-root.joinpath('child').write_text(str(child.pid))
-time.sleep(.8)
-raise SystemExit(7)
-''', str(root)]
-                pid = None
-                try:
-                    self.assertEqual(controlled_run(command, root, root/'gate.log', timeout=timeout), exit_code)
-                    pid = int((root/'child').read_text())
-                    status = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], capture_output=True, text=True).stdout.strip()
-                    self.assertTrue(not status or status.startswith('Z'), 'detached descendant remained running')
-                finally:
-                    # Clean the synthetic process even if this regression fails.
-                    if pid is None and (root/'child').exists():
-                        pid = int((root/'child').read_text())
-                    if pid is not None:
-                        try:
-                            os.killpg(pid, 9)
-                        except ProcessLookupError:
-                            pass
+                node = root/'browser.cjs'
+                node.write_text("""
+const fs=require('node:fs');const {spawn}=require('node:child_process');
+const child=spawn(process.env.CAPACITY_GUARDIAN_PYTHON,['-c',
+ 'import os,time;print(os.getpid(),flush=True);time.sleep(60)'],
+ {detached:true,stdio:['ignore','pipe','ignore']});
+child.stdout.once('data',data=>{fs.writeFileSync(process.argv[2],data);process.exit(7)});
+""")
+                finish = 'import os;os.kill(os.getpid(),9)' if exit_code == -9 else 'raise SystemExit(7)'
+                command = [sys.executable,'-c',
+                    'import subprocess,sys,time;subprocess.run(["node",sys.argv[1],sys.argv[2]]);time.sleep(float(sys.argv[3]));'+finish,
+                    str(node),str(root/'child'),str(wait)]
+                self.assertEqual(controlled_run(command,root,root/'gate.log',timeout=timeout),exit_code)
+                pid=int((root/'child').read_text())
+                from capacity_process_ownership import birth_identity
+                self.assertIsNone(birth_identity(pid),'detached child survived')
+
+    def test_interrupt_cleans_the_owned_suite_before_propagating(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            command=[sys.executable,'-c',
+                'import os,pathlib,time;pathlib.Path("pid").write_text(str(os.getpid()));time.sleep(60)']
+            real_wait=subprocess.Popen.wait
+            interrupted={'done':False}
+            def wait(process, *args, **kwargs):
+                if kwargs.get('timeout') == 30 and not interrupted['done']:
+                    deadline=time.monotonic()+3
+                    while not (root/'pid').exists() and time.monotonic()<deadline: time.sleep(.01)
+                    interrupted['done']=True
+                    raise KeyboardInterrupt()
+                return real_wait(process,*args,**kwargs)
+            with patch.object(subprocess.Popen,'wait',wait):
+                with self.assertRaises(KeyboardInterrupt):
+                    controlled_run(command,root,root/'gate.log',timeout=30)
+            from capacity_process_ownership import birth_identity
+            self.assertIsNone(birth_identity(int((root/'pid').read_text())))
 
     def test_failed_suite_remains_failed_and_credentials_are_redacted(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -78,8 +92,43 @@ raise SystemExit(7)
             self.assertNotIn('secret-example', (root/'gate.log').read_text())
             self.assertEqual((root/'gate.log').stat().st_mode & 0o777, 0o600)
 
+    def test_normal_suite_exit_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            program = '''
+import os,subprocess,sys
+for method,expected in [('terminate',-15),('kill',-9)]:
+    child=subprocess.Popen([sys.executable,'-u','-c','import os,time;print(os.getpid());time.sleep(60)'],stdout=subprocess.PIPE,text=True)
+    assert int(child.stdout.readline())==child.pid
+    assert child.pid!=os.getpid()
+    getattr(child,method)()
+    assert child.wait(timeout=5)==expected
+    child.stdout.close()
+print('normal: direct child PID and deliberate restart signals preserved')
+'''
+            with patch('run_capacity_faults.os.killpg') as signal_saved_group:
+                self.assertEqual(controlled_run([sys.executable,'-c',program],root,root/'gate.log'),0)
+                signal_saved_group.assert_not_called()
+            self.assertIn('normal',(root/'gate.log').read_text())
+
 
 class FaultSourceFreezeTests(unittest.TestCase):
+    def test_cleanup_uncertainty_is_not_a_full_pass(self):
+        source={'baseline_sha':'a'*40,'dirty_diff_sha256':'b'*64,'source_sha256':{'backend/main.go':'c'*64}}
+        for code, expected in ((0,'incomplete'),(7,'fail')):
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                with patch.object(sys,'argv',['faults','--profile','smoke','--output',str(root)]), \
+                     patch.object(run_capacity_faults.capacity_fixture,'source_manifest',return_value=source), \
+                     patch.object(run_capacity_faults,'controlled_run',side_effect=[0,run_capacity_faults.FaultCleanupUnconfirmed(code)]), \
+                     patch('sys.stdout',new_callable=io.StringIO):
+                    result=run_capacity_faults.main()
+                report=json.loads((root/'faults.json').read_text())
+                self.assertEqual(report['status'],expected)
+                self.assertFalse(report['full_fault_gate'])
+                self.assertEqual(report['gates']['process_cleanup'],'incomplete')
+                self.assertEqual(result,2 if code==0 else 1)
+
     def run_full(self, after, failed_suite=False):
         before = {'baseline_sha': 'a'*40, 'dirty_diff_sha256': 'b'*64,
                   'source_sha256': {'backend/main.go': 'c'*64}}

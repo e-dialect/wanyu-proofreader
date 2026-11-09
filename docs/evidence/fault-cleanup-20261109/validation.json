@@ -1,0 +1,71 @@
+{
+  "base_sha": "4646afe77c482c26c68ff2fbce8b12d5b27c551b",
+  "dependency_original": "4c8f5c9a5ab875d7ee734b6943fb465c59e0095f",
+  "dependency_local": "9e05fb4",
+  "synthetic": true,
+  "formal_capacity_acceptance": false,
+  "unit_checks": [
+    {
+      "suite": "fault",
+      "tests": 9,
+      "skipped": 0,
+      "seconds": 7.586,
+      "status": "pass"
+    },
+    {
+      "suite": "ownership",
+      "tests": 12,
+      "skipped": 1,
+      "seconds": 4.498,
+      "status": "pass"
+    },
+    {
+      "suite": "remote",
+      "tests": 18,
+      "skipped": 0,
+      "seconds": 4.227,
+      "status": "pass"
+    }
+  ],
+  "functional_checks": [
+    {
+      "name": "restart",
+      "exit_code": 0,
+      "duration_seconds": 14.159
+    },
+    {
+      "name": "browser_offline",
+      "exit_code": 0,
+      "duration_seconds": 40.113
+    }
+  ],
+  "functional_source_unchanged": true,
+  "functional_runtime_files_match_final": true,
+  "source_evidence": {
+    "baseline_sha": "9e05fb4eadf4bf73fab47cd845099c94dacca193",
+    "dirty_diff_sha256": "aa0e97c251ddc36fef523e26b446d7435a5980d298a6a43703326af400027116",
+    "source_map_sha256": "e215cc902228b80e6dc514e9c1c172fe635f30a093ea042551c9b2e58aa64c02"
+  },
+  "runtime_files": {
+    "backend/tests/run_capacity_faults.py": "118fc658f75b08eb23aa060590cc03a78e7e875e0d388038b125ca86fd04c9d8",
+    "backend/tests/capacity_process_ownership.py": "429204db24a013e9e4cc5d49e84bd5bf9d89fa5f7e128bc72412c536a35f4834"
+  },
+  "assertions": [
+    "controller never signals saved PID/PGID",
+    "live guardian signals only its own group; top suite uses SIGINT before escalation",
+    "normal and crashed suite exit codes preserved",
+    "direct child Popen PID and deliberate terminate/kill semantics unchanged",
+    "registered Node detached child removed after fast parent exit, SIGKILL, timeout and interruption",
+    "cleanup uncertainty is incomplete and never overrides an existing business failure",
+    "existing source-freeze checks retained"
+  ],
+  "limitations": [
+    "Process cleanup covers the controlled suite group and registered Node detached children. No global Python process patch is installed; a future Python start_new_session caller must opt into owned launch explicitly.",
+    "No Docker/OCR container cleanup was exercised in this narrow probe. Process-group absence does not certify container/external resources.",
+    "This was a synthetic restart and offline-browser plumbing smoke on macOS, not the fifteen-minute full fault gate, separate-host capacity acceptance or a deployment."
+  ],
+  "cleanup": {
+    "test_dependency_symlink_removed": true,
+    "owned_processes_verified_after_tests": true
+  }
+}
