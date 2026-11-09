@@ -304,6 +304,7 @@ func (s *importService) registerSchemeConversion() error {
 		e.Router.GET("/api/fangji/scheme-adapters", s.listSchemeAdapters).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/fangji/projects/{projectId}/conversions", s.startConversion).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/conversions", s.listConversions).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/fangji/projects/{projectId}/conversions/{jobId}", s.getConversion).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/normalizations", s.listNormalizations).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/projects/{projectId}/normalization-exceptions", s.exportNormalizationExceptions).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/fangji/pages/{pageId}/normalization", s.decideNormalization).Bind(apis.RequireAuth("users"))
@@ -411,6 +412,19 @@ func (s *importService) listConversions(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("读取转换作业失败。", err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"items": records, "schemes": s.schemes.schemes(), "notice": s.schemes.notice})
+}
+
+// Read the requested job, never a newer job belonging to another administrator.
+func (s *importService) getConversion(c *core.RequestEvent) error {
+	projectID := c.Request.PathValue("projectId")
+	if _, _, err := s.requireProjectManager(c, projectID); err != nil {
+		return err
+	}
+	record, err := s.app.FindRecordById("conversion_jobs", c.Request.PathValue("jobId"))
+	if err != nil || record.GetString("project") != projectID {
+		return apis.NewNotFoundError("转换作业不存在或不属于当前项目。", nil)
+	}
+	return c.JSON(http.StatusOK, record)
 }
 
 func (s *importService) listNormalizations(c *core.RequestEvent) error {

@@ -1,6 +1,6 @@
 <template>
   <!-- CSV upload -->
-  <div>
+  <div ref="panelElement">
     <h4 class="font-semibold mb-2">从 CSV 导入条目</h4>
     <p class="text-sm text-muted mb-3">每行生成一条待校对材料。先检查页码与内容，再确认导入。</p>
     <details class="mb-3">
@@ -24,22 +24,28 @@
       class="file-input-hidden"
       :disabled="uploadingCsv"
     />
-    <button class="btn btn-secondary" :disabled="uploadingCsv" @click="csvInput.click()">
+    <AppButton variant="secondary" :disabled="uploadingCsv" @click="csvInput.click()">
       选择 CSV 文件
-    </button>
+    </AppButton>
     <span v-if="csvFile" class="text-sm ml-2">{{ csvFile.name }}</span>
     <div v-if="csvFile" class="mt-3">
-      <button class="btn btn-primary" @click="uploadCsv" :disabled="uploadingCsv">
-        {{ uploadingCsv ? '正在检查…' : '检查 CSV' }}
-      </button>
+      <AppButton
+        variant="primary"
+        @click="uploadCsv"
+        :loading="uploadingCsv"
+        loading-label="正在检查"
+      >
+        检查 CSV
+      </AppButton>
     </div>
+    <JobStatusPanel
+      v-if="csvJobTarget"
+      label="CSV 导入"
+      kind="csv"
+      :observation="csvObservation"
+      @retry="refreshCsvJob"
+    />
     <div v-if="csvJob" class="import-job-card mt-3">
-      <div class="flex items-center justify-between gap-2">
-        <strong>{{ csvJobStatusLabel }}</strong>
-      </div>
-      <div class="progress mt-2">
-        <div class="progress-bar" :style="{ width: csvJobProgress + '%' }"></div>
-      </div>
       <div class="text-sm mt-2">{{ csvJobProgressText(csvJob) }}</div>
       <p v-if="csvSourcePending" class="text-sm text-muted mt-2" role="status">正在核对作业来源…</p>
       <p v-else-if="csvActualSource" class="text-sm mt-2" role="note">
@@ -55,14 +61,16 @@
       <p v-if="csvSourceError" class="alert alert-warning mt-2" role="alert">
         {{ csvSourceError }} 请刷新后核对，暂不能确认导入。
       </p>
-      <button
+      <AppButton
         type="button"
-        class="btn btn-secondary btn-sm mt-2"
+        variant="secondary"
+        size="sm"
+        class="mt-2"
         :disabled="uploadingCsv"
         @click="refreshCsvJob"
       >
         刷新检查与导入进度
-      </button>
+      </AppButton>
       <details class="text-sm text-muted mt-2">
         <summary>查看作业详情</summary>
         <p>
@@ -100,16 +108,25 @@
       <div class="text-sm mt-2">
         检测到的表头：<code>{{ csvInspection.headers.join('、') }}</code>
       </div>
+      <p class="text-sm text-muted mt-2">
+        只读预览前 {{ csvInspection.previewLimit }} 条有效记录，当前显示
+        {{ csvInspection.preview.length }} 条。 这是样本，不代表其余记录均正确；需要修改时，请修改原
+        CSV 后重新检查。
+      </p>
       <AppDataTable
         label="CSV 预检内容"
         v-if="csvInspection.preview.length"
         class="table-wrapper mt-2"
         ><template #head>
           <tr>
+            <th>原 CSV 行号</th>
+            <th>PDF 物理页码</th>
             <th v-for="header in csvPreviewHeaders" :key="header">{{ header }}</th>
           </tr>
         </template>
         <tr v-for="(row, index) in csvInspection.preview" :key="index">
+          <td>{{ csvInspection.previewLocations[index]?.csvLine ?? '旧记录未保存' }}</td>
+          <td>{{ csvInspection.previewLocations[index]?.pdfPage ?? '旧记录未保存' }}</td>
           <td v-for="header in csvPreviewHeaders" :key="header">
             <AppFieldValue
               :value="row[header]"
@@ -119,14 +136,17 @@
           </td>
         </tr>
       </AppDataTable>
-      <button
+      <AppButton
         v-if="csvJob?.status === 'validated'"
-        class="btn btn-primary mt-3"
+        variant="primary"
+        class="mt-3"
         @click="confirmCsvImport"
+        :loading="uploadingCsv"
+        loading-label="正在确认导入"
         :disabled="uploadingCsv || !csvSourceReady"
       >
-        {{ uploadingCsv ? '导入处理中...' : '确认导入' }}
-      </button>
+        确认导入
+      </AppButton>
     </div>
     <div v-if="csvSuccess" class="alert alert-success mt-2" role="status">{{ csvSuccess }}</div>
     <div v-if="csvError" role="alert" class="alert alert-error mt-2 preserve-line-breaks">
@@ -142,13 +162,16 @@
 </template>
 
 <script setup>
+import AppButton from '@/components/AppButton.vue'
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import { fieldValueLanguage } from '@/lib/fieldValue'
 import ProjectSourcePicker from '@/components/admin/project/ProjectSourcePicker.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
 import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import JobStatusPanel from '@/components/admin/project/JobStatusPanel.vue'
+import { useJobObserver } from '@/composables/useJobObserver'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { listSources } from '@/services/sourcesService'
 import { commitCsvImport, createCsvInspection, getImportJob } from '@/services/importJobsService'
 import {
@@ -184,7 +207,20 @@ const csvSuccess = ref('')
 
 const csvError = ref('')
 
-const csvJob = ref(null)
+const panelElement = ref(null)
+const csvJobTarget = ref(null)
+const {
+  snapshot: csvJob,
+  observation: csvObservation,
+  retry: retryCsvJob,
+  seed: seedCsvJob
+} = useJobObserver({
+  projectId: () => props.projectId,
+  kind: 'csv',
+  job: csvJobTarget,
+  panel: panelElement,
+  read: getImportJob
+})
 
 const csvActualSource = ref(null)
 const csvSourcePending = ref(false)
@@ -203,43 +239,33 @@ const csvSourceMismatch = computed(
 
 let csvPollGeneration = 0
 
-const csvJobProgress = computed(() => {
-  const processed = Number(csvJob.value?.processed_count || 0)
-  const total = Number(csvJob.value?.total_count || 0)
-  if (['validated', 'completed', 'completed_with_errors'].includes(csvJob.value?.status)) return 100
-  if (!total) return ['inspecting', 'processing'].includes(csvJob.value?.status) ? 10 : 0
-  return Math.min(99, Math.round((processed / total) * 100))
-})
-
-const csvJobStatusLabel = computed(
-  () =>
-    ({
-      inspecting: '正在检查 CSV',
-      validated: 'CSV 检查完成',
-      queued: '等待导入',
-      processing: '正在导入',
-      completed: '导入完成',
-      completed_with_errors: '导入完成，部分条目失败未入库',
-      failed: '导入失败'
-    })[csvJob.value?.status] || '准备导入'
-)
-
 const csvInspection = computed(() => parseCsvInspection(csvJob.value?.inspection_json))
 
-const csvPreviewHeaders = computed(() => csvInspection.value?.headers.slice(0, 6) || [])
+const csvPreviewHeaders = computed(() => csvInspection.value?.headers || [])
 
 function onCsvSelected(e) {
   csvPollGeneration++
   csvFile.value = e.target.files[0] || null
   csvSuccess.value = ''
   csvError.value = ''
-  csvJob.value = null
+  csvJobTarget.value = null
   csvActualSource.value = null
   csvSourcePending.value = false
   csvSourceError.value = ''
 }
 
-async function readCsvSource(job, generation) {
+let csvSourceRead = null
+function readCsvSource(job, generation) {
+  const key = `${generation}:${job.id}:${job.source || ''}`
+  if (csvSourceRead?.key === key) return csvSourceRead.promise
+  const promise = performReadCsvSource(job, generation).finally(() => {
+    if (csvSourceRead?.promise === promise) csvSourceRead = null
+  })
+  csvSourceRead = { key, promise }
+  return promise
+}
+
+async function performReadCsvSource(job, generation) {
   csvSourcePending.value = true
   csvSourceError.value = ''
   csvActualSource.value = null
@@ -261,19 +287,40 @@ async function readCsvSource(job, generation) {
   }
 }
 
-async function followCsvJob(job, generation) {
-  while (
-    ['inspecting', 'queued', 'processing'].includes(job.status) &&
-    generation === csvPollGeneration
-  ) {
-    await pollDelay(1000)
-    if (generation !== csvPollGeneration) return job
-    job = await getImportJob(job.id)
-    if (generation !== csvPollGeneration) return job
-    csvJob.value = job
+watch(
+  () => [csvJob.value?.id, csvJob.value?.status, csvJob.value?.source],
+  async ([id, status], previous) => {
+    if (!id || (id === previous?.[0] && status === previous?.[1])) return
+    const generation = csvPollGeneration
+    const job = csvJob.value
+    csvError.value = csvFatalMessage(job)
+    csvSuccess.value = ['validated', 'completed', 'completed_with_errors'].includes(status)
+      ? csvImportResultText(job)
+      : ''
     if (csvActualSource.value?.id !== (job.source || '')) await readCsvSource(job, generation)
+    if (generation !== csvPollGeneration) return
+    if (['completed', 'completed_with_errors'].includes(status)) {
+      props.clearSelection()
+      try {
+        await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
+      } catch (error) {
+        if (generation === csvPollGeneration)
+          csvError.value = getPbMessage(error, '导入已完成，项目列表暂时未更新，请刷新项目。')
+      }
+    } else if (['validated', 'failed'].includes(status)) {
+      try {
+        await loadLedger()
+      } catch (error) {
+        if (generation === csvPollGeneration)
+          csvError.value = getPbMessage(error, '作业状态已更新，批次台账暂时未更新，请刷新项目。')
+      }
+    }
   }
-  return job
+)
+
+function observeCsvJob(job) {
+  csvJobTarget.value = job
+  seedCsvJob(job)
 }
 
 async function uploadCsv() {
@@ -281,35 +328,21 @@ async function uploadCsv() {
   uploadingCsv.value = true
   csvError.value = ''
   csvSuccess.value = ''
-  csvJob.value = null
+  csvJobTarget.value = null
   const generation = ++csvPollGeneration
   requestedSourceId.value = sourceId.value
   try {
-    let job = await createCsvInspection({
+    const job = await createCsvInspection({
       projectId,
       file: csvFile.value,
       sourceId: sourceId.value
     })
     if (generation !== csvPollGeneration) return
-    csvJob.value = job
+    observeCsvJob(job)
     csvFile.value = null
     if (csvInput.value) csvInput.value.value = ''
     await readCsvSource(job, generation)
     if (generation !== csvPollGeneration) return
-    job = await followCsvJob(job, generation)
-    if (generation !== csvPollGeneration) return
-
-    if (job.status === 'failed') {
-      csvError.value = csvFatalMessage(job)
-    } else if (job.status === 'validated') {
-      const inspection = parseCsvInspection(job.inspection_json)
-      csvSuccess.value = inspection ? csvImportResultText(job) : 'CSV 检查完成，请确认后开始导入。'
-    } else if (['completed', 'completed_with_errors'].includes(job.status)) {
-      csvSuccess.value = '相同文件已经导入，无需重复处理。'
-      await loadPages()
-    }
-    if (generation !== csvPollGeneration) return
-    await loadLedger()
   } catch (e) {
     if (generation === csvPollGeneration)
       csvError.value = csvJob.value?.id
@@ -327,22 +360,10 @@ async function confirmCsvImport() {
   csvSuccess.value = ''
   const generation = ++csvPollGeneration
   try {
-    let job = await commitCsvImport(csvJob.value.id)
+    const job = await commitCsvImport(csvJob.value.id)
     if (generation !== csvPollGeneration) return
-    csvJob.value = job
+    observeCsvJob(job)
     if (csvActualSource.value?.id !== (job.source || '')) await readCsvSource(job, generation)
-    job = await followCsvJob(job, generation)
-    if (generation !== csvPollGeneration) return
-    if (job.status === 'failed') {
-      csvError.value = csvFatalMessage(job)
-      await loadLedger()
-      return
-    }
-    csvSuccess.value = csvImportResultText(job)
-    props.clearSelection()
-    // 导入会改变条目总数，汇总必须跟着走：只刷表格的话，三枚分桶芯片与「共 N 条」
-    // 会停在旧数字上，与正下方刚刷新出来的表格对不上账（#172 验收第 4 条问的就是这个数）。
-    await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
   } catch (e) {
     if (generation === csvPollGeneration)
       csvError.value = getPbMessage(e, '确认导入失败，请稍后重试。')
@@ -352,40 +373,22 @@ async function confirmCsvImport() {
 }
 
 async function refreshCsvJob() {
-  if (!csvJob.value?.id || uploadingCsv.value) return
-  const generation = ++csvPollGeneration
-  uploadingCsv.value = true
+  if (!csvJobTarget.value?.id || uploadingCsv.value) return
+  const generation = csvPollGeneration
   csvError.value = ''
-  csvSuccess.value = ''
-  try {
-    let job = await getImportJob(csvJob.value.id)
-    if (generation !== csvPollGeneration) return
-    csvJob.value = job
-    await readCsvSource(job, generation)
-    if (generation !== csvPollGeneration) return
-    job = await followCsvJob(job, generation)
-    if (generation !== csvPollGeneration) return
-    csvError.value = csvFatalMessage(job)
-    if (['validated', 'completed', 'completed_with_errors'].includes(job.status))
-      csvSuccess.value = csvImportResultText(job)
-    await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
-  } catch (cause) {
-    if (generation === csvPollGeneration)
-      csvError.value = getPbMessage(cause, '读取进度失败，已保留原作业，请原地刷新重试。')
-  } finally {
-    if (generation === csvPollGeneration) uploadingCsv.value = false
-  }
-}
-
-function pollDelay(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
+  await retryCsvJob()
+  if (generation === csvPollGeneration && csvJob.value)
+    await readCsvSource(csvJob.value, generation)
 }
 onBeforeUnmount(() => {
   csvPollGeneration += 1
 })
 defineExpose({
   hasPendingWork: computed(
-    () => uploadingCsv.value || Boolean(csvFile.value) || csvJob.value?.status === 'validated'
+    () =>
+      uploadingCsv.value ||
+      Boolean(csvFile.value) ||
+      ['inspecting', 'queued', 'processing', 'validated'].includes(csvJob.value?.status)
   )
 })
 </script>

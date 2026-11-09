@@ -54,6 +54,7 @@
           :style="imageStyle"
           alt="原文页面"
           @error="emit('image-error')"
+          @load="reportSourceVisible"
         />
         <canvas
           v-else
@@ -78,7 +79,19 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { measureBusiness } from '@/lib/businessMetrics'
 
+let sourceStartedAt = performance.now()
+let sourceGeneration = 0
+let sourceReported = false
+function reportSourceVisible() {
+  const generation = sourceGeneration
+  requestAnimationFrame(() => {
+    if (generation !== sourceGeneration || sourceReported || document.hidden) return
+    sourceReported = true
+    measureBusiness('source_visible', performance.now() - sourceStartedAt)
+  })
+}
 const emit = defineEmits(['image-error'])
 
 const props = defineProps({
@@ -90,6 +103,15 @@ const props = defineProps({
   sourcePageNumber: { type: Number, default: 0 },
   sourceTotalPages: { type: Number, default: 0 }
 })
+watch(
+  [() => props.src, () => props.pageNumber],
+  () => {
+    sourceGeneration++
+    sourceStartedAt = performance.now()
+    sourceReported = false
+  },
+  { immediate: true }
+)
 
 const viewerRef = ref(null)
 const wrapRef = ref(null)
@@ -320,7 +342,10 @@ async function renderCurrentPage() {
       transform: dpr === 1 ? null : [dpr, 0, 0, dpr, 0, 0]
     })
     await renderTask.promise
-    if (generation === renderGeneration) renderTask = null
+    if (generation === renderGeneration) {
+      renderTask = null
+      reportSourceVisible()
+    }
   } catch (e) {
     if (generation === renderGeneration && e?.name !== 'RenderingCancelledException') {
       error.value = e?.message || '渲染失败'

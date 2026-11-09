@@ -155,6 +155,11 @@ const job = await api(`/api/fangji/projects/${project.id}/conversions`, {
   method: 'POST', token, expected: 202, body: { source_scheme_id: SOURCE_SCHEME }
 })
 const done = await waitConversion(job.id)
+assert.equal((await api(`/api/fangji/projects/${project.id}/conversions/${job.id}`, { token })).id, job.id)
+await api(`/api/fangji/projects/${project.id}/conversions/${job.id}`, { expected: 401 })
+await api(`/api/fangji/projects/${project.id}/conversions/xxxxxxxxxxxxxxx`, { token, expected: 404 })
+const otherJobProject = await projectWithReadingColumn(`单作业读取隔离 ${suffix}`)
+await api(`/api/fangji/projects/${otherJobProject.id}/conversions/${job.id}`, { token, expected: 404 })
 assert.equal(done.status, 'completed', JSON.stringify(done))
 assert.equal(done.canonical_scheme, runnable.canonical_scheme_id)
 assert.equal(done.rule_version, runnable.rule_version, '作业记下的规则身份就是发起时那一套')
