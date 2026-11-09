@@ -1,6 +1,6 @@
 # #417 最终 PR 组合回执
 
-当前接续 main `2c8e90b`，前置 #425 `ed386584`。此前保存的各候选/失败/定向/规模证据仍保持原样。本回执区分实际运行源码和后续重组；最终远端 CI、审批、全量 race 终态以本 PR 最新验收评论为准。
+当前接续 main `2c8e90b`，前置 #425 `ed386584`。此前保存的各候选/失败/定向/规模证据仍保持原样。本回执区分实际运行源码和后续重组；全量 race 已通过；最终远端 CI、审批及合入状态以本 PR 最新验收评论和暂停交接为准。
 
 ## 实际完成
 
@@ -15,7 +15,7 @@
 
 `92c00ef` 全量 race 在 Go 默认10分钟累计总期限中止，活动测试仅跑7秒且在Goja中正常执行，未见DATA RACE。失败日志完整保留。
 
-`4525866` 正以 `GOMAXPROCS=2 GOFLAGS=-v RACE=1 make test-go` 重跑，默认每包20分钟且可覆盖；普通Go期限、500ms业务工程门槛和所有断言均未更改。本回执冻结时仍在执行，不能把 running 写成通过。终态由PR最新验收评论给出，不回写历史失败。
+`4525866` 以 `GOMAXPROCS=2 GOFLAGS=-v RACE=1 make test-go` 完整重跑通过，主包1058.469s，所有包366个顶层测试通过。3项明确跳过为可选规模探针、导出规模探针及浏览器专用Go入口；对应规模/真实Chrome证据另列。默认每包20分钟且可覆盖，普通Go期限、500ms业务工程门槛和所有断言均未更改。原10分钟失败保留。
 
 ## 规模证据与回退
 
@@ -26,3 +26,7 @@
 追加1794204700；任何publication marker存在时down拒绝。旧二进制不理解新可见性，不直接切旧版，也不以旧备份覆盖新写入；优先前滚修复，止损时停止批量重算并保留记录。实例锁只约束本应用，不是对外部SQLite工具的强制保护。首次原生serve仍需已有migrate-before-serve流程，Docker入口已按此运行。
 
 R2。CODEOWNER、远端CI与合入须另验；无生产发布。真人/真机、真实材料、SMTP、异地备份与正式容量仍按原issue验收。Human verification: **Not manually verified**。
+
+## 暂停前已收口的两项 CI 修复
+
+`column_roles` 唯一旧 raw/!superseded_at 读取已改为既有 currentFindings（业务API当前ID＋原stored行）；所有1/0、字符及字段断言不变，普通和race真实HTTP均通过。56条gitleaks命中均为四份规模报告里的源码SHA-256，独立逐条读取其measured commit的Git blob重算后56/56匹配；仅补精确commit:file:rule:line指纹，不放宽path/rule扫描。最终扫描与暂停状态见 [PAUSED_HANDOFF.md](../product-maturity-20261109/PAUSED_HANDOFF.md)。

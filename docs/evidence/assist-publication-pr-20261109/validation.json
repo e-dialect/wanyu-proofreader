@@ -39,15 +39,43 @@
     }
   },
   "full_race": {
-    "status_at_this_receipt": "running",
+    "status_at_this_receipt": "pass",
     "command": "GOMAXPROCS=2 GOFLAGS=-v RACE=1 make test-go",
     "bounded_package_timeout": "20m",
-    "final_result_location": "PR latest verification comment; do not treat this running record as pass"
+    "final_result_location": "This updated pause receipt and PR verification comment; original 10-minute failure remains retained.",
+    "runtime_source": "4525866a1ce3a16da85291bb1aa548761e147228",
+    "backend_package_seconds": 1058.469,
+    "top_level_passes_all_packages": 366,
+    "explicit_skips": [
+      "TestAssistBatchScaleContention",
+      "TestProjectExportScaleEvidence",
+      "TestTaskPDFBrowserRegression"
+    ],
+    "log_sha256": "e1d8532e2c6f092a231d43222b318e450cc434dc07dae66f5589a7a6f690ab89"
   },
   "windows": {
     "cross_compile": "pass",
     "runtime": "not_run"
   },
   "production_deployed": false,
-  "formal_capacity": "deferred_user_no_isolated_machine"
+  "formal_capacity": "deferred_user_no_isolated_machine",
+  "current_ci_repairs": {
+    "column_roles": "20b1db4: existing business-current helper; ordinary/race HTTP passed; all original 1/0 and byte assertions retained",
+    "gitleaks": {
+      "reviewed_findings": 56,
+      "verified_source_hashes": 56,
+      "real_or_unverified_credentials": 0,
+      "scope": "Exact historical fingerprints only; source hashes independently recomputed from their measured Git blobs.",
+      "new_commit_scan": "pass;24 commits",
+      "remote_full_history_scan": {
+        "status": "pass",
+        "commits": 409,
+        "scanned_bytes": 17151060,
+        "report_source": "clean clone of actual remote branches plus the reviewed exact-fingerprint file",
+        "log_sha256": "e41ed91e295b51cab1ce1adc5761c3d4322c72abed20e183a977f0b2a0dae202"
+      },
+      "independent_review_report_sha256": "dc15d7808e557aa034faca798731f807c08ac54f1707b2edda19595d516ddff1"
+    }
+  },
+  "pause_status": "User requested pause after current work; latest-head remote CI, CODEOWNER and merges are remaining work, not performed."
 }

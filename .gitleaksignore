@@ -1,5 +1,6 @@
-# Reviewed synthetic fixtures only. Exact historical fingerprints, never a
-# path/rule-wide exclusion. The two source_key literals are PDF audit assertions;
+# Reviewed synthetic fixtures and source-integrity metadata only.
+# Exact historical fingerprints, never a path/rule-wide exclusion.
+# The two source_key literals are PDF audit assertions;
 # RareIntegration12345 is a disposable integration account password.
 c3d9933a39c6a023369eee7cf438729eff77ec68:backend/pdf_images_test.go:generic-api-key:219
 8ffb8a7d2c21315ef246f99800708070fef5e682:backend/pdf_images_test.go:generic-api-key:215
@@ -8,3 +9,63 @@ c3d9933a39c6a023369eee7cf438729eff77ec68:backend/pdf_images_test.go:generic-api-
 # Synthetic account action-token fixture; exact published history only.
 17ebe7ec81c3c1d1349f175769e77600a806f3d9:frontend/tests/accountSecurity.test.js:generic-api-key:38
 99ebd0280df0152061f4bb33ce6176dadfac67b6:frontend/tests/accountSecurity.test.js:generic-api-key:38
+
+# Reviewed source SHA-256 metadata in four frozen assist scale reports.
+# All 56 values were independently recomputed from their measured Git blobs.
+# Exact published commit:file:rule:line fingerprints only; no path/rule exemption.
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:133
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:150
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:157
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:164
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:188
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:216
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:217
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:230
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:309
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:313
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:80
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:89
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:98
+18a9b325129197551d3941dee227b7f5ab4d319d:docs/evidence/assist-publication-main-20261109/final-engineering-probe.json:generic-api-key:99
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:124
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:140
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:147
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:154
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:178
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:206
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:207
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:220
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:299
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:303
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:71
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:80
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:89
+acefd23b231ef5fc105f997b452058be170abde8:docs/evidence/assist-publication-main-20261109/full-schema-before-sql-optimization.json:generic-api-key:90
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:124
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:141
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:148
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:155
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:179
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:207
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:208
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:221
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:300
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:304
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:71
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:80
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:89
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/from-20k.json:generic-api-key:90
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:123
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:139
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:146
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:153
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:177
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:205
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:206
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:219
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:298
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:302
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:70
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:79
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:88
+f0d97336597f7ad1435920f94e0313b4008244cc:docs/evidence/assist-publication-main-20261109/old-sql-breakdown-20k.json:generic-api-key:89
