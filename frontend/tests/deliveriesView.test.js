@@ -47,7 +47,8 @@ function routeBindings() {
     eventsPage: { value: 1 },
     eventPages: { value: 1 },
     currentDelivery: { value: null },
-    nativeBatch: { value: null }
+    nativeBatch: { value: null },
+    nativeDeliveryEnabled: true
   }
 }
 

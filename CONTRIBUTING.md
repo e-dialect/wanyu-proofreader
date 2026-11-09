@@ -79,6 +79,11 @@ python3 backend/tests/run_integration.py upload_jobs_integration.mjs
 python3 backend/tests/run_integration.py task_leases_integration.mjs --race
 ```
 
+账户安全的完整生命周期使用专用 runner：`python3 backend/tests/run_account_security_integration.py`。
+它执行 API 套件后停掉临时后端，通过 stdin 恢复既有账号，再重启验证旧环境变量不能恢复密码或角色。
+CI 的 `account_security` 矩阵项明确调用此 runner；仅运行普通 `run_integration.py account_security_integration.mjs` 不覆盖离线恢复与重启。
+Docker 恢复包装器的停机/挂载/隔离守卫由 `scripts/test_recover_account.py` 验证；真实 Docker 恢复仍需独立维护演练。
+
 套件清单以 `backend/tests/suites.json` 为唯一来源，CI 矩阵由它生成。
 新增 `backend/tests/*_integration.mjs` 却忘记登记时，`check_test_inventory.py` 会让构建失败，
 避免文档、CI 与磁盘上的套件再次各说各话。

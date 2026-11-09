@@ -17,6 +17,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 
 	"github.com/pocketbase/pocketbase/tools/security"
 )
@@ -135,24 +136,50 @@ func (s *externalIdentityService) bind(c *core.RequestEvent) error {
 	if err != nil {
 		return err
 	}
-	created, err := s.bindIdentity(auth.Id, provider.ID(), subject)
-	if errors.Is(err, errIdentityOwned) {
-		return apis.NewApiError(http.StatusConflict, "该外部账号已绑定其他万语校坊账号。", nil)
-	}
-	if errors.Is(err, errProviderBound) {
-		return apis.NewApiError(http.StatusConflict, "当前万语校坊账号已绑定此身份来源的其他账号。", nil)
-	}
+	// Network profile/avatar work happens before the transaction. Once the
+	// original authentication generation is checked, no external IO can hold
+	// the write lock or cause a reread to adopt a revoked session's new key.
+	cached := cacheExternalProfile(c.Request.Context(), provider, subject, auth)
+	var user *core.Record
+	var token string
+	var created bool
+	err = s.app.RunInTransaction(func(tx core.App) error {
+		current, err := accountGeneration(tx, auth)
+		if err != nil {
+			return err
+		}
+		if current.GetBool("must_change_password") {
+			return apis.NewForbiddenError("请先修改初始密码。", nil)
+		}
+		scoped := *s
+		scoped.app = tx
+		created, err = scoped.bindIdentity(current.Id, provider.ID(), subject)
+		if err != nil {
+			return err
+		}
+		user = scoped.syncExternalProfile(c.Request.Context(), cached, subject, current)
+		token, err = user.NewAuthToken()
+		if err != nil {
+			return err
+		}
+		return appendSecurityEvent(tx, c, "account.external_bound", "success", current.Id, current.Id, "", map[string]any{"provider": provider.ID(), "created": created})
+	})
 	if err != nil {
+		recordSecurityFailure(s.app, c, "account.external_bound", auth.Id)
+		if errors.Is(err, errIdentityOwned) {
+			return apis.NewApiError(http.StatusConflict, "该外部账号已绑定其他万语校坊账号。", nil)
+		}
+		if errors.Is(err, errProviderBound) {
+			return apis.NewApiError(http.StatusConflict, "当前万语校坊账号已绑定此身份来源的其他账号。", nil)
+		}
+		var apiError *router.ApiError
+		if errors.As(err, &apiError) {
+			return err
+		}
 		s.logAuthResult(provider.ID(), "binding_error")
 		return apis.NewApiError(http.StatusInternalServerError, "暂时无法绑定外部账号，请稍后重试。", nil)
 	}
-
-	user := s.syncExternalProfile(c.Request.Context(), provider, subject, auth)
 	user.IgnoreEmailVisibility(true)
-	token, err := user.NewAuthToken()
-	if err != nil {
-		return err
-	}
 	s.logAuthResult(provider.ID(), "bound")
 	return c.JSON(http.StatusOK, map[string]any{
 		"provider": provider.ID(),
@@ -180,7 +207,7 @@ func (s *externalIdentityService) authenticateRequest(c *core.RequestEvent) (ext
 	if identity == "" || len(identity) > 200 || password == "" || len(password) > 1024 {
 		return nil, "", apis.NewBadRequestError("请输入有效的外部账号和密码。", nil)
 	}
-	if !s.allowAttempt(providerID, c.Get("fangjiClientIP").(string)) {
+	if limited, _ := c.Get("accountSecurityRateLimited").(bool); !limited && !s.allowAttempt(providerID, c.Get("fangjiClientIP").(string)) {
 		s.logAuthResult(providerID, "rate_limited")
 		return nil, "", apis.NewApiError(http.StatusTooManyRequests, "登录尝试过于频繁，请稍后再试。", nil)
 	}

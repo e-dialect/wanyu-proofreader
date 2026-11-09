@@ -2,14 +2,19 @@
 import { readFileSync, appendFileSync, writeFileSync } from 'node:fs'
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
 import assert from 'node:assert/strict'
+import { phaseAt, randomFor, sleep } from './capacity_profile.mjs'
+import { createHash } from 'node:crypto'
 const fixture = JSON.parse(readFileSync(process.env.CAPACITY_FIXTURE, 'utf8'))
 const { base, project, actors, duration, output, seed } = fixture
+assert.equal(fixture.disposable, true)
+assert.equal(actors.filter((actor) => actor.transport === 'browser').length, 2)
 assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/)
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-let randomState = seed >>> 0
-const random = () => (randomState = (1664525 * randomState + 1013904223) >>> 0) / 4294967296
-const samples = [],
-  endAt = performance.now() + duration * 1000
+const samples = []
+const endAt = fixture.start_epoch_ms + duration * 1000
+const startedCpu = process.cpuUsage(),
+  generatorStarted = performance.now()
+const active = (actor) => actor.vu < phaseAt(fixture).active
+const remaining = () => Math.max(0, endAt - Date.now())
 const delay = monitorEventLoopDelay({ resolution: 10 })
 delay.enable()
 async function request(
@@ -33,19 +38,40 @@ async function request(
       signal: AbortSignal.timeout(30000)
     })
     status = response.status
-    const value = binary ? await response.arrayBuffer() : await response.json().catch(() => null)
-    if (!allowed.includes(status)) throw Error(`unexpected_status_${status}`)
+    let value
+    if (binary) {
+      let bytes = 0
+      for await (const chunk of response.body) bytes += chunk.length
+      value = { bytes }
+    } else value = await response.json().catch(() => null)
+    if (!allowed.includes(status)) {
+      console.error('capacity_operation_refused', operation, status, value?.message || '')
+      throw Error(`unexpected_status_${status}`)
+    }
     ok = true
     return value
   } finally {
-    const record = { vu: actor.vu, operation, status, ok, duration_ms: performance.now() - start }
+    const record = {
+      vu: actor.vu,
+      operation,
+      phase: phaseAt(fixture).name,
+      at_ms: Date.now(),
+      status,
+      ok,
+      duration_ms: performance.now() - start
+    }
     samples.push(record)
     appendFileSync(output + '/requests.jsonl', JSON.stringify(record) + '\n')
   }
 }
 async function proofreader(actor) {
   let count = 0
-  while (performance.now() < endAt) {
+  const random = randomFor(seed, actor.vu)
+  while (remaining() > 0) {
+    if (!active(actor)) {
+      await sleep(100)
+      continue
+    }
     try {
       const claim = await request(actor, 'claim', `/api/fangji/projects/${project}/claim`, {
         method: 'POST',
@@ -65,9 +91,13 @@ async function proofreader(actor) {
       )
       const row = JSON.parse(task.ocr_row_json || claim.ocr_row_json || '{}')
       const think =
-        duration < 180 ? 100 : random() < 0.2 ? 120000 + random() * 60000 : 30000 + random() * 30000
-      await sleep(Math.min(think, Math.max(0, endAt - performance.now())))
-      if (performance.now() >= endAt) break
+        fixture.profile === 'smoke'
+          ? 3000
+          : random() < 0.2
+            ? 120000 + random() * 60000
+            : 30000 + random() * 30000
+      await sleep(Math.min(think, remaining()))
+      if (!remaining()) break
       if (think >= 120000)
         await request(actor, 'renew', `/api/fangji/pages/${claim.id}/lease/renew`, {
           method: 'POST',
@@ -99,7 +129,12 @@ async function proofreader(actor) {
 }
 async function manager(actor) {
   let count = 0
-  while (performance.now() < endAt) {
+  const random = randomFor(seed, actor.vu)
+  while (remaining() > 0) {
+    if (!active(actor)) {
+      await sleep(100)
+      continue
+    }
     try {
       const list = await request(
         actor,
@@ -144,6 +179,7 @@ async function manager(actor) {
             method: 'POST',
             body: {
               rowJson: JSON.stringify(row),
+              sourceChecked: true,
               selections,
               judgments,
               basis: view.context.basis
@@ -153,10 +189,7 @@ async function manager(actor) {
         }
       } else {
         await request(actor, 'field_summary', `/api/fangji/projects/${project}/field-error-summary`)
-        if (++count === 2 && actor.vu === actors.at(-1).vu)
-          await request(actor, 'export', `/api/fangji/projects/${project}/export?format=csv`, {
-            binary: true
-          })
+        count++
       }
     } catch {
       appendFileSync(
@@ -166,18 +199,109 @@ async function manager(actor) {
     }
     await sleep(
       Math.min(
-        duration < 180 ? 500 : actor.role === 'arbitrator' ? 45000 + random() * 30000 : 30000,
-        Math.max(0, endAt - performance.now())
+        fixture.profile === 'smoke'
+          ? 500
+          : actor.role === 'arbitrator'
+            ? 45000 + random() * 30000
+            : 30000,
+        remaining()
       )
     )
   }
 }
-await Promise.all(
-  actors.map(async (actor, index) => {
-    await sleep(duration < 180 ? index * 20 : index * 1000)
-    return actor.role === 'proofreader' ? proofreader(actor) : manager(actor)
-  })
-)
+async function background() {
+  const actor = actors.at(-1)
+  while (remaining() && phaseAt(fixture).name !== 'steady') await sleep(50)
+  if (!remaining()) return
+  const result = { csv: { status: 'not_run' }, slow_export: { status: 'not_run' } }
+  await Promise.all([
+    (async () => {
+      try {
+        const body = new FormData()
+        const rows = [
+          'PDF页码,词条,记音',
+          ...Array.from(
+            { length: fixture.parallel_import_rows },
+            (_, i) => `1,虚构并发条目${i},ia̤̍h`
+          )
+        ]
+        body.set(
+          'file',
+          new Blob([rows.join('\n')], { type: 'text/csv' }),
+          'synthetic-parallel.csv'
+        )
+        const job = await request(
+          actor,
+          'parallel_import',
+          `/api/fangji/projects/${fixture.secondary_project}/imports/csv`,
+          { method: 'POST', body, allowed: [202] }
+        )
+        const deadline = Date.now() + Math.max(30000, remaining())
+        let current
+        do {
+          current = await request(
+            actor,
+            'parallel_import_status',
+            `/api/collections/import_jobs/records/${job.id}`
+          )
+          if (['completed', 'completed_with_errors', 'failed'].includes(current.status)) break
+          await sleep(500)
+        } while (Date.now() < deadline)
+        result.csv = {
+          status:
+            current.status === 'completed' && current.success_count === fixture.parallel_import_rows
+              ? 'pass'
+              : 'fail',
+          expected: fixture.parallel_import_rows,
+          imported: current.success_count,
+          failed: current.failed_count
+        }
+      } catch {
+        result.csv = { status: 'fail', reason: 'parallel_import_failed' }
+      }
+    })(),
+    (async () => {
+      const started = performance.now()
+      let bytes = 0
+      try {
+        const response = await fetch(base + `/api/fangji/projects/${project}/export?format=csv`, {
+          headers: { Authorization: actor.token },
+          signal: AbortSignal.timeout(Math.max(120000, duration * 1000))
+        })
+        assert.equal(response.status, 200)
+        const digest = createHash('sha256'),
+          reader = response.body.getReader()
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          bytes += value.byteLength
+          digest.update(value)
+          await sleep((bytes / (1024 * 1024)) * 1000 - (performance.now() - started))
+        }
+        const elapsed = performance.now() - started
+        result.slow_export = {
+          status: bytes > 0 && (bytes / elapsed) * 1000 <= 1024 * 1024 * 1.03 ? 'pass' : 'fail',
+          bytes,
+          elapsed_ms: elapsed,
+          bytes_per_second: (bytes / elapsed) * 1000,
+          limit_bytes_per_second: 1024 * 1024,
+          sha256: digest.digest('hex'),
+          method: 'stream reader paced at 1 MiB/s; no material retained'
+        }
+      } catch {
+        result.slow_export = { status: 'fail', bytes, reason: 'slow_export_failed' }
+      }
+    })()
+  ])
+  writeFileSync(output + '/background.json', JSON.stringify(result, null, 2))
+}
+await sleep(fixture.start_epoch_ms - Date.now())
+await Promise.all([
+  ...actors
+    .filter((actor) => actor.transport !== 'browser')
+    .map((actor) => (actor.role === 'proofreader' ? proofreader(actor) : manager(actor))),
+  background()
+])
 delay.disable()
 const thresholds = {
   claim: 800,
@@ -214,9 +338,12 @@ writeFileSync(
       seed,
       operations,
       generator_event_loop_p95_ms: generatorP95,
+      generator_cpu_percent_one_core:
+        (process.cpuUsage(startedCpu).user + process.cpuUsage(startedCpu).system) /
+        ((performance.now() - generatorStarted) * 10),
       acceptance_profile: duration >= 3600 ? 'full' : 'smoke',
       limitations: [
-        'Browser visible timing, slow download, parallel import and fault cases require acceptance runner; HTTP smoke does not certify them.'
+        'Fixture setup is not measured import throughput; browser and aggregate acceptance are reported separately.'
       ]
     },
     null,

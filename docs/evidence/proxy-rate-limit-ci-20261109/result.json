@@ -1,0 +1,84 @@
+{
+  "status": "pass",
+  "tested_at_utc": "2026-11-09T02:00:18Z",
+  "source_base": "0991fab18b8e80c27744a707fa1614dbd34528ab",
+  "tested_script_sha256": "4e6e9082e6d8857fe9d991eec68da30b5780b099b2c06809c481f2cc6a1685fc",
+  "backend_image": {
+    "id": "sha256:3646f7aba7fe4c696fdee8c96d02507df136a2962b5095d28fcd9f7fbb42c93d",
+    "oci_revision": "8de31fa4b9d37184bc7b511a60039090379aac16",
+    "version": "maturity-local-final",
+    "user": "10001:10001",
+    "runtime_equivalence": "git diff 8de31fa..0991fab backend contains only capacity fixture/test files; production backend source unchanged"
+  },
+  "frontend_image": {
+    "id": "sha256:54df68e6962121b3639386c9e0c6a5263ab97de10ca73e2f0d07bc5f738d7bc9",
+    "local_tag": "wanyu-maturity-frontend:f354550",
+    "oci_revision": null,
+    "user": "nginx",
+    "boundary": "No OCI revision label. Inspected Nginx config, entrypoint, admin fragments match repository; HTTP/font/security contracts tested against this exact image, not a newly built top UI."
+  },
+  "command": "PROXY_TEST_SUBNET=198.18.0.0/24 PROXY_TEST_BACKEND_IMAGE=sha256:3646f7aba7fe4c696fdee8c96d02507df136a2962b5095d28fcd9f7fbb42c93d PROXY_TEST_FRONTEND_IMAGE=sha256:54df68e6962121b3639386c9e0c6a5263ab97de10ca73e2f0d07bc5f738d7bc9 sh frontend/tests/proxyRateLimit.e2e.sh",
+  "exit_code": 0,
+  "run_id": "20261109T020018Z-9005",
+  "metrics": {
+    "status": "pass",
+    "requestCount": 134,
+    "ipAllowed": 120,
+    "ipBlocked": 1,
+    "independentClient": true,
+    "identityAllowedAcrossIPs": 10,
+    "identityBlocked": 1,
+    "independentIdentity": true,
+    "forgedForwardingAndInternalHeadersIgnored": true,
+    "ipWindowMs": 239,
+    "identityWindowMs": 21
+  },
+  "additional_checks": [
+    "immutable bundles/fonts/cache/304/404/security headers",
+    "closed admin UI serves static legacy bridge only with strict CSP/no-store/no-referrer",
+    "enabled admin UI relative308 redirect, UI/assets, protected API401/403"
+  ],
+  "cleanup": {
+    "status": "pass",
+    "remaining_labeled_containers": 0,
+    "remaining_labeled_networks": 0,
+    "persistent_volumes_created": 0
+  },
+  "preparatory_failures": [
+    {
+      "stage": "network creation",
+      "reason": "Docker default address pools exhausted",
+      "exit_code": 1,
+      "cleanup": "pass",
+      "remedy": "Explicit non-overlapping198.18.0.0/24; no other network removed"
+    },
+    {
+      "stage": "internal network",
+      "reason": "OrbStack internal network did not publish required loopback port",
+      "exit_code": 1,
+      "cleanup": "pass",
+      "remedy": "Dedicated bridge network, random loopback port; external identity target remains own127.0.0.1:1"
+    },
+    {
+      "stage": "existing admin URL assertion",
+      "reason": "Rate checks passed but obsolete disabled /_ expected404, actual protected static bridge200",
+      "exit_code": 1,
+      "cleanup": "pass",
+      "remedy": "Assert existing legacy bridge HTML/headers and closed descendants, no runtime change"
+    }
+  ],
+  "boundaries": [
+    "Synthetic unavailable-provider target at backend loopback127.0.0.1:1 produces502; no actual identity provider or production request.",
+    "Different client addresses are authoritative X-Real-IP values supplied through the configured trusted edge fixture; not separate physical hosts.",
+    "No production rate-limit, client-IP trust, or application code changed.",
+    "Local isolated correctness check only; not formal capacity, deployment, or a full current-stack rebuild."
+  ],
+  "stdout": [
+    "Proxy test images: backend=sha256:3646f7aba7fe4c696fdee8c96d02507df136a2962b5095d28fcd9f7fbb42c93d frontend=sha256:54df68e6962121b3639386c9e0c6a5263ab97de10ca73e2f0d07bc5f738d7bc9 run=20261109T020018Z-9005",
+    "PASS: runtime URL, immutable bundles/fonts, cache, 304, 404 and security headers",
+    "{\"status\":\"pass\",\"requestCount\":134,\"ipAllowed\":120,\"ipBlocked\":1,\"independentClient\":true,\"identityAllowedAcrossIPs\":10,\"identityBlocked\":1,\"independentIdentity\":true,\"forgedForwardingAndInternalHeadersIgnored\":true,\"ipWindowMs\":239,\"identityWindowMs\":21}",
+    "PASS: closed administrator UI serves only the protected static account-link bridge",
+    "PocketBase administrator UI: disabled paths, relative HTTPS-safe redirect, UI/assets and protected API checks passed.",
+    "Proxy test cleanup: run=20261109T020018Z-9005 exit=0"
+  ]
+}

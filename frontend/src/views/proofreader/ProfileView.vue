@@ -25,21 +25,10 @@
             :disabled="savingProfile"
           />
         </AppField>
-        <AppField
-          ><template #label>邮箱（选填）</template>
-          <input
-            id="profile-email"
-            v-model.trim="profile.email"
-            class="form-control"
-            type="email"
-            autocomplete="email"
-            maxlength="255"
-            :disabled="savingProfile"
-          />
-          <p class="text-sm text-muted mt-1">
-            修改邮箱后将标记为未验证。个人资料仅保存在万语校坊，不会修改外部账号。
-          </p>
-        </AppField>
+        <p class="text-sm text-muted mb-4">
+          邮箱：{{ auth.user?.email || '尚未设置' }}
+          <RouterLink to="/account/security">账户安全与本机草稿</RouterLink>
+        </p>
         <div v-if="profileError" class="alert alert-error mb-4" role="alert">
           {{ profileError }}
         </div>
@@ -255,7 +244,7 @@ async function saveProfile() {
   }
   savingProfile.value = true
   try {
-    const record = await updateProfile({ name: profile.name.trim(), email: profile.email.trim() })
+    const record = await updateProfile({ name: profile.name.trim() })
     profile.name = record.name || ''
     profile.email = record.email || ''
     profileSuccess.value = '个人资料已保存'

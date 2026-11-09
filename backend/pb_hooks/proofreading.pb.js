@@ -572,7 +572,9 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/arbitration`, (c) => {
   if (!proofCanManage(dao, project, auth)) throw new ForbiddenError("你没有管理该项目的权限")
   const verificationMode = c.request.url.query().get("mode") === "verification"
   if (page.getString("status") !== "arbitration" && !(verificationMode && ["approved", "proofread"].includes(page.getString("status")))) {
-    throw new BadRequestError("该条目当前不需要仲裁")
+    const conflict = new ApiError(409, "该条目当前不需要仲裁，请刷新待处理列表")
+    conflict.data.reasonCode = "ARBITRATION_STATE_CHANGED"
+    throw conflict
   }
 
   const round = page.getInt("proofread_round") || 1
@@ -655,7 +657,9 @@ routerAdd("POST", `${FANGJI_API}/pages/{pageId}/arbitrate`, (c) => {
     const project = txDao.findRecordById("projects", page.getString("project"))
     if (!proofCanManage(txDao, project, auth)) throw new ForbiddenError("你没有管理该项目的权限")
     if (page.getString("status") !== "arbitration") {
-      throw new BadRequestError("该条目当前不需要仲裁")
+      const conflict = new ApiError(409, "该条目已由其他管理员处理，请刷新待处理列表")
+      conflict.data.reasonCode = "ARBITRATION_STATE_CHANGED"
+      throw conflict
     }
 
     const validatedRow = validateSubmittedRow(body.rowJson, page)

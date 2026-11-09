@@ -10,16 +10,40 @@
       <form @submit.prevent="submit">
         <label class="form-group">
           <span class="form-label">当前初始密码</span>
-          <input v-model="form.currentPassword" type="password" class="form-control" autocomplete="current-password" required />
+          <input
+            v-model="form.currentPassword"
+            type="password"
+            class="form-control"
+            autocomplete="current-password"
+            required
+          />
         </label>
         <label class="form-group">
           <span class="form-label">新密码</span>
-          <input v-model="form.newPassword" type="password" class="form-control" autocomplete="new-password" minlength="10" maxlength="200" required />
-          <small class="text-muted">至少 10 个字符，请勿继续使用初始密码。</small>
+          <input
+            v-model="form.newPassword"
+            type="password"
+            class="form-control"
+            autocomplete="new-password"
+            minlength="10"
+            maxlength="71"
+            required
+          />
+          <small class="text-muted"
+            >10–71 个字符，UTF-8 编码不超过 72 字节。请勿继续使用初始密码。</small
+          >
         </label>
         <label class="form-group">
           <span class="form-label">确认新密码</span>
-          <input v-model="form.newPasswordConfirm" type="password" class="form-control" autocomplete="new-password" minlength="10" maxlength="200" required />
+          <input
+            v-model="form.newPasswordConfirm"
+            type="password"
+            class="form-control"
+            autocomplete="new-password"
+            minlength="10"
+            maxlength="71"
+            required
+          />
         </label>
         <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
         <button class="btn btn-primary btn-block btn-lg" :disabled="saving || !canSubmit">
@@ -42,11 +66,12 @@ const auth = useAuthStore()
 const saving = ref(false)
 const error = ref('')
 const form = reactive({ currentPassword: '', newPassword: '', newPasswordConfirm: '' })
-const canSubmit = computed(() => (
-  form.currentPassword &&
-  form.newPassword.length >= 10 &&
-  form.newPassword === form.newPasswordConfirm
-))
+const canSubmit = computed(
+  () =>
+    form.currentPassword &&
+    form.newPassword.length >= 10 &&
+    form.newPassword === form.newPasswordConfirm
+)
 
 async function submit() {
   if (!canSubmit.value || saving.value) return

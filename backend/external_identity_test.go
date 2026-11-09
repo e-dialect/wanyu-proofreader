@@ -25,6 +25,7 @@ func newExternalIdentityTestService(t *testing.T) (*externalIdentityService, *po
 	t.Helper()
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.16.0.0/12")
 	app := newSchemaTestApp(t)
+	addSecurityEventTestCollection(t, app)
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		t.Fatal(err)

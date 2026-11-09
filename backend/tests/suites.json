@@ -216,5 +216,11 @@
     "ci_matrix": false,
     "ci_runner": "run_ocr_runtime_integration.py",
     "note": "Disposable controlled worker and two backend restarts; no external OCR provider."
+  },
+  {
+    "suite": "account_security_integration.mjs",
+    "ci_matrix": true,
+    "ci_runner": "run_account_security_integration.py",
+    "note": "Includes offline stdin recovery and a restart to verify bootstrap never resets existing credentials or roles."
   }
 ]
