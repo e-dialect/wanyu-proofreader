@@ -1,3 +1,4 @@
+import { jobObserverScope } from './helpers/jobObserverScope.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -16,6 +17,7 @@ function evaluate(path, names, overrides = {}) {
     : source
   const cleanup = []
   const scope = {
+    ...jobObserverScope(cleanup),
     ref,
     reactive,
     computed,

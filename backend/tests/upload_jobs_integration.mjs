@@ -204,7 +204,12 @@ try {
   assert.equal(inspection.min_pdf_page, 1)
   assert.equal(inspection.max_pdf_page, 120)
   assert.deepEqual(inspection.headers, ['entry_id', 'page', '词条', '释义'])
-  assert.equal(inspection.preview.length, 5)
+  assert.equal(inspection.preview.length, 20)
+  assert.equal(inspection.preview_limit, 20)
+  assert.equal(inspection.preview_kind, 'first_valid_rows')
+  assert.equal(inspection.preview_locations.length, 20)
+  assert.deepEqual(inspection.preview_locations[0], { csv_line: 2, pdf_page: 1 })
+  assert.deepEqual(inspection.preview_locations[19], { csv_line: 21, pdf_page: 2 })
 
   const preflightErrors = await request(
     `/api/collections/import_job_errors/records?filter=${encodeURIComponent(`job="${inspectedJob.id}"`)}`,

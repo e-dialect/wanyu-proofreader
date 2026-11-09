@@ -1,3 +1,4 @@
+import { jobObserverScope } from './helpers/jobObserverScope.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -36,6 +37,7 @@ function fixture(request, decide = async () => {}) {
     .split('</script>')[0]
     .replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*;?\n/gm, '')
   const scope = {
+    ...jobObserverScope(cleanup),
     ref,
     computed,
     defineProps: () => ({ projectId: 'project' }),

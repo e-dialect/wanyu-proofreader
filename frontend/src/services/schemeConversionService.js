@@ -21,6 +21,16 @@ export async function listConversions(projectId) {
   })
 }
 
+export async function getConversion(projectId, jobId, { signal } = {}) {
+  return pb.send(
+    `/api/fangji/projects/${encodeURIComponent(projectId)}/conversions/${encodeURIComponent(jobId)}`,
+    {
+      requestKey: null,
+      signal
+    }
+  )
+}
+
 export async function listNormalizations(
   projectId,
   { status = 'AMBIGUOUS', page = 1, perPage = 10 } = {}

@@ -218,7 +218,10 @@ async function main() {
     await picker.selectOption(source.logical_id)
     await chooseCsv()
     await page.getByRole('button', { name: '检查 CSV', exact: true }).click()
-    await page.getByText('CSV 检查完成', { exact: true }).waitFor()
+    await page
+      .getByRole('region', { name: 'CSV 导入状态', exact: true })
+      .getByText('检查完成，待确认', { exact: true })
+      .waitFor()
     await page
       .getByText('本次实际来源：', { exact: false })
       .filter({ hasText: source.title })
@@ -240,9 +243,15 @@ async function main() {
     )
     const refresh = page.getByRole('button', { name: '刷新检查与导入进度', exact: true })
     await refresh.click()
-    await page.locator('.alert-error[role="alert"]').waitFor()
+    await page
+      .getByRole('region', { name: 'CSV 导入状态', exact: true })
+      .getByRole('alert')
+      .waitFor()
     await refresh.click()
-    await page.locator('.alert-error[role="alert"]').waitFor({ state: 'hidden' })
+    await page
+      .getByRole('region', { name: 'CSV 导入状态', exact: true })
+      .getByRole('alert')
+      .waitFor({ state: 'hidden' })
     await mismatch.waitFor()
     const confirmCsv = page.getByRole('button', { name: '确认导入', exact: true })
     await confirmCsv.waitFor()
@@ -257,7 +266,10 @@ async function main() {
     )
     await confirmCsv.click()
     assert.ok((await commit).ok())
-    await page.getByText('导入完成', { exact: true }).waitFor()
+    await page
+      .getByRole('region', { name: 'CSV 导入状态', exact: true })
+      .getByText('处理完成', { exact: true })
+      .waitFor()
     const savedCsv = await api(`/api/collections/import_jobs/records/${csvJob.id}`, {
       token: auth.token
     })

@@ -8,8 +8,8 @@
     <div class="alert mb-4" role="note">
       <strong>创建后如何准备文件？</strong>
       <p class="text-sm mt-2">
-        可仅上传 PDF（原文预览；启用本地 OCR 后可另行识别）、仅导入 CSV（可校对但没有原文预览），
-        或先上传 PDF 再预检 CSV（推荐，条目会固定关联预检时的 PDF）。
+        可仅上传 PDF（原文预览；启用本地文字层提取后可另行提取；不支持扫描页）、仅导入
+        CSV（可校对但没有原文预览）， 或先上传 PDF 再预检 CSV（推荐，条目会固定关联预检时的 PDF）。
       </p>
       <RouterLink class="text-sm" to="/admin/guide/project-files">
         查看完整的 PDF、CSV 和校对页面说明

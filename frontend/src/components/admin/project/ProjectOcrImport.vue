@@ -1,13 +1,13 @@
 <template>
-  <section aria-labelledby="project-ocr-title">
-    <h4 id="project-ocr-title" class="font-semibold mb-2">OCR 识别</h4>
+  <section ref="panelElement" aria-labelledby="project-ocr-title">
+    <h4 id="project-ocr-title" class="font-semibold mb-2">提取 PDF 文字层</h4>
     <p class="text-sm text-muted mb-3">
       读取主 PDF
       中不含图像、可映射的单栏纯文字层页面；含扫描图或装饰图的页当前不生成识别条目。按单栏逐行生成「原文」字段，不推测词头、记音或释义。请对照
       PDF 修正后再校对。
     </p>
     <div class="grid-2">
-      <AppField label="OCR 起始页"
+      <AppField label="提取起始页"
         ><input
           v-model="startPage"
           type="number"
@@ -15,7 +15,7 @@
           class="form-control"
           :disabled="running || startUnknown"
       /></AppField>
-      <AppField label="OCR 结束页"
+      <AppField label="提取结束页"
         ><input
           v-model="endPage"
           type="number"
@@ -28,13 +28,15 @@
       页码为 PDF 物理页码，单次最多 200
       页。扫描引擎的难字安全评测尚未通过；文字层中的记音、上标和缺字也需对照原文核对。再次识别会创建新批次，不覆盖已有条目。
     </p>
-    <button
-      class="btn btn-secondary"
+    <AppButton
+      variant="secondary"
       :disabled="running || loadingLatest || startUnknown"
       @click="startRecognition"
+      :loading="starting"
+      loading-label="正在提交"
     >
-      {{ running ? '识别进行中…' : '发起识别' }}
-    </button>
+      {{ running ? '提取进行中…' : '提取文字层' }}
+    </AppButton>
     <AppStatusPanel
       v-if="error"
       class="mt-2 preserve-line-breaks"
@@ -44,7 +46,14 @@
       :busy="starting"
       @retry="confirmStart"
     />
-    <div v-if="job" class="import-job-card mt-3" aria-live="polite">
+    <JobStatusPanel
+      v-if="jobTarget"
+      label="文字层提取"
+      kind="ocr"
+      :observation="observation"
+      @retry="retryJob"
+    />
+    <div v-if="job" class="import-job-card mt-3">
       <strong>{{ statusLabel }}</strong>
       <p class="text-sm text-muted">作业 {{ job.id }}</p>
       <p v-if="position" class="text-sm">
@@ -54,7 +63,6 @@
           >尚未完成的首个物理页：第 {{ position.nextPage }} 页（以已保存进度为准）。</span
         >
       </p>
-      <progress :value="progress" max="100" aria-label="OCR 已处理页数进度"></progress>
       <p class="text-sm">
         已处理 {{ job.processed_count || 0 }} / {{ job.total_count || 0 }} 页；成功
         {{ job.success_count || 0 }} 页，失败 {{ job.failed_count || 0 }} 页。
@@ -69,30 +77,27 @@
       <a v-if="published && result.rows" href="#project-entries">查看条目预览并修正</a>
       <div v-if="result.artifacts?.length" class="mt-2">
         <p class="text-sm">原始文字、坐标和识别状态保存在受权限保护的中间产物中：</p>
-        <button
+        <AppButton
           v-for="artifact in result.artifacts"
           :key="artifact.id"
-          class="btn btn-quiet btn-sm"
+          variant="ghost"
+          size="sm"
           :disabled="Boolean(downloading)"
           @click="downloadArtifact(artifact)"
         >
           下载第 {{ artifact.page }} 页原始 JSON
-        </button>
+        </AppButton>
       </div>
-      <button
-        v-if="pollError && running"
-        class="btn btn-secondary btn-sm mt-2"
-        @click="resumePolling"
-      >
-        重新读取作业状态
-      </button>
     </div>
   </section>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import AppButton from '@/components/AppButton.vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppField from '@/components/AppField.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import JobStatusPanel from '@/components/admin/project/JobStatusPanel.vue'
+import { useJobObserver } from '@/composables/useJobObserver'
 import {
   getImportJob,
   latestOcrJob,
@@ -100,7 +105,7 @@ import {
   fetchOcrArtifact
 } from '@/services/importJobsService'
 import { downloadText } from '@/lib/downloadText'
-import { ocrProgress, parseOcrObject, validateOcrRange } from '@/lib/ocrJob'
+import { parseOcrObject, validateOcrRange } from '@/lib/ocrJob'
 import { ocrJobPosition } from '@/lib/ocrJobPosition'
 import { currentUserId } from '@/services/authService'
 import {
@@ -116,17 +121,28 @@ const pendingStart = ref(null)
 const startUnknown = ref(false)
 const startPage = ref(1),
   endPage = ref(1)
-const job = ref(null),
-  error = ref(''),
+const panelElement = ref(null)
+const jobTarget = ref(null)
+const {
+  snapshot: job,
+  observation,
+  retry: retryJob,
+  seed: seedJob
+} = useJobObserver({
+  projectId: () => props.projectId,
+  kind: 'ocr',
+  job: jobTarget,
+  panel: panelElement,
+  read: getImportJob
+})
+const error = ref(''),
   loadingLatest = ref(true),
   starting = ref(false),
-  pollError = ref(false),
   downloading = ref('')
 const running = computed(
   () => starting.value || ['queued', 'processing'].includes(job.value?.status)
 )
 const published = computed(() => ['completed', 'completed_with_errors'].includes(job.value?.status))
-const progress = computed(() => ocrProgress(job.value))
 const position = computed(() => ocrJobPosition(job.value))
 const result = computed(() => parseOcrObject(job.value?.ocr_result_json))
 const statusLabel = computed(
@@ -139,14 +155,10 @@ const statusLabel = computed(
       failed: '识别失败'
     })[job.value?.status] || '未开始'
 )
-let generation = 0,
-  timer,
-  disposed = false
+let disposed = false
 const controller = new AbortController()
 onBeforeUnmount(() => {
   disposed = true
-  generation++
-  clearTimeout(timer)
   controller.abort()
 })
 onMounted(async () => {
@@ -162,8 +174,8 @@ onMounted(async () => {
     }
     const latest = await latestOcrJob(props.projectId, { signal: controller.signal })
     if (disposed) return
-    job.value = latest
-    if (running.value) resumePolling()
+    jobTarget.value = latest
+    if (latest) seedJob(latest)
   } catch (failure) {
     if (!disposed) error.value = getPbMessage(failure, '读取上次识别作业失败，可重新发起。')
   } finally {
@@ -199,7 +211,8 @@ async function confirmStart() {
   try {
     const created = await startOcr(pendingStart.value)
     if (disposed) return
-    job.value = created
+    jobTarget.value = created
+    seedJob(created)
     startUnknown.value = false
     pendingStart.value = null
     try {
@@ -207,7 +220,6 @@ async function confirmStart() {
     } catch {
       /* Retained keys remain safe: the server returns the original job. */
     }
-    resumePolling()
   } catch (failure) {
     if (disposed) return
     if ([400, 422].includes(getPbStatus(failure))) {
@@ -228,29 +240,17 @@ async function confirmStart() {
   }
 }
 
-function resumePolling() {
-  clearTimeout(timer)
-  const current = ++generation
-  pollError.value = false
-  error.value = ''
-  const tick = async () => {
-    try {
-      const updated = await getImportJob(job.value.id, { signal: controller.signal })
-      if (disposed || current !== generation) return
-      job.value = updated
-      if (['queued', 'processing'].includes(updated.status)) timer = setTimeout(tick, 1000)
-      else emit('changed')
-    } catch (failure) {
-      if (disposed || current !== generation) return
-      pollError.value = true
-      error.value = getPbMessage(
-        failure,
-        '暂时无法读取作业状态；识别仍可能在后台进行，请重试状态读取。'
-      )
-    }
+watch(
+  () => [job.value?.id, job.value?.status],
+  ([id, status], previous) => {
+    if (
+      id &&
+      ['completed', 'completed_with_errors', 'failed'].includes(status) &&
+      (id !== previous?.[0] || status !== previous?.[1])
+    )
+      emit('changed')
   }
-  tick()
-}
+)
 async function downloadArtifact(artifact) {
   downloading.value = artifact.id
   error.value = ''
