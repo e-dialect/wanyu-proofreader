@@ -57,66 +57,35 @@ onRecordUpdateRequest((e) => {
 // 校对端形状：{ hints: [{field, kind, severity, message:{key,params}, highlight, evidence}] }
 // 已按 gate 与 severity 过滤：off 档一条不给，info 永不给。响应里不含 round / 轮次线索。
 routerAdd("GET", "/api/fangji/pages/{pageId}/findings", (c) => {
-  const { assertId: proofAssertId, canManage: proofCanManage, canProofread: proofCanProofread, project: proofProject } =
-    require(`${__hooks}/lib/project_access.js`)
-  const { ownProofreadAttempt: proofOwnAttempt } = require(`${__hooks}/lib/proofreading_workflow.js`)
-  const { hintsForPage: proofHintsForPage } = require(`${__hooks}/lib/findings.js`)
-
-  const auth = c.auth
-  if (auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
-
-  const pageId = proofAssertId(c.request.pathValue("pageId"), "条目")
-  let page = null
-  try {
-    page = $app.findRecordById("pages", pageId)
-  } catch {
-    throw new NotFoundError("条目不存在")
-  }
-  const projectId = page.getString("project")
-  const manager = proofCanManage($app, proofProject($app, projectId), auth)
-  if (!manager && !proofCanProofread($app, projectId, auth)) {
-    throw new ForbiddenError("你不是该项目的成员")
-  }
-  // 校对员只能拿到自己当前轮真正在手的条目：与 GET /task 同一套判定，
-  // 否则任何人只要猜到 pageId 就能读到别人条目的疑点。
-  if (!manager) {
-    const active = page.getString("proofreader") === auth.id
-      && ["claimed", "proofreading"].includes(page.getString("status"))
-    if (!active && !proofOwnAttempt($app, page, auth.id)) {
-      throw new ForbiddenError("该条目当前不在你手上")
+  const result = require(`${__hooks}/lib/assist_read_consistency.js`).pageResponse($app, c.request.pathValue("pageId"), c.auth, ({ page, actor }) => {
+    const result = require(`${__hooks}/lib/findings.js`).hintsForPage($app, page.id)
+    const research = require(`${__hooks}/lib/source_research.js`).presentationFor($app, page, actor.id)
+    if (research) {
+      result.hints = research.presentation.hints
+      result.suppressed_by_gate = research.presentation.display.hint_policy === "explicit_research_release" ? 0 : research.presentation.production_suppressed
+      result.research = research
     }
-  }
-
-  // hintsForPage 一并返回 truncated：条目上一旦超过上限，
-  // 校对端必须知道自己看到的是被截断的，而不是"这条真没问题"。
-  const result = proofHintsForPage($app, pageId)
-  const research = require(`${__hooks}/lib/source_research.js`).presentationFor($app, page, auth.id)
-  if (research) {
-    result.hints = research.presentation.hints
-    result.suppressed_by_gate = research.presentation.display.hint_policy === "explicit_research_release" ? 0 : research.presentation.production_suppressed
-    result.research = research
-  }
-  return c.json(200, { page: pageId, ...result })
+    return { page: page.id, ...result }
+  }, ({ page, manager, actor }) => {
+    // Preserve this endpoint's narrower access: a draft/report alone does not
+    // grant findings access. Apply the same check again before returning.
+    if (!manager) {
+      const active = page.getString("proofreader") === actor.id && ["claimed", "proofreading"].includes(page.getString("status"))
+      if (!active && !require(`${__hooks}/lib/proofreading_workflow.js`).ownProofreadAttempt($app, page, actor.id)) throw new ForbiddenError("该条目当前不在你手上")
+    }
+  })
+  return c.json(200, result)
 }, $apis.requireAuth("users"))
 
 // GET /api/fangji/projects/{projectId}/findings
 // 管理端统计口：不做门控过滤，info 与 off 档照样可见（门槛文件 §2 的
 // 「仍计算、仍写库、只在管理端统计」靠这个读取口才成立）。manager 专属。
 routerAdd("GET", "/api/fangji/projects/{projectId}/findings", (c) => {
-  const { assertId: proofAssertId, requireManager: proofRequireManager } = require(`${__hooks}/lib/project_access.js`)
-  const { listForProject: proofListForProject } = require(`${__hooks}/lib/findings.js`)
-
-  const auth = c.auth
-  if (auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
-
-  const projectId = proofAssertId(c.request.pathValue("projectId"), "项目")
-  proofRequireManager($app, projectId, auth)
-
+  const projectId = require(`${__hooks}/lib/project_access.js`).assertId(c.request.pathValue("projectId"), "项目")
   const query = c.request.url.query()
-  return c.json(200, proofListForProject($app, projectId, {
-    page: query.get("page"),
-    per: query.get("per"),
-    kind: query.get("kind"),
-    producer: query.get("producer")
-  }))
+  const result = require(`${__hooks}/lib/assist_read_consistency.js`).projectResponse($app, projectId, c.auth, () =>
+    require(`${__hooks}/lib/findings.js`).listForProject($app, projectId, {
+      page: query.get("page"), per: query.get("per"), kind: query.get("kind"), producer: query.get("producer")
+    }))
+  return c.json(200, result)
 }, $apis.requireAuth("users"))

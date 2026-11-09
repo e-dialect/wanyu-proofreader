@@ -1,0 +1,39 @@
+{
+  "baseline": "5ffddc3c22222392dc750a47b31d9a42b75b5a37",
+  "scope": "synthetic_complete_response_publication_consistency",
+  "schema_changed": false,
+  "writer_changed": false,
+  "deployed": false,
+  "ordinary": {
+    "command": "GOMAXPROCS=2 go test -C backend . -run '^TestAssist(ReadConsistency|Visibility)$' -count=1 -timeout=90s",
+    "result": "pass",
+    "reported_seconds": 3.472
+  },
+  "race": {
+    "command": "GOMAXPROCS=2 go test -C backend -race . -run '^TestAssistReadConsistency$' -count=1 -timeout=120s",
+    "result": "pass",
+    "reported_seconds": 35.083
+  },
+  "static": {
+    "node_check": "pass (four JavaScript files)",
+    "diff_check": "pass"
+  },
+  "barrier": "real read-connection query boundary; real Save + retirement + publication transaction commits before the same response completes",
+  "error_contract": {
+    "changed": 409,
+    "reasonCode": "ASSIST_READ_CHANGED",
+    "revocation_precedence": [
+      401,
+      403
+    ],
+    "partial_payload": false,
+    "automatic_retries": 0
+  },
+  "limitations": [
+    "No general database snapshot for untracked human-event/draft/report changes.",
+    "No frozen pagination across separate HTTP requests.",
+    "No production, formal capacity, 15-minute fault or browser acceptance in this patch.",
+    "Functional checks shared machine resources; elapsed times are not performance evidence.",
+    "Final race may overlap the start/preparation of a separate old-SQL diagnostic probe; no precise UTC start/end was captured."
+  ]
+}
