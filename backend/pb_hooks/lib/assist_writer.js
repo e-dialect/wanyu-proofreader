@@ -4,8 +4,8 @@
 // 只标同 producer 是有意的——规则重算不该把 OCR(#125) 或 bundle_import(#124) 的
 // 疑点一起下线，三类生产者各有各的批次生命周期。
 //
-// 这里全部走 DAO（$app.save），不经过 API，因此 #176 的 onRecordUpdateRequest
-// 只覆写守卫不会拦它；对应地，本文件只允许两种写：插入、以及把 superseded_at 从空改成非空。
+// 新 finding/event 仍普通 DAO Save 并执行验证/hooks；publication 模块只对私有
+// 派生表与明确白名单页面字段使用受控 SQL。旧 finding 正文和 superseded_at 不改写。
 
 // 依赖在函数内 require：仓内 lib 之间的互相引用一律发生在调用期，
 // 顶层 require 在本机 JSVM 没有先例（.pb.js 的顶层绑定在回调里读不到）。
@@ -58,13 +58,13 @@ const PRODUCER = "rule"
 // 条目游标：每次读 PAGE_SCAN_CHUNK 条，翻完为止——#177 与 #178 都要求 10k 行项目能全量跑通，
 // 所以这里**不能有硬上限**：一个 PAGE_SCAN_CAP 常数会把超出部分静默丢掉，报告仍然写得像
 // "算完了"，而按 project 全量下线会让第 5001 条往后的当前批次被标 superseded 却没有新批次
-// 替换（#208 评审阻断 2）。现在只有两种结局：整批扫完，或在**任何写入之前**抛错拒算；
-// 规模上限因此由耗时决定，代码里只留一条内存保险丝。
+// 替换（#208 评审阻断 2）。现在只有两种结局：整批准备并原子发布，或明确拒绝且保留
+// 上一完整结果；拒绝时可能保留不可见私有 stage 供有界清理。行数和字节预算都不截断输入。
 const PAGE_SCAN_CHUNK = 1000
 // 通用分块读取的块大小。
 const READ_CHUNK = 1000
 // 内存保险丝，不是正确性上限：命中它就抛错，已落库的疑点一条都不动。
-// 实测：10k 行项目端到端 6.1 s（backend/tests/measure_identity_scale.py）。
+// 当前完整迁移/全部 hooks 的规模结果见 assist-publication-main 证据；旧6.1s夹具不代表现实现。
 const PROJECT_SCAN_REFUSAL = 50000
 // 下线旧批次时的读取块大小（见 retire）。
 const RETIRE_CHUNK = 1000
@@ -214,6 +214,7 @@ function insertFinding(dao, collection, page, row, at, producerVersion, contextF
   return record
 }
 
+// 旧分块 helper 保留兼容回归；当前发布路径不调用它，而使用私有退休证明。
 // 逐块下线，读到空为止。
 //
 // 为什么不是"一次读 10 万条然后遍历"：那是 #208 评审阻断 2 的镜像形状。读满上限之后
