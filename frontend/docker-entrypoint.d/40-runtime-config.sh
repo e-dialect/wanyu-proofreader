@@ -63,6 +63,16 @@ FANGJI_RUNTIME_BACKEND_URL="$backend_url" awk 'BEGIN {
   echo "Invalid frontend backend URL; expected an HTTP(S) URL without whitespace or control characters." >&2
   exit 1
 }
+case "${FANGJI_TELEMETRY_ENABLED:-0}" in
+  0|1) ;;
+  *) echo "FANGJI_TELEMETRY_ENABLED must be 0 or 1" >&2; exit 1 ;;
+esac
+case "${FANGJI_BUILD_SHA:-unknown}" in
+  ''|*[!A-Za-z0-9._:-]*) echo "Invalid build identifier" >&2; exit 1 ;;
+esac
+if [ "${FANGJI_TELEMETRY_ENABLED:-0}" = 1 ]; then telemetry_value=true; else telemetry_value=false; fi
+printf 'globalThis.__FANGJI_TELEMETRY_ENABLED__ = %s;\n' "$telemetry_value" >> "$temporary_config"
+printf 'globalThis.__FANGJI_BUILD_SHA__ = "%s";\n' "${FANGJI_BUILD_SHA:-unknown}" >> "$temporary_config"
 chmod 644 "$temporary_config"
 mv -f "$temporary_config" "$runtime_config"
 trap - EXIT HUP INT TERM

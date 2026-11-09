@@ -17,6 +17,7 @@ var (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
 	log.Printf("fangji backend %s (commit %s, built %s)", version, commit, buildDate)
 	app := pocketbase.New()
 
@@ -59,6 +60,7 @@ func main() {
 	}
 
 	importer := newImportService(app)
+	registerObservability(app, importer)
 	importer.register()
 	importer.registerOCR()
 	importer.registerPDFPreview()

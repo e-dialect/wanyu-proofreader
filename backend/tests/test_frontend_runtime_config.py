@@ -36,14 +36,14 @@ class RuntimeConfigTest(unittest.TestCase):
         self.script = self.root / 'entrypoint.sh'
         self.script.write_text(script)
 
-    def run_config(self, value, fallback=''):
+    def run_config(self, value, fallback='', extra=None):
         return subprocess.run(['sh', str(self.script)], env={**os.environ,
             'VITE_BACKEND_URL': value, 'PB_URL': fallback,
-            'ENABLE_POCKETBASE_ADMIN_UI': 'false', 'TRUSTED_PROXY_CIDRS': '127.0.0.1/32'},
+            'ENABLE_POCKETBASE_ADMIN_UI': 'false', 'TRUSTED_PROXY_CIDRS': '127.0.0.1/32', **(extra or {})},
             text=True, capture_output=True, timeout=10)
 
     def configured_url(self):
-        source = (self.html / 'runtime-config.js').read_text()
+        source = (self.html / 'runtime-config.js').read_text().splitlines()[0]
         return json.loads(source.removeprefix('globalThis.__FANGJI_BACKEND_URL__ = ').rstrip(';\n'))
 
     def test_restart_changes_address_and_empty_restores_origin_without_changing_bundles(self):
@@ -66,6 +66,19 @@ class RuntimeConfigTest(unittest.TestCase):
             text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), value)
+
+    def test_telemetry_flags_are_atomic_and_not_javascript_injection(self):
+        result = self.run_config('', extra={'FANGJI_TELEMETRY_ENABLED': '1', 'FANGJI_BUILD_SHA': 'abc123'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        before = (self.html / 'runtime-config.js').read_text()
+        result = subprocess.run(['node', '--input-type=module', '-e',
+            'import vm from "node:vm"; const context={}; vm.runInNewContext(' + json.dumps(before) +
+            ',context); console.log(JSON.stringify([context.__FANGJI_TELEMETRY_ENABLED__,context.__FANGJI_BUILD_SHA__]));'],
+            text=True, capture_output=True, timeout=10)
+        self.assertEqual(json.loads(result.stdout), [True, 'abc123'])
+        for extra in [{'FANGJI_TELEMETRY_ENABLED': 'yes'}, {'FANGJI_BUILD_SHA': 'bad";alert(1)'}]:
+            self.assertNotEqual(self.run_config('', extra=extra).returncode, 0)
+            self.assertEqual((self.html / 'runtime-config.js').read_text(), before)
 
     def test_invalid_value_fails_without_publishing_partial_config(self):
         self.assertEqual(self.run_config('https://valid.example.test').returncode, 0)

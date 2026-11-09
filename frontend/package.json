@@ -17,7 +17,8 @@
     "pocketbase": "0.28.2",
     "reka-ui": "2.11.0",
     "vue": "^3.5.45",
-    "vue-router": "^5.4.0"
+    "vue-router": "^5.4.0",
+    "web-vitals": "6.2.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

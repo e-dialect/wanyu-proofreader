@@ -42,6 +42,47 @@ COPY scheme/ ./scheme/   # 行尾注释
         text = 'COPY --from=builder /out/pocketbase /pb/pocketbase\nCOPY pb_hooks/     /pb/pb_hooks/'
         self.assertEqual(guard.copied_dirs(text), set())
 
+    def test_wrong_destination_does_not_supply_the_expected_path(self):
+        self.assertEqual(guard.copied_dirs('COPY pb_hooks/ ./other/'), set())
+
+
+class BuilderTestAssetsTests(unittest.TestCase):
+    def test_complete_hooks_before_tests_pass(self):
+        copied = guard.builder_test_copies('''
+FROM golang:alpine AS builder
+COPY pb_hooks/ ./pb_hooks/
+RUN go test ./...
+FROM alpine
+''')
+        self.assertEqual(guard.test_asset_problems(copied), [])
+
+    def test_lib_only_and_runtime_copy_do_not_supply_routes(self):
+        copied = guard.builder_test_copies('''
+FROM golang:alpine AS builder
+COPY pb_hooks/lib/ ./pb_hooks/lib/
+RUN go test ./...
+FROM alpine
+COPY pb_hooks/ ./pb_hooks/
+''')
+        self.assertEqual(copied, {'pb_hooks/lib'})
+        self.assertIn('404', guard.test_asset_problems(copied)[0])
+
+    def test_copy_after_tests_is_too_late(self):
+        copied = guard.builder_test_copies('''
+FROM golang:alpine AS builder
+RUN go test ./...
+COPY pb_hooks/ ./pb_hooks/
+''')
+        self.assertTrue(guard.test_asset_problems(copied))
+
+    def test_other_stage_or_missing_test_does_not_count(self):
+        for text in [
+            'FROM golang AS other\nCOPY pb_hooks/ ./pb_hooks/\nRUN go test ./...',
+            'FROM golang AS builder\nCOPY pb_hooks/ ./pb_hooks/',
+        ]:
+            with self.subTest(text=text):
+                self.assertTrue(guard.test_asset_problems(guard.builder_test_copies(text)))
+
 
 class ProblemsTests(unittest.TestCase):
     def test_reports_a_package_that_is_not_copied(self):
@@ -56,7 +97,8 @@ class ProblemsTests(unittest.TestCase):
 
 class RepositoryIsCleanTests(unittest.TestCase):
     def test_the_repository_passes_its_own_guard(self):
-        found = guard.problems(guard.go_package_dirs(), guard.copied_dirs(guard.DOCKERFILE.read_text(encoding='utf-8')))
+        copied = guard.builder_test_copies(guard.DOCKERFILE.read_text(encoding='utf-8'))
+        found = guard.problems(guard.go_package_dirs(), copied) + guard.test_asset_problems(copied)
         self.assertEqual(found, [], f'仓库当前没有通过自己的守卫：{found}')
 
 

@@ -13,6 +13,8 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=512m
     environment:
+      - ACCOUNT_EMAIL_ACTIONS_ENABLED=${ACCOUNT_EMAIL_ACTIONS_ENABLED:-false}
+      - FANGJI_TELEMETRY_ENABLED=${FANGJI_TELEMETRY_ENABLED:-0}
       - APP_ADMIN_EMAIL=${APP_ADMIN_EMAIL:-}
       - APP_ADMIN_PASSWORD=${APP_ADMIN_PASSWORD:-}
       - APP_ADMIN_NAME=${APP_ADMIN_NAME:-管理员}
@@ -56,6 +58,8 @@ services:
       - "traefik.http.middlewares.fangji-security.headers.forcestsheader=false"
       - "traefik.http.services.fangji.loadbalancer.server.port=8080"
     environment:
+      - FANGJI_TELEMETRY_ENABLED=${FANGJI_TELEMETRY_ENABLED:-0}
+      - FANGJI_BUILD_SHA=${FANGJI_COMMIT:-unknown}
       - VITE_BACKEND_URL=${BACKEND_URL:-}
       - ENABLE_POCKETBASE_ADMIN_UI=${ENABLE_POCKETBASE_ADMIN_UI:-true}
       - TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:-172.16.0.0/12}

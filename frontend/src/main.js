@@ -6,6 +6,7 @@ import { refreshStoredAuth } from '@/services/authService'
 import { documentTitleFor } from '@/lib/pageTitle'
 import { shouldFocusMainLandmark } from '@/lib/routeFocus'
 import { focusMainLandmark } from '@/lib/mainLandmark'
+import { startTelemetry } from '@/services/telemetryService'
 import './style.css'
 import './workbench.css'
 import './styles/ui-components.css'
@@ -24,6 +25,8 @@ async function bootstrap() {
   app.use(createPinia())
   app.use(router)
   app.mount('#app')
+  await router.isReady()
+  startTelemetry(router)
   await nextTick()
   focusMainLandmark()
 }
