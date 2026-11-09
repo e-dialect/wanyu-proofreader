@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "checks": {
+    "sameTickFlushAndRetainedAccountDrafts": true,
+    "unchangedEditorKeepsAnotherTabUniqueDraft": true,
+    "cancelRestoresEditorFocusAndSelection": true,
+    "draftStorageFailureBlocksVoluntaryLogout": true,
+    "accountReplacementInvalidatesOpenConfirmation": true,
+    "forcedSessionClearBypassesDraftConfirmation": true,
+    "localDataNavigationKeepsSessionAndDraft": true
+  }
+}

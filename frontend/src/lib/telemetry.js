@@ -5,6 +5,7 @@ export function createTelemetryQueue({
   pageViewId,
   buildSha = 'dev',
   entryRoute = 'WorkspaceHome',
+  currentRoute = () => entryRoute,
   viewportClass = 'desktop'
 }) {
   const queue = new Map()
@@ -12,6 +13,7 @@ export function createTelemetryQueue({
   function record({ id, name, value, navigationType = 'navigate' }) {
     if (!enabled || disposed || !Number.isFinite(value) || value < 0) return
     if (!queue.has(id) && queue.size >= 20) queue.delete(queue.keys().next().value)
+    const businessRoute = navigationType === 'business' ? String(currentRoute() || 'Unknown') : ''
     queue.set(id, {
       schemaVersion: 1,
       pageViewId,
@@ -20,7 +22,12 @@ export function createTelemetryQueue({
       name,
       value,
       navigationType,
-      entryRoute,
+      entryRoute:
+        navigationType === 'business'
+          ? /^[A-Za-z0-9_]{1,80}$/.test(businessRoute)
+            ? businessRoute
+            : 'Unknown'
+          : entryRoute,
       viewportClass
     })
   }

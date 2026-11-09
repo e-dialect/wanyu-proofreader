@@ -94,6 +94,16 @@ and therefore in the existing CI mounted browser job; `--only repository` runs
 this regression alone. Native browser APIs are exercised; synthetic data does
 not establish human acceptance or real-language quality.
 
+`pdf-lifecycle.cjs` also runs in the `repository` group. It holds the first
+already-authorized blob read at a request barrier, then uses the real app to
+log out, leave the editor, or replace the account while the read is pending.
+The actual bundled PDF.js worker remains unmodified and every `pageerror`
+fails the scenario. It also checks ordinary canvas rendering/zoom, source-read
+failure, and invalid PDF feedback. `REVIEW_BASE_URL` selects the local fixture
+server; `PDF_LIFECYCLE_OUTPUT` selects the screenshot/report directory (default
+`output/playwright/pdf-lifecycle`). Cancellation is awaited explicitly; there
+is no fixed sleep or exception-message allowlist.
+
 `source-fidelity.cjs` runs in the same `repository` group using the real source
 workspace and App error boundary. Synthetic responses cover empty reports,
 empty/filtered review queues, clean-form refresh, preserved same-version drafts,
@@ -151,3 +161,6 @@ status panel and CSV controls with intercepted synthetic responses. It verifies 
 GETs, stale snapshots, hidden/offline recovery, token refresh/logout fencing, conversion
 progress without a fabricated denominator, read-only CSV20 and 390/1440px layout.
 Screenshots and the numeric receipt are in `output/playwright/job-observer/`.
+
+
+`--only delivery` 复用 delivery_integration.mjs 生成的真实临时实例，自动启动原生编选/交付深链与未保存保护浏览器回归；不依赖手工设置外部fixture。完整runner也会执行此组，输出位于output/playwright/frontend-quality/delivery。repository组包含主动退出七项检查：小于500ms的草稿同步保存、失败返回、切账号失效和唯一副本保留。

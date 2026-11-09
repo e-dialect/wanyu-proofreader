@@ -70,6 +70,7 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/volunteers/generate", (c) =>
   let projectName = ""
   const created = []
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const { project } = fangjiAccountsRequireManager(txDao, projectId, auth)
     projectName = project.getString("name")
     const conflicts = []

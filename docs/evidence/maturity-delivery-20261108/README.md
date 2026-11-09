@@ -19,7 +19,7 @@
 
 ## 工作区与读取 API
 
-- 编选 URL：`?batch=&tab=overview|exceptions|history&page=`；例外可加 `entry=`；已处理例外独立 `decidedPage=`。批次详情按 ID 请求，不依赖当前列表是否包含它。
+- 编选 URL：`?batch=&tab=overview|exceptions|history&page=`；例外使用 `exception=`（旧 `entry=` 链接仍兼容读取；选择或翻页统一写出 `exception` 并清除 `entry`）；已处理例外独立 `decidedPage=`。批次详情按 ID 请求，不依赖当前列表是否包含它。
 - 交付 URL：`?package=&tab=summary|events&page=`；准备入口 `?view=prepare&adoption=`。默认使用已确认编选批次，旧人工 JSON 交接入口折叠保留。
 - 新增交付 GET detail、GET events 分页；交付 list 带 page/perPage 时返回分页与全项目指标，不带分页参数时兼容旧 items/events 响应。
 - 编选例外和事件分页不再截断在 200；例外支持 GET `.../exceptions/{pageId}`。草稿使用已有 WorkspaceLeaveGuard，对路由 query、离页和卸载提供保护。

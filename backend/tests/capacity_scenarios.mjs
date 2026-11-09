@@ -4,6 +4,8 @@ import { performance, monitorEventLoopDelay } from 'node:perf_hooks'
 import assert from 'node:assert/strict'
 import { phaseAt, randomFor, sleep } from './capacity_profile.mjs'
 import { createHash } from 'node:crypto'
+import submissionHelpers from './capacity_submission.cjs'
+const { submissionEvidence } = submissionHelpers
 const fixture = JSON.parse(readFileSync(process.env.CAPACITY_FIXTURE, 'utf8'))
 const { base, project, actors, duration, output, seed } = fixture
 assert.equal(fixture.disposable, true)
@@ -26,15 +28,16 @@ async function request(
   const start = performance.now()
   let status = 0,
     ok = false
+  const form = body instanceof FormData
+  const wireBody = body ? (form ? body : JSON.stringify(body)) : undefined
   try {
-    const form = body instanceof FormData
     const response = await fetch(base + path, {
       method,
       headers: {
         Authorization: actor.token,
         ...(body && !form ? { 'Content-Type': 'application/json' } : {})
       },
-      body: body ? (form ? body : JSON.stringify(body)) : undefined,
+      body: wireBody,
       signal: AbortSignal.timeout(30000)
     })
     status = response.status
@@ -45,11 +48,21 @@ async function request(
       value = { bytes }
     } else value = await response.json().catch(() => null)
     if (!allowed.includes(status)) {
-      console.error('capacity_operation_refused', operation, status, value?.message || '')
+      appendFileSync(
+        output + '/http-errors-controlled.jsonl',
+        JSON.stringify({
+          operation,
+          status,
+          code: value?.code ?? null,
+          message: value?.message ?? null,
+          note: 'local synthetic error diagnosis only; no request body or authorization retained'
+        }) + '\n'
+      )
+      console.error('capacity_operation_refused', operation, status)
       throw Error(`unexpected_status_${status}`)
     }
     ok = true
-    return value
+    return status === 409 ? null : value
   } finally {
     const record = {
       vu: actor.vu,
@@ -59,6 +72,14 @@ async function request(
       status,
       ok,
       duration_ms: performance.now() - start
+    }
+    if (operation === 'submit' && ok && status >= 200 && status < 300) {
+      try {
+        record.submission = submissionEvidence(path, actor.record.id, JSON.parse(wireBody))
+      } catch {
+        // A missing digest fails reconciliation; never retain the body to diagnose it.
+        record.submission_evidence_error = 'invalid_submission_evidence'
+      }
     }
     samples.push(record)
     appendFileSync(output + '/requests.jsonl', JSON.stringify(record) + '\n')
@@ -146,9 +167,10 @@ async function manager(actor) {
         const item = await request(
           actor,
           'arbitration_read',
-          `/api/fangji/pages/${page.id}/arbitration`
+          `/api/fangji/pages/${page.id}/arbitration`,
+          { allowed: [200, 409] }
         )
-        if (item.attempts?.length) {
+        if (item?.attempts?.length) {
           const first = item.attempts[0],
             row = JSON.parse(first.row_json)
           const view = await request(
@@ -315,7 +337,10 @@ const thresholds = {
 }
 const operations = [...new Set(samples.map((s) => s.operation))].map((operation) => {
   const rows = samples.filter((s) => s.operation === operation),
-    v = rows.map((s) => s.duration_ms).sort((a, b) => a - b)
+    v = rows
+      .filter((s) => s.ok && s.status >= 200 && s.status < 300)
+      .map((s) => s.duration_ms)
+      .sort((a, b) => a - b)
   const percentile = (p) => v[Math.ceil(p * v.length) - 1]
   return {
     operation,
@@ -324,6 +349,7 @@ const operations = [...new Set(samples.map((s) => s.operation))].map((operation)
     p95: percentile(0.95),
     p99: percentile(0.99),
     unexpected: rows.filter((r) => !r.ok).length,
+    expected_conflicts: rows.filter((r) => r.ok && r.status === 409).length,
     threshold_pass: !(operation in thresholds) || percentile(0.95) <= thresholds[operation]
   }
 })

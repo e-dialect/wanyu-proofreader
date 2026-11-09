@@ -1,0 +1,656 @@
+{
+  "status": "fail",
+  "profile": "smoke",
+  "threshold_scope": "accelerated smoke phases",
+  "gates": [
+    {
+      "gate": "claim",
+      "status": "pass"
+    },
+    {
+      "gate": "submit",
+      "status": "fail"
+    },
+    {
+      "gate": "arbitrate",
+      "status": "fail"
+    },
+    {
+      "gate": "field_summary",
+      "status": "fail"
+    },
+    {
+      "gate": "pdf_descriptor",
+      "status": "pass"
+    },
+    {
+      "gate": "task",
+      "status": "pass"
+    },
+    {
+      "gate": "admin_pages",
+      "status": "fail"
+    },
+    {
+      "gate": "verification",
+      "status": "pass"
+    },
+    {
+      "gate": "unexpected_http_responses",
+      "status": "fail"
+    },
+    {
+      "gate": "unexpected_5xx_timeout_rate",
+      "status": "pass",
+      "actual": 0.0,
+      "limit": 0.001
+    },
+    {
+      "gate": "two_ui_actors_submit",
+      "status": "pass"
+    },
+    {
+      "gate": "two_ui_actors_read_source",
+      "status": "pass"
+    },
+    {
+      "gate": "submit_ack",
+      "status": "fail"
+    },
+    {
+      "gate": "LCP",
+      "status": "pass"
+    },
+    {
+      "gate": "INP",
+      "status": "pass"
+    },
+    {
+      "gate": "CLS",
+      "status": "pass"
+    },
+    {
+      "gate": "csv",
+      "status": "pass"
+    },
+    {
+      "gate": "slow_export",
+      "status": "pass"
+    },
+    {
+      "gate": "reconciliation",
+      "status": "pass"
+    },
+    {
+      "gate": "generators_exited",
+      "status": "pass"
+    },
+    {
+      "gate": "browser_errors",
+      "status": "pass"
+    }
+  ],
+  "http": [
+    {
+      "operation": "claim",
+      "samples": 192,
+      "p50_ms": 153.08686999999918,
+      "p95_ms": 778.2230010000021,
+      "p99_ms": 1042.2652630000011,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "pass"
+    },
+    {
+      "operation": "submit",
+      "samples": 187,
+      "p50_ms": 341.86736799999926,
+      "p95_ms": 1137.458068,
+      "p99_ms": 2061.2516480000013,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "fail"
+    },
+    {
+      "operation": "arbitrate",
+      "samples": 63,
+      "p50_ms": 440.2962609999995,
+      "p95_ms": 1397.4746149999992,
+      "p99_ms": 1762.4394350000002,
+      "p95_limit_ms": 800,
+      "p99_limit_ms": 2000,
+      "status": "fail"
+    },
+    {
+      "operation": "field_summary",
+      "samples": 24,
+      "p50_ms": 975.4705910000011,
+      "p95_ms": 1811.1945589999996,
+      "p99_ms": 2036.6003360000013,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "fail"
+    },
+    {
+      "operation": "pdf_descriptor",
+      "samples": 193,
+      "p50_ms": 3.694,
+      "p95_ms": 36.698,
+      "p99_ms": 55.965,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "task",
+      "samples": 194,
+      "p50_ms": 4.124626999999236,
+      "p95_ms": 21.3477469999998,
+      "p99_ms": 38.96038700000008,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    },
+    {
+      "operation": "admin_pages",
+      "samples": 89,
+      "p50_ms": 152.36846499999956,
+      "p95_ms": 573.6558640000003,
+      "p99_ms": 1090.7954969999992,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "fail"
+    },
+    {
+      "operation": "verification",
+      "samples": 258,
+      "p50_ms": 13.571733999997377,
+      "p95_ms": 50.05605399999695,
+      "p99_ms": 87.94021300000168,
+      "p95_limit_ms": 500,
+      "p99_limit_ms": null,
+      "status": "pass"
+    }
+  ],
+  "expected_conflicts": {
+    "verification": 0,
+    "submit": 0,
+    "parallel_import_status": 0,
+    "arbitration_read": 0,
+    "hall": 0,
+    "pdf_read": 0,
+    "task": 0,
+    "admin_pages": 0,
+    "claim": 0,
+    "arbitrate": 0,
+    "field_summary": 0,
+    "pdf_descriptor": 0,
+    "parallel_import": 0
+  },
+  "http_samples": 1444,
+  "source_visible": [
+    {
+      "operation": "source_visible",
+      "samples": 4,
+      "p50_ms": 830.593277,
+      "p95_ms": 929.5038159999986,
+      "p99_ms": 929.5038159999986,
+      "p95_limit_ms": 3000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "cold_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 2,
+      "p50_ms": 116.53381500000069,
+      "p95_ms": 116.9081129999995,
+      "p99_ms": 116.9081129999995,
+      "p95_limit_ms": 1000,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "hot_browser"
+    },
+    {
+      "operation": "source_visible",
+      "samples": 38,
+      "p50_ms": 943.8152610000034,
+      "p95_ms": 1524.7065970000003,
+      "p99_ms": 1528.2956909999994,
+      "p95_limit_ms": null,
+      "p99_limit_ms": null,
+      "status": "pass",
+      "cache_state": "unknown"
+    }
+  ],
+  "editor_ready_report_only": {
+    "operation": "editor_ready",
+    "samples": 40,
+    "p50_ms": 874.0760359999995,
+    "p95_ms": 1438.4212279999992,
+    "p99_ms": 1495.1447939999998,
+    "p95_limit_ms": null,
+    "p99_limit_ms": null,
+    "status": "pass"
+  },
+  "submit_ack": {
+    "operation": "submit_ack",
+    "samples": 39,
+    "p50_ms": 143.30150499999945,
+    "p95_ms": 1016.0763579999984,
+    "p99_ms": 1018.5986550000016,
+    "p95_limit_ms": 800,
+    "p99_limit_ms": null,
+    "status": "fail"
+  },
+  "web_vitals": [
+    {
+      "name": "LCP",
+      "samples": 6,
+      "p95": 884,
+      "limit": 2500,
+      "status": "pass"
+    },
+    {
+      "name": "INP",
+      "samples": 4,
+      "p95": 96,
+      "limit": 200,
+      "status": "pass"
+    },
+    {
+      "name": "CLS",
+      "samples": 6,
+      "p95": 0.07068874160075875,
+      "limit": 0.1,
+      "status": "pass"
+    }
+  ],
+  "generators": [
+    {
+      "kind": "summary.json",
+      "event_loop_p95_ms": 12.075007,
+      "cpu_percent_one_core": 5.966948383291293,
+      "errors": []
+    },
+    {
+      "kind": "browser-generator.json",
+      "event_loop_p95_ms": 12.058623,
+      "cpu_percent_one_core": 11.67201285729087,
+      "errors": []
+    }
+  ],
+  "background": {
+    "csv": {
+      "status": "pass",
+      "expected": 200,
+      "imported": 200,
+      "failed": 0
+    },
+    "slow_export": {
+      "status": "pass",
+      "bytes": 2144878,
+      "elapsed_ms": 2045.241864999999,
+      "bytes_per_second": 1048716.064689005,
+      "limit_bytes_per_second": 1048576,
+      "sha256": "e803e5f310de127419263ff8204407a5c22a731f28dc683cda03166f7cc6d826",
+      "method": "stream reader paced at 1 MiB/s; no material retained"
+    }
+  },
+  "cache_note": "Cold/hot identify evidenced browser resource-cache state only. Unknown requests are reported and cannot satisfy the hot/cold full gates.",
+  "resources": {
+    "sample_interval_seconds": 5,
+    "samples": 8,
+    "complete_samples": 8,
+    "sampling_status": "pass",
+    "resource_budget_status": "incomplete",
+    "cooldown_recovery_status": "incomplete",
+    "separate_generator_host": false,
+    "separate_generator_status": "incomplete",
+    "phases": {
+      "warmup": {
+        "server_rss_bytes": {
+          "samples": 1,
+          "first": 276824064,
+          "last": 276824064,
+          "peak": 276824064,
+          "delta": 0,
+          "per_second": null
+        },
+        "wal_bytes": {
+          "samples": 1,
+          "first": 200000000,
+          "last": 200000000,
+          "peak": 200000000,
+          "delta": 0,
+          "per_second": null
+        },
+        "data_directory_bytes": {
+          "samples": 1,
+          "first": 522950471,
+          "last": 522950471,
+          "peak": 522950471,
+          "delta": 0,
+          "per_second": null
+        },
+        "disk_free_bytes": {
+          "samples": 1,
+          "first": 61593681920,
+          "last": 61593681920,
+          "peak": 61593681920,
+          "delta": 0,
+          "per_second": null
+        },
+        "unfinished_jobs": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        },
+        "heap_bytes": {
+          "samples": 0
+        },
+        "queue_length": {
+          "samples": 0
+        },
+        "ocr_queue_length": {
+          "samples": 0
+        },
+        "image_queue_length": {
+          "samples": 0
+        }
+      },
+      "ramp": {
+        "server_rss_bytes": {
+          "samples": 0
+        },
+        "wal_bytes": {
+          "samples": 0
+        },
+        "data_directory_bytes": {
+          "samples": 0
+        },
+        "disk_free_bytes": {
+          "samples": 0
+        },
+        "unfinished_jobs": {
+          "samples": 0
+        },
+        "heap_bytes": {
+          "samples": 0
+        },
+        "queue_length": {
+          "samples": 0
+        },
+        "ocr_queue_length": {
+          "samples": 0
+        },
+        "image_queue_length": {
+          "samples": 0
+        }
+      },
+      "steady": {
+        "server_rss_bytes": {
+          "samples": 4,
+          "first": 413855744,
+          "last": 440037376,
+          "peak": 440037376,
+          "delta": 26181632,
+          "per_second": 1744860.5275790554
+        },
+        "wal_bytes": {
+          "samples": 4,
+          "first": 200000000,
+          "last": 200000000,
+          "peak": 200000000,
+          "delta": 0,
+          "per_second": 0.0
+        },
+        "data_directory_bytes": {
+          "samples": 4,
+          "first": 532295021,
+          "last": 563695991,
+          "peak": 563695991,
+          "delta": 31400970,
+          "per_second": 2092700.450479714
+        },
+        "disk_free_bytes": {
+          "samples": 4,
+          "first": 61584195584,
+          "last": 61538840576,
+          "peak": 61584195584,
+          "delta": -45355008,
+          "per_second": -3022659.671758899
+        },
+        "unfinished_jobs": {
+          "samples": 4,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": 0.0
+        },
+        "heap_bytes": {
+          "samples": 0
+        },
+        "queue_length": {
+          "samples": 0
+        },
+        "ocr_queue_length": {
+          "samples": 0
+        },
+        "image_queue_length": {
+          "samples": 0
+        }
+      },
+      "cooldown": {
+        "server_rss_bytes": {
+          "samples": 1,
+          "first": 456777728,
+          "last": 456777728,
+          "peak": 456777728,
+          "delta": 0,
+          "per_second": null
+        },
+        "wal_bytes": {
+          "samples": 1,
+          "first": 200000000,
+          "last": 200000000,
+          "peak": 200000000,
+          "delta": 0,
+          "per_second": null
+        },
+        "data_directory_bytes": {
+          "samples": 1,
+          "first": 574518272,
+          "last": 574518272,
+          "peak": 574518272,
+          "delta": 0,
+          "per_second": null
+        },
+        "disk_free_bytes": {
+          "samples": 1,
+          "first": 61528223744,
+          "last": 61528223744,
+          "peak": 61528223744,
+          "delta": 0,
+          "per_second": null
+        },
+        "unfinished_jobs": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        },
+        "heap_bytes": {
+          "samples": 1,
+          "first": 85812568,
+          "last": 85812568,
+          "peak": 85812568,
+          "delta": 0,
+          "per_second": null
+        },
+        "queue_length": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        },
+        "ocr_queue_length": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        },
+        "image_queue_length": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        }
+      },
+      "recovery": {
+        "server_rss_bytes": {
+          "samples": 1,
+          "first": 456982528,
+          "last": 456982528,
+          "peak": 456982528,
+          "delta": 0,
+          "per_second": null
+        },
+        "wal_bytes": {
+          "samples": 1,
+          "first": 200000000,
+          "last": 200000000,
+          "peak": 200000000,
+          "delta": 0,
+          "per_second": null
+        },
+        "data_directory_bytes": {
+          "samples": 1,
+          "first": 577248192,
+          "last": 577248192,
+          "peak": 577248192,
+          "delta": 0,
+          "per_second": null
+        },
+        "disk_free_bytes": {
+          "samples": 1,
+          "first": 61528928256,
+          "last": 61528928256,
+          "peak": 61528928256,
+          "delta": 0,
+          "per_second": null
+        },
+        "unfinished_jobs": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        },
+        "heap_bytes": {
+          "samples": 1,
+          "first": 85812568,
+          "last": 85812568,
+          "peak": 85812568,
+          "delta": 0,
+          "per_second": null
+        },
+        "queue_length": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        },
+        "ocr_queue_length": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        },
+        "image_queue_length": {
+          "samples": 1,
+          "first": 0,
+          "last": 0,
+          "peak": 0,
+          "delta": 0,
+          "per_second": null
+        }
+      }
+    },
+    "limitations": [
+      "RSS/WAL/disk/job counts sampled every 5 s; runtime heap and in-memory queue fields come from existing 30 s server samples.",
+      "Resource ceilings and recovery tolerance/dwell time have not been frozen, so measured trends do not manufacture a pass.",
+      "Server, HTTP generator and browser are on the same host. A separate-host remote harness is still required for formal capacity acceptance.",
+      "server_cpu_percent is ps process CPU; it is diagnostic and has no invented acceptance ceiling."
+    ]
+  },
+  "fixture": {
+    "entries_added": 1998,
+    "integrity": "ok",
+    "counts": {
+      "approved": 1001,
+      "arbitration": 401,
+      "pending": 298,
+      "proofreading": 300
+    },
+    "method": "offline cloning of real HTTP workflow templates; bulk setup is not submission throughput"
+  },
+  "pdf": {
+    "pages": 200,
+    "bytes": 21109735,
+    "sha256": "885df31a7ecace2f8c5e88c139e2afa7b92aa75c3184122817295c61cb700d5e",
+    "synthetic": true,
+    "payload": "200 separately embedded grayscale page images and visible fictional labels"
+  },
+  "storage_rollback_gate": {
+    "event_failure_rolls_back_attempt_events_and_page": true,
+    "retry_after_removing_failure_succeeds_once": true,
+    "eight_fields_trace_original_and_submitted_values": true,
+    "ordinary_response_hides_manager_event_history": true,
+    "nonmember_denied": true,
+    "two_actors_all_eight_fields_recorded": true,
+    "arbitration_attempt_A_attempt_B_and_custom_trace": true,
+    "arbitration_preserves_original_submissions": true,
+    "ordinary_response_hides_other_submission_and_final_values": true
+  },
+  "database_bytes": 287412224,
+  "repeat": 1,
+  "duration": 30,
+  "users": 30,
+  "browser_users": 2,
+  "phases": [
+    {
+      "name": "warmup",
+      "seconds": 2.5
+    },
+    {
+      "name": "ramp",
+      "seconds": 2.5
+    },
+    {
+      "name": "steady",
+      "seconds": 20.0
+    },
+    {
+      "name": "cooldown",
+      "seconds": 5.0
+    }
+  ]
+}

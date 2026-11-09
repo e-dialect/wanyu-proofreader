@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import capacity_report as report
+from capacity_resources import phase_at, trend
 
 
 class CapacityReportTest(unittest.TestCase):
@@ -32,6 +33,19 @@ class CapacityReportTest(unittest.TestCase):
             self.assertEqual(submit['samples'],1)
             self.assertEqual(submit['p95_ms'],10)
 
+    def test_expected_conflicts_are_not_fast_successes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);config=self.fixture(root)
+            with (root/'requests.jsonl').open('a') as out:
+                for _ in range(30):
+                    out.write(json.dumps({'vu':3,'operation':'arbitrate','duration_ms':1,'phase':'steady','status':409,'ok':True})+'\n')
+            result=report.summarize(root,config,{'pass':True},[0,0])
+            arbitration=next(row for row in result['http'] if row['operation']=='arbitrate')
+            self.assertEqual(arbitration['samples'],1)
+            self.assertEqual(arbitration['p95_ms'],10)
+            self.assertEqual(result['expected_conflicts']['arbitrate'],30)
+            self.assertEqual(result['status'],'pass')
+
     def test_unknown_cache_is_not_promoted_to_hot(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);config=self.fixture(root)
@@ -39,6 +53,13 @@ class CapacityReportTest(unittest.TestCase):
             result=report.summarize(root,config,{'pass':True},[0,0])
             self.assertEqual(result['status'],'incomplete')
             self.assertEqual(next(row for row in result['source_visible'] if row['cache_state']=='hot_browser')['samples'],0)
+
+    def test_resource_trends_preserve_missing_recovery_evidence(self):
+        config={'start_epoch_ms':1000,'phases':[{'name':'steady','seconds':10},{'name':'cooldown','seconds':5}]}
+        self.assertEqual(phase_at(config,12),'cooldown')
+        self.assertEqual(phase_at(config,16),'recovery')
+        self.assertEqual(trend([], 'rss'), {'samples':0})
+        self.assertEqual(trend([{'at_ms':0,'rss':100},{'at_ms':5000,'rss':150}], 'rss')['per_second'],10)
 
     def test_generator_saturation_invalidates_apparent_pass(self):
         with tempfile.TemporaryDirectory() as directory:

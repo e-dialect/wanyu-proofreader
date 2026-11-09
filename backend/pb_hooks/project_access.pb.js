@@ -111,6 +111,7 @@ routerAdd("POST", "/api/fangji/projects", (c) => {
 
   let result = null
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const capability = fangjiCreationCapability(txDao, auth)
     if (!capability.grantEnabled) throw new ForbiddenError("平台管理员尚未向你开放项目创建权限")
     if (!capability.canCreateProjects) throw new ForbiddenError("你已达到可创建项目的额度")
@@ -145,6 +146,7 @@ routerAdd("PATCH", "/api/fangji/projects/{projectId}", (c) => {
   }
   let result = null
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const { project } = fangjiRequireManager(txDao, projectId, auth)
     const name = String(body.name || "").trim()
     const description = String(body.description || "").trim()
@@ -200,6 +202,7 @@ routerAdd("DELETE", "/api/fangji/projects/{projectId}", (c) => {
   const auth = fangjiAuth(c)
   const projectId = fangjiAssertId(c.request.pathValue("projectId"), "项目")
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const { project } = fangjiRequireOwner(txDao, projectId, auth)
     txDao.delete(project)
     require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.deleted", auth.id, "", projectId)
@@ -216,6 +219,7 @@ routerAdd("PUT", "/api/fangji/projects/{projectId}/owner", (c) => {
   const nextOwnerId = fangjiAssertId(body.userId, "用户")
   let result = null
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const { project } = fangjiRequireOwner(txDao, projectId, auth)
     try { txDao.findRecordById("users", nextOwnerId) } catch { throw new NotFoundError("新所有者不存在") }
     const previousOwnerId = project.getString("admin")
@@ -256,6 +260,7 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/join", (c) => {
   let result = null
   let denial = null
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const project = fangjiProject(txDao, projectId)
     if (project.getString("admin") === auth.id) {
       result = fangjiProjectJson(txDao, project, auth)
@@ -364,6 +369,7 @@ routerAdd("PUT", "/api/fangji/projects/{projectId}/members/{userId}", (c) => {
   if (lookupTerm(body.candidateTerm)) consumeLookup($app, auth)
   let result = null
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const { project } = fangjiRequireManager(txDao, projectId, auth)
     if (project.getString("admin") === userId) throw new BadRequestError("项目所有者不能重复添加为成员")
     const { canAssignCandidate } = require(`${__hooks}/lib/member_candidates.js`)
@@ -392,6 +398,7 @@ routerAdd("DELETE", "/api/fangji/projects/{projectId}/members/{userId}", (c) => 
   const projectId = fangjiAssertId(c.request.pathValue("projectId"), "项目")
   const userId = fangjiAssertId(c.request.pathValue("userId"), "用户")
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
     const { project } = fangjiRequireManager(txDao, projectId, auth)
     if (project.getString("admin") === userId) throw new BadRequestError("不能移除项目所有者")
     const membership = fangjiMembership(txDao, projectId, userId)
@@ -428,6 +435,8 @@ routerAdd("PUT", "/api/fangji/platform/creator-grants/{userId}", (c) => {
   }
   let result = null
   $app.runInTransaction((txDao) => {
+    const auth = require(`${__hooks}/lib/project_access.js`).currentAuth(txDao, c.auth)
+    if (!fangjiIsPlatformAdmin(auth)) throw new ForbiddenError("只有平台管理员可以管理项目创建权限")
     let user = null
     try { user = txDao.findRecordById("users", userId) } catch { throw new NotFoundError("用户不存在") }
     if (fangjiIsPlatformAdmin(user)) throw new BadRequestError("平台管理员的创建权限始终有效且不限量")

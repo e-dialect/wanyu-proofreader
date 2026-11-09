@@ -1,0 +1,85 @@
+{
+  "synthetic": true,
+  "viewer_sha256": "d66c85ba7216accd79e1486797cd1545e433ac53c384d49b3e8e835a73492556",
+  "scenarios": [
+    {
+      "name": "pending-logout",
+      "pass": false,
+      "errors": [
+        {
+          "message": "Worker was terminated",
+          "stack": "Error: Worker was terminated\n    at ensureNotTerminated (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:1750)\n    at onFailure (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:10405)"
+        }
+      ],
+      "probe": {
+        "transport": "xhr",
+        "aborted": 1,
+        "headersRequested": true,
+        "workerTerminated": 1
+      },
+      "failure": "pending-logout: no browser exceptions\n+ actual - expected\n\n+ [\n+   {\n+     message: 'Worker was terminated',\n+     stack: 'Error: Worker was terminated\\n' +\n+       '    at ensureNotTerminated (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:1750)\\n' +\n+       '    at onFailure (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:10405)'\n+   }\n+ ]\n- []\n"
+    },
+    {
+      "name": "pending-route",
+      "pass": false,
+      "errors": [
+        {
+          "message": "Worker was terminated",
+          "stack": "Error: Worker was terminated\n    at ensureNotTerminated (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:1750)\n    at onFailure (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:10405)"
+        }
+      ],
+      "probe": {
+        "transport": "xhr",
+        "aborted": 1,
+        "headersRequested": true,
+        "workerTerminated": 1
+      },
+      "failure": "pending-route: no browser exceptions\n+ actual - expected\n\n+ [\n+   {\n+     message: 'Worker was terminated',\n+     stack: 'Error: Worker was terminated\\n' +\n+       '    at ensureNotTerminated (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:1750)\\n' +\n+       '    at onFailure (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:10405)'\n+   }\n+ ]\n- []\n"
+    },
+    {
+      "name": "pending-account",
+      "pass": false,
+      "errors": [
+        {
+          "message": "Worker was terminated",
+          "stack": "Error: Worker was terminated\n    at ensureNotTerminated (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:1750)\n    at onFailure (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:10405)"
+        }
+      ],
+      "probe": {
+        "transport": "xhr",
+        "aborted": 1,
+        "headersRequested": true,
+        "workerTerminated": 1
+      },
+      "failure": "pending-account: no browser exceptions\n+ actual - expected\n\n+ [\n+   {\n+     message: 'Worker was terminated',\n+     stack: 'Error: Worker was terminated\\n' +\n+       '    at ensureNotTerminated (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:1750)\\n' +\n+       '    at onFailure (http://127.0.0.1:5377/pdfjs/pdf.worker.min.js:22:10405)'\n+   }\n+ ]\n- []\n"
+    },
+    {
+      "name": "ordinary-reading",
+      "pass": true,
+      "errors": [],
+      "probe": null
+    },
+    {
+      "name": "source-read-failure",
+      "pass": true,
+      "errors": [],
+      "probe": {
+        "transport": "xhr",
+        "aborted": 0,
+        "headersRequested": true,
+        "workerTerminated": 0
+      }
+    },
+    {
+      "name": "invalid-pdf",
+      "pass": true,
+      "errors": [],
+      "probe": {
+        "transport": "xhr",
+        "aborted": 0,
+        "headersRequested": true,
+        "workerTerminated": 0
+      }
+    }
+  ]
+}

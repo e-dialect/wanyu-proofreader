@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
-	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/core"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/core"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // postSnapshotSelectFields 是本包的 SQL 查询会读、但由**初始快照之后**的迁移追加的列。
@@ -24,7 +26,9 @@ var postSnapshotSelectFields = []struct {
 	{Field: "difficulty_tier", Migration: "pb_migrations/1789113700_page_difficulty.js", Marker: "const TIERS = [", Values: []string{"A", "B", "C", "unknown"}},
 }
 
-func newSchemaTestApp(t testing.TB) *pocketbase.PocketBase {
+// newInitialSchemaTestApp preserves the original migration password settings.
+// Both schema helpers create their database exclusively inside t.TempDir().
+func newInitialSchemaTestApp(t testing.TB) *pocketbase.PocketBase {
 	t.Helper()
 	app := pocketbase.NewWithConfig(pocketbase.Config{DefaultDataDir: t.TempDir()})
 	if err := app.Bootstrap(); err != nil {
@@ -38,6 +42,26 @@ func newSchemaTestApp(t testing.TB) *pocketbase.PocketBase {
 	raw = raw[bytes.IndexByte(raw, '[') : bytes.LastIndex(raw, []byte("];"))+1]
 	if err := app.ImportCollectionsByMarshaledJSON(raw, false); err != nil {
 		t.Fatal(err)
+	}
+	return app
+}
+
+func newSchemaTestApp(t testing.TB) *pocketbase.PocketBase {
+	t.Helper()
+	app := newInitialSchemaTestApp(t)
+	// Only this _test.go fixture lowers bcrypt cost, on its own temporary
+	// database. Password hashing/verification still use real bcrypt. Production
+	// startup, migration files and HTTP full-migration suites never call this
+	// helper and retain their configured cost, checked separately below.
+	for _, name := range []string{"users", "_superusers"} {
+		collection, err := app.FindCollectionByNameOrId(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		collection.Fields.GetByName("password").(*core.PasswordField).Cost = bcrypt.MinCost
+		if err := app.Save(collection); err != nil {
+			t.Fatalf("set test-only %s password cost: %v", name, err)
+		}
 	}
 	pages, err := app.FindCollectionByNameOrId("pages")
 	if err != nil {
@@ -57,6 +81,56 @@ func newSchemaTestApp(t testing.TB) *pocketbase.PocketBase {
 		t.Fatalf("add post-snapshot pages fields: %v", err)
 	}
 	return app
+}
+
+func TestInitialSchemaRetainsProductionPasswordCost(t *testing.T) {
+	// Deliberately bypass newSchemaTestApp so a weakened migration cannot be
+	// hidden by the fixture override. Check actual hashes as well as settings.
+	app := newInitialSchemaTestApp(t)
+	for _, name := range []string{"users", "_superusers"} {
+		t.Run(name, func(t *testing.T) {
+			collection, err := app.FindCollectionByNameOrId(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cost := collection.Fields.GetByName("password").(*core.PasswordField).Cost
+			if cost == 0 {
+				cost = bcrypt.DefaultCost
+			}
+			if cost < bcrypt.DefaultCost {
+				t.Fatalf("production password cost=%d below bcrypt default=%d", cost, bcrypt.DefaultCost)
+			}
+			record := core.NewRecord(collection)
+			record.SetPassword("ProductionCostCheck123!")
+			hash := record.GetRaw("password").(*core.PasswordFieldValue).Hash
+			actual, err := bcrypt.Cost([]byte(hash))
+			if err != nil || actual != cost {
+				t.Fatalf("actual password hash cost=%d want=%d: %v", actual, cost, err)
+			}
+		})
+	}
+}
+
+func TestSchemaTestAppUsesRealMinimumCostBcrypt(t *testing.T) {
+	app := newSchemaTestApp(t)
+	for _, name := range []string{"users", "_superusers"} {
+		t.Run(name, func(t *testing.T) {
+			collection, err := app.FindCollectionByNameOrId(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			record := core.NewRecord(collection)
+			record.SetPassword("FixtureCostCheck123!")
+			hash := record.GetRaw("password").(*core.PasswordFieldValue).Hash
+			actual, err := bcrypt.Cost([]byte(hash))
+			if err != nil || actual != bcrypt.MinCost {
+				t.Fatalf("fixture password hash cost=%d want=%d: %v", actual, bcrypt.MinCost, err)
+			}
+			if !record.ValidatePassword("FixtureCostCheck123!") || record.ValidatePassword("wrong-password") {
+				t.Fatal("fixture must retain real password verification")
+			}
+		})
+	}
 }
 
 // TestPostSnapshotFieldsTrackTheirMigrations 从迁移文件源码里取出 TIERS 字面量，

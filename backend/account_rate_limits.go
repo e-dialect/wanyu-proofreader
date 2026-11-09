@@ -164,10 +164,8 @@ func registerAccountRateLimits(app core.App) {
 			}
 			c.Set("accountSecurityRateLimited", true)
 			err = c.Next()
-			if err != nil && (action == "login" || action == "external") && limiter.allow("audit-login-failure", 10, time.Minute) {
-				if auditErr := appendSecurityEvent(c.App, c, "auth.login_rejected", "failed", "", "", "", nil); auditErr != nil {
-					c.App.Logger().Error("security_audit_persist_failed", "event_type", "auth.login_rejected", "request_id", securityRequestID(c))
-				}
+			if err != nil && (action == "login" || action == "external") {
+				recordSecurityFailure(c.App, c, "auth.login_rejected", "")
 			}
 			return err
 		})

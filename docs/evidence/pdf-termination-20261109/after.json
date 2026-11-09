@@ -1,0 +1,69 @@
+{
+  "synthetic": true,
+  "viewer_sha256": "b7efd67e76ef65f3d8b7b4d0cd349123db9bafcc745d450386255faf7ab31a21",
+  "scenarios": [
+    {
+      "name": "pending-logout",
+      "pass": true,
+      "errors": [],
+      "probe": {
+        "transport": "fetch",
+        "aborted": 1,
+        "headersRequested": false,
+        "workerTerminated": 0
+      }
+    },
+    {
+      "name": "pending-route",
+      "pass": true,
+      "errors": [],
+      "probe": {
+        "transport": "fetch",
+        "aborted": 1,
+        "headersRequested": false,
+        "workerTerminated": 0
+      }
+    },
+    {
+      "name": "pending-account",
+      "pass": true,
+      "errors": [],
+      "probe": {
+        "transport": "fetch",
+        "aborted": 1,
+        "headersRequested": false,
+        "workerTerminated": 0
+      }
+    },
+    {
+      "name": "ordinary-reading",
+      "pass": true,
+      "errors": [],
+      "probe": null
+    },
+    {
+      "name": "source-read-failure",
+      "pass": true,
+      "errors": [],
+      "probe": {
+        "transport": "fetch",
+        "aborted": 0,
+        "headersRequested": false,
+        "workerTerminated": 0
+      }
+    },
+    {
+      "name": "invalid-pdf",
+      "pass": true,
+      "errors": [],
+      "probe": {
+        "transport": "fetch",
+        "aborted": 0,
+        "headersRequested": false,
+        "workerTerminated": 0
+      }
+    }
+  ],
+  "browser_version": "155.0.8059.40",
+  "playwright_version": "1.65.0"
+}
