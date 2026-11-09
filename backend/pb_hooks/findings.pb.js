@@ -3,6 +3,36 @@
 // #176 — 机器疑点的只读接口。集合 API 不给 list/view/create/update/delete 规则，
 // 校对端与管理端都只能走这两个路由，门控与盲校过滤才有唯一的落点。
 
+// Even a native superuser request cannot turn a staged payload into legacy data
+// or delete its publication marker. Internal Save/Delete paths retain control of
+// bounded abandoned-stage cleanup; normal project/page cascades remain legal.
+// Judgment projections intentionally index only human judgments. Keep the
+// publication relation exclusive to machine events even for internal Save.
+onRecordCreate((e) => {
+  if (e.record.getString("assist_publication") && e.record.getString("kind") !== "machine_analysis") throw new BadRequestError("只有机器分析事件可以暂存发布")
+  return e.next()
+}, "verification_events")
+onRecordUpdate((e) => {
+  if (e.record.getString("assist_publication") && e.record.getString("kind") !== "machine_analysis") throw new BadRequestError("只有机器分析事件可以暂存发布")
+  return e.next()
+}, "verification_events")
+onRecordCreateRequest(() => { throw new ForbiddenError("分析发布标记只能由发布流程创建") }, "assist_publications")
+onRecordUpdateRequest(() => { throw new ForbiddenError("分析发布标记不可通过记录 API 修改") }, "assist_publications")
+onRecordDeleteRequest(() => { throw new ForbiddenError("分析发布标记必须保留") }, "assist_publications")
+onRecordCreateRequest((e) => {
+  if (e.record.getString("assist_publication")) throw new ForbiddenError("分析发布载荷只能由发布流程创建")
+  return e.next()
+}, "review_findings", "verification_events")
+onRecordUpdateRequest((e) => {
+  const original = e.app.findRecordById(e.collection.name, e.record.id)
+  if (original.getString("assist_publication") !== e.record.getString("assist_publication")) throw new ForbiddenError("分析发布关系不可通过记录 API 修改")
+  return e.next()
+}, "verification_events")
+onRecordDeleteRequest((e) => {
+  if (e.record.getString("assist_publication")) throw new ForbiddenError("分析发布载荷不可通过记录 API 删除")
+  return e.next()
+}, "review_findings", "verification_events")
+
 onRecordUpdateRequest((e) => {
   const { IMMUTABLE_FINDING_FIELDS: FINDING_IMMUTABLE_FIELDS } = require(`${__hooks}/lib/findings.js`)
   // 只允许把旧批次标成 superseded_at，其余字段一律不可改。

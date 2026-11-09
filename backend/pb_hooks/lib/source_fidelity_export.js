@@ -1,4 +1,5 @@
 const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+const visibility = require(`${__hooks}/lib/assist_visibility.js`)
 function csvCell(value) {
   let text = String(value ?? "")
   if (/^[\t\r ]*[=+\-@]/.test(text)) text = "'" + text
@@ -28,7 +29,7 @@ function projectExport(dao, project, mode = "all") {
   const safeMeta = metadata.map(name => { let value = name; while (headers.includes(value)) value += "_"; return value })
   const csvRows = [safeMeta.concat(headers)]
   for (const item of selected) csvRows.push([item.id, item.pdf_page, item.completion.workflow_status, item.completion.business_complete ? "yes" : "no", item.value_source, item.completion.needs_review ? "yes" : "no", JSON.stringify(item.completion.source_judged_fields), "see_independent_research_records", item.completion.declaration, ...headers.map(field => item.row[field] ?? "")])
-  const events = fidelity.list(dao, "verification_events", `project = "${project}"`).map(fidelity.eventView)
+  const events = visibility.list(dao, "verification_events", $dbx.exp("project = {:project}", { project }), "created,id", "events").map(fidelity.eventView)
   const attempts = attemptsFor(dao, project)
   return { version: "source-fidelity-export-v1", mode, exported_at: new Date().toISOString(), metadata_columns: Object.fromEntries(metadata.map((name, i) => [name, safeMeta[i]])), selected_count: selected.length,
     csv: "\uFEFF" + csvRows.map(row => row.map(csvCell).join(",")).join("\r\n"),
@@ -38,7 +39,7 @@ function projectExport(dao, project, mode = "all") {
     reports: fidelity.list(dao, "problem_reports", `project = "${project}"`).map(row => ({ ...fidelity.reportView(dao, row), reporter: row.getString("reporter"), original_context: fidelity.parse(row.getString("context_json")) })),
     issues: fidelity.list(dao, "problem_issues", `project = "${project}"`).map(fidelity.issueView),
     drafts: fidelity.list(dao, "proofreading_drafts", `project = "${project}"`).map(row => ({ id: row.id, page: row.getString("page"), user: row.getString("user"), status: "unfinished_draft", row: fidelity.parse(row.getString("row_json")), incomplete: fidelity.parse(row.getString("incomplete_json"), []), actions: fidelity.parse(row.getString("actions_json"), []), context: fidelity.parse(row.getString("context_json")), at: String(row.get("updated")) })),
-    findings: fidelity.list(dao, "review_findings", `project = "${project}"`).map(row => ({ id: row.id, page: row.getString("page"), field: row.getString("field_name"), kind: row.getString("kind"), message_key: row.getString("message_key"), params: fidelity.parse(row.getString("params_json")), evidence: fidelity.parse(row.getString("evidence_json")), producer: row.getString("producer"), version: row.getString("producer_version"), produced_at: String(row.get("produced_at")), superseded_at: String(row.get("superseded_at")), context: fidelity.parse(row.getString("verification_context_json")) })),
+    findings: visibility.list(dao, "review_findings", $dbx.exp("project = {:project}", { project }), "created,id", "history").map(row => ({ id: row.id, page: row.getString("page"), field: row.getString("field_name"), kind: row.getString("kind"), message_key: row.getString("message_key"), params: fidelity.parse(row.getString("params_json")), evidence: fidelity.parse(row.getString("evidence_json")), producer: row.getString("producer"), version: row.getString("producer_version"), produced_at: String(row.get("produced_at")), superseded_at: visibility.effectiveRetiredAt(row), context: fidelity.parse(row.getString("verification_context_json")) })),
     studies: fidelity.list(dao, "research_studies", `project = "${project}"`).map(row => ({ id: row.id, name: row.getString("name"), snapshot: fidelity.parse(row.getString("snapshot_json")) })),
     sessions: fidelity.list(dao, "research_sessions", `project = "${project}"`).map(row => ({ id: row.id, page: row.getString("page"), study: row.getString("study"), participant: row.getString("participant"), role: row.getString("role"), condition: row.getString("condition"), state: row.getString("state"), last_sequence: row.getInt("last_sequence"), recording_incomplete: !["submitted", "completed", "abandoned"].includes(row.getString("state")), context: fidelity.parse(row.getString("context_json")), presentation: fidelity.parse(row.getString("snapshot_json")) })),
     limitations: ["完整核对声明是提交者声明；流程一致不等于来源正误。", "来源判断与独立研究参照分别记录。", "未记录时长、呈现或阅读的记录不补零，不从租约倒推。"] }

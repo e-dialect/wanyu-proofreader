@@ -37,14 +37,15 @@ function sourceFile(dao, page) {
 }
 function importedRow(page) { return parse(page.getString("ocr_row_json"), null) || { 内容: page.getString("ocr_text") } }
 function machineSnapshot(dao, page) {
-  const findings = list(dao, "review_findings", `page = "${page.id}" && superseded_at = ""`, "id")
+  const visibility = require(`${__hooks}/lib/assist_visibility.js`)
+  const findings = visibility.list(dao, "review_findings", $dbx.exp("page = {:page}", { page: page.id }), "id", "current")
   const gates = list(dao, "assist_rule_gates", "", "id").map(row => ({
     producer: row.getString("producer"), version: row.getString("producer_version"), kind: row.getString("kind"), key: row.getString("message_key"), gate: row.getString("gate")
   }))
   const { projectConfig } = require(`${__hooks}/lib/keyboards.js`)
   const config = projectConfig(dao, page.getString("project"))
   const keyboards = { defaultKeyboardId: config.defaultKeyboardId, items: config.items.map(item => ({ id: item.recordId, keyboardId: item.keyboardId, version: item.schemaVersion, definition_hash: hash(JSON.stringify(item.definition)) })) }
-  const analysis = dao.findRecordsByFilter("verification_events", `page = "${page.id}" && kind = "machine_analysis"`, "-created,-id", 1, 0)[0]
+  const analysis = visibility.records(dao, "verification_events", $dbx.exp("page = {:page} AND kind = 'machine_analysis'", { page: page.id }), "-created,-id", 1, 0, "events")[0]
   return {
     engine_versions: [comparison.VERSION, require(`${__hooks}/lib/assist_rules.js`).RULES_VERSION, require(`${__hooks}/lib/assist_identity.js`).IDENTITY_VERSION],
     analysis: analysis ? { id: analysis.id, at: String(analysis.get("created")), producer_version: parse(analysis.getString("payload_json")).producer_version, raw_count: parse(analysis.getString("payload_json")).raw_count, input_basis: parse(analysis.getString("context_json")).basis } : { status: "no_execution_record" },
@@ -86,7 +87,8 @@ function proofreaderContext(context) {
   const { round, machine, ...safe } = context
   return safe
 }
-function appendEvent(dao, { project, page = "", kind, ref = "", field = "", actor, context, payload = {} }) {
+function appendEvent(dao, { project, page = "", kind, ref = "", field = "", actor, context, payload = {}, publication = "" }) {
+  if (publication && kind !== "machine_analysis") throw new Error("Only machine analysis can be staged")
   const event = new Record(dao.findCollectionByNameOrId("verification_events"))
   event.set("project", project)
   event.set("page", page)
@@ -96,6 +98,7 @@ function appendEvent(dao, { project, page = "", kind, ref = "", field = "", acto
   event.set("actor", actor)
   event.set("context_json", JSON.stringify(context || {}))
   event.set("payload_json", JSON.stringify(payload))
+  if (publication) event.set("assist_publication", publication)
   dao.save(event)
   return event
 }
@@ -103,7 +106,8 @@ function eventView(event) {
   return { id: event.id, project: event.getString("project"), page: event.getString("page"), kind: event.getString("kind"), ref: event.getString("ref"), field: event.getString("field_name"), actor: event.getString("actor"), at: String(event.get("created")), context: parse(event.getString("context_json")), payload: parse(event.getString("payload_json")) }
 }
 function eventsFor(dao, pageId, kind = "") {
-  return list(dao, "verification_events", `page = "${pageId}"${kind ? ` && kind = "${kind}"` : ""}`).map(eventView)
+  const where = $dbx.exp(`page = {:page}${kind ? " AND kind = {:kind}" : ""}`, { page: pageId, kind })
+  return require(`${__hooks}/lib/assist_visibility.js`).list(dao, "verification_events", where, "created,id", "events").map(eventView)
 }
 function savePolicy(dao, project, actor, body) {
   const roles = require(`${__hooks}/lib/column_roles.js`).loadProjectRoles(dao, project.id)

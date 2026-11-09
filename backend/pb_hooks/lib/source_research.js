@@ -64,7 +64,7 @@ function freeze(dao, project, actor, body) {
     const { hintsForPage, hintView, dropStaleOffsets, gateMap, gateOf } = require(`${__hooks}/lib/findings.js`)
     const production = hintsForPage(dao, id)
     const gates = gateMap(dao).map
-    const raw = fidelity.list(dao, "review_findings", `page = "${id}" && superseded_at = ""`).map(record => {
+    const raw = require(`${__hooks}/lib/assist_visibility.js`).list(dao, "review_findings", $dbx.exp("page = {:page}", { page: id }), "created,id", "current").map(record => {
       const gate = gateOf(gates, record).gate
       const hint = hintView(record, gate)
       dropStaleOffsets(hint, context.input)
@@ -138,7 +138,7 @@ function recordEvent(dao, session, actor, body) {
   if (["effort_start", "effort_end"].includes(body.type) && !["maintenance", "arbitration", "feedback"].includes(session.getString("role"))) throw new BadRequestError("人工投入事件只用于维护、仲裁或反馈职责")
   const sequence = Number(body.sequence)
   if (!Number.isInteger(sequence) || sequence < 1) throw new BadRequestError("事件必须有连续序号")
-  const previous = fidelity.list(dao, "verification_events", `ref = "${session.id}" && kind = "research_event"`).map(fidelity.eventView).find(event => event.payload.sequence === sequence)
+  const previous = require(`${__hooks}/lib/assist_visibility.js`).list(dao, "verification_events", $dbx.exp("ref = {:ref} AND kind = 'research_event'", { ref: session.id }), "created,id", "events").map(fidelity.eventView).find(event => event.payload.sequence === sequence)
   const signature = fidelity.hash(stableJSON(body))
   if (previous) {
     if (previous.payload.signature !== signature) throw new BadRequestError("相同序号已记录不同事件")
@@ -166,7 +166,7 @@ function recordSubmission(dao, page, actor, attempt, body = {}) {
   if (!session) return
   const context = fidelity.parse(session.getString("context_json"))
   assertFrozen(dao, page, session)
-  const startRecorded = fidelity.list(dao, "verification_events", `ref = "${session.id}" && kind = "research_event"`).some(event => fidelity.parse(event.getString("payload_json")).type === "start")
+  const startRecorded = require(`${__hooks}/lib/assist_visibility.js`).list(dao, "verification_events", $dbx.exp("ref = {:ref} AND kind = 'research_event'", { ref: session.id }), "created,id", "events").some(event => fidelity.parse(event.getString("payload_json")).type === "start")
   fidelity.appendEvent(dao, { project: page.getString("project"), page: page.id, kind: "research_submission", ref: session.id, actor, context, payload: { attempt: attempt.id, row: fidelity.parse(attempt.getString("row_json")), condition: session.getString("condition"), participant: session.getString("participant"), timing_start_recorded: startRecorded, timing_events_complete: typeof body.researchRecordingComplete === "boolean" ? body.researchRecordingComplete : null, client_last_sequence: body.researchSequence ?? null } })
   session.set("state", "submitted"); dao.save(session)
 }
