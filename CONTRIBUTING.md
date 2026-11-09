@@ -80,7 +80,8 @@ python3 backend/tests/run_integration.py task_leases_integration.mjs --race
 ```
 
 账户安全的完整生命周期使用专用 runner：`python3 backend/tests/run_account_security_integration.py`。
-它执行 API 套件后停掉临时后端，通过 stdin 恢复既有账号，再重启验证旧环境变量不能恢复密码或角色。
+它执行 API 套件，验证内部 bootstrap 绑定不能通过原生记录 API 写入，并通过原生管理员接口修改初始账号邮箱、密码、验证状态和角色；停掉临时后端后通过 stdin 恢复既有账号，再重启验证旧环境变量不能恢复密码、角色或创建第二个管理员。邮箱变更覆盖管理员管理接口，实际 SMTP 送达另行验收。
+`GOMAXPROCS=2 go test -C backend . -run '^TestBootstrapBinding' -count=1` 覆盖永久绑定、故障回滚与新迁移 up/down/up；绑定有数据时拒绝 down，不能为回退代码删除身份保护。
 CI 的 `account_security` 矩阵项明确调用此 runner；仅运行普通 `run_integration.py account_security_integration.mjs` 不覆盖离线恢复与重启。
 Docker 恢复包装器的停机/挂载/隔离守卫由 `scripts/test_recover_account.py` 验证；真实 Docker 恢复仍需独立维护演练。
 
