@@ -11,10 +11,71 @@ import time
 import unittest
 from unittest.mock import patch
 
+import capacity_process_ownership as ownership
 from capacity_process_ownership import ProcessRegistry, birth_identity, group_members
 from run_capacity_remote import stop_generator_group
 from capacity_fixture import source_manifest
 import harness
+
+
+class ProcessOwnershipImportTest(unittest.TestCase):
+    def test_test_discovery_without_fcntl(self):
+        # Isolate imports from this test runner's module cache. This simulates
+        # the missing Windows module, not the rest of a Windows runtime.
+        program = r'''
+import builtins, sys, unittest
+sys.modules.pop('fcntl', None)
+real_import = builtins.__import__
+def without_fcntl(name, *args, **kwargs):
+    if name == 'fcntl':
+        raise ModuleNotFoundError("No module named 'fcntl'", name='fcntl')
+    return real_import(name, *args, **kwargs)
+builtins.__import__ = without_fcntl
+try:
+    import fcntl
+except ModuleNotFoundError:
+    pass
+else:
+    raise AssertionError('fcntl import was not blocked')
+loader = unittest.TestLoader()
+for module in ('test_capacity_faults', 'test_capacity_remote', 'test_capacity_process_ownership'):
+    suite = loader.discover('.', pattern=module+'.py')
+    assert suite.countTestCases() > 0, module
+assert not loader.errors, '\n'.join(loader.errors)
+# An existing platform-independent check must remain runnable as well.
+suite = loader.loadTestsFromName('test_capacity_remote.CapacityRemoteTest.'
+    'test_fault_evidence_requires_frozen_source_and_complete_real_window')
+result = unittest.TextTestRunner().run(suite)
+assert result.wasSuccessful()
+'''
+        result = subprocess.run([sys.executable, '-c', program], cwd=Path(__file__).parent,
+                                capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
+    def test_non_posix_operations_refuse_before_side_effects(self):
+        with patch.object(ownership, 'os') as platform_os, \
+             patch.object(ownership, 'Path') as path, \
+             patch.object(ownership.subprocess, 'Popen') as spawn:
+            platform_os.name = 'nt'
+            process = unittest.mock.Mock()
+            registry = object.__new__(ProcessRegistry)
+            operations = (
+                lambda: ProcessRegistry('unused', create=True),
+                lambda: birth_identity(123),
+                lambda: group_members(123),
+                lambda: registry.lock().__enter__(),
+                lambda: ownership.guardian('unused', 'unused', ['unused']),
+                lambda: stop_generator_group(process, registry),
+            )
+            for operation in operations:
+                with self.assertRaisesRegex(RuntimeError, '^generator_process_groups_unsupported$'):
+                    operation()
+            path.assert_not_called()
+            spawn.assert_not_called()
+            process.poll.assert_not_called()
+            platform_os.umask.assert_not_called()
+            platform_os.open.assert_not_called()
+            platform_os.killpg.assert_not_called()
 
 
 @unittest.skipUnless(os.name == 'posix' and shutil.which('node'), 'POSIX Node generator contract')

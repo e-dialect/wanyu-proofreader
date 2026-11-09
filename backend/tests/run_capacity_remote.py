@@ -24,7 +24,7 @@ from capacity_remote_contract import (VERSION, MAX_LINE, ARTIFACTS, canonical_ha
     host_identity, validate_budget, validate_init, evaluate_evidence, same_source, observation_seconds, strict_json_loads,
     CapacityFailure, failure_from_frame, safe_failure, valid_fault_evidence)
 from capacity_target import stop_process
-from capacity_process_ownership import ProcessRegistry
+from capacity_process_ownership import ProcessRegistry, require_posix_process_groups
 
 
 def transport_environment(ssh=False):
@@ -42,6 +42,7 @@ def stop_generator_group(process, registry=None):
         # A process-tree/PGID snapshot is not durable ownership evidence. Never
         # fall back to signalling discovered groups, even if the parent lives.
         raise RuntimeError('generator_registry_required')
+    require_posix_process_groups()
     # An unreaped live Popen child retains its PID. Do not signal its group
     # after exit: detached groups have their own stable guardian receipts.
     if process.poll() is None:

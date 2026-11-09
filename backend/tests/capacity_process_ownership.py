@@ -1,7 +1,6 @@
 """Private ownership receipts for detached generator children (not a service)."""
 import contextlib
 import ctypes
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -15,8 +14,14 @@ import sys
 import time
 
 
+def require_posix_process_groups():
+    if os.name != 'posix':
+        raise RuntimeError('generator_process_groups_unsupported')
+
+
 def birth_identity(pid):
     """OS start identity, not second-resolution ps output or a reusable PID."""
+    require_posix_process_groups()
     if platform.system() == 'Linux':
         try:
             raw = Path(f'/proc/{pid}/stat').read_text()
@@ -43,6 +48,7 @@ def birth_identity(pid):
 
 
 def group_members(group):
+    require_posix_process_groups()
     # The inspector must not count itself as a browser helper in this group.
     rows = subprocess.check_output(['ps', '-axo', 'pid=,pgid=,stat='], text=True, timeout=2,
                                    start_new_session=True).splitlines()
@@ -52,6 +58,7 @@ def group_members(group):
 
 class ProcessRegistry:
     def __init__(self, root, create=False):
+        require_posix_process_groups()
         self.root = Path(root)
         self.cleaned = set()
         if create:
@@ -72,6 +79,11 @@ class ProcessRegistry:
 
     @contextlib.contextmanager
     def lock(self):
+        require_posix_process_groups()
+        # Windows must still import the capacity drivers and discover their
+        # platform-independent tests. Only a POSIX lock needs this module.
+        import fcntl
+
         fd = os.open(self.root/'lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, 'w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
@@ -146,6 +158,7 @@ class ProcessRegistry:
 
 
 def guardian(root, ticket, command, interrupt=False):
+    require_posix_process_groups()
     os.umask(0o077)
     registry = ProcessRegistry(root)
     if not registry.register(ticket):
