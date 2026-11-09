@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { currentFindings } from './current_findings.mjs'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
@@ -221,9 +222,7 @@ try {
   // ——漏一批就等于重算顺序会改变 #162 的排序键；(b) 记的是推导自身的版本 tier-v1，
   // 不是任何一个输入批次的 producer_version；(c) 其中一批被下线后回到原始结果，
   // 不重复计数、也不让已下线的行继续影响 tier。
-  const strongNow = async () => (await request(
-    `/api/collections/review_findings/records?perPage=200&filter=${encodeURIComponent(`page = "${messy.id}" && superseded_at = "" && severity = "strong"`)}`,
-    { token: superAuth.token })).items
+  const strongNow = async () => (await currentFindings(request, project.id, boss.token, superAuth.token)).filter(item => item.page === messy.id && item.severity === 'strong')
   const beforeForeign = await strongNow()
   const expectedId = (count) => (count >= 2 ? 'strong_findings_ge_2' : count === 1 ? 'strong_findings_eq_1' : null)
   assert.equal(JSON.parse((await request(`/api/collections/pages/records/${messy.id}`, { token: superAuth.token })).difficulty_basis_json)
@@ -317,9 +316,7 @@ try {
   const multiSummary = await request(`/api/fangji/projects/${multi.id}/findings/recompute`, { method: 'POST', token: boss.token })
   assert.equal(multiSummary.pages, 3, JSON.stringify(multiSummary))
   const FINDING_IDS = ['cross_source_conflict', 'strong_findings_ge_2', 'strong_findings_eq_1', 'warn_findings_ge_3']
-  const currentOf = async (pageId) => (await request(
-    `/api/collections/review_findings/records?perPage=200&filter=${encodeURIComponent(`page = "${pageId}" && superseded_at = ""`)}`,
-    { token: superAuth.token })).items
+  const currentOf = async (pageId) => (await currentFindings(request, multi.id, boss.token, superAuth.token)).filter(item => item.page === pageId)
   const stored = []
   for (const [index, page] of pages.entries()) {
     const findings = await currentOf(page.id)

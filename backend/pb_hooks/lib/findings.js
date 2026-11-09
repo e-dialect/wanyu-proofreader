@@ -22,7 +22,7 @@ const IMMUTABLE_FINDING_FIELDS = [
   "producer",
   "producer_version",
   "produced_at"
-  , "verification_context_json"
+  , "verification_context_json", "assist_publication"
 ]
 
 const GATE_RELEASES = {
@@ -202,12 +202,10 @@ function shownRowOf(dao, pageId) {
   }
 }
 
-// 当前批次：未被 superseded 的那一批。重算只写新批次并标旧批次，
-// 所以「未 superseded」本身就定义了当前批次（#176 期望结果 5）。
-function currentRecords(dao, filter, sort, limit, offset) {
-  const parts = [`superseded_at = ""`]
-  if (filter) parts.push(`(${filter})`)
-  return dao.findRecordsByFilter("review_findings", parts.join(" && "), sort, limit, offset)
+// A publication becomes visible atomically. Retirements are derived tombstones;
+// superseded_at alone no longer identifies the complete current batch.
+function currentRecords(dao, where, sort, limit, offset) {
+  return require(`${__hooks}/lib/assist_visibility.js`).records(dao, "review_findings", where, sort, limit, offset, "current")
 }
 
 function hintView(record, gate) {
@@ -308,7 +306,7 @@ function statisticsView(record, gate, row, locator) {
 function hintsForPage(dao, pageId) {
   const { map: gates, truncated: gateTruncated } = gateMap(dao)
   const shownRow = shownRowOf(dao, pageId)
-  const records = currentRecords(dao, `page = "${pageId}"`, "kind,message_key", MAX_PAGE_SIZE + 1, 0)
+  const records = currentRecords(dao, $dbx.exp("page = {:page}", { page: pageId }), "kind,message_key", MAX_PAGE_SIZE + 1, 0)
   const hints = []
   let suppressed = 0
   const offsets = { stale: 0, unbaselined: 0 }
@@ -353,16 +351,18 @@ function hintsForPage(dao, pageId) {
 // 管理端：不做门控过滤，info 与 off 一律可见——门槛文件 §2 要求 off 只挡校对端，
 // 「仍计算、仍写库、只在管理端统计」依赖这个读取口。
 function listForProject(dao, projectId, { page = 1, per = 50, kind = "", producer = "" } = {}) {
-  const clauses = [`project = "${projectId}"`]
+  const clauses = ["project = {:project}"]
+  const params = { project: projectId }
   const safeKind = enumParam(kind, FINDING_KINDS)
   const safeProducer = enumParam(producer, PRODUCERS)
-  if (safeKind) clauses.push(`kind = "${safeKind}"`)
-  if (safeProducer) clauses.push(`producer = "${safeProducer}"`)
-  const size = Math.max(1, Math.min(MAX_PAGE_SIZE, Number(per) || 50))
-  const index = Math.max(1, Number(page) || 1)
+  if (safeKind) { clauses.push("kind = {:kind}"); params.kind = safeKind }
+  if (safeProducer) { clauses.push("producer = {:producer}"); params.producer = safeProducer }
+  const size = Number.isFinite(Number(per)) ? Math.max(1, Math.min(MAX_PAGE_SIZE, Math.trunc(Number(per) || 50))) : 50
+  const requestedPage = Math.trunc(Number(page))
+  const index = Number.isSafeInteger(requestedPage) && Number.isSafeInteger((requestedPage - 1) * size) ? Math.max(1, requestedPage) : 1
   const { map: gates, truncated: gateTruncated } = gateMap(dao)
   // 多取一条用来判断是否还有下一页，不依赖 count 查询。
-  const records = currentRecords(dao, clauses.join(" && "), "-produced_at,kind,message_key", size + 1, (index - 1) * size)
+  const records = currentRecords(dao, $dbx.exp(clauses.join(" AND "), params), "-produced_at,kind,message_key", size + 1, (index - 1) * size)
   const locatorCache = new Map()
   const offsets = { stale: 0, unbaselined: 0 }
   const items = records.slice(0, size).map((record) => {

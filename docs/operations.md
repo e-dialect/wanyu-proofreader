@@ -2,6 +2,18 @@
 
 使用单实例 PocketBase/SQLite。正式启用前按以下步骤演练，记录版本、耗时和结果。
 
+## 数据目录的运行实例归属
+
+每个数据目录只运行一个后端。启动会在打开数据库、执行迁移及作业恢复前取得 `.fangji-instance.lock` 的非阻塞操作系统排他锁；同目录的第二实例明确拒绝启动，不通过 PID 文件或运行参数声明自己拥有数据。不同目录的隔离测试实例互不影响。锁定版本的 `golang.org/x/sys` 仅由传递依赖改为直接使用，没有升级其版本。
+
+锁文件保留在数据目录中，正常退出和进程崩溃由操作系统释放锁；**不要在实例运行时删除或替换锁文件**，否则新旧 inode 无法互斥。停写整目录备份可以保留该空文件，恢复后它不表示旧进程仍存活。Linux/macOS/BSD 使用 `flock`，Windows 使用 `LockFileEx`；文件系统必须支持该锁语义，本轮未验收网络文件系统上的多主机运行。
+
+同一目录的所有可写应用、维护和迁移进程应使用这一守卫；既有恢复包装器仍需检查应用已停止。锁不代替文件权限，也不把 `GOMEMLIMIT` 变成硬内存限制。PocketBase 的 Unix `execve` 重启通过 close-on-exec 释放旧锁；重启失败并恢复原 App 时继续持锁，终止被拒绝时同样保留归属。初始化失败时先尝试清理；只有四个 data/aux DB builder 全部清空才释放锁，否则保留到进程退出，不以 `IsBootstrapped=false` 推断数据库已关闭。
+
+仅已持锁的应用在内部 store 中发布 `fangjiDataDirectoryOwner=true`，供启动恢复核实；这个值由 Go 生命周期写入，不是可由客户端或环境变量提交的“已停机”断言。辅助分析的遗留 bulk 暂存只能由新归属者在 HTTP 接入前标为 aborted，保留 marker 和原完整结果，载荷仍按有界清理处理，不能将中断的半批次发布。
+
+首次启动空目录时先完成应用迁移，再启动服务。Docker 正式入口已按数字顺序执行迁移，之后才 `exec serve`；直接运行二进制也应先以 `FANGJI_SKIP_ADMIN_BOOTSTRAP=1 ./pocketbase migrate up --dir=pb_data --migrationsDir=pb_migrations` 初始化，再运行 `./pocketbase serve --dir=pb_data --migrationsDir=pb_migrations`。跳过初始化仅作用于前一条迁移命令，不应永久配置到服务。PocketBase 的 Bootstrap 只创建系统表，直接裸 `serve` 的早期账户 hook 不能当作应用迁移已完成；拒绝日志也不表示账号已创建。
+
 ## 备份与恢复
 
 目标 RPO 为 24 小时，目标 RTO 为 60 分钟；这是初始目标，实际应按数据量测量。

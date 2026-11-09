@@ -1,0 +1,81 @@
+{
+  "recorded_at_utc": "2026-11-09T08:23:14.927819+00:00",
+  "issue": 417,
+  "base_main": "2c8e90b22dfafe84c3c3e8e5ec92134b004e064b",
+  "dependency_pr": 425,
+  "dependency_sha": "ed3865841aed8e073ab8626b9d0ac2d3b8299bd0",
+  "latest_product_runtime": "4525866a1ce3a16da85291bb1aa548761e147228",
+  "source_sha256": {
+    "backend/main.go": "fbed6cb0b8cd9b06dfbef3614b12900ede54bb1686b03672db8c6f1440ac88d7",
+    "backend/instance_ownership.go": "17473538ad53be23f61adc07233e84e481ae2cd4e55cfa75ba194aa3f10170f7",
+    "backend/instance_ownership_unix.go": "32af99abccf550298174351da88209b212d16242ed289a67f2cfd5408170b71c",
+    "backend/instance_ownership_windows.go": "b99aed225a041cdab9c1a28de5d334cd5a028c5ca1e782e667eb7dcd840d709d",
+    "backend/assist_publication_recovery.go": "19a72dc11fe084262d30287aa5bda218db22590c10a3a354bbb833739a2bd7e4",
+    "backend/delivery_completion.go": "61e35e54f91039c2a71eefac8db585ec533eaccd5f3802a9f10e518e01e8b93d",
+    "backend/delivery_completion_test.go": "be669c57b1c25d7b0e2cfe75ce67b3aa16c487d08733632e6894085c1b52cf8a",
+    "backend/assist_process_recovery_test.go": "91c315c2522f49d0a84437f30a904884fcf6dd464fe032f09f0e66c85cc81a41",
+    "backend/pb_hooks/lib/assist_publication.js": "74c2713b06a39a1c1acd69a509ac28bc76d940e9ba0e4c0993a4496ada067d94",
+    "backend/pb_hooks/lib/assist_visibility.js": "04af6d39314040f2e61cebc3135016c4a6bfe0e735aaa99326b80a1745827b0c",
+    "backend/pb_hooks/lib/assist_read_consistency.js": "f43cbe4725ed0c86361b8db1ee70d011cc86c98ef82ce18f24912b917a0612e5",
+    "backend/pb_migrations/1794204700_assist_publications.js": "5f974b673726374716be8527ac696b40c5ae8d5ad0cf19c98d45b9c05fbc9bd1"
+  },
+  "logs_sha256": {
+    "assist-final-make-check": "a1403586f1c65a7570a126bd7d1da30505fcee1961e203bd52435f4ff5df8329",
+    "assist-final-integrations": "3c366e69e2fc335db9b236c2213c072e956deb6b53bfcc7aa1ba5f974612b78c",
+    "assist-final-browser": "47d732c5df16815765040d4deeb94fea280a868fc2f1ee40347187c89a52dfb4",
+    "assist-final-browser-workbench": "6c337a0e673959663ae74da6f019dcf135193937111c6a920f168e71fe7306f8",
+    "assist-bridge-final-make-check": "ce8f7a909d88df17c6aa076b9daf05c44c871d8986ac02fe1db890e85f97ff60",
+    "assist-bridge-final-delivery-browser": "0b674d2649c8aab6448fed3889a684c9ea1d9bfd73947de30030a0206cfb2a39",
+    "assist-final-ci-static": "99ceb3cc53969fa22ea1416b4f68f3dea61a1fd170cfcb34b0b039cf5f6eddec",
+    "assist-final-windows-build": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "known_failures": {
+    "initial_delivery_browser": "missing local python command; after specifying python3 a real missing $dbx binding was exposed and fixed",
+    "initial_full_race": {
+      "source": "92c00efb65c79cef6bc80236cd6d4e75e1222440",
+      "status": "failed",
+      "reason": "10 minute aggregate Go timeout; active test at timeout had run only 7 seconds",
+      "log_sha256": "729978a52414c1b16ea2fbc468f76deddd182fee96801b10646c64d390335868"
+    }
+  },
+  "full_race": {
+    "status_at_this_receipt": "pass",
+    "command": "GOMAXPROCS=2 GOFLAGS=-v RACE=1 make test-go",
+    "bounded_package_timeout": "20m",
+    "final_result_location": "This updated pause receipt and PR verification comment; original 10-minute failure remains retained.",
+    "runtime_source": "4525866a1ce3a16da85291bb1aa548761e147228",
+    "backend_package_seconds": 1058.469,
+    "top_level_passes_all_packages": 366,
+    "explicit_skips": [
+      "TestAssistBatchScaleContention",
+      "TestProjectExportScaleEvidence",
+      "TestTaskPDFBrowserRegression"
+    ],
+    "log_sha256": "e1d8532e2c6f092a231d43222b318e450cc434dc07dae66f5589a7a6f690ab89"
+  },
+  "windows": {
+    "cross_compile": "pass",
+    "runtime": "not_run"
+  },
+  "production_deployed": false,
+  "formal_capacity": "deferred_user_no_isolated_machine",
+  "current_ci_repairs": {
+    "column_roles": "20b1db4: existing business-current helper; ordinary/race HTTP passed; all original 1/0 and byte assertions retained",
+    "gitleaks": {
+      "reviewed_findings": 56,
+      "verified_source_hashes": 56,
+      "real_or_unverified_credentials": 0,
+      "scope": "Exact historical fingerprints only; source hashes independently recomputed from their measured Git blobs.",
+      "new_commit_scan": "pass;24 commits",
+      "remote_full_history_scan": {
+        "status": "pass",
+        "commits": 409,
+        "scanned_bytes": 17151060,
+        "report_source": "clean clone of actual remote branches plus the reviewed exact-fingerprint file",
+        "log_sha256": "e41ed91e295b51cab1ce1adc5761c3d4322c72abed20e183a977f0b2a0dae202"
+      },
+      "independent_review_report_sha256": "dc15d7808e557aa034faca798731f807c08ac54f1707b2edda19595d516ddff1"
+    }
+  },
+  "pause_status": "User requested pause after current work; latest-head remote CI, CODEOWNER and merges are remaining work, not performed."
+}

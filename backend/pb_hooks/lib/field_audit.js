@@ -1,6 +1,7 @@
 // Read-only projections of the existing append-only source verification events.
 // Never infer a source judgment from agreement, adoption, or missing history.
 const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+const visibility = require(`${__hooks}/lib/assist_visibility.js`)
 
 function pagination(query) {
   const integer = (raw, fallback, max) => {
@@ -30,13 +31,11 @@ function ownEvent(record) {
 }
 function pageEvents(dao, pageId, actor, manager, query) {
   const requested = pagination(query)
-  const actorFilter = manager ? "" : ` && actor = "${actor}" && (kind = "submission" || kind = "field_action")`
-  const filter = `page = "${pageId}"${actorFilter}`
   const where = manager
     ? $dbx.exp("page = {:page}", { page: pageId })
     : $dbx.exp("page = {:page} AND actor = {:actor} AND kind IN ('submission','field_action')", { page: pageId, actor })
-  const info = pageInfo(Number(dao.countRecords("verification_events", where)), requested.page, requested.perPage)
-  const records = dao.findRecordsByFilter("verification_events", filter, "created,id", info.perPage, (info.page - 1) * info.perPage)
+  const info = pageInfo(Number(dao.countRecords("verification_events", where, $dbx.exp(visibility.eventSQL()))), requested.page, requested.perPage)
+  const records = visibility.records(dao, "verification_events", where, "created,id", info.perPage, (info.page - 1) * info.perPage, "events")
   return { ...info, scope: manager ? "project_manager_history" : "own_submission_actions", items: records.map(manager ? fidelity.eventView : ownEvent) }
 }
 

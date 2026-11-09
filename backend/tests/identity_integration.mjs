@@ -1,9 +1,28 @@
 import assert from 'node:assert/strict'
+import { currentFindings } from './current_findings.mjs'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const identity = require('../pb_hooks/lib/assist_identity.js')
+
+// Refuse a genuinely conflicting large group before allocating n*(n-1)
+// partners. Dismissed and identical-content groups must not be falsely refused.
+{
+  const rows = Array.from({ length: 5000 }, (_, i) => ({ id: String(i).padStart(15, '0'), row: { 词条: '同词', 拼音: 'same1', 释义: `合成${i}` } }))
+  let observed = 0
+  assert.throws(() => identity.findIdentityConflicts(rows, new Set(), undefined, bytes => {
+    observed = bytes
+    if (bytes > 64 * 1024 * 1024) throw new Error('synthetic preparation budget')
+  }), /synthetic preparation budget/)
+  assert.ok(observed > 400 * 1024 * 1024, 'must account for the actual quadratic partner payload before allocation')
+  const key = identity.entryIdentityKey(rows[0].row)
+  assert.equal(identity.findIdentityConflicts(rows, new Set([key]), undefined, () => { throw new Error('dismissed group must not reserve partners') }).findings.length, 0)
+  const same = rows.map(item => ({ ...item, row: { ...item.row, 释义: '相同' } }))
+  assert.equal(identity.findIdentityConflicts(same, new Set(), undefined, () => { throw new Error('identical group must not reserve partners') }).findings.length, 0)
+  const small = rows.slice(0, 4)
+  assert.deepEqual(identity.findIdentityConflicts(small), identity.findIdentityConflicts(small, new Set(), undefined, () => {}), 'budgeting must preserve every successful rule result')
+}
 const rules = require('../pb_hooks/lib/assist_rules.js')
 // 挂靠口径的词表由 assist_rules.js 拥有（#208 那边所有疑点都过 anchored()）。#178 也要求
 // 每条疑点带 anchor，两边的字面量必须是同一个值，否则改名会各自漂移而谁都不红。
@@ -460,8 +479,7 @@ try {
   const p4 = await mk(4, { 词条: '甲 乙', 拼音: 'ka1', 莆田IPA: 'ua5333', 释义: '两个词头挤在一列' })
 
   const first = await request(`/api/fangji/projects/${project.id}/identity/recompute`, { method: 'POST', token: boss.token })
-  const current = async () => (await request(`/api/collections/review_findings/records?filter=${encodeURIComponent('superseded_at = ""')}`, { token: superAuth.token }))
-    .items.filter((item) => item.project === project.id)
+  const current = () => currentFindings(request, project.id, boss.token, superAuth.token)
 
   let findings = await current()
   const dup = findings.filter((item) => item.kind === 'duplicate_identity')
@@ -607,10 +625,8 @@ try {
     for (const item of dismissals.items) {
       await request(`/api/collections/finding_dismissals/records/${item.id}`, { method: 'DELETE', token: superAuth.token, expected: 204 })
     }
-    const findings = await request(`/api/collections/review_findings/records?filter=${encodeURIComponent(`project = "${project.id}"`)}`, { token: superAuth.token })
-    for (const item of findings.items) {
-      await request(`/api/collections/review_findings/records/${item.id}`, { method: 'DELETE', token: superAuth.token, expected: 204 })
-    }
+    // Published payloads are immutable through the record API. Legal project
+    // deletion owns cascading cleanup; do not bypass the new history guard.
     await request(`/api/fangji/projects/${project.id}`, { method: 'DELETE', token: platformAuth.token, expected: 204 })
   }
   for (const id of userIds.reverse()) {

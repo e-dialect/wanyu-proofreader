@@ -1,5 +1,6 @@
-# Reviewed synthetic fixtures only. Exact historical fingerprints, never a
-# path/rule-wide exclusion. The two source_key literals are PDF audit assertions;
+# Reviewed synthetic fixtures and source-integrity metadata only.
+# Exact historical fingerprints, never a path/rule-wide exclusion.
+# The two source_key literals are PDF audit assertions;
 # RareIntegration12345 is a disposable integration account password.
 c3d9933a39c6a023369eee7cf438729eff77ec68:backend/pdf_images_test.go:generic-api-key:219
 8ffb8a7d2c21315ef246f99800708070fef5e682:backend/pdf_images_test.go:generic-api-key:215
@@ -8,3 +9,6 @@ c3d9933a39c6a023369eee7cf438729eff77ec68:backend/pdf_images_test.go:generic-api-
 # Synthetic account action-token fixture; exact published history only.
 17ebe7ec81c3c1d1349f175769e77600a806f3d9:frontend/tests/accountSecurity.test.js:generic-api-key:38
 99ebd0280df0152061f4bb33ce6176dadfac67b6:frontend/tests/accountSecurity.test.js:generic-api-key:38
+
+# Reviewed source digests use exact line AND report-path constraints in
+# .gitleaks.toml, which survive rebase and squash without ignoring other values.

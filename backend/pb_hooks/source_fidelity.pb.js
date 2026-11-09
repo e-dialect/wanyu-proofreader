@@ -26,30 +26,31 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/verification-policy", (c) =>
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/pages/{pageId}/verification", (c) => {
-  const api = require(`${__hooks}/lib/source_fidelity_access.js`)
   const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-  const { page, manager } = api.pageAccess($app, c.request.pathValue("pageId"), c.auth)
-  const context = fidelity.contextFor($app, page)
-  const reports = fidelity.reportsFor($app, context.project, manager ? "" : c.auth.id).filter(report => report.page === page.id)
-  const announcements = fidelity.list($app, "problem_reports", `page = "${page.id}"`).map(report => {
-    const issue = $app.findRecordById("problem_issues", report.getString("issue"))
-    const issueContext = fidelity.parse(report.getString("context_json"))
-    if (issue.getString("status") === "new" || !issue.getString("public_note")) return null
-    const resolved = fidelity.parse(issue.getString("resolution_json"))[report.id]
-    return { id: issue.id, status: issue.getString("status"), feedback: issue.getString("public_note"), impact: issue.getString("impact"), stale: (resolved?.scope_key || issueContext.scope_key) !== context.scope_key }
-  }).filter(Boolean)
-  const response = { context, draft: fidelity.draftView(fidelity.ownDraft($app, page.id, c.auth.id), context), reports, announcements: [...new Map(announcements.map(item => [item.id, item])).values()] }
-  response.draft_history = fidelity.eventsFor($app, page.id, "draft_superseded").filter(event => event.actor === c.auth.id)
-  if (manager) {
-    response.judgments = fidelity.latestJudgments($app, page, context)
-    response.history = fidelity.eventsFor($app, page.id)
-    response.progress = fidelity.activeReviewProgress(page, context, response.history)
-    response.completion = fidelity.completion($app, page, context)
-  } else {
-    response.context = fidelity.proofreaderContext(context)
-    if (response.draft) response.draft.context = fidelity.proofreaderContext(response.draft.context)
-    response.draft_history = response.draft_history.map(event => ({ ...event, context: fidelity.proofreaderContext(event.context) }))
-  }
+  const response = require(`${__hooks}/lib/assist_read_consistency.js`).pageResponse($app, c.request.pathValue("pageId"), c.auth, ({ page, manager, actor }) => {
+    const context = fidelity.contextFor($app, page)
+    const reports = fidelity.reportsFor($app, context.project, manager ? "" : actor.id).filter(report => report.page === page.id)
+    const announcements = fidelity.list($app, "problem_reports", `page = "${page.id}"`).map(report => {
+      const issue = $app.findRecordById("problem_issues", report.getString("issue"))
+      const issueContext = fidelity.parse(report.getString("context_json"))
+      if (issue.getString("status") === "new" || !issue.getString("public_note")) return null
+      const resolved = fidelity.parse(issue.getString("resolution_json"))[report.id]
+      return { id: issue.id, status: issue.getString("status"), feedback: issue.getString("public_note"), impact: issue.getString("impact"), stale: (resolved?.scope_key || issueContext.scope_key) !== context.scope_key }
+    }).filter(Boolean)
+    const response = { context, draft: fidelity.draftView(fidelity.ownDraft($app, page.id, actor.id), context), reports, announcements: [...new Map(announcements.map(item => [item.id, item])).values()] }
+    response.draft_history = fidelity.eventsFor($app, page.id, "draft_superseded").filter(event => event.actor === actor.id)
+    if (manager) {
+      response.judgments = fidelity.latestJudgments($app, page, context)
+      response.history = fidelity.eventsFor($app, page.id)
+      response.progress = fidelity.activeReviewProgress(page, context, response.history)
+      response.completion = fidelity.completion($app, page, context)
+    } else {
+      response.context = fidelity.proofreaderContext(context)
+      if (response.draft) response.draft.context = fidelity.proofreaderContext(response.draft.context)
+      response.draft_history = response.draft_history.map(event => ({ ...event, context: fidelity.proofreaderContext(event.context) }))
+    }
+    return response
+  })
   return c.json(200, response)
 }, $apis.requireAuth("users"))
 
@@ -79,15 +80,7 @@ routerAdd("POST", "/api/fangji/pages/{pageId}/problems", (c) => {
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/my-problems", (c) => {
-  const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-  const access = require(`${__hooks}/lib/project_access.js`)
-  if (c.auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
-  const reports = fidelity.list($app, "problem_reports", `reporter = "${c.auth.id}"`, "-created,id")
-  return c.json(200, { items: reports.filter(report => access.canProofread($app, report.getString("project"), c.auth)).map(report => fidelity.reportView($app, report)),
-    drafts: fidelity.list($app, "proofreading_drafts", `user = "${c.auth.id}"`).filter(draft => access.canProofread($app, draft.getString("project"), c.auth)).map(draft => {
-      const page = $app.findRecordById("pages", draft.getString("page"))
-      return { id: draft.id, page: page.id, project: draft.getString("project"), page_number: page.getInt("page_number"), stale: fidelity.parse(draft.getString("context_json")).basis !== fidelity.contextFor($app, page, false).basis, at: String(draft.get("updated")) }
-    }) })
+  return c.json(200, require(`${__hooks}/lib/assist_read_consistency.js`).myProblems($app, c.auth))
 }, $apis.requireAuth("users"))
 
 routerAdd("POST", "/api/fangji/pages/{pageId}/resume", (c) => {
@@ -120,13 +113,13 @@ routerAdd("POST", "/api/fangji/pages/{pageId}/resume", (c) => {
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/projects/{projectId}/problems", (c) => {
-  const access = require(`${__hooks}/lib/project_access.js`)
-  if (c.auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
   const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-  const id = access.assertId(c.request.pathValue("projectId"), "项目")
-  access.requireManager($app, id, c.auth)
-  const reports = fidelity.reportsFor($app, id)
-  return c.json(200, { items: reports, issues: fidelity.list($app, "problem_issues", `project = "${id}"`).map(issue => ({ ...fidelity.issueView(issue), report_count: reports.filter(report => report.issue.id === issue.id).length })) })
+  const id = require(`${__hooks}/lib/project_access.js`).assertId(c.request.pathValue("projectId"), "项目")
+  const result = require(`${__hooks}/lib/assist_read_consistency.js`).projectResponse($app, id, c.auth, () => {
+    const reports = fidelity.reportsFor($app, id)
+    return { items: reports, issues: fidelity.list($app, "problem_issues", `project = "${id}"`).map(issue => ({ ...fidelity.issueView(issue), report_count: reports.filter(report => report.issue.id === issue.id).length })) }
+  })
+  return c.json(200, result)
 }, $apis.requireAuth("users"))
 
 routerAdd("PUT", "/api/fangji/projects/{projectId}/problems/{issueId}", (c) => {
@@ -261,19 +254,19 @@ onRecordDelete((e) => {
 }, "project_files")
 
 routerAdd("GET", "/api/fangji/projects/{projectId}/verification-summary", (c) => {
-  const access = require(`${__hooks}/lib/project_access.js`)
-  if (c.auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
   const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-  const id = access.assertId(c.request.pathValue("projectId"), "项目")
-  access.requireManager($app, id, c.auth)
-  return c.json(200, { items: fidelity.list($app, "pages", `project = "${id}" && status != "importing"`, "page_number,id").map(page => ({ id: page.id, page_number: page.getInt("page_number"), status: page.getString("status"), ...fidelity.completion($app, page) })) })
+  const id = require(`${__hooks}/lib/project_access.js`).assertId(c.request.pathValue("projectId"), "项目")
+  const result = require(`${__hooks}/lib/assist_read_consistency.js`).projectResponse($app, id, c.auth, () => ({
+    items: fidelity.list($app, "pages", `project = "${id}" && status != "importing"`, "page_number,id").map(page => ({ id: page.id, page_number: page.getInt("page_number"), status: page.getString("status"), ...fidelity.completion($app, page) }))
+  }))
+  return c.json(200, result)
 }, $apis.requireAuth("users"))
 
 routerAdd("POST", "/api/fangji/projects/{projectId}/verification-export", (c) => {
-  const access = require(`${__hooks}/lib/project_access.js`)
-  if (c.auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
-  const id = access.assertId(c.request.pathValue("projectId"), "项目")
-  access.requireManager($app, id, c.auth)
+  const id = require(`${__hooks}/lib/project_access.js`).assertId(c.request.pathValue("projectId"), "项目")
+  const mode = (c.requestInfo().body || {}).mode || "all"
+  const result = require(`${__hooks}/lib/assist_read_consistency.js`).projectResponse($app, id, c.auth, () =>
+    require(`${__hooks}/lib/source_fidelity_export.js`).projectExport($app, id, mode))
   c.response.header().set("Cache-Control", "private, no-store")
-  return c.json(200, require(`${__hooks}/lib/source_fidelity_export.js`).projectExport($app, id, (c.requestInfo().body || {}).mode || "all"))
+  return c.json(200, result)
 }, $apis.requireAuth("users"))

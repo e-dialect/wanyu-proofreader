@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { currentFindings } from './current_findings.mjs'
 
 const base = process.env.PB_URL
 
@@ -129,11 +130,8 @@ const superAuth = await api('/api/collections/_superusers/auth-with-password', {
   body: { identity: process.env.PB_SUPER_EMAIL, password: process.env.PB_SUPER_PASSWORD }
 })
 async function openFindings(projectId) {
-  const data = await api(
-    `/api/collections/review_findings/records?perPage=100&filter=${encodeURIComponent(`project="${projectId}"`)}`,
-    { token: superAuth.token }
-  )
-  return data.items.filter((item) => !item.superseded_at && item.message_key === 'required_role_field_empty')
+  const rows = await currentFindings(api, projectId, token, superAuth.token)
+  return rows.filter((item) => item.message_key === 'required_role_field_empty')
 }
 
 await api(`/api/fangji/projects/${split.id}/column-roles`, {
