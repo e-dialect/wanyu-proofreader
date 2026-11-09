@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
+	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -63,6 +63,13 @@ type adoptionDeliveryInput struct {
 	RequestID           string `json:"request_id"`
 }
 
+func deliveryProblem(status int, code, message, next string) error {
+	err := apis.NewApiError(status, message, nil)
+	err.Data["reasonCode"] = code
+	err.Data["nextAction"] = next
+	return err
+}
+
 func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, input adoptionDeliveryInput) (deliveryHandoff, error) {
 	var h deliveryHandoff
 	batch, err := app.FindRecordById("adoption_batches", input.BatchID)
@@ -70,7 +77,7 @@ func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, 
 		return h, apis.NewNotFoundError("编选批次不存在。", nil)
 	}
 	if batch.GetString("status") != adoptionBatchConfirmed {
-		return h, fmt.Errorf("先确认编选范围再准备交付。")
+		return h, deliveryProblem(400, "ADOPTION_NOT_CONFIRMED", "先确认编选范围再准备交付。", "返回编选批次，核对并确认范围。")
 	}
 	rule, err := parseAdoptionRule(json.RawMessage(batch.GetString("rule_json")))
 	if err != nil {
@@ -82,7 +89,7 @@ func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, 
 	}
 	stored := batch.GetString("scope_digest")
 	if stored == "" || input.ExpectedScopeDigest != stored || stored != adoptionScopeDigest(computation) || adoptionCountsDrifted(batch, computation) != "" {
-		return h, apis.NewApiError(http.StatusConflict, "编选范围已变更或缺少确认摘要，请新建并确认编选批次。", nil)
+		return h, deliveryProblem(409, "ADOPTION_SCOPE_CHANGED", "编选范围已变更或缺少确认摘要，请新建并确认编选批次。", "重新计算并人工确认编选范围。")
 	}
 	// The digest covers the ENTIRE project. Only afterwards may the adapter
 	// narrow declarations to a single complete imported bundle, including its
@@ -92,7 +99,7 @@ func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, 
 		return h, err
 	}
 	if len(rule.ImportJobs) != 1 || rule.ImportJobs[0] == "" {
-		return h, fmt.Errorf("交付要求编选规则显式指定一个完整 ReviewBundle 导入批次，请新建并确认对应编选。")
+		return h, deliveryProblem(400, "UNSUPPORTED_IMPORT_SCOPE", "交付要求编选规则显式指定一个完整 ReviewBundle 导入批次，请新建并确认对应编选。", "选择恰好一个完整 Bundle 入站作业；跨批次与 CSV/OCR 暂不支持直接出包。")
 	}
 	h.ImportJob = rule.ImportJobs[0]
 	belongs := map[string]bool{}
@@ -131,6 +138,9 @@ func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, 
 }
 
 func (s *importService) adoptionDeliveryPreflight(c *core.RequestEvent) error {
+	if os.Getenv("FANGJI_NATIVE_DELIVERY_ENABLED") == "0" {
+		return apis.NewApiError(http.StatusServiceUnavailable, "编选直接出包暂未开放，请使用原有交接清单流程。", nil)
+	}
 	var input adoptionDeliveryInput
 	if err := c.BindBody(&input); err != nil {
 		return apis.NewBadRequestError("请求内容无法解析。", err)
@@ -156,17 +166,22 @@ func (s *importService) adoptionDeliveryPreflight(c *core.RequestEvent) error {
 		return deliveryInputError(err)
 	}
 	r := reviewbundle.Reconcile(snap)
+	blockers := []map[string]string{}
 	_, buildErr := reviewbundle.BuildDelivery(snap, "2000-01-01T00:00:00Z")
 	if buildErr != nil {
 		r.Status = "inconsistent"
 		r.Problems = append(r.Problems, buildErr.Error())
+		blockers = append(blockers, map[string]string{"code": "DELIVERY_RECONCILIATION_FAILED", "message": buildErr.Error(), "nextAction": "处理对账问题，再重新检查。"})
 	}
-	return c.JSON(http.StatusOK, map[string]any{"selection": selection, "selection_project_counts": projectCounts, "package_scope_counts": r.Counts, "reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "can_generate": buildErr == nil, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_scope_digest": snap.SelectionScopeDigest, "import_job": snap.ImportJob, "version": snap.Version, "dependency_gaps": []string{"X 侧真实 dry-run 与双方签字仍须完成"}})
+	return c.JSON(http.StatusOK, map[string]any{"selection": selection, "selection_project_counts": projectCounts, "package_scope_counts": r.Counts, "reconciliation": r, "blockers": blockers, "preview_sha256": reviewbundle.SnapshotDigest(snap), "can_generate": buildErr == nil, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_scope_digest": snap.SelectionScopeDigest, "import_job": snap.ImportJob, "source": map[string]string{"system": snap.SourceSystem, "id": snap.SourceID, "version": snap.SourceVersion, "rights_ref": snap.RightsRef}, "previous": snap.Previous, "version": snap.Version, "dependency_gaps": []string{"X 侧真实 dry-run 与双方签字仍须完成"}})
 }
 
 var deliveryRequestUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 func (s *importService) createAdoptionDelivery(c *core.RequestEvent) error {
+	if os.Getenv("FANGJI_NATIVE_DELIVERY_ENABLED") == "0" {
+		return apis.NewApiError(http.StatusServiceUnavailable, "编选直接出包暂未开放，请使用原有交接清单流程。", nil)
+	}
 	var input adoptionDeliveryInput
 	if err := c.BindBody(&input); err != nil {
 		return apis.NewBadRequestError("请求内容无法解析。", err)
@@ -193,7 +208,7 @@ func (s *importService) createAdoptionDelivery(c *core.RequestEvent) error {
 		existing, err := app.FindFirstRecordByFilter("release_deliveries", "project = {:project} && operator = {:operator} && request_id = {:request}", dbx.Params{"project": projectID, "operator": auth.Id, "request": input.RequestID})
 		if err == nil {
 			if existing.GetString("request_fingerprint") != fingerprint {
-				return apis.NewApiError(http.StatusConflict, "此 request_id 已用于不同请求。", nil)
+				return deliveryProblem(409, "DELIVERY_REQUEST_REUSED", "此 request_id 已用于不同请求。", "核对已有包；有意改变请求时重新检查并生成新的确认编号。")
 			}
 			record = existing
 			replay = true
@@ -212,9 +227,9 @@ func (s *importService) createAdoptionDelivery(c *core.RequestEvent) error {
 			return err
 		}
 		if input.PreviewSHA == "" || input.PreviewSHA != reviewbundle.SnapshotDigest(snap) {
-			return apis.NewApiError(http.StatusConflict, "检查结果已过期或缺失，请重新检查并由人确认出包。", nil)
+			return deliveryProblem(409, "DELIVERY_PREVIEW_CHANGED", "检查结果已过期或缺失，请重新检查并由人确认出包。", "重新预检，核对正文、来源、选择与前包后确认。")
 		}
-		record, err = saveDeliveryArchive(app, snap, input.RequestID, fingerprint)
+		record, err = saveDeliveryArchive(app, snap, input.RequestID, fingerprint, c)
 		return err
 	})
 	if err != nil {
@@ -242,7 +257,7 @@ func deliveryInputError(err error) error {
 	return apis.NewBadRequestError(err.Error(), nil)
 }
 
-func saveDeliveryArchive(app core.App, snap reviewbundle.DeliverySnapshot, requestID, fingerprint string) (*core.Record, error) {
+func saveDeliveryArchive(app core.App, snap reviewbundle.DeliverySnapshot, requestID, fingerprint string, request ...*core.RequestEvent) (*core.Record, error) {
 	archive, err := reviewbundle.BuildDelivery(snap, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, err
@@ -267,7 +282,11 @@ func saveDeliveryArchive(app core.App, snap reviewbundle.DeliverySnapshot, reque
 	for key, value := range map[string]any{"reconciliation_json": string(reconciliation), "project": snap.Project, "operator": snap.Operator, "package_id": "delivery-" + reviewbundle.SnapshotDigest(snap)[:32], "sha256": reviewbundle.Digest(archive), "purpose": snap.Purpose, "recipient": snap.Recipient, "source_ref": snap.RightsRef, "import_job": snap.ImportJob, "previous": snap.Previous, "version": snap.Version, "snapshot": string(data), "archive": file, "request_id": requestID, "request_fingerprint": fingerprint} {
 		record.Set(key, value)
 	}
-	if err := app.Save(record); err != nil {
+	err = app.Save(record)
+	if err == nil && len(request) > 0 {
+		err = appendSecurityEvent(app, request[0], "delivery.created", "success", snap.Operator, "", snap.Project, map[string]any{"count": len(snap.Entries), "resource_type": "release_delivery", "resource_id": record.Id})
+	}
+	if err != nil {
 		// A later model hook can fail after PocketBase has uploaded the file. Its
 		// transactional error interceptor assumes execute handled cleanup; that
 		// assumption does not cover a failure after e.Next() in a model hook.

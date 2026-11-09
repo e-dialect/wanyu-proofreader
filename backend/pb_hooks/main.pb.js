@@ -43,7 +43,7 @@
 
 onBootstrap((e) => {
   e.next()
-  if (($os.getenv("FANGJI_SKIP_ADMIN_BOOTSTRAP") || "").trim() === "1") {
+  if (e.app.store().get("accountRecoveryCLI") || ($os.getenv("FANGJI_SKIP_ADMIN_BOOTSTRAP") || "").trim() === "1") {
     return
   }
 
@@ -87,26 +87,8 @@ onBootstrap((e) => {
       existing = dao.findAuthRecordByEmail("users", email)
     } catch {}
 
-    if (existing) {
-      let changed = false
-      if (existing.getString("role") !== "platform_admin") {
-        existing.set("role", "platform_admin")
-        changed = true
-      }
-      if (!existing.verified) {
-        existing.setVerified(true)
-        changed = true
-      }
-      if (!existing.validatePassword(password)) {
-        existing.setPassword(password)
-        changed = true
-      }
-      if (changed) {
-        dao.save(existing)
-        console.log("Updated existing app admin:", email)
-      }
-      return
-    }
+    // Bootstrap never resets an existing password, role or verified state.
+    if (existing) return
 
     const record = new Record(users)
     record.set("username", username)
@@ -138,12 +120,7 @@ onBootstrap((e) => {
 
     const dao = $app
     try {
-      const existing = dao.findAuthRecordByEmail("_superusers", email)
-      if (!existing.validatePassword(password)) {
-        existing.setPassword(password)
-        dao.save(existing)
-      }
-      console.log("Updated existing PocketBase admin:", email)
+      dao.findAuthRecordByEmail("_superusers", email)
       return
     } catch {}
 

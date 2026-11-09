@@ -75,12 +75,12 @@ func TestProfileUpdate(t *testing.T) {
 	if !strings.Contains(conflict["message"].(string), nicknameTaken) {
 		t.Fatalf("missing Chinese nickname conflict: %#v", conflict)
 	}
-	result := request(`{"name":"  测试𢶀  ","email":"new@example.com"}`, token, 200)
-	if result["name"] != "测试𢶀" || result["email"] != "new@example.com" || result["verified"] != false || result["role"] != "user" {
+	result := request(`{"name":"  测试𢶀  ","email":""}`, token, 200)
+	if result["name"] != "测试𢶀" || result["email"] != "" || result["verified"] != true || result["role"] != "user" {
 		t.Fatalf("unexpected profile %#v", result)
 	}
 	saved, err := app.FindRecordById("users", user.Id)
-	if err != nil || saved.GetString("name") != "测试𢶀" || saved.Verified() {
+	if err != nil || saved.GetString("name") != "测试𢶀" || !saved.Verified() {
 		t.Fatalf("profile not persisted: %v", err)
 	}
 	saved.SetVerified(true)
@@ -91,10 +91,10 @@ func TestProfileUpdate(t *testing.T) {
 	if result["verified"] != true {
 		t.Fatal("nickname edit cleared verification")
 	}
-	request(`{"email":""}`, token, 200)
+	request(`{"email":"new@example.com"}`, token, 400)
 	saved, _ = app.FindRecordById("users", user.Id)
-	if saved.Email() != "" || saved.Verified() {
-		t.Fatal("clearing email must clear verification")
+	if saved.Email() != "" || !saved.Verified() {
+		t.Fatal("rejected email edit changed account")
 	}
 	saved.Set("must_change_password", true)
 	if err := app.Save(saved); err != nil {

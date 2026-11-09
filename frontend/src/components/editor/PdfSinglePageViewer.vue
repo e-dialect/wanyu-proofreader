@@ -43,7 +43,11 @@
     <div v-else ref="wrapRef" class="pdf-scroll" role="region" tabindex="0" aria-label="PDF 原文">
       <div
         class="pdf-canvas-stage"
-        :style="{ width: `${canvasCssWidth}px`, height: `${canvasCssHeight}px` }"
+        :style="{
+          width: `${canvasCssWidth}px`,
+          height: `${canvasCssHeight}px`,
+          visibility: loading || rendering ? 'hidden' : 'visible'
+        }"
       >
         <img
           v-if="pageImage"
@@ -71,8 +75,8 @@
             >{{ identityStamp }}</span
           >
         </div>
-        <div v-if="loading || rendering" class="pdf-loading-mask">PDF 加载中...</div>
       </div>
+      <div v-if="loading || rendering" class="pdf-loading-mask" role="status">PDF 加载中...</div>
     </div>
   </div>
 </template>
@@ -503,6 +507,7 @@ onBeforeUnmount(async () => {
 }
 
 .pdf-scroll {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;

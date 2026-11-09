@@ -83,7 +83,10 @@
       <RouterLink :to="`/admin/projects/${projectId}/adoption`" class="btn btn-quiet btn-sm"
         >前往用途编选，确认交付范围 →</RouterLink
       >
-      <label class="form-group mt-3"
+      <p v-if="!nativeDeliveryEnabled" class="text-muted">
+        编选直接出包暂未开放，请使用已核查的交接清单。
+      </p>
+      <label v-if="nativeDeliveryEnabled" class="form-group mt-3"
         ><span class="form-label">编选批次</span>
         <select
           :value="nativeBatch?.id || ''"
@@ -110,6 +113,7 @@
         </select>
       </label>
       <AppPagination
+        v-if="nativeDeliveryEnabled"
         :page="adoptionPage"
         :total-pages="adoptionPages"
         :busy="busy || loading"
@@ -120,7 +124,7 @@
         交给 {{ nativeBatch.recipient }} ·
         {{ purposeLabel(nativeBatch.purpose) }}；将重新核查完整批次与确认范围。
       </p>
-      <details class="mt-3">
+      <details v-if="nativeDeliveryEnabled" class="mt-3">
         <summary>兼容旧交接清单</summary>
         <label
           ><input v-model="legacyMode" type="checkbox" :disabled="busy" /> 使用人工核查过的旧 JSON
@@ -601,7 +605,8 @@ const nativeBatch = ref(null)
 const adoptionChoices = ref([])
 const adoptionPage = ref(1)
 const adoptionPages = ref(1)
-const legacyMode = ref(false)
+const nativeDeliveryEnabled = globalThis.__FANGJI_NATIVE_DELIVERY_ENABLED__ !== false
+const legacyMode = ref(!nativeDeliveryEnabled)
 const previous = ref('')
 const changeReason = ref('')
 const requestId = ref('')
@@ -750,12 +755,12 @@ async function load() {
       ])
       if (detail.project !== id) throw new Error('交付包不属于当前项目')
     }
-    if (route.query.adoption) {
+    if (nativeDeliveryEnabled && route.query.adoption) {
       adoption = await getAdoptionBatch(route.query.adoption)
       if (adoption.project !== id || adoption.status !== 'confirmed')
         throw new Error('请选择本项目已确认的编选批次')
     }
-    if (view.value === 'prepare') await loadAdoptions()
+    if (nativeDeliveryEnabled && view.value === 'prepare') await loadAdoptions()
     if (disposed || generation !== loadGeneration || id !== projectId.value) return
     items.value = data.items
     metrics.value = data.metrics

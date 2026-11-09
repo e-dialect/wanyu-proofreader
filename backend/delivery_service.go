@@ -130,12 +130,12 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 	}
 	job, err := app.FindRecordById("import_jobs", h.ImportJob)
 	if err != nil || job.GetString("project") != projectID || job.GetString("mode") != "bundle" || job.GetString("status") != "completed" {
-		return snap, fmt.Errorf("请选择本项目已完整导入的 ReviewBundle 批次。")
+		return snap, deliveryProblem(400, "UNSUPPORTED_IMPORT_JOB", "请选择本项目已完整导入的 ReviewBundle 批次。", "等待完整 Bundle 入册后重新编选，CSV/OCR 暂不支持直接出包。")
 	}
 	// Reuse #183's validated source identity instead of inventing provenance.
 	source, err := app.FindRecordById("sources", job.GetString("source"))
 	if err != nil {
-		return snap, fmt.Errorf("批次缺少来源登记。")
+		return snap, deliveryProblem(400, "DELIVERY_SOURCE_MISSING", "批次缺少来源登记。", "管理员补全并核验来源登记后重新检查。")
 	}
 	if err = deliveryRights(app, source.GetString("logical_id"), h.Purpose); err != nil {
 		return snap, err
@@ -156,7 +156,7 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 	// job. import_job then identifies only its newly inserted subset, not the
 	// uploaded batch. Fail closed rather than reconcile that subset as a whole.
 	if job.GetInt("total_count") <= 0 || len(pages) != job.GetInt("total_count") {
-		return snap, fmt.Errorf("批次关联条目数与入站总数不一致（可能含重放跳过或已删除条目），无法证明完整范围；请退回 A／D 线核查，禁止按子集出包。")
+		return snap, deliveryProblem(400, "DELIVERY_IMPORT_INCOMPLETE", "批次关联条目数与入站总数不一致（可能含重放跳过或已删除条目），无法证明完整范围；请退回 A／D 线核查，禁止按子集出包。", "核对入站总数与逐条关联，不自动拆分或补齐。")
 	}
 	if len(pages) == 0 || len(pages) != len(h.Entries) {
 		return snap, fmt.Errorf("交接清单必须逐项覆盖整个导入批次（不允许静默遗漏）。")
@@ -378,7 +378,7 @@ func (s *importService) createDelivery(c *core.RequestEvent) error {
 		if h.PreviewSHA == "" || h.PreviewSHA != reviewbundle.SnapshotDigest(snap) {
 			return fmt.Errorf("检查结果已过期或缺失，请重新检查并由人确认出包。")
 		}
-		record, err = saveDeliveryArchive(app, snap, "", "")
+		record, err = saveDeliveryArchive(app, snap, "", "", c)
 		return err
 	})
 	if err != nil {

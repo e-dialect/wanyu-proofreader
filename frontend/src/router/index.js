@@ -14,6 +14,18 @@ function getHomePath() {
 
 const routes = [
   {
+    path: '/account/security',
+    name: 'AccountSecurity',
+    component: () => import('@/views/AccountSecurityView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/account/:action(recover|reset-password|confirm-email|verify-email)',
+    name: 'AccountAction',
+    component: () => import('@/views/AccountActionView.vue'),
+    meta: { allowInitialPassword: true }
+  },
+  {
     path: '/workspace',
     name: 'WorkspaceHome',
     component: () => import('@/views/WorkspaceHomeView.vue'),

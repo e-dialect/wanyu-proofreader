@@ -188,3 +188,15 @@ Reka 提供的运行时定位变量在 UI 债务检查中逐个登记；近似�
 ### 归一草稿的依据变化
 
 归一复核草稿按条目和完整复核依据共同绑定，同依据才保留可编辑内容。依据变化时只读归档旧写法/旧依据，当前表单清空并锁定；明确开始重新填写后才允许输入新结论。409后若新队列未成功加载，不能把旧来源重新标为当前依据。离页、筛选或已移出队列的工作区草稿有只读查看入口；关闭工作区前需自行保留，不冒充服务端已保存。API兼容与事务约束见 `docs/scheme-normalization-review.md`。
+
+## 后台作业、账户与可恢复管理页
+
+作业观察按`authEpoch:userId:projectId:kind:jobId`共享GET与快照；账号/项目/作业变化取消旧请求并丢弃迟到结果。同用户正常token刷新不换代。活动面板2秒、隐藏面板/文档15秒；失败2/4/8/15秒退避，离线暂停、恢复立即读。GET10秒未完成视为连接陈旧，不能宣告服务端作业失败。最后订阅者离开清理计时器。CSV validated为待确认；转换total_count为已处理量、无完整分母，不显示假百分比或ETA。
+
+CSV预检展示前20条有效行的只读样本；`preview_locations`与原preview同索引，单独表达CSV行号和PDF物理页码，不占用用户列名。入口“提取PDF文字层”只承诺当前正式支持能力；练习CSV与正式项目明确区分，不声称它完成ReviewBundle交付。
+
+编选列表、创建及详情以query表达`page/view/batch/tab/exception`，交付以`page/view/adoption/package/tab`定位。详情按ID读取，不能从当前列表页推断；会卸载未保存编辑对象的query变化须确认。权限失效不受离页确认阻挡。账户安全归入账户与偏好，不高亮项目。
+
+原生交付仅接受规则显式指定的单个完整入站Bundle。先验证全项目scope_digest，再按目标入站批次构造完整声明；界面分别展示编选项目范围与本包范围。preflight绑定全部正文/来源/前包的preview_sha256，生成按request_id幂等；同key异体409、成功响应丢失可返回同一包并标replayed。交付链为project/recipient/purpose/import_job。旧包字节和历史previous不改写；待定或范围外只交付标识与理由。人工填核查者不是额外身份认证。
+
+页面性能观测只记录固定业务时点及脱敏时间；原文以实际image load或canvas render完成后的绘制帧记source_visible，不用API结束代替。不会上传恢复链接token、URL/query/hash、输入值或DOM选择器。

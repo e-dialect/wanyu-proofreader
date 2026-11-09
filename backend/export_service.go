@@ -406,6 +406,17 @@ func (s *importService) exportProject(c *core.RequestEvent) error {
 	if err = writeProjectExport(c.Request.Context(), counter, tx, collection, where, params, m); err != nil {
 		return apis.NewBadRequestError("准备导出失败。", err)
 	}
+	// Persist authorization before publishing bytes. The short write transaction
+	// rechecks current permission and is never held across a slow download.
+	if err = s.app.RunInTransaction(func(auditApp core.App) error {
+		current, _, err := requireAdoptionManagerInApp(auditApp, c, projectID)
+		if err != nil {
+			return err
+		}
+		return appendSecurityEvent(auditApp, c, "export.authorized", "success", current.Id, "", projectID, map[string]any{"count": m.ExportedCount, "resource_type": "project_export", "resource_id": projectID})
+	}); err != nil {
+		return err
+	}
 	filename := "project_" + projectID + "_export." + o.Format
 	c.Response.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"; filename*=UTF-8''`+url.PathEscape(project.GetString("name")+"_校对结果."+o.Format))
 	c.Response.Header().Set("Content-Type", map[string]string{"csv": "text/csv; charset=utf-8", "jsonl": "application/x-ndjson; charset=utf-8"}[o.Format])
@@ -419,6 +430,16 @@ func (s *importService) exportProject(c *core.RequestEvent) error {
 	s.app.Logger().Info("project_export_started", "operator", auth.Id, "project", projectID, "filters", o, "count", m.ExportedCount, "exported_at", m.ExportedAt)
 	c.Response.WriteHeader(http.StatusOK)
 	err = writeProjectExport(c.Request.Context(), c.Response, tx, collection, where, params, m)
+	// Release the read snapshot before recording the stream result. A successful
+	// write means server-side completion, never a recipient acknowledgement.
+	_ = tx.Rollback()
+	outcome := "success"
+	if err != nil {
+		outcome = "failed"
+	}
+	if auditErr := appendSecurityEvent(s.app, c, "export.stream_finished", outcome, auth.Id, "", projectID, map[string]any{"count": m.ExportedCount, "resource_type": "project_export", "resource_id": projectID}); auditErr != nil {
+		writeOperation("error", "security", "security_audit_persist_failed", map[string]any{"request_id": securityRequestID(c), "event_type": "export.stream_finished"})
+	}
 	if err != nil {
 		s.app.Logger().Error("project_export_failed", "operator", auth.Id, "project", projectID, "error", err.Error())
 		return nil

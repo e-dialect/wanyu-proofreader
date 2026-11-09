@@ -1,0 +1,421 @@
+{
+  "synthetic_only": true,
+  "scope": "same 30 second mixed smoke with unfiltered local layout-shift observer; no product telemetry payload change",
+  "runs": {
+    "cls-diagnosis": {
+      "overall_status": "fail",
+      "web_vitals": [
+        {
+          "name": "LCP",
+          "samples": 6,
+          "p95": 1264,
+          "limit": 2500,
+          "status": "pass"
+        },
+        {
+          "name": "INP",
+          "samples": 4,
+          "p95": 104,
+          "limit": 200,
+          "status": "pass"
+        },
+        {
+          "name": "CLS",
+          "samples": 6,
+          "p95": 0.15451706492734052,
+          "limit": 0.1,
+          "status": "fail"
+        }
+      ],
+      "layout_shift_entries": 264,
+      "largest_non_input_shifts": [
+        {
+          "vu": 0,
+          "value": 0.07943460648148148,
+          "had_recent_input": false,
+          "sources": [
+            {
+              "selector": "div.editor-panel-body.editor-panel-body--pdf > div.pdf-viewer > div.pdf-scroll > div.pdf-canvas-stage",
+              "previous": {
+                "x": 315.39,
+                "y": 119,
+                "width": 312,
+                "height": 158
+              },
+              "current": {
+                "x": 13,
+                "y": 119,
+                "width": 629.8,
+                "height": 768
+              }
+            },
+            {
+              "selector": "div.pdf-viewer > div.pdf-scroll > div.pdf-canvas-stage > div.pdf-loading-mask",
+              "previous": {
+                "x": 314.58,
+                "y": 119,
+                "width": 26.64,
+                "height": 47
+              },
+              "current": {
+                "x": 21,
+                "y": 127,
+                "width": 614,
+                "height": 760
+              }
+            },
+            {
+              "selector": "div.pdf-scroll > div.pdf-canvas-stage > div.pdf-identity-watermark > span.pdf-identity-watermark-tile",
+              "previous": {
+                "x": 29.95,
+                "y": 140.96,
+                "width": 195.33,
+                "height": 97.52
+              },
+              "current": {
+                "x": 76.69,
+                "y": 128.44,
+                "width": 195.33,
+                "height": 97.52
+              }
+            }
+          ]
+        },
+        {
+          "vu": 1,
+          "value": 0.07943460648148148,
+          "had_recent_input": false,
+          "sources": [
+            {
+              "selector": "div.editor-panel-body.editor-panel-body--pdf > div.pdf-viewer > div.pdf-scroll > div.pdf-canvas-stage",
+              "previous": {
+                "x": 315.39,
+                "y": 119,
+                "width": 312,
+                "height": 158
+              },
+              "current": {
+                "x": 13,
+                "y": 119,
+                "width": 629.8,
+                "height": 768
+              }
+            },
+            {
+              "selector": "div.pdf-viewer > div.pdf-scroll > div.pdf-canvas-stage > div.pdf-loading-mask",
+              "previous": {
+                "x": 314.58,
+                "y": 119,
+                "width": 26.64,
+                "height": 47
+              },
+              "current": {
+                "x": 21,
+                "y": 127,
+                "width": 614,
+                "height": 760
+              }
+            },
+            {
+              "selector": "div.pdf-scroll > div.pdf-canvas-stage > div.pdf-identity-watermark > span.pdf-identity-watermark-tile",
+              "previous": {
+                "x": 29,
+                "y": 140.58,
+                "width": 198.14,
+                "height": 98.27
+              },
+              "current": {
+                "x": 75.74,
+                "y": 128.06,
+                "width": 198.14,
+                "height": 98.27
+              }
+            }
+          ]
+        },
+        {
+          "vu": 1,
+          "value": 0.07943460648148148,
+          "had_recent_input": false,
+          "sources": [
+            {
+              "selector": "div.editor-panel-body.editor-panel-body--pdf > div.pdf-viewer > div.pdf-scroll > div.pdf-canvas-stage",
+              "previous": {
+                "x": 315.39,
+                "y": 119,
+                "width": 312,
+                "height": 158
+              },
+              "current": {
+                "x": 13,
+                "y": 119,
+                "width": 629.8,
+                "height": 768
+              }
+            },
+            {
+              "selector": "div.pdf-viewer > div.pdf-scroll > div.pdf-canvas-stage > div.pdf-loading-mask",
+              "previous": {
+                "x": 314.58,
+                "y": 119,
+                "width": 26.64,
+                "height": 47
+              },
+              "current": {
+                "x": 21,
+                "y": 127,
+                "width": 614,
+                "height": 760
+              }
+            },
+            {
+              "selector": "div.pdf-scroll > div.pdf-canvas-stage > div.pdf-identity-watermark > span.pdf-identity-watermark-tile",
+              "previous": {
+                "x": 29,
+                "y": 140.58,
+                "width": 198.14,
+                "height": 98.27
+              },
+              "current": {
+                "x": 75.74,
+                "y": 128.06,
+                "width": 198.14,
+                "height": 98.27
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "cls-stable": {
+      "overall_status": "fail",
+      "web_vitals": [
+        {
+          "name": "LCP",
+          "samples": 6,
+          "p95": 1572,
+          "limit": 2500,
+          "status": "pass"
+        },
+        {
+          "name": "INP",
+          "samples": 4,
+          "p95": 64,
+          "limit": 200,
+          "status": "pass"
+        },
+        {
+          "name": "CLS",
+          "samples": 6,
+          "p95": 0.0748807514708719,
+          "limit": 0.1,
+          "status": "pass"
+        }
+      ],
+      "layout_shift_entries": 250,
+      "largest_non_input_shifts": [
+        {
+          "vu": 0,
+          "value": 0.012430748456790123,
+          "had_recent_input": false,
+          "sources": [
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > div.proofread-fields",
+              "previous": {
+                "x": 672.8,
+                "y": 233.25,
+                "width": 738.2,
+                "height": 494
+              },
+              "current": {
+                "x": 672.8,
+                "y": 285.25,
+                "width": 738.2,
+                "height": 494
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > section.verification-panel",
+              "previous": {
+                "x": 672.8,
+                "y": 184.25,
+                "width": 738.2,
+                "height": 37
+              },
+              "current": {
+                "x": 672.8,
+                "y": 236.25,
+                "width": 738.2,
+                "height": 37
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > details.editor-correction-help",
+              "previous": {
+                "x": 672.8,
+                "y": 743.25,
+                "width": 738.2,
+                "height": 17
+              },
+              "current": {
+                "x": 672.8,
+                "y": 795.25,
+                "width": 738.2,
+                "height": 6.36
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > header.editor-panel-header.editor-panel-header--task > div.task-primary-actions",
+              "previous": {
+                "x": 1109.33,
+                "y": 83.13,
+                "width": 301.67,
+                "height": 34
+              },
+              "current": {
+                "x": 1095.83,
+                "y": 83.13,
+                "width": 315.17,
+                "height": 34
+              }
+            }
+          ]
+        },
+        {
+          "vu": 1,
+          "value": 0.012430748456790123,
+          "had_recent_input": false,
+          "sources": [
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > div.proofread-fields",
+              "previous": {
+                "x": 672.8,
+                "y": 233.25,
+                "width": 738.2,
+                "height": 494
+              },
+              "current": {
+                "x": 672.8,
+                "y": 285.25,
+                "width": 738.2,
+                "height": 494
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > section.verification-panel",
+              "previous": {
+                "x": 672.8,
+                "y": 184.25,
+                "width": 738.2,
+                "height": 37
+              },
+              "current": {
+                "x": 672.8,
+                "y": 236.25,
+                "width": 738.2,
+                "height": 37
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > details.editor-correction-help",
+              "previous": {
+                "x": 672.8,
+                "y": 743.25,
+                "width": 738.2,
+                "height": 17
+              },
+              "current": {
+                "x": 672.8,
+                "y": 795.25,
+                "width": 738.2,
+                "height": 6.36
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > header.editor-panel-header.editor-panel-header--task > div.task-primary-actions",
+              "previous": {
+                "x": 1109.33,
+                "y": 83.13,
+                "width": 301.67,
+                "height": 34
+              },
+              "current": {
+                "x": 1095.83,
+                "y": 83.13,
+                "width": 315.17,
+                "height": 34
+              }
+            }
+          ]
+        },
+        {
+          "vu": 0,
+          "value": 0.012430748456790123,
+          "had_recent_input": false,
+          "sources": [
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > div.proofread-fields",
+              "previous": {
+                "x": 672.8,
+                "y": 233.25,
+                "width": 738.2,
+                "height": 494
+              },
+              "current": {
+                "x": 672.8,
+                "y": 285.25,
+                "width": 738.2,
+                "height": 494
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > section.verification-panel",
+              "previous": {
+                "x": 672.8,
+                "y": 184.25,
+                "width": 738.2,
+                "height": 37
+              },
+              "current": {
+                "x": 672.8,
+                "y": 236.25,
+                "width": 738.2,
+                "height": 37
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > div.editor-panel-body.editor-panel-body--fields > details.editor-correction-help",
+              "previous": {
+                "x": 672.8,
+                "y": 743.25,
+                "width": 738.2,
+                "height": 17
+              },
+              "current": {
+                "x": 672.8,
+                "y": 795.25,
+                "width": 738.2,
+                "height": 6.36
+              }
+            },
+            {
+              "selector": "main.editor-layout.experience-workspace.has-keyboard.source-toggle-inline > section.editor-panel.fields-panel > header.editor-panel-header.editor-panel-header--task > div.task-primary-actions",
+              "previous": {
+                "x": 1109.33,
+                "y": 83.13,
+                "width": 301.67,
+                "height": 34
+              },
+              "current": {
+                "x": 1095.83,
+                "y": 83.13,
+                "width": 315.17,
+                "height": 34
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

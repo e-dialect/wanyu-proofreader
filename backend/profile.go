@@ -32,7 +32,7 @@ func registerProfile(app core.App) {
 			data := info.Body
 			for key := range data {
 				if key != "name" && key != "email" {
-					return apis.NewBadRequestError("仅可修改昵称和邮箱。", nil)
+					return apis.NewBadRequestError("此接口仅支持修改昵称。", nil)
 				}
 			}
 			values := map[string]any{}
@@ -51,31 +51,37 @@ func registerProfile(app core.App) {
 					return apis.NewBadRequestError(nicknameTaken, nil)
 				}
 			}
+			// Older clients submit the unchanged email together with the nickname.
 			if raw, exists := data["email"]; exists {
 				email, ok := raw.(string)
-				if !ok {
-					return apis.NewBadRequestError("请输入有效邮箱。", nil)
-				}
-				email = strings.TrimSpace(email)
-				values["email"] = email
-				if email != record.Email() {
-					values["verified"] = false
+				if !ok || strings.TrimSpace(email) != record.Email() {
+					return accountAPIError(400, "EMAIL_CHANGE_REQUIRES_CONFIRMATION", "请在账户安全中通过邮件确认更换邮箱。")
 				}
 			}
-			// Manage access is limited to the allowlisted fields above. PocketBase
-			// still validates email format, uniqueness and collection constraints.
-			form := forms.NewRecordUpsert(app, record)
-			form.GrantSuperuserAccess()
-			form.Load(values)
-			if err := form.Submit(); err != nil {
-				return apis.NewBadRequestError("保存失败，请检查昵称和邮箱是否有效、邮箱是否已被使用。", err)
-			}
-			// Only this authenticated owner receives the private email field.
-			record.IgnoreEmailVisibility(true)
-			token, err := record.NewAuthToken()
+			err = app.RunInTransaction(func(tx core.App) error {
+				current, err := accountGeneration(tx, auth)
+				if err != nil {
+					return err
+				}
+				if current.GetBool("must_change_password") {
+					return apis.NewForbiddenError("请先修改初始密码。", nil)
+				}
+				form := forms.NewRecordUpsert(tx, current)
+				form.Load(values)
+				if err := form.Submit(); err != nil {
+					return apis.NewBadRequestError("保存失败，请检查昵称是否有效。", err)
+				}
+				record = current
+				return nil
+			})
 			if err != nil {
 				return err
 			}
+			// Only this authenticated owner receives the private email field.
+			record.IgnoreEmailVisibility(true)
+			// Nickname changes don't require a new authentication token. In
+			// particular, never mint from a key rotated by an in-flight logout.
+			token := strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer ")
 			return c.JSON(http.StatusOK, map[string]any{"record": record, "token": token})
 		}).Bind(apis.BodyLimit(16*1024), apis.RequireAuth("users"))
 		return e.Next()
