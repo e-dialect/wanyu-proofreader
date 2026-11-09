@@ -32,6 +32,7 @@ func main() {
 	poolConfig.DefaultDev = false
 	app := pocketbase.NewWithConfig(poolConfig)
 	registerBootstrapPrivacy(app)
+	registerDataDirectoryOwnership(app)
 
 	var hooksDir string
 	app.RootCmd.PersistentFlags().StringVar(&hooksDir, "hooksDir", "", "the directory with the JS app hooks")
