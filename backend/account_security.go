@@ -322,8 +322,8 @@ func listSecurityEvents(e *core.RequestEvent) error {
 	params := dbx.Params{}
 	switch scope {
 	case "mine":
-		filter = "subject_user_id = {:user} && outcome = 'success'"
-		where = dbx.NewExp("subject_user_id = {:user} AND outcome = 'success'", dbx.Params{"user": current.Id})
+		filter = "subject_user_id = {:user}"
+		where = dbx.NewExp("subject_user_id = {:user}", dbx.Params{"user": current.Id})
 		params["user"] = current.Id
 	case "platform":
 		if current.GetString("role") != "platform_admin" {

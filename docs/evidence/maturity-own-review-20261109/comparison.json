@@ -7,7 +7,9 @@
     "profile": "accelerated smoke",
     "gomaxprocs": 2,
     "gomemlimit": "768MiB",
-    "hard_resource_limit_applied": false
+    "hard_resource_limit_applied": false,
+    "development_mode": true,
+    "runtime_mode_evidence": "Temporary-path DefaultDev rule and emitted SQL debug logs; historical samples did not contain app.IsDev."
   },
   "runs": {
     "before": {

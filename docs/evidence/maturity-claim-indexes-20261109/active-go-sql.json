@@ -1,0 +1,62 @@
+{
+  "after": {
+    "claim_absent": {
+      "max_ms": 0.144,
+      "p50_ms": 0.14,
+      "plan": [
+        "SEARCH pages USING INDEX idx_pages_claim_active (project=? AND proofreader=?)"
+      ],
+      "rows": 0,
+      "rows_sha256_equal": true
+    },
+    "claim_member": {
+      "max_ms": 0.163,
+      "p50_ms": 0.143,
+      "plan": [
+        "SEARCH pages USING INDEX idx_pages_claim_active (project=? AND proofreader=?)"
+      ],
+      "rows": 0,
+      "rows_sha256_equal": true
+    },
+    "resume": {
+      "max_ms": 0.176,
+      "p50_ms": 0.142,
+      "plan": [
+        "SEARCH pages USING INDEX idx_pages_claim_active (project=? AND proofreader=?)"
+      ],
+      "rows": 0,
+      "rows_sha256_equal": true
+    }
+  },
+  "before": {
+    "claim_absent": {
+      "max_ms": 43.457,
+      "p50_ms": 42.206,
+      "plan": [
+        "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+      ],
+      "rows": 0,
+      "rows_sha256_equal": true
+    },
+    "claim_member": {
+      "max_ms": 43.37,
+      "p50_ms": 42.261,
+      "plan": [
+        "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+      ],
+      "rows": 0,
+      "rows_sha256_equal": true
+    },
+    "resume": {
+      "max_ms": 39.52,
+      "p50_ms": 38.232,
+      "plan": [
+        "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+      ],
+      "rows": 0,
+      "rows_sha256_equal": true
+    }
+  },
+  "driver": "repository modernc.org/sqlite",
+  "sqlite_version": "3.53.4"
+}

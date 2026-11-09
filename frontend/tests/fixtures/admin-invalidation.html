@@ -1,0 +1,71 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module">
+// Mounted production components with entirely synthetic responses. This fixture
+// deliberately supports transports that ignore AbortSignal to exercise epochs.
+import { createApp, h, ref, nextTick } from 'vue'
+import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
+import Adoption from '../../src/views/admin/AdoptionView.vue'
+import Deliveries from '../../src/views/admin/DeliveriesView.vue'
+import pb from '../../src/lib/pocketbase'
+import '../../src/style.css'
+const token = 'eyJhbGciOiJIUzI1NiJ9.' + btoa(JSON.stringify({ exp: Math.floor(Date.now()/1000)+3600 })) + '.fixture' // Synthetic unsigned local fixture. gitleaks:allow
+const user = (id) => ({id, role:'platform_admin', name:'虚构练习管理员'})
+pb.authStore.save(token,user('synthetic-admin-a'))
+const batch = {id:'batch-synthetic',project:'project-synthetic',recipient:'虚构受保护接收方',purpose:'public_display',status:'confirmed',rule:{statuses:['approved']},counts:{total:2,selected:1,excluded:0,pending:1},reasons:[],created:'2026-11-09T00:00:00Z',scope_digest:'synthetic-digest'}
+const delivery = {id:'delivery-synthetic',project:'project-synthetic',recipient:'虚构受保护交付方',purpose:'public_display',version:1,package_id:'synthetic-package',source_ref:'synthetic-source',import_job:'synthetic-job',sha256:'synthetic-sha',receipt_state:'awaiting_receipt',receipt_channel:'none',pending_actions:[],pending_action_events:[],waiting_seconds:0,reconciliation:{payload_count:1,counts:{adopted:1,excluded:0,pending:1}}}
+const pending = new Map(), calls=[]
+const scenario={fail:null,hold:null,held:[],aborted:0,calls}
+function response(path, options) {
+ if(path.endsWith('/adoption-summary'))return {batches:{total:0},synthetic_note:'虚构受保护项目汇总'}
+ if(path.includes('/projects/') && path.endsWith('/adoption-batches'))return {batches:[batch],page:options.query?.page||1,totalPages:3,totalItems:51,purposes:['public_display'],reasons:['quality_review']}
+ if(path.includes('/adoption-batches/') && path.endsWith('/exceptions'))return {pending:[{page:'entry-synthetic',pageNumber:1,reason:'quality_review'}],exceptions:[{page:'old-entry',decision:'exclude',note:'虚构敏感历史判断',decidedAt:'2026-11-09'}],pendingTotal:1,page:1,totalPages:1}
+ if(path.includes('/adoption-batches/') && path.endsWith('/events'))return {events:[],stale:false,page:1,totalPages:1}
+ if(path.endsWith('/batch-synthetic'))return batch
+ if(path.includes('/projects/') && path.endsWith('/deliveries'))return {items:[delivery],page:1,totalPages:1,metrics:{package_count:1,receipt_states:{awaiting_receipt:1},withdrawn_packages:0}}
+ if(path.endsWith('/delivery-synthetic/events'))return {events:[{id:'event-synthetic',kind:'receipt',created:'2026-11-09',actor:'synthetic-admin',payload:{reason:'虚构受保护凭据',reviewer:'虚构核查者',affected:1}}],page:1,totalPages:1}
+ if(path.endsWith('/delivery-synthetic'))return delivery
+ if(path.endsWith('/from-adoption'))return {...delivery,replayed:scenario.replayed===true}
+ if(path.endsWith('/preflight'))return {can_generate:true,preview_sha256:'synthetic-preview',reconciliation:{status:'consistent',counts:{adopted:1,excluded:0,pending:1},source_total:2,source_covered:2,outside_ratio:.5,problems:[]}}
+ if(path.endsWith('/sources'))return {items:[{id:'synthetic-source',logical_id:'synthetic-source',title:'虚构受保护来源'}]}
+ if(path.endsWith('/import-ledger'))return {batches:[]}
+ return {}
+}
+pb.send = async (url, options={}) => {
+ const path = new URL(url,'http://synthetic.invalid').pathname
+ calls.push({path,method:options.method||'GET'})
+ const data=structuredClone(response(path,options))
+ if(scenario.hold && path.endsWith(scenario.hold)) {
+   const key=scenario.hold;scenario.hold=null;scenario.held.push(key)
+   options.signal?.addEventListener('abort',()=>scenario.aborted++,{once:true})
+   return new Promise((resolve,reject)=>pending.set(key,{resolve:()=>resolve(data),reject}))
+ }
+ if(scenario.fail && path.endsWith(scenario.fail.path))throw Object.assign(new Error('合成响应失败'),{status:scenario.fail.status})
+ return data
+}
+const realFetch=window.fetch.bind(window)
+window.fetch=async (url,options={})=>{
+ if(!String(url).endsWith('/download'))return realFetch(url,options)
+ const result=()=>scenario.downloadStatus
+   ? new Response(JSON.stringify({message:'合成下载失败'}),{status:scenario.downloadStatus})
+   : new Response(new Blob(['synthetic download fixture']))
+ if(scenario.downloadHold){scenario.held.push('/download');options.signal?.addEventListener('abort',()=>scenario.aborted++,{once:true});return new Promise(resolve=>pending.set('/download',{resolve:()=>resolve(result())}))}
+ return result()
+}
+const params=new URLSearchParams(location.search)
+let AdoptionComponent=Adoption,DeliveryComponent=Deliveries
+if(params.has('baseline')) {
+ const baselinePath=(name)=>'/tests/fixtures/'+name+'.vue'
+ AdoptionComponent=(await import(/* @vite-ignore */ baselinePath('AdminAdoptionBaseline'))).default
+ DeliveryComponent=(await import(/* @vite-ignore */ baselinePath('AdminDeliveriesBaseline'))).default
+}
+const router=createRouter({history:createMemoryHistory(),routes:[{path:'/projects/:id/adoption',component:AdoptionComponent},{path:'/projects/:id/deliveries',component:DeliveryComponent},{path:'/:pathMatch(.*)*',component:{render:()=>h('main','安全目标页')}}]})
+const view=ref(null)
+const api={scenario,router,call:(name,...args)=>view.value.$.setupState[name](...args),state:()=>view.value?.$?.setupState,
+ resolve:(key)=>{pending.get(key).resolve();pending.delete(key)},
+ reject:(key,status)=>{pending.get(key).reject(Object.assign(new Error('合成延迟失败'),{status}));pending.delete(key)},
+ identity:(id)=>id?pb.authStore.save(token,user(id)):pb.authStore.clear(),
+ snapshot:()=>{const s=api.state();return Object.fromEntries(['batches','currentRecord','exceptions','decisionDrafts','createForm','currentDelivery','items','nativeBatch','adoptionChoices','handoff','handoffFilename','reviewer','preview','confirmed','requestId','eventForm','eventBaseline','selected','impacts','sourceRef','accessLost','unavailable','projectUnavailable','summary','metrics'].filter(k=>k in s).map(k=>[k,s[k]]))}}
+window.__adminFixture=api
+await router.push(params.get('route')||'/projects/project-synthetic/adoption?batch=batch-synthetic&tab=exceptions')
+createApp({render:()=>h(RouterView,null,{default:({Component})=>h(Component,{ref:view})})}).use(router).mount('#app')
+await nextTick()
+</script></html>

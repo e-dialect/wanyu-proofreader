@@ -13,11 +13,16 @@ export async function listAdoptionBatches(projectId, { page = 1, perPage = 25, s
   )
 }
 
-export async function createAdoptionBatch(projectId, { purpose, recipient, note = '', rule }) {
+export async function createAdoptionBatch(
+  projectId,
+  { purpose, recipient, note = '', rule },
+  { signal } = {}
+) {
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/adoption-batches`, {
     method: 'POST',
     body: { purpose, recipient, note, rule },
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
@@ -28,24 +33,27 @@ export async function getAdoptionBatch(batchId, { signal } = {}) {
   })
 }
 
-export async function deleteAdoptionBatch(batchId) {
+export async function deleteAdoptionBatch(batchId, { signal } = {}) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}`, {
     method: 'DELETE',
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
-export async function previewAdoptionBatch(batchId) {
+export async function previewAdoptionBatch(batchId, { signal } = {}) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/preview`, {
     method: 'POST',
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
-export async function confirmAdoptionBatch(batchId) {
+export async function confirmAdoptionBatch(batchId, { signal } = {}) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/confirm`, {
     method: 'POST',
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
@@ -60,18 +68,24 @@ export async function listAdoptionExceptions(
   })
 }
 
-export async function decideAdoptionException(batchId, { page, decision, reason = '', note }) {
+export async function decideAdoptionException(
+  batchId,
+  { page, decision, reason = '', note },
+  { signal } = {}
+) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/exceptions`, {
     method: 'POST',
     body: { page, decision, reason, note },
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
-export async function exportAdoptionManifest(batchId, include = 'select') {
+export async function exportAdoptionManifest(batchId, include = 'select', { signal } = {}) {
   const query = new URLSearchParams({ include })
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/manifest?${query}`, {
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 
@@ -86,10 +100,11 @@ export async function listAdoptionEvents(
   })
 }
 
-export async function reevaluateAdoptionBatch(batchId) {
+export async function reevaluateAdoptionBatch(batchId, { signal } = {}) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}/reevaluate`, {
     method: 'POST',
-    requestKey: null
+    requestKey: null,
+    signal
   })
 }
 

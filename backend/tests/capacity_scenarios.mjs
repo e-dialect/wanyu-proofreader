@@ -352,7 +352,9 @@ const thresholds = {
   pdf_descriptor: 500,
   task: 500,
   admin_pages: 500,
-  verification: 500
+  verification: 500,
+  hall: 500,
+  arbitration_read: 500
 }
 const operations = [...new Set(samples.map((s) => s.operation))].map((operation) => {
   const rows = samples.filter((s) => s.operation === operation),

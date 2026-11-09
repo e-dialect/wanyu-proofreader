@@ -35,7 +35,8 @@ with harness.temporary_root() as temporary:
                'SCREENSHOT_DIR': str(output), 'SCREENSHOT_PATH': str(output / 'profile-session.png'),
                'RARE_BROWSER_FIXTURE': str(temporary / 'rare.json'), 'FONT_ENGINES': 'chromium', 'REPOSITORY_REVIEW_OUTPUT': str(output / 'repository-review'),
                'DRAFT_LOGOUT_OUTPUT': str(output / 'draft-logout'),
-               'PDF_LIFECYCLE_OUTPUT': str(output / 'pdf-lifecycle')}
+               'PDF_LIFECYCLE_OUTPUT': str(output / 'pdf-lifecycle'),
+               'ADMIN_INVALIDATION_OUTPUT': str(output / 'admin-invalidation')}
         with (temporary / 'vite.log').open('w') as log:
             vite = subprocess.Popen(['npm', 'run', 'dev', '--', '--host', '127.0.0.1'], cwd=FRONTEND, env=env, stdout=log, stderr=log)
             try:
@@ -50,7 +51,7 @@ with harness.temporary_root() as temporary:
                 else:
                     raise RuntimeError('Quality fixture Vite did not start')
                 checks = {
-                    'components': ['frontend/tests/browser/reka-controls.cjs', 'frontend/tests/browser/disclosure.cjs', 'frontend/tests/browser/job-observer.cjs'],
+                    'components': ['frontend/tests/browser/reka-controls.cjs', 'frontend/tests/browser/disclosure.cjs', 'frontend/tests/browser/job-observer.cjs', 'frontend/tests/browser/admin-invalidation.cjs'],
                     'repository': ['frontend/tests/browser/repository-review.cjs', 'frontend/tests/browser/draft-logout.cjs', 'frontend/tests/browser/pdf-lifecycle.cjs', 'frontend/tests/browser/source-fidelity.cjs', 'frontend/tests/browser/normalization-draft.cjs'],
                     'review': ['frontend/tests/browser/review.cjs', 'frontend/tests/browser/arbitration-queue.cjs'],
                     'modal': ['frontend/tests/browser/modal.cjs'],

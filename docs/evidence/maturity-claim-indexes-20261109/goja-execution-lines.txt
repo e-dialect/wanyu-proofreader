@@ -1,0 +1,82 @@
+Total: 1417.38s
+ROUTINE ======================== appendEvent in $REPO/backend/pb_hooks/lib/source_fidelity.js
+   439.59s    439.59s (flat, cum) 31.01% of Total
+         .          .     85:function proofreaderContext(context) {
+         .          .     86:  const { round, machine, ...safe } = context
+         .          .     87:  return safe
+         .          .     88:}
+         .          .     89:function appendEvent(dao, { project, page = "", kind, ref = "", field = "", actor, context, payload = {} }) {
+     1.87s      1.87s     90:  const event = new Record(dao.findCollectionByNameOrId("verification_events"))
+    7.79ms     7.79ms     91:  event.set("project", project)
+  345.89us   345.89us     92:  event.set("page", page)
+   15.36us    15.36us     93:  event.set("kind", kind)
+    9.64ms     9.64ms     94:  event.set("ref", ref)
+         .          .     95:  event.set("field_name", field)
+    1.94ms     1.94ms     96:  event.set("actor", actor)
+   84.83ms    84.83ms     97:  event.set("context_json", JSON.stringify(context || {}))
+   12.93ms    12.93ms     98:  event.set("payload_json", JSON.stringify(payload))
+   437.60s    437.60s     99:  dao.save(event)
+         .          .    100:  return event
+         .          .    101:}
+         .          .    102:function eventView(event) {
+         .          .    103:  return { id: event.id, project: event.getString("project"), page: event.getString("page"), kind: event.getString("kind"), ref: event.getString("ref"), field: event.getString("field_name"), actor: event.getString("actor"), at: String(event.get("created")), context: parse(event.getString("context_json")), payload: parse(event.getString("payload_json")) }
+         .          .    104:}
+ROUTINE ======================== recomputePage in $REPO/backend/pb_hooks/lib/assist_writer.js
+     1.07s    438.54s (flat, cum) 30.94% of Total
+         .          .    242:// rowOverride：提交路径传进来的「校对员刚打的那一行」。
+         .          .    243:// 不传就用库里的当前值——pages.proofread_row_json 只在凑够票数后才写，
+         .          .    244:// 第一遍提交时若不用 override，规则算的还是导入原文，等于没算刚提交的内容。
+         .          .    245:function recomputePage(dao, pageId, rowOverride = null) {
+         .          .    246:  const { runEntryRules, RULES_VERSION, PROJECT_ONLY_MESSAGE_KEYS } = require(`${__hooks}/lib/assist_rules.js`)
+  853.81ms   853.81ms    247:  const collection = dao.findCollectionByNameOrId("review_findings")
+  190.52ms   190.52ms    248:  const page = dao.findRecordById("pages", pageId)
+         .          .    249:  const at = nowStamp()
+   19.44ms    19.44ms    250:  const row = rowOverride && Object.keys(rowOverride).length ? rowOverride : rowForRules(page)
+         .      1.14s    251:  const findings = runEntryRules(contextFor(dao, page), row, pageId)
+         .   151.64ms    252:  const offsetsDropped = dropUnfaithfulOffsets(findings, () => ({
+         .          .    253:    row, shown: parseRow(page.get("ocr_row_json"))
+         .          .    254:  }))
+         .     4.60ms    255:  const scope = pageScope(pageId, PROJECT_ONLY_MESSAGE_KEYS)
+         .   647.12ms    256:  const superseded = supersede(dao, collection, scope, at, RULE_KINDS)
+  131.52us   131.52us    257:  const insertedIds = findings.map(item => insertFinding(dao, collection, page, item, at, RULES_VERSION).id)
+         .          .    258:  const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+         .    434.56s    259:  fidelity.appendEvent(dao, { project: page.getString("project"), page: page.id, kind: "machine_analysis", actor: "machine", context: fidelity.contextFor(dao, page, false), payload: { producer: PRODUCER, producer_version: RULES_VERSION, produced_at: at, input: row, finding_ids: insertedIds, raw_count: findings.length } })
+         .   830.86ms    260:  const settled = settleBatch(dao, collection, scope, at, RULE_KINDS)
+         .          .    261:  // 难度在收尾之后刷新：tier 由**当前批次**推导，收尾前读到的还是旧批次。
+         .   139.71ms    262:  const difficulty = refreshDifficulty(dao, page)
+         .          .    263:  return {
+    1.65ms     1.65ms    264:    page: pageId, findings: findings.length, superseded, settled,
+         .          .    265:    offsets_dropped: offsetsDropped,
+         .          .    266:    producer_version: RULES_VERSION,
+         .          .    267:    difficulty_tier: difficulty.tier, difficulty_version: difficulty.version
+         .          .    268:  }
+         .          .    269:}
+ROUTINE ======================== scan in $REPO/backend/pb_hooks/lib/claim_candidates.js
+    32.42s     34.10s (flat, cum)  2.41% of Total
+         .          .      5:function scan(dao, filter, tier, glyph, visit) {
+         .          .      6:  let after = null
+         .          .      7:  const conditions = [filter]
+         .          .      8:  const params = {}
+         .          .      9:  if (tier) {
+   43.42us    43.42us     10:    conditions.push('difficulty_tier = {:claimTier}')
+         .          .     11:    params.claimTier = tier
+         .          .     12:  }
+         .          .     13:  if (glyph) conditions.push('missing_glyph = true')
+         .    13.37ms     14:  const base = conditions.map(condition => `(${condition})`).join(' && ')
+         .          .     15:  while (true) {
+         .          .     16:    const cursor = after ? ' && (page_number > {:claimAfterNumber} || (page_number = {:claimAfterNumber} && id > {:claimAfterId}))' : ''
+         .          .     17:    if (after) {
+         .          .     18:      params.claimAfterNumber = after.number
+         .          .     19:      params.claimAfterId = after.id
+         .          .     20:    }
+    32.42s     32.42s     21:    const rows = dao.findRecordsByFilter('pages', base + cursor, 'page_number,id', BATCH_SIZE, 0, params)
+         .          .     22:    if (!rows.length) return false
+         .          .     23:    // Freeze the cursor before the visitor can mutate or remove a record.
+         .          .     24:    const last = rows[rows.length - 1]
+  537.27us   537.27us     25:    after = { number: last.getInt('page_number'), id: last.id }
+   12.76us      1.67s     26:    for (const page of rows) if (visit(page)) return true
+         .          .     27:    if (rows.length < BATCH_SIZE) return false
+         .          .     28:  }
+         .          .     29:}
+         .          .     30:
+         .          .     31:module.exports = { scan, BATCH_SIZE }

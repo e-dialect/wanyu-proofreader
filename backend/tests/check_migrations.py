@@ -19,6 +19,28 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204420_queue_projection_index.js': {
+        'indexes': ['idx_pages_queue_projection'],
+        'collection_indexes': ('pages', 'idx_pages_queue_projection'),
+        'plans': [('pages', 'SELECT project,id,page_number,pdf_page,status,difficulty_tier,missing_glyph,proofreader,proofread_round FROM pages WHERE project=?', ('p',), 'COVERING INDEX idx_pages_queue_projection')],
+    },
+    '1794204410_claim_active_order.js': {
+        'replacement_predecessor': '1794204200_claim_queue_indexes.js',
+        'index_replacements': [('idx_pages_claim_active',
+            ('project','proofreader','page_number','id','status','source_empty'),
+            ('project','proofreader','status','page_number','id'))],
+        'collection_indexes': ('pages', 'idx_pages_claim_active'),
+        'plans': [('pages', "SELECT * FROM pages WHERE project=? AND source_empty IS NOT 1 AND proofreader=? AND (status='claimed' OR status='proofreading') ORDER BY page_number LIMIT 1", ('p','u'), 'idx_pages_claim_active'),
+                  ('pages', "SELECT * FROM pages WHERE project=? AND proofreader=? AND (status='claimed' OR status='proofreading') ORDER BY page_number LIMIT 100000", ('p','u'), 'idx_pages_claim_active')],
+    },
+    '1794204400_claim_tier_filter_cover.js': {
+        'replacement_predecessor': '1794204200_claim_queue_indexes.js',
+        'index_replacements': [('idx_pages_claim_tier_order',
+            ('project','difficulty_tier','page_number','id','status','source_empty'),
+            ('project','difficulty_tier','page_number','id'))],
+        'collection_indexes': ('pages', 'idx_pages_claim_tier_order'),
+        'plans': [('pages', "SELECT * FROM pages WHERE project=? AND source_empty!=true AND (status='pending' OR status='proofread' OR status='claimed' OR status='proofreading') AND difficulty_tier=? ORDER BY page_number,id LIMIT 64", ('p','A'), 'idx_pages_claim_tier_order')],
+    },
     '1794204200_claim_queue_indexes.js': {
         'indexes': ['idx_pages_claim_tier_order', 'idx_pages_claim_active'],
         'collection_indexes': ('pages', 'idx_pages_claim_tier_order'),
@@ -427,7 +449,20 @@ def index_names(data):
         return {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
 
 
+def assert_index_replacements(data, migration, problems, up):
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        predecessor = SPECS.get(migration, {}).get('replacement_predecessor')
+        if not up and predecessor and not db.execute('SELECT 1 FROM _migrations WHERE file=?', (predecessor,)).fetchone():
+            return
+        for name, new_columns, old_columns in SPECS.get(migration, {}).get('index_replacements', []):
+            actual = tuple(row[2] for row in db.execute(f'PRAGMA index_info("{name}")'))
+            expected = new_columns if up else old_columns
+            if actual != expected:
+                problems.append(f'{migration}: index {name} columns {actual} != {expected}')
+
+
 def assert_applied(data, migration, problems):
+    assert_index_replacements(data, migration, problems, up=True)
     spec = SPECS.get(migration, {})
     present = index_names(data)
     with closing(sqlite3.connect(data / 'data.db')) as db:
@@ -461,6 +496,7 @@ def assert_applied(data, migration, problems):
 
 
 def assert_absent(data, migration, problems, context):
+    assert_index_replacements(data, migration, problems, up=False)
     if SPECS.get(migration, {}).get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=False)
     present = index_names(data)
