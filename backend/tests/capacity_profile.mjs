@@ -30,3 +30,15 @@ export function percentile(values, p) {
   const sorted = [...values].sort((a, b) => a - b)
   return sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)]
 }
+
+// Count content payloads only. The image route has no /pdf prefix; query strings
+// (including file access parameters) are never retained by the capacity report.
+export function isSourcePayloadRequest(rawUrl) {
+  let pathname
+  try {
+    pathname = new URL(rawUrl, 'http://127.0.0.1').pathname
+  } catch {
+    return false
+  }
+  return /^\/api\/fangji\/pages\/[^/]+\/(?:pdf|images\/\d+\/asset)$/.test(pathname)
+}

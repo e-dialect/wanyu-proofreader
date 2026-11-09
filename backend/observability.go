@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -153,7 +154,13 @@ func registerObservability(app core.App, importer *importService) {
 				case <-ticker.C:
 					var memory runtime.MemStats
 					runtime.ReadMemStats(&memory)
-					writeOperation("info", "runtime", "runtime_sample", map[string]any{"heap_bytes": memory.HeapAlloc, "goroutines": runtime.NumGoroutine(), "queue_length": len(importer.queue), "ocr_queue_length": len(importer.ocrQueue), "image_queue_length": len(importer.imageQueue)})
+					writeOperation("info", "runtime", "runtime_sample", map[string]any{
+						"heap_bytes": memory.HeapAlloc, "heap_sys_bytes": memory.HeapSys, "heap_inuse_bytes": memory.HeapInuse,
+						"heap_released_bytes": memory.HeapReleased, "runtime_sys_bytes": memory.Sys,
+						"go_memory_limit_bytes": debug.SetMemoryLimit(-1), "gomaxprocs": runtime.GOMAXPROCS(0),
+						"db_pools": databasePoolSamples(app), "goroutines": runtime.NumGoroutine(),
+						"queue_length": len(importer.queue), "ocr_queue_length": len(importer.ocrQueue), "image_queue_length": len(importer.imageQueue),
+					})
 				}
 			}
 		}()

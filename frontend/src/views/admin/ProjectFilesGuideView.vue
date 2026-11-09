@@ -79,26 +79,66 @@
         </p>
       </section>
 
-      <section>
-        <h3>先在独立项目练习</h3>
+      <section
+        id="review-bundle-practice"
+        ref="practiceSection"
+        aria-labelledby="bundle-practice-title"
+      >
+        <h3 id="bundle-practice-title">管理员：完整资料包练习</h3>
         <p>
-          <a href="/examples/proofreading-practice.csv" download>下载虚构练习 CSV（3 条）</a
-          >。示例词条与释义均为虚构，不代表任何方言事实；不含真实用户或来源资料。请新建名称含「练习」的独立项目，勿导入真实资料项目。
+          <a href="/examples/review-bundle-practice-v1.zip" download
+            >下载虚构 Review Bundle（3 条）</a
+          >
+          ·
+          <a href="/examples/review-bundle-practice-v1/source.pdf" download
+            >下载配套原文 PDF（3 页）</a
+          >
+          ·
+          <a href="/examples/review-bundle-practice-v1/README.txt" download>下载逐步练习说明</a>
+        </p>
+        <p>
+          材料全部为虚构，不代表方言事实，不含真实身份或凭据。请新建名称含「练习」的独立项目，
+          安排两名不同账号的校对者；来源和用途登记需平台管理员协助。下载不会自动创建记录或确认许可。
         </p>
         <ol>
-          <li>以 CSV-only 方式预检，核对 3 条样本、空值、组合字符与 PDF 页码，再确认导入。</li>
           <li>
-            邀请两名练习校对者独立提交；先提交相同结果，再为另一条保留不同结果，比较自动完成与人工仲裁的区别。
+            先上传配套 PDF，等待 3 页校验完成；在「资料导入 → Review Bundle」检查 ZIP， 核对 3
+            条、来源声明和页码。检查通过不等于已经导入或获准使用。
           </li>
-          <li>管理员查看差异与来源记录，给出仲裁说明，检查质量与授权条件。</li>
           <li>
-            练习 CSV 可用于核对与导出；原生回传交付需从完整 Review Bundle 入站并满足编选条件。不要把
-            CSV 导出当作已验收的回传交付。
+            由平台管理员核对并登记来源逻辑 ID
+            <code>practice-wanyu-reviewbundle-v1</code>；用途仍可保持未知。
+            操作者再次核对项目和来源后，才自行确认导入；应为完整成功的同一批 3 条。
+          </li>
+          <li>
+            保存来源核验约定，安排双人独立对照 PDF。相同结果自动比较完成，分歧交由管理员
+            逐字段仲裁；不得互看尚未公开的校对结果。说明中另有仅供练习的差异场景。
+          </li>
+          <li>
+            管理员补录实际来源判断、依据与页内位置；平台管理员分别判断本次用途和
+            「原始材料转交第三方」。未知或禁止继续阻断，不为完成练习虚填「允许」。
+          </li>
+          <li>
+            在用途编选中只选择这一个完整入站批次，核对采用、排除、待处理合计为 3，再人工确认。
+            本练习不依赖转换规则，「要求记音归一已定稿」可保持未勾选。
+          </li>
+          <li>
+            从已确认编选进入准备交付，填写实际核查人并检查接收方、用途、范围和正文数。
+            预检通过后仍由人决定是否生成；仅下载到本地练习，未真实接收时保持待回执，不代签验收。
           </li>
         </ol>
         <p>
-          练习不会自动创建项目或任务。没有 PDF
-          时原文预览不可用；真实资料的双人操作、难字与移动端验收仍需项目成员完成。
+          从头重放请新建独立练习项目。同项目重复上传相同资料包会返回原作业，不会重建任务。
+          权利判断、来源核对、交付确认和真实消费方验收不会由样例替你完成。
+        </p>
+      </section>
+      <section>
+        <h3>校对者：轻量字段练习</h3>
+        <p>
+          <a href="/examples/proofreading-practice.csv" download>下载虚构练习 CSV（3 条）</a>
+          ，在另一个独立练习项目预检并观察空值、难字和组合字符。 CSV-only 没有原文
+          PDF，适合熟悉输入和普通导出；原生编选交付练习请使用上方完整资料包。
+          真实资料的双人操作、难字与移动端验收仍需项目成员完成。
         </p>
       </section>
       <section>
@@ -117,7 +157,25 @@
 </template>
 
 <script setup>
-import { RouterLink } from 'vue-router'
+import { nextTick, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+
+const route = useRoute()
+const practiceSection = ref(null)
+watch(
+  () => route.hash,
+  async (hash) => {
+    if (hash !== '#review-bundle-practice') return
+    await nextTick()
+    // The global router resets new paths to the top; only this guide owns this anchor.
+    requestAnimationFrame(() => {
+      if (route.hash === hash && practiceSection.value?.isConnected) {
+        practiceSection.value.scrollIntoView({ block: 'start' })
+      }
+    })
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

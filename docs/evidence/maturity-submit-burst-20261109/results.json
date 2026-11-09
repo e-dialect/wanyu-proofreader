@@ -1,0 +1,252 @@
+{
+  "synthetic": true,
+  "acceptance_scope": "local accelerated smoke, not formal 24-actor or hardware acceptance",
+  "runs": {
+    "positive-final": {
+      "baseline_sha": "9385c44d47d67b7f6fff712ab3471bddf0838a40",
+      "dirty_diff_sha256": "582b20b8086ed54f9dc9dd1265c5300b1527e8a25630c7909f858d38b6134c0a",
+      "relevant_source_sha256": {
+        "backend/tests/capacity_browser.cjs": "17beceebb69ccc0e2a16263ba17251d269b936178cf34c255506c47086fd16d0",
+        "backend/tests/capacity_burst.cjs": "24554bcb3d51e28046c7fb28d495eba7a3ffb1f6db33db5c5488296b5627ab4d",
+        "backend/tests/capacity_burst.py": "c08672a82eb9409ed54b8104f2cda9a241ebdb1b0d725ac3615169424e4a17af",
+        "backend/tests/capacity_profile.mjs": "bed854e4fc959c15ef735bbb9fc9905b6782c670b3254b61623e0b048a2549f3",
+        "backend/tests/capacity_report.py": "7f1a51a8241a2162ffe1c1c258a11c0e3b0a7b7b2f1f852a1fc1ea8c3af198b8",
+        "backend/tests/capacity_scenarios.mjs": "054babe296fd4e4e612a4cc6d15d3e3abd7ec398ce1d3e440d3332a1dfdea796",
+        "backend/tests/run_capacity_baseline.py": "ef38b2ad59cd810a3fa187c703d8d20bbe2b2e501d04ec95a29500836ed8d5b8",
+        "backend/tests/test_capacity_burst.py": "87cf58eacd9334c739f1c629022359f12ab55e61e747a60f53d068884d289cca",
+        "backend/tests/test_capacity_report.py": "4ac0377ac219cfc80d1aa1b13f1ecb1fcff02ea66e59b70634455a5bd128de22"
+      },
+      "profile": "smoke",
+      "entries": 500,
+      "users": 10,
+      "duration": 45,
+      "repeats": 1,
+      "status": "pass",
+      "full_acceptance": false,
+      "source_unchanged": "pass",
+      "burst": {
+        "status": "pass",
+        "plan": {
+          "id": "steady-submit-1",
+          "at_epoch_ms": 1794161878420,
+          "prepare_window_ms": 15000,
+          "max_start_skew_ms": 250,
+          "participants": [
+            {
+              "vu": 0,
+              "transport": "browser"
+            },
+            {
+              "vu": 1,
+              "transport": "browser"
+            },
+            {
+              "vu": 2,
+              "transport": "http"
+            },
+            {
+              "vu": 3,
+              "transport": "http"
+            }
+          ]
+        },
+        "participants": 4,
+        "prepared": 4,
+        "requests": 4,
+        "dispatch_span_ms": 22.673095703125,
+        "errors": [],
+        "test_fault": null,
+        "definition": "One actual submit per participant in [epoch, epoch+250ms]; 250ms is generator coordination, not a product latency threshold."
+      },
+      "requests": [
+        {
+          "vu": 3,
+          "operation": "submit",
+          "status": 200,
+          "ok": true,
+          "started_at_ms": 1794161878421,
+          "burst_id": "steady-submit-1"
+        },
+        {
+          "vu": 1,
+          "operation": "submit",
+          "status": 200,
+          "ok": true,
+          "started_at_ms": 1794161878443.673,
+          "burst_id": "steady-submit-1"
+        },
+        {
+          "vu": 2,
+          "operation": "submit",
+          "status": 200,
+          "ok": true,
+          "started_at_ms": 1794161878422,
+          "burst_id": "steady-submit-1"
+        },
+        {
+          "vu": 0,
+          "operation": "submit",
+          "status": 200,
+          "ok": true,
+          "started_at_ms": 1794161878441.046,
+          "burst_id": "steady-submit-1"
+        }
+      ],
+      "reconciliation": {
+        "integrity": "ok",
+        "duplicate_attempts": 0,
+        "before": {
+          "proofreads": 779,
+          "submissions": 779
+        },
+        "after": {
+          "proofreads": 879,
+          "submissions": 879
+        },
+        "acknowledged_submissions": 100,
+        "expected_parallel_rows": 200,
+        "actual_parallel_rows": 200,
+        "submission_evidence": {
+          "pass": true,
+          "acknowledged_submissions": 100,
+          "new_actor_attempts_all_projects": 100,
+          "new_submission_events": 100,
+          "matched_request_digests": 100,
+          "errors": [],
+          "scope": "load actors across all projects; exact row digest and submission linkage only"
+        },
+        "pass": true
+      },
+      "generator_event_loop_p95_ms": [
+        12.066815,
+        12.058623
+      ]
+    },
+    "negative-final": {
+      "baseline_sha": "9385c44d47d67b7f6fff712ab3471bddf0838a40",
+      "dirty_diff_sha256": "582b20b8086ed54f9dc9dd1265c5300b1527e8a25630c7909f858d38b6134c0a",
+      "relevant_source_sha256": {
+        "backend/tests/capacity_browser.cjs": "17beceebb69ccc0e2a16263ba17251d269b936178cf34c255506c47086fd16d0",
+        "backend/tests/capacity_burst.cjs": "24554bcb3d51e28046c7fb28d495eba7a3ffb1f6db33db5c5488296b5627ab4d",
+        "backend/tests/capacity_burst.py": "c08672a82eb9409ed54b8104f2cda9a241ebdb1b0d725ac3615169424e4a17af",
+        "backend/tests/capacity_profile.mjs": "bed854e4fc959c15ef735bbb9fc9905b6782c670b3254b61623e0b048a2549f3",
+        "backend/tests/capacity_report.py": "7f1a51a8241a2162ffe1c1c258a11c0e3b0a7b7b2f1f852a1fc1ea8c3af198b8",
+        "backend/tests/capacity_scenarios.mjs": "054babe296fd4e4e612a4cc6d15d3e3abd7ec398ce1d3e440d3332a1dfdea796",
+        "backend/tests/run_capacity_baseline.py": "ef38b2ad59cd810a3fa187c703d8d20bbe2b2e501d04ec95a29500836ed8d5b8",
+        "backend/tests/test_capacity_burst.py": "87cf58eacd9334c739f1c629022359f12ab55e61e747a60f53d068884d289cca",
+        "backend/tests/test_capacity_report.py": "4ac0377ac219cfc80d1aa1b13f1ecb1fcff02ea66e59b70634455a5bd128de22"
+      },
+      "profile": "smoke",
+      "entries": 500,
+      "users": 10,
+      "duration": 45,
+      "repeats": 1,
+      "status": "fail",
+      "full_acceptance": false,
+      "source_unchanged": "pass",
+      "burst": {
+        "status": "fail",
+        "plan": {
+          "id": "steady-submit-1",
+          "at_epoch_ms": 1794161952033,
+          "prepare_window_ms": 15000,
+          "max_start_skew_ms": 250,
+          "participants": [
+            {
+              "vu": 0,
+              "transport": "browser"
+            },
+            {
+              "vu": 1,
+              "transport": "browser"
+            },
+            {
+              "vu": 2,
+              "transport": "http"
+            },
+            {
+              "vu": 3,
+              "transport": "http"
+            }
+          ]
+        },
+        "participants": 4,
+        "prepared": 4,
+        "requests": 3,
+        "dispatch_span_ms": 25.825927734375,
+        "errors": [
+          {
+            "reason": "participant_missed",
+            "vu": 0,
+            "detail": "injected_missed_participant"
+          },
+          {
+            "reason": "submission_count",
+            "vu": 0,
+            "count": 0
+          }
+        ],
+        "test_fault": {
+          "miss_vu": 0,
+          "expected_fail": true
+        },
+        "definition": "One actual submit per participant in [epoch, epoch+250ms]; 250ms is generator coordination, not a product latency threshold."
+      },
+      "requests": [
+        {
+          "vu": 3,
+          "operation": "submit",
+          "status": 200,
+          "ok": true,
+          "started_at_ms": 1794161952034,
+          "burst_id": "steady-submit-1"
+        },
+        {
+          "vu": 2,
+          "operation": "submit",
+          "status": 200,
+          "ok": true,
+          "started_at_ms": 1794161952033,
+          "burst_id": "steady-submit-1"
+        },
+        {
+          "vu": 1,
+          "operation": "submit",
+          "status": 200,
+          "ok": true,
+          "started_at_ms": 1794161952058.826,
+          "burst_id": "steady-submit-1"
+        }
+      ],
+      "reconciliation": {
+        "integrity": "ok",
+        "duplicate_attempts": 0,
+        "before": {
+          "proofreads": 779,
+          "submissions": 779
+        },
+        "after": {
+          "proofreads": 875,
+          "submissions": 875
+        },
+        "acknowledged_submissions": 96,
+        "expected_parallel_rows": 200,
+        "actual_parallel_rows": 200,
+        "submission_evidence": {
+          "pass": true,
+          "acknowledged_submissions": 96,
+          "new_actor_attempts_all_projects": 96,
+          "new_submission_events": 96,
+          "matched_request_digests": 96,
+          "errors": [],
+          "scope": "load actors across all projects; exact row digest and submission linkage only"
+        },
+        "pass": true
+      },
+      "generator_event_loop_p95_ms": [
+        12.066815,
+        12.058623
+      ]
+    }
+  }
+}

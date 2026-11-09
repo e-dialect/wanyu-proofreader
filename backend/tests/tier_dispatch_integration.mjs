@@ -297,7 +297,33 @@ await api(`/api/fangji/projects/${labeled.id}/claim`, { method: 'POST', token: o
 await api(`/api/fangji/projects/${labeled.id}/claim`, { method: 'POST', token: outsiderAuth.token, body: { tier: 'A' }, status: 403 })
 await api('/api/fangji/proofreading-queues', { token: outsiderAuth.token })
 
-for (const projectId of [labeled.id, unlabeledProject.id, combo.id]) {
+// Candidate traversal must reach beyond a complete batch of this user's prior
+// attempts. These raw synthetic rows exercise keyset pagination only; tier
+// classification continues to be produced by the real workflow above.
+const deep = await api('/api/fangji/projects', { method: 'POST', token, body: { name: `分页领取夹具 ${suffix}` }, status: 201 })
+await api(`/api/fangji/projects/${deep.id}/members/${quietReader.id}`, { method: 'PUT', token, body: { role: 'proofreader' } })
+const deepPages = []
+for (let index = 0; index < 70; index++) {
+  const page = await api('/api/collections/pages/records', {
+    method: 'POST', token: superAuth.token,
+    body: { id: `dep${String(index).padStart(12, '0')}`, project: deep.id,
+      page_number: index + 1, pdf_page: 1,
+      status: index < 65 ? 'proofread' : 'pending', proofread_count: index < 65 ? 1 : 0,
+      proofread_round: 1, ocr_row_json: JSON.stringify({ 词条: `分页虚构${index}` }) }
+  })
+  deepPages.push(page)
+  if (index < 65) await api('/api/collections/proofreading_attempts/records', {
+    method: 'POST', token: superAuth.token,
+    body: { project: deep.id, page: page.id, proofreader: quietReader.id,
+      round: 1, pass_no: 1, kind: 'proofread', outcome: 'waiting',
+      row_json: page.ocr_row_json, submitted_at: new Date().toISOString() }
+  })
+}
+const deepClaim = await api(`/api/fangji/projects/${deep.id}/claim`, { method: 'POST', token: quietAuth.token })
+assert.equal(deepClaim.id, deepPages[65].id, 'must skip own attempts across candidate batches')
+assert.equal(deepClaim.difficulty_tier, undefined)
+
+for (const projectId of [labeled.id, unlabeledProject.id, combo.id, deep.id]) {
   await api(`/api/collections/projects/records/${projectId}`, { method: 'DELETE', token: superAuth.token, status: 204 })
 }
 

@@ -1,0 +1,28 @@
+File: pocketbase
+Type: cpu
+Time: 2026-11-09 01:53:18 CST
+Duration: 185.45s, Total samples = 274.57s (148.06%)
+Showing nodes accounting for 235.38s, 85.73% of 274.57s total
+Dropped 2234 nodes (cum <= 1.37s)
+Showing top 20 nodes out of 363
+      flat  flat%   sum%        cum   cum%
+    73.29s 26.69% 26.69%     73.29s 26.69%  syscall.rawsyscalln
+    62.87s 22.90% 49.59%     62.87s 22.90%  runtime.memclrNoHeapPointers
+    19.49s  7.10% 56.69%     19.49s  7.10%  modernc.org/sqlite/lib._pcache1PinPage (inline)
+    16.97s  6.18% 62.87%     17.89s  6.52%  runtime.tryDeferToSpanScan
+     8.52s  3.10% 65.97%      8.52s  3.10%  runtime.madvise
+     6.06s  2.21% 68.18%      6.06s  2.21%  runtime.memmove
+     5.74s  2.09% 70.27%      5.74s  2.09%  runtime.(*spanInlineMarkBits).init
+     5.60s  2.04% 72.31%      6.94s  2.53%  modernc.org/memory.(*Allocator).UintptrMalloc
+     5.48s  2.00% 74.31%      5.48s  2.00%  runtime.(*mspan).init
+     5.16s  1.88% 76.18%    116.05s 42.27%  modernc.org/sqlite/lib._sqlite3VdbeExec
+        5s  1.82% 78.01%     11.91s  4.34%  modernc.org/sqlite/lib._sqlite3MemMalloc
+     4.75s  1.73% 79.74%     13.96s  5.08%  modernc.org/sqlite/lib._pcache1AllocPage
+     2.45s  0.89% 80.63%      2.45s  0.89%  runtime.kevent
+     2.32s  0.84% 81.47%      5.13s  1.87%  runtime.mallocgcSmallScanNoHeaderSC3
+     2.12s  0.77% 82.24%      2.12s  0.77%  runtime.pthread_cond_signal
+     2.08s  0.76% 83.00%      2.08s  0.76%  internal/runtime/atomic.(*UnsafePointer).StoreNoWB
+     2.03s  0.74% 83.74%      2.11s  0.77%  runtime.(*mspan).refillAllocCache
+     1.95s  0.71% 84.45%      4.73s  1.72%  runtime.mallocgcSmallScanNoHeaderSC2
+     1.91s   0.7% 85.15%      1.91s   0.7%  modernc.org/sqlite/lib._pcache1RemoveFromHash
+     1.59s  0.58% 85.73%      3.92s  1.43%  modernc.org/memory.(*Allocator).UintptrFree

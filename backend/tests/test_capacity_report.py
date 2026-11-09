@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 import capacity_report as report
 from capacity_resources import phase_at, trend
+from capacity_burst import make_submit_burst
+from test_capacity_burst import fixture as burst_fixture, successful_evidence
 
 
 class CapacityReportTest(unittest.TestCase):
@@ -20,7 +22,13 @@ class CapacityReportTest(unittest.TestCase):
         write('background.json', {'csv': {'status': 'pass'}, 'slow_export': {'status': 'pass'}})
         for name in ('summary.json', 'browser-generator.json'):
             write(name, {'generator_event_loop_p95_ms': 10, 'errors': []})
-        return {'profile': 'full'}
+        config=burst_fixture()
+        config['submit_burst']=make_submit_burst(config)
+        requests,events=successful_evidence(config)
+        with (root/'requests.jsonl').open('a') as stream:
+            for row in requests: stream.write(json.dumps({**row,'duration_ms':10,'phase':'steady'})+'\n')
+        records('burst-events.jsonl',events)
+        return config
 
     def test_failed_responses_are_not_fast_successes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -30,7 +38,7 @@ class CapacityReportTest(unittest.TestCase):
             result=report.summarize(root,config,{'pass':True},[0,0])
             self.assertEqual(result['status'],'fail')
             submit=next(row for row in result['http'] if row['operation']=='submit')
-            self.assertEqual(submit['samples'],1)
+            self.assertEqual(submit['samples'],25)
             self.assertEqual(submit['p95_ms'],10)
 
     def test_expected_conflicts_are_not_fast_successes(self):

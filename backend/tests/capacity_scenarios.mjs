@@ -6,12 +6,25 @@ import { phaseAt, randomFor, sleep } from './capacity_profile.mjs'
 import { createHash } from 'node:crypto'
 import submissionHelpers from './capacity_submission.cjs'
 const { submissionEvidence } = submissionHelpers
+import burstHelpers from './capacity_burst.cjs'
+const { createSubmitBurst } = burstHelpers
 const fixture = JSON.parse(readFileSync(process.env.CAPACITY_FIXTURE, 'utf8'))
 const { base, project, actors, duration, output, seed } = fixture
 assert.equal(fixture.disposable, true)
 assert.equal(actors.filter((actor) => actor.transport === 'browser').length, 2)
 assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/)
 const samples = []
+const bursts = new Map(
+  actors
+    .filter((actor) => actor.role === 'proofreader' && actor.transport === 'http')
+    .map((actor) => [
+      actor.vu,
+      createSubmitBurst(fixture, actor, {
+        record: (event) =>
+          appendFileSync(output + '/burst-events.jsonl', JSON.stringify(event) + '\n')
+      })
+    ])
+)
 const endAt = fixture.start_epoch_ms + duration * 1000
 const startedCpu = process.cpuUsage(),
   generatorStarted = performance.now()
@@ -30,6 +43,8 @@ async function request(
     ok = false
   const form = body instanceof FormData
   const wireBody = body ? (form ? body : JSON.stringify(body)) : undefined
+  const startedAt = Date.now()
+  const burstId = operation === 'submit' ? bursts.get(actor.vu)?.claimRequest() : null
   try {
     const response = await fetch(base + path, {
       method,
@@ -67,6 +82,8 @@ async function request(
     const record = {
       vu: actor.vu,
       operation,
+      ...(fixture.submit_burst ? { started_at_ms: startedAt } : {}),
+      ...(burstId ? { burst_id: burstId } : {}),
       phase: phaseAt(fixture).name,
       at_ms: Date.now(),
       status,
@@ -124,6 +141,7 @@ async function proofreader(actor) {
           method: 'POST',
           body: { leaseToken: claim.leaseToken }
         })
+      if (fixture.submit_burst) await bursts.get(actor.vu).beforeSubmit()
       await request(actor, 'submit', `/api/fangji/pages/${claim.id}/submit`, {
         method: 'POST',
         body: {
@@ -147,6 +165,7 @@ async function proofreader(actor) {
       await sleep(500)
     }
   }
+  bursts.get(actor.vu).finalize()
 }
 async function manager(actor) {
   let count = 0

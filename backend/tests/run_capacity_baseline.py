@@ -13,6 +13,7 @@ import harness
 import field_audit_capacity as audit
 import capacity_fixture as fixture_helpers
 import capacity_report
+from capacity_burst import make_submit_burst
 from capacity_reconciliation import snapshot_actor_records, reconcile_submissions
 from capacity_resources import ResourceSampler
 
@@ -73,7 +74,7 @@ def snapshot_counts(db, project):
         }
 
 
-def run_once(binary, root, args, output, repeat):
+def prepare_fixture(binary, root, args):
     fixture_file=root/'fixture.json'; db=root/'data/data.db'
     with harness.server(binary,root,extra_env={'FIDELITY_BROWSER_FIXTURE':str(fixture_file)}) as env:
         subprocess.run(['node',str(harness.BACKEND/'tests/source_fidelity_integration.mjs')],env=harness.with_research_notice_preload(env),check=True,stdout=subprocess.DEVNULL)
@@ -100,11 +101,40 @@ def run_once(binary, root, args, output, repeat):
     before=snapshot_counts(db, project['id'])
     actor_ids=tuple(actor['record']['id'] for actor in actors)
     actor_baseline=snapshot_actor_records(db, actor_ids)
+    return {"fixture_meta":fixture_meta,"pdf_meta":pdf_meta,"storage_gate":storage_gate,"project":project,"secondary":secondary,"actors":actors,"before":before,"actor_ids":actor_ids,"actor_baseline":actor_baseline}
+
+
+def reconcile_fixture(root, state, config, http):
+    db=root/"data/data.db"
+    project,secondary,before,actor_ids,actor_baseline=(state[key] for key in ("project","secondary","before","actor_ids","actor_baseline"))
+    after=snapshot_counts(db, project['id'])
+    acknowledged=sum(r['operation']=='submit' and r.get('status')==200 and r.get('ok') for r in http)
+    with sqlite3.connect(db) as sql:
+        reconciliation={'integrity':sql.execute('PRAGMA integrity_check').fetchone()[0],
+            'duplicate_attempts':sql.execute("SELECT COUNT(*) FROM (SELECT page,proofreader,pass_no,kind,COUNT(*) n FROM proofreading_attempts WHERE project=? GROUP BY page,proofreader,pass_no,kind HAVING n>1)",(project['id'],)).fetchone()[0],
+            'before':before,'after':after,'acknowledged_submissions':acknowledged,
+            'expected_parallel_rows':config['parallel_import_rows'],
+            'actual_parallel_rows':sql.execute('SELECT COUNT(*) FROM pages WHERE project=?',(secondary['id'],)).fetchone()[0]}
+    reconciliation['submission_evidence']=reconcile_submissions(db, project['id'], actor_ids, actor_baseline, http)
+    reconciliation['pass']=(reconciliation['submission_evidence']['pass'] and reconciliation['integrity']=='ok' and reconciliation['duplicate_attempts']==0 and
+        after['proofreads']-before['proofreads']==acknowledged==after['submissions']-before['submissions'] and
+        reconciliation['actual_parallel_rows']==reconciliation['expected_parallel_rows'])
+    return reconciliation
+
+
+def run_once(binary, root, args, output, repeat):
+    state=prepare_fixture(binary,root,args)
+    db=root/"data/data.db"
+    project,secondary,actors=(state[key] for key in ("project","secondary","actors"))
+    fixture_meta,pdf_meta,storage_gate=(state[key] for key in ("fixture_meta","pdf_meta","storage_gate"))
     with harness.server(binary,root) as env:
         config={'disposable':True,'base':env['PB_URL'],'project':project['id'],'secondary_project':secondary['id'],
                 'actors':actors,'duration':args.duration,'profile':args.profile,'phases':fixture_helpers.phases(args.duration),
                 'start_epoch_ms':int(time.time()*1000)+3000,'output':str(output),'seed':1701,
                 'parallel_import_rows':200 if args.profile=='smoke' else 2000}
+        config['submit_burst']=make_submit_burst(config, args.submit_burst)
+        if args.burst_miss_vu is not None:
+            config['submit_burst_test_fault']={'miss_vu':args.burst_miss_vu,'expected_fail':True}
         config_path=root/'load.json';config_path.write_text(json.dumps(config));os.chmod(config_path,0o600)
         sampler=ResourceSampler(env['PB_TEST_SERVER_PID'],root,config)
         sampler.start()
@@ -122,19 +152,8 @@ def run_once(binary, root, args, output, repeat):
             for process in processes:
                 if process.poll() is None: process.terminate(); process.wait(timeout=10)
             resources=sampler.stop()
-    after=snapshot_counts(db, project['id'])
     http=capacity_report.lines(output/'requests.jsonl')+capacity_report.lines(output/'browser-http.jsonl')
-    acknowledged=sum(r['operation']=='submit' and r.get('status')==200 and r.get('ok') for r in http)
-    with sqlite3.connect(db) as sql:
-        reconciliation={'integrity':sql.execute('PRAGMA integrity_check').fetchone()[0],
-            'duplicate_attempts':sql.execute("SELECT COUNT(*) FROM (SELECT page,proofreader,pass_no,kind,COUNT(*) n FROM proofreading_attempts WHERE project=? GROUP BY page,proofreader,pass_no,kind HAVING n>1)",(project['id'],)).fetchone()[0],
-            'before':before,'after':after,'acknowledged_submissions':acknowledged,
-            'expected_parallel_rows':config['parallel_import_rows'],
-            'actual_parallel_rows':sql.execute('SELECT COUNT(*) FROM pages WHERE project=?',(secondary['id'],)).fetchone()[0]}
-    reconciliation['submission_evidence']=reconcile_submissions(db, project['id'], actor_ids, actor_baseline, http)
-    reconciliation['pass']=(reconciliation['submission_evidence']['pass'] and reconciliation['integrity']=='ok' and reconciliation['duplicate_attempts']==0 and
-        after['proofreads']-before['proofreads']==acknowledged==after['submissions']-before['submissions'] and
-        reconciliation['actual_parallel_rows']==reconciliation['expected_parallel_rows'])
+    reconciliation=reconcile_fixture(root,state,config,http)
     (output/'reconciliation.json').write_text(json.dumps(reconciliation,indent=2))
     safe=[]
     for line in (root/'server.log').read_text().splitlines():
@@ -146,7 +165,8 @@ def run_once(binary, root, args, output, repeat):
     report=capacity_report.summarize(output, config, reconciliation, codes)
     report.update({'resources':resources,'fixture':fixture_meta,'pdf':pdf_meta,'storage_rollback_gate':storage_gate,
                    'database_bytes':db.stat().st_size,'repeat':repeat,'duration':args.duration,
-                   'users':args.users,'browser_users':2,'phases':config['phases']})
+                   'users':args.users,'browser_users':2,'phases':config['phases'],
+                   'submit_burst_plan':config['submit_burst'],'submit_burst_test_fault':config.get('submit_burst_test_fault')})
     (output/'acceptance.json').write_text(json.dumps(report,indent=2))
     return report
 
@@ -159,6 +179,8 @@ def main():
     parser.add_argument('--users',type=int,default=30)
     parser.add_argument('--repeats',type=int)
     parser.add_argument('--fault-report',type=Path)
+    parser.add_argument('--submit-burst',action='store_true',help='one synchronized submit per proofreader (mandatory for full)')
+    parser.add_argument('--burst-miss-vu',type=int,help='smoke-only missed-participant fault; expected fail, never a product pass')
     parser.add_argument('--reference-profile',choices=['production_shared','8g_comparison'],default='production_shared')
     parser.add_argument('--target-cpus',type=int,default=4)
     parser.add_argument('--target-memory-gib',type=float)
@@ -173,6 +195,8 @@ def main():
         parser.error('entries 20..20000, users 8..30, duration >=12, repeats 1..3')
     if args.profile=='full' and (args.duration!=3600 or args.users!=30 or args.entries!=20000 or args.repeats!=3):
         parser.error('full profile is frozen at 20,000 entries / 30 actors / 3 x 3,600 seconds')
+    if args.burst_miss_vu is not None and (args.profile!='smoke' or not args.submit_burst or not 0<=args.burst_miss_vu<args.users-6):
+        parser.error('--burst-miss-vu requires smoke --submit-burst and a proofreader VU')
     args.output=args.output.resolve()
     if args.output.exists() and any(args.output.iterdir()): parser.error('output must be empty; never append a repeat to previous evidence')
     args.output.mkdir(parents=True,exist_ok=True)
@@ -180,7 +204,14 @@ def main():
     manifest={**fixture_helpers.source_manifest(harness.BACKEND),'hardware':fixture_helpers.hardware(),
               'profile':args.profile,'synthetic':True,'seed':1701,'entries':args.entries,'users':args.users,
               'browser_users':2,'duration':args.duration,'repeats':args.repeats,'phases':fixture_helpers.phases(args.duration)}
+    manifest['submit_burst_enabled']=args.profile=='full' or args.submit_burst
+    manifest['submit_burst_test_fault']={'miss_vu':args.burst_miss_vu,'expected_fail':True} if args.burst_miss_vu is not None else None
     manifest['target_hardware']={'reference_profile':args.reference_profile,'cpu_cores':args.target_cpus,'memory_gib':args.target_memory_gib,'production_is_shared':args.reference_profile=='production_shared'}
+    manifest['runtime_environment']={
+        'GOMAXPROCS':os.environ.get('GOMAXPROCS'),
+        'GOMEMLIMIT':os.environ.get('GOMEMLIMIT'),
+        'constraint_type':'Go runtime soft budgets only; this local runner does not install container CPU or memory limits'
+    }
     manifest['workload_timing_assumptions']={'measured_human_timing':False,'full':{'proofreader_seconds':[30,60],'long_think_probability':.2,'long_think_seconds':[120,180],'manager_refresh_seconds':30,'arbitrator_seconds':[45,75]},'smoke':{'http_proofreader_think_ms':3000,'browser_think_ms':150,'manager_arbitrator_refresh_ms':500},'note':'Synthetic pacing assumptions; smoke intentionally accelerates interaction and refresh frequency. Neither is a measured real-user rhythm.'}
     manifest['actual_target_envelope_match']=(manifest['hardware']['effective_cpu_cores']==args.target_cpus and abs(manifest['hardware']['effective_memory_bytes']/1024**3-args.target_memory_gib)<.15)
     dist=harness.BACKEND.parent/'frontend/dist'
@@ -189,7 +220,8 @@ def main():
     (args.output/'manifest.json').write_text(json.dumps(manifest,indent=2))
     results=[]
     with harness.temporary_root() as build:
-        binary=harness.build_binary(build/'pocketbase')
+        binary=harness.build_binary(build/'pocketbase', build_sha=manifest['baseline_sha'])
+        manifest['binary_sha256']=hashlib.sha256(binary.read_bytes()).hexdigest()
         for repeat in range(args.repeats):
             output=args.output/f'run-{repeat+1}';output.mkdir()
             with harness.temporary_root() as root:

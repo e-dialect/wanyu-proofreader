@@ -1,0 +1,348 @@
+{
+  "protocol": {
+    "entries": 20000,
+    "users": 30,
+    "browser_actors": 2,
+    "duration_seconds": 180,
+    "gomaxprocs": 2,
+    "gomemlimit": "768MiB",
+    "hard_resource_limit_applied": false,
+    "same_host_generators": true
+  },
+  "runs": {
+    "before": {
+      "baseline_sha": "efbb4aca42cdfa533614a1ff26cafbaeed9ed8cb",
+      "dirty_diff_sha256": "d3f5d9a57bfa13cb0cd1863ce37c4a506df543888d3d6e6e24a527b8d46c77e3",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 925,
+          "p50_ms": 274.739,
+          "p95_ms": 1518.5254140000034,
+          "p99_ms": 2839.3714880000043,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 923,
+          "p50_ms": 570.0199089999951,
+          "p95_ms": 2822.977979999996,
+          "p99_ms": 4428.603629000005,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 232,
+          "p50_ms": 898.6969959999988,
+          "p95_ms": 2681.206938000003,
+          "p99_ms": 4013.239011999991,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 217,
+          "p50_ms": 29.3425789999892,
+          "p95_ms": 76.72334799999953,
+          "p99_ms": 103.51153299999714,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 929,
+          "p50_ms": 1.848958999995375,
+          "p95_ms": 17.582,
+          "p99_ms": 43.867,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 927,
+          "p50_ms": 2.44,
+          "p95_ms": 9.118228999999701,
+          "p99_ms": 28.211,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 449,
+          "p50_ms": 377.62107399999513,
+          "p95_ms": 1825.9633109999995,
+          "p99_ms": 3162.5751070000115,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "fail"
+        },
+        {
+          "operation": "verification",
+          "samples": 1159,
+          "p50_ms": 8.718361000006553,
+          "p95_ms": 30.866475000002538,
+          "p99_ms": 47.36117400001967,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 6848,
+      "rss_peak_bytes": 406716416,
+      "heap_alloc_peak_bytes": 63422640,
+      "last_db_pools": {
+        "aux_read": {
+          "max_open": 2,
+          "open": 0,
+          "in_use": 0,
+          "idle": 0,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "aux_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "data_read": {
+          "max_open": 8,
+          "open": 4,
+          "in_use": 0,
+          "idle": 4,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 43,
+          "max_idle_time_closed": 0
+        },
+        "data_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 1,
+          "idle": 0,
+          "wait_count": 3598,
+          "wait_duration_ms": 1762160,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        }
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 923,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 31927,
+          "submissions": 31927
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "admin_pages",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        }
+      ]
+    },
+    "after": {
+      "baseline_sha": "70e57c3b19f2bc50a4670a404b4dedda92c8d08b",
+      "dirty_diff_sha256": "bb00b02631fe0df536c536dfa44c0ea98dbd39275a0572b4e880ef437b2bddcb",
+      "source_unchanged": "pass",
+      "status": "fail",
+      "full_acceptance": false,
+      "http": [
+        {
+          "operation": "claim",
+          "samples": 1003,
+          "p50_ms": 231.88086500001373,
+          "p95_ms": 1346.9393020000134,
+          "p99_ms": 2342.743684000001,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "submit",
+          "samples": 1000,
+          "p50_ms": 439.81394100000034,
+          "p95_ms": 2136.87154800001,
+          "p99_ms": 2867.604,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "arbitrate",
+          "samples": 343,
+          "p50_ms": 700.3861510000133,
+          "p95_ms": 2296.1413630000025,
+          "p99_ms": 2850.441420999996,
+          "p95_limit_ms": 800,
+          "p99_limit_ms": 2000,
+          "status": "fail"
+        },
+        {
+          "operation": "field_summary",
+          "samples": 404,
+          "p50_ms": 54.71404900000198,
+          "p95_ms": 243.76510899999994,
+          "p99_ms": 343.3005059999996,
+          "p95_limit_ms": 1000,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "pdf_descriptor",
+          "samples": 1007,
+          "p50_ms": 2.771272999991197,
+          "p95_ms": 31.339,
+          "p99_ms": 58.595,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "task",
+          "samples": 1005,
+          "p50_ms": 2.8788230000063777,
+          "p95_ms": 20.08,
+          "p99_ms": 47.0835619999998,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "admin_pages",
+          "samples": 760,
+          "p50_ms": 16.081900999997742,
+          "p95_ms": 59.246280999999726,
+          "p99_ms": 95.21726900000067,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        },
+        {
+          "operation": "verification",
+          "samples": 1361,
+          "p50_ms": 10.969159000000218,
+          "p95_ms": 42.079796000005445,
+          "p99_ms": 65.82035300001735,
+          "p95_limit_ms": 500,
+          "p99_limit_ms": null,
+          "status": "pass"
+        }
+      ],
+      "http_samples": 8156,
+      "rss_peak_bytes": 709591040,
+      "heap_alloc_peak_bytes": 64284224,
+      "last_db_pools": {
+        "aux_read": {
+          "max_open": 2,
+          "open": 0,
+          "in_use": 0,
+          "idle": 0,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "aux_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 0,
+          "wait_duration_ms": 0,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        },
+        "data_read": {
+          "max_open": 8,
+          "open": 4,
+          "in_use": 1,
+          "idle": 3,
+          "wait_count": 422,
+          "wait_duration_ms": 1274,
+          "max_idle_closed": 188,
+          "max_idle_time_closed": 0
+        },
+        "data_write": {
+          "max_open": 1,
+          "open": 1,
+          "in_use": 0,
+          "idle": 1,
+          "wait_count": 3401,
+          "wait_duration_ms": 1260380,
+          "max_idle_closed": 0,
+          "max_idle_time_closed": 0
+        }
+      },
+      "reconciliation": {
+        "pass": true,
+        "acknowledged_submissions": 1000,
+        "before": {
+          "proofreads": 31004,
+          "submissions": 31004
+        },
+        "after": {
+          "proofreads": 32004,
+          "submissions": 32004
+        },
+        "duplicate_attempts": 0
+      },
+      "failed_gates": [
+        {
+          "gate": "claim",
+          "status": "fail"
+        },
+        {
+          "gate": "submit",
+          "status": "fail"
+        },
+        {
+          "gate": "arbitrate",
+          "status": "fail"
+        },
+        {
+          "gate": "submit_ack",
+          "status": "fail"
+        }
+      ]
+    }
+  }
+}
