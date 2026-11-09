@@ -19,7 +19,7 @@ func registerAssistPublicationRecovery(app core.App) {
 }
 
 func recoverInterruptedAssistBulk(app core.App) error {
-	owner, _ := app.Store().Get("fangjiDataDirectoryOwner").(bool)
+	owner, _ := app.Store().Get(dataDirectoryOwnerKey).(bool)
 	if !owner {
 		return errors.New("assist startup recovery requires exclusive data-directory ownership")
 	}

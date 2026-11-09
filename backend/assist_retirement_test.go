@@ -241,3 +241,38 @@ func TestAssistBulkRecoveryRequiresExclusiveOwnerAndRetainsMarkers(t *testing.T)
 		t.Fatal("begin failure did not surface")
 	}
 }
+
+func TestAssistCleanupHonorsLargePayloadByteBudget(t *testing.T) {
+	app, _, pageID := newAssistAtomicFixture(t)
+	page, _ := app.FindRecordById("pages", pageID)
+	old := visibilityFinding(t, app, page, "", "")
+	marker := visibilityPublication(t, app, page, "staging")
+	for range 5 {
+		row := visibilityFinding(t, app, page, marker.Id, "")
+		row.Set("verification_context_json", `{"synthetic":"`+strings.Repeat("练习", 10000)+`"}`)
+		if err := app.Save(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	marker.Set("state", "aborted")
+	if err := app.Save(marker); err != nil {
+		t.Fatal(err)
+	}
+	value, err := runAssistScript(app, `require(__hooks+"/lib/assist_publication.js").cleanup(dao)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.ToInteger() != 4 {
+		t.Fatalf("60KiB contexts must delete at most four per 256KiB slice: %v", value)
+	}
+	var remaining int
+	if err = app.DB().NewQuery("SELECT COUNT(*) FROM review_findings WHERE assist_publication={:publication}").Bind(dbx.Params{"publication": marker.Id}).Row(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 1 {
+		t.Fatal("cleanup exceeded byte budget")
+	}
+	if _, err = app.FindRecordById("review_findings", old.Id); err != nil {
+		t.Fatal("cleanup deleted published/legacy evidence")
+	}
+}

@@ -193,7 +193,7 @@ function execute(dao, scope, project, page, prepare, authorize) {
         metrics.max_stage_estimated_bytes = Math.max(metrics.max_stage_estimated_bytes || 0, bytes)
         transaction(dao, tx => {
           const current = tx.findRecordById('assist_publications', publication.id)
-          if (current.getString('state') !== 'staging') throw conflict()
+          if (current.getString('state') !== 'staging' || basis(tx, project) !== current.getString('basis_json')) throw conflict()
           if (save) for (const item of part) save(tx, item, publication.id)
           else if (phase === 'retirements') stageRetirements(tx, publication.id, part)
           else stageDerivations(tx, publication.id, part)
@@ -212,22 +212,42 @@ function execute(dao, scope, project, page, prepare, authorize) {
     throw error
   }
 }
+function cleanupSelection(tx, table, key, fields, relation = 'publication') {
+  // Select identifiers and byte counts before fetching any whole payload Record.
+  // Fixed names come only from the private callers below, never request input.
+  const rows = arrayOf(new DynamicModel({ item: '', publication: '', bytes: 0 }))
+  const bytes = fields.map(field => `COALESCE(length(CAST([[r.${field}]] AS BLOB)),0)`).join('+') || '0'
+  tx.db().newQuery(`SELECT r.${key} AS item,r.${relation} AS publication,${bytes}+512 AS bytes
+    FROM ${table} r JOIN assist_publications p ON p.id=r.${relation} WHERE p.state='aborted'
+    ORDER BY r.${key},r.${relation} LIMIT ${STAGE_CHUNK}`).all(rows)
+  if (rows.some(row => row.bytes > STAGE_BYTES)) throw new Error('assist cleanup payload exceeds 256KiB; explicit maintenance repair required')
+  return stageSlice(rows, 0, rows.map(row => row.bytes)).part
+}
+function cleanupRaw(tx, table, key, fields) {
+  const rows = cleanupSelection(tx, table, key, fields)
+  if (!rows.length) return
+  const params = {}
+  const pairs = rows.map((row, i) => { params['item' + i] = row.item; params['pub' + i] = row.publication; return `({:item${i}},{:pub${i}})` })
+  tx.db().newQuery(`DELETE FROM ${table} WHERE (${key},publication) IN (${pairs.join(',')})
+    AND publication IN (SELECT id FROM assist_publications WHERE state='aborted')`).bind(params).execute()
+}
 function cleanup(dao, now = Date.now()) {
   const cutoff = new Date(now - MAX_AGE_MS).toISOString().replace("T", " ")
   const expired = dao.findRecordsByFilter('assist_publications', 'state="staging" && updated < {:cutoff}', 'updated,id', 10, 0, { cutoff })
   for (const publication of expired) abort(dao, publication.id, 'STAGING_EXPIRED')
-  // Marker retention is deliberate. At most 100 unpublished payloads of each
-  // kind are deleted per invocation, regardless of the number of old runs.
+  // Marker retention is deliberate. Each kind is limited by both 100 records
+  // and 256KiB estimated payload. An anomalously oversized stored row fails
+  // closed before loading its body and requires explicit maintenance repair.
   let removed = 0
   for (const name of ['review_findings', 'verification_events']) transaction(dao, tx => {
-    const records = arrayOf(new Record(tx.findCollectionByNameOrId(name)))
-    tx.recordQuery(name).andWhere($dbx.exp(`assist_publication IN (SELECT id FROM assist_publications WHERE state='aborted')`)).limit(STAGE_CHUNK).all(records)
-    for (const record of records) { tx.delete(record); removed += 1 }
+    const fields = tx.findCollectionByNameOrId(name).fields.fieldNames()
+    for (const row of cleanupSelection(tx, name, 'id', fields, 'assist_publication')) {
+      const record = tx.findRecordById(name, row.item)
+      tx.delete(record); removed += 1
+    }
   })
-  transaction(dao, tx => tx.db().newQuery(`DELETE FROM _assist_page_derivations WHERE (publication,page) IN
-    (SELECT d.publication,d.page FROM _assist_page_derivations d JOIN assist_publications p ON p.id=d.publication WHERE p.state='aborted' LIMIT ${STAGE_CHUNK})`).execute())
-  transaction(dao, tx => tx.db().newQuery(`DELETE FROM _assist_finding_retirements WHERE (finding,publication) IN
-    (SELECT r.finding,r.publication FROM _assist_finding_retirements r JOIN assist_publications p ON p.id=r.publication WHERE p.state='aborted' LIMIT ${STAGE_CHUNK})`).execute())
+  transaction(dao, tx => cleanupRaw(tx, '_assist_page_derivations', 'page', ['difficulty_basis_json','entry_identity_key']))
+  transaction(dao, tx => cleanupRaw(tx, '_assist_finding_retirements', 'finding', ['staged_at']))
   return removed
 }
 module.exports = { derivationUpdateSQL, STAGE_CHUNK, STAGE_BYTES, stageSlice, basis, conflict, execute, cleanup, authorizeRequest }
