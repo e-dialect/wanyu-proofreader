@@ -20,11 +20,9 @@ COPY scheme/ ./scheme/
 COPY tone/ ./tone/
 COPY pb_migrations/ ./pb_migrations/
 COPY keyboards/ ./keyboards/
-# 测试的数据依赖，不是运行时代码：backend/adoption_test.go 读 assist_difficulty.js 与
-# source_registry.js 比对 D 的理由码/用途词表；TestGlyphPlaceholderRegexMatchesJS 读
-# assist_rules.js 比对占位符正则。缺了它们 `go test ./...` 会在这里的 go test 步骤失败，
-# 而本机测试看不到这个缺口——与上面目录清单同一个道理。
-COPY pb_hooks/lib/ ./pb_hooks/lib/
+# Tests compare lib vocabularies and register real *.pb.js routes. Keep the
+# complete hook tree available before tests; lib-only silently omits routes.
+COPY pb_hooks/ ./pb_hooks/
 RUN go test ./...
 
 ARG VERSION=dev
@@ -35,13 +33,18 @@ ARG BUILD_DATE=unknown
 RUN /bin/sh -c 'for stamp in "$VERSION" "$COMMIT" "$BUILD_DATE"; do \
       case "$stamp" in -*) echo "build stamp may not start with -" && exit 1;; *[!A-Za-z0-9._+:-]*) echo "unsafe build stamp: $stamp" && exit 1;; esac; \
     done'
-LABEL org.opencontainers.image.revision="${COMMIT}" \
-      org.opencontainers.image.version="${VERSION}"
 RUN CGO_ENABLED=0 go build -trimpath \
   -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
   -o /out/pocketbase .
 
 FROM alpine:3.24
+
+# Build arguments are stage-scoped. Publish the same validated stamps on the
+# final image that contains the stamped binary, not only its discarded builder.
+ARG VERSION=dev
+ARG COMMIT=unknown
+LABEL org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.version="${VERSION}"
 
 RUN apk add --no-cache ca-certificates curl poppler-utils libwebp-tools \
   && addgroup -g 10001 fangji \

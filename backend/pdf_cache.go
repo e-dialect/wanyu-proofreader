@@ -229,13 +229,24 @@ func (s *importService) preparePDFPages(file *core.Record) (string, error) {
 
 // Parse the book once, extracting one page at a time to bound memory and disk expansion.
 func splitPDFPages(reader io.ReadSeeker, dir string, budget int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+	defer cancel()
+	return splitPDFPagesContext(ctx, reader, dir, budget)
+}
+func splitPDFPagesContext(workCtx context.Context, reader io.ReadSeeker, dir string, budget int64) error {
+	if err := workCtx.Err(); err != nil {
+		return err
+	}
 	pdfapi.DisableConfigDir()
-	ctx, err := pdfapi.ReadValidateAndOptimize(context.Background(), reader, pdfConfig(), nil)
+	ctx, err := pdfapi.ReadValidateAndOptimize(workCtx, reader, pdfConfig(), nil)
 	if err != nil {
 		return err
 	}
 	for n := 1; n <= ctx.PageCount; n++ {
-		page, err := pdfapi.ExtractPage(context.Background(), ctx, n)
+		if err := workCtx.Err(); err != nil {
+			return err
+		}
+		page, err := pdfapi.ExtractPage(workCtx, ctx, n)
 		if err != nil {
 			return err
 		}
@@ -256,7 +267,7 @@ func splitPDFPages(reader io.ReadSeeker, dir string, budget int64) error {
 			return errPDFPageBudget
 		}
 	}
-	return nil
+	return workCtx.Err()
 }
 
 // cachedTaskPDF renders the couple of pages a task shows. It never does
@@ -266,7 +277,25 @@ func splitPDFPages(reader io.ReadSeeker, dir string, budget int64) error {
 // worker is the only thing that splits whole books, and it does so off the
 // request path.
 func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDescriptor) ([]byte, error) {
-	pdfCacheMu.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return s.cachedTaskPDFContext(ctx, file, descriptor)
+}
+func (s *importService) cachedTaskPDFContext(workCtx context.Context, file *core.Record, descriptor pdfPreviewDescriptor) ([]byte, error) {
+	if err := workCtx.Err(); err != nil {
+		return nil, err
+	}
+	for !pdfCacheMu.TryLock() {
+		select {
+		case <-workCtx.Done():
+			return nil, workCtx.Err()
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	if err := workCtx.Err(); err != nil {
+		pdfCacheMu.Unlock()
+		return nil, err
+	}
 	defer pdfCacheMu.Unlock()
 	now := time.Now()
 	start, end := descriptor.Start, descriptor.End
@@ -302,7 +331,7 @@ func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDe
 	cacheState := "miss-degraded"
 	if cached {
 		cacheState = "pages-unreadable-degraded"
-		output, err = mergeCachedPDFPages(dir, start, end, stamp, stages)
+		output, err = mergeCachedPDFPagesContext(workCtx, dir, start, end, stamp, stages)
 		if err == nil {
 			// Kept warm by use, so the 24h window follows the material rather
 			// than a timer set when the split happened.
@@ -321,9 +350,12 @@ func (s *importService) cachedTaskPDF(file *core.Record, descriptor pdfPreviewDe
 			return nil, e
 		}
 		defer closeFile()
-		output, err = buildTaskPDF(reader, start, end, stamp, stages)
+		output, err = buildTaskPDFContext(workCtx, reader, start, end, stamp, stages)
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := workCtx.Err(); err != nil {
 		return nil, err
 	}
 	if int64(len(output)) <= pdfBookBudget {
@@ -357,6 +389,14 @@ func logPDFPreview(cache, sourceKey, pageRange string, stages *previewStages, to
 }
 
 func mergeCachedPDFPages(dir string, start, end int, stamp string, stages *previewStages) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return mergeCachedPDFPagesContext(ctx, dir, start, end, stamp, stages)
+}
+func mergeCachedPDFPagesContext(workCtx context.Context, dir string, start, end int, stamp string, stages *previewStages) ([]byte, error) {
+	if err := workCtx.Err(); err != nil {
+		return nil, err
+	}
 	openStart := time.Now()
 	var readers []io.ReadSeeker
 	for n := start; n <= end; n++ {
@@ -370,13 +410,13 @@ func mergeCachedPDFPages(dir string, start, end int, stamp string, stages *previ
 	stages.markOpen(openStart)
 	var excerpt bytes.Buffer
 	mergeStart := time.Now()
-	err := pdfapi.MergeRaw(context.Background(), readers, &excerpt, false, pdfConfig())
+	err := pdfapi.MergeRaw(workCtx, readers, &excerpt, false, pdfConfig())
 	stages.markMerge(mergeStart)
 	if err != nil {
 		return nil, err
 	}
 	watermarkStart := time.Now()
-	output, err := watermarkTaskPDF(bytes.NewReader(excerpt.Bytes()), stamp)
+	output, err := watermarkTaskPDFContext(workCtx, bytes.NewReader(excerpt.Bytes()), stamp)
 	stages.markWatermark(watermarkStart)
 	return output, err
 }
