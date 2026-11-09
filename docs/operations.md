@@ -12,6 +12,8 @@
 
 仅已持锁的应用在内部 store 中发布 `fangjiDataDirectoryOwner=true`，供启动恢复核实；这个值由 Go 生命周期写入，不是可由客户端或环境变量提交的“已停机”断言。辅助分析的遗留 bulk 暂存只能由新归属者在 HTTP 接入前标为 aborted，保留 marker 和原完整结果，载荷仍按有界清理处理，不能将中断的半批次发布。
 
+首次启动空目录时先完成应用迁移，再启动服务。Docker 正式入口已按数字顺序执行迁移，之后才 `exec serve`；直接运行二进制也应先以 `FANGJI_SKIP_ADMIN_BOOTSTRAP=1 ./pocketbase migrate up --dir=pb_data --migrationsDir=pb_migrations` 初始化，再运行 `./pocketbase serve --dir=pb_data --migrationsDir=pb_migrations`。跳过初始化仅作用于前一条迁移命令，不应永久配置到服务。PocketBase 的 Bootstrap 只创建系统表，直接裸 `serve` 的早期账户 hook 不能当作应用迁移已完成；拒绝日志也不表示账号已创建。
+
 ## 备份与恢复
 
 目标 RPO 为 24 小时，目标 RTO 为 60 分钟；这是初始目标，实际应按数据量测量。
