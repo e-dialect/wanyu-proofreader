@@ -1,0 +1,140 @@
+{
+  "synthetic": true,
+  "entries": 20000,
+  "host": "macOS-15.8.1-x86_64-i386-64bit-Mach-O",
+  "sqlite_version": "3.54.0",
+  "mixed_load_acceptance": false,
+  "reference_hardware_verified": false,
+  "cache": "no application cache; OS cache uncontrolled",
+  "method": "real two-person submission/arbitration templates, stopped-server offline clone, identical DB SQL comparison, current HTTP after restart",
+  "source_sha256": "8bf18a13b813903f5720709c2696b7a81405819e2529ab588d9c8a8f3e142107",
+  "fixture": {
+    "entries_added": 19998,
+    "integrity": "ok",
+    "counts": {
+      "approved": 10001,
+      "arbitration": 4001,
+      "pending": 2998,
+      "proofreading": 3000
+    },
+    "method": "offline cloning of real HTTP workflow templates; bulk setup is not submission throughput",
+    "judgments": 240024
+  },
+  "seed_seconds": 116.54007698496571,
+  "database_bytes_before_index": 2754252800,
+  "before_plan": [
+    "CO-ROUTINE ranked",
+    "CO-ROUTINE (subquery-7)",
+    "CO-ROUTINE (subquery-8)",
+    "CO-ROUTINE field_totals",
+    "SCAN a",
+    "SCAN field VIRTUAL TABLE INDEX 1:",
+    "USE TEMP B-TREE FOR GROUP BY",
+    "MATERIALIZE known_fields",
+    "CO-ROUTINE ordered_judgments",
+    "CO-ROUTINE (subquery-9)",
+    "SEARCH verification_events USING INDEX idx_verification_events_project (project=? AND kind=?)",
+    "USE TEMP B-TREE FOR ORDER BY",
+    "SCAN (subquery-9)",
+    "SCAN j",
+    "SEARCH a USING INDEX sqlite_autoindex_proofreading_attempts_1 (id=?)",
+    "SCAN field VIRTUAL TABLE INDEX 1:",
+    "USE TEMP B-TREE FOR GROUP BY",
+    "SCAN t",
+    "BLOOM FILTER ON k (field_name=?)",
+    "SEARCH k USING AUTOMATIC COVERING INDEX (field_name=?) LEFT-JOIN",
+    "USE TEMP B-TREE FOR ORDER BY",
+    "SCAN (subquery-8)",
+    "SCAN (subquery-7)",
+    "SCAN ranked",
+    "USE TEMP B-TREE FOR ORDER BY"
+  ],
+  "before_sql": {
+    "samples": 7,
+    "samples_ms": [
+      21807.823312003165,
+      3446.3680630433373,
+      3111.8587980163284,
+      3075.4364170134068,
+      3301.618282974232,
+      3214.780089969281,
+      3207.893129030708
+    ],
+    "p50_ms": 3214.780089969281,
+    "p95_ms": 21807.823312003165
+  },
+  "index_build_ms": 9539.710244047455,
+  "index_bytes": 22634496,
+  "after_plan": [
+    "CO-ROUTINE ranked",
+    "CO-ROUTINE (subquery-6)",
+    "CO-ROUTINE (subquery-7)",
+    "CO-ROUTINE summary",
+    "MATERIALIZE judged_fields",
+    "SCAN a",
+    "SCAN field VIRTUAL TABLE INDEX 1:",
+    "CORRELATED SCALAR SUBQUERY 1",
+    "SEARCH j USING INDEX idx_verification_judgment_latest (project=? AND ref=? AND field_name=?)",
+    "SCAN judged_fields",
+    "USE TEMP B-TREE FOR GROUP BY",
+    "SCAN summary",
+    "USE TEMP B-TREE FOR ORDER BY",
+    "SCAN (subquery-7)",
+    "SCAN (subquery-6)",
+    "SCAN ranked",
+    "USE TEMP B-TREE FOR ORDER BY"
+  ],
+  "after_sql": {
+    "samples": 7,
+    "samples_ms": [
+      655.1185669959523,
+      677.7361310087144,
+      688.2776310085319,
+      681.7229649750516,
+      656.2444900046103,
+      713.5526780039072,
+      683.4769129636697
+    ],
+    "p50_ms": 681.7229649750516,
+    "p95_ms": 713.5526780039072
+  },
+  "exact_results_and_pagination_equal": true,
+  "result_sha256": "04a5bc450961c44944a9ad884dcc46e7240d617bd16ef59252331fa09b96f4f6",
+  "legacy_plan": [
+    "SEARCH p USING COVERING INDEX idx_pages_project_status_order (project=? AND status=?)",
+    "CORRELATED SCALAR SUBQUERY 1",
+    "SEARCH a USING COVERING INDEX idx_attempt_page_round_user_kind (page=?)"
+  ],
+  "legacy_sql": {
+    "samples": 7,
+    "samples_ms": [
+      7.139350986108184,
+      6.097960053011775,
+      6.078983016777784,
+      6.206254998687655,
+      6.201616022735834,
+      6.1227690312080085,
+      6.1487299972213805
+    ],
+    "p50_ms": 6.1487299972213805,
+    "p95_ms": 7.139350986108184
+  },
+  "after_http": {
+    "samples": 7,
+    "samples_ms": [
+      1390.5961950076744,
+      1178.4796409774572,
+      1188.1832579965703,
+      1180.3576839738525,
+      1190.7805860391818,
+      1185.4837809805758,
+      1251.4074789942242
+    ],
+    "first_request_after_restart_ms": 1390.5961950076744,
+    "p50_ms": 1188.1832579965703,
+    "p95_ms": 1390.5961950076744,
+    "response_bytes": 1941
+  },
+  "observed_http_p95_under_1000ms": false,
+  "integrity": "ok"
+}

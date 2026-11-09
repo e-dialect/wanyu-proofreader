@@ -2,7 +2,10 @@ import { jobObserverScope } from './helpers/jobObserverScope.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch as vueWatch } from 'vue'
+import { createAccountViewScope } from '../src/lib/accountViewScope.js'
+import * as accountSecurity from '../src/lib/accountSecurity.js'
+import * as localAccountData from '../src/lib/localAccountData.js'
 import { adminRouteKey } from '../src/lib/adminRouteKey.js'
 import * as taskDraft from '../src/lib/taskDraft.js'
 import * as normalizationDraft from '../src/lib/normalizationDraft.js'
@@ -354,13 +357,19 @@ function sessionFixture(send) {
       'loginWithPassword',
       'loginWithExternalProvider',
       'refreshStoredAuth',
-      'updateProfile'
+      'updateProfile',
+      'logoutAllDevices',
+      'changeAccountPassword',
+      'requestEmailChange',
+      'requestEmailVerification'
     ],
     {
       pb: {
         authStore: store,
         send,
         collection: () => ({
+          requestEmailChange: send,
+          requestVerification: send,
           // PocketBase SDK methods publish auth responses before their promise resolves.
           authWithPassword: async () => {
             const result = await send()
@@ -669,5 +678,278 @@ regression(
     await operation
     assert.equal(context.lastSavedNote.value, 'submitted note')
     assert.notEqual(context.lastSavedNote.value, context.note.value)
+  }
+)
+
+regression(
+  'logout-all ends only its own local session, including uncertain network results',
+  async () => {
+    const waiting = deferred()
+    const { api, store } = sessionFixture(() => waiting.promise)
+    const pending = api.logoutAllDevices()
+    store.save('b-token', { id: 'b' })
+    waiting.resolve(null)
+    await assert.rejects(pending, { name: 'AbortError' })
+    assert.equal(store.token, 'b-token')
+    const uncertain = sessionFixture(async () => {
+      throw new Error('network interrupted')
+    })
+    await assert.rejects(uncertain.api.logoutAllDevices(), /network interrupted/)
+    assert.equal(uncertain.store.token, '')
+  }
+)
+regression('password update cannot clear a newer tab session', async () => {
+  const waiting = deferred()
+  const { api, store } = sessionFixture(() => waiting.promise)
+  const pending = api.changeAccountPassword('old', 'new', 'new')
+  store.save('b-token', { id: 'b' })
+  waiting.resolve({ id: 'a' })
+  await assert.rejects(pending, { name: 'AbortError' })
+  assert.equal(store.token, 'b-token')
+})
+
+regression('account view generation rejects return-to-same-identity and disposed responses', () => {
+  let identity = 'a'
+  const scope = createAccountViewScope(() => identity)
+  const old = scope.capture()
+  identity = 'b'
+  scope.invalidate()
+  assert.equal(old.signal.aborted, true)
+  identity = 'a'
+  scope.invalidate()
+  assert.equal(scope.isCurrent(old), false)
+  const current = scope.capture()
+  assert.equal(scope.isCurrent(current), true)
+  scope.dispose()
+  assert.equal(current.signal.aborted, true)
+  assert.equal(scope.isCurrent(current), false)
+})
+
+function accountComponent(path, names, overrides) {
+  const stops = []
+  const api = evaluate(path, names, {
+    createAccountViewScope,
+    ...accountSecurity,
+    ...localAccountData,
+    watch: (...args) => {
+      const stop = vueWatch(...args)
+      stops.push(stop)
+      return stop
+    },
+    ...overrides
+  })
+  const dispose = api.dispose
+  api.dispose = () => {
+    dispose()
+    stops.forEach((stop) => stop())
+  }
+  return api
+}
+const settleAccountView = () => new Promise((resolve) => setImmediate(resolve))
+
+regression(
+  'account security clears previous identity drafts and ignores late events and capabilities',
+  async () => {
+    const storage = memoryStorage()
+    for (const id of ['a', 'b'])
+      storage.setItem(
+        `fangji:task-draft:v1:${id}:page-${id}`,
+        JSON.stringify({ pageId: `page-${id}` })
+      )
+    const auth = reactive({ user: { id: 'a' }, token: 'a-token', isLoggedIn: true })
+    const reads = [],
+      capabilities = []
+    const api = accountComponent(
+      'views/AccountSecurityView.vue',
+      [
+        'drafts',
+        'events',
+        'eventsLoading',
+        'emailEnabled',
+        'loadEvents',
+        'prepareDraftRemoval',
+        'confirmDraftRemoval',
+        'removalSnapshot'
+      ],
+      {
+        useAuthStore: () => auth,
+        useRouter: () => ({}),
+        window: { localStorage: storage },
+        listSecurityEvents: (_query, options) => {
+          const waiting = deferred()
+          reads.push({ ...waiting, ...options })
+          return waiting.promise
+        },
+        accountCapabilities: (options) => {
+          const waiting = deferred()
+          capabilities.push({ ...waiting, ...options })
+          return waiting.promise
+        }
+      }
+    )
+    try {
+      assert.equal(api.drafts.value[0].pageId, 'page-a')
+      api.prepareDraftRemoval()
+      auth.user = { id: 'b' }
+      auth.token = 'b-token'
+      assert.equal(api.drafts.value[0].pageId, 'page-b')
+      assert.deepEqual(api.events.value, [])
+      assert.equal(api.confirmDraftRemoval.value, false)
+      assert.deepEqual(api.removalSnapshot.value, [])
+      assert.equal(reads[0].signal.aborted, true)
+      reads.at(-1).resolve({ items: [{ id: 'b-event' }] })
+      capabilities.at(-1).resolve({ emailActionsEnabled: false })
+      await settleAccountView()
+      for (const read of reads.slice(0, -1)) read.resolve({ items: [{ id: 'a-event' }] })
+      for (const capability of capabilities.slice(0, -1))
+        capability.resolve({ emailActionsEnabled: true })
+      await settleAccountView()
+      assert.equal(api.events.value[0].id, 'b-event')
+      assert.equal(api.emailEnabled.value, false)
+      const older = api.loadEvents(),
+        newer = api.loadEvents()
+      reads.at(-1).resolve({ items: [{ id: 'newest-event' }] })
+      reads.at(-2).resolve({ items: [{ id: 'older-event' }] })
+      await Promise.all([older, newer])
+      assert.equal(api.events.value[0].id, 'newest-event')
+      auth.isLoggedIn = false
+      assert.deepEqual(api.drafts.value, [])
+      assert.deepEqual(api.events.value, [])
+      const disposedRead = api.loadEvents()
+      api.dispose()
+      reads.at(-1).resolve({ items: [{ id: 'disposed-event' }] })
+      await disposedRead
+      assert.deepEqual(api.events.value, [])
+    } finally {
+      api.dispose()
+    }
+  }
+)
+
+regression(
+  'account email mutation rejects a replaced session before reporting success',
+  async () => {
+    for (const method of ['requestEmailChange', 'requestEmailVerification']) {
+      const waiting = deferred()
+      const { api, store, listeners } = sessionFixture(() => waiting.promise)
+      const pending = api[method]('synthetic@example.test')
+      store.save('b-token', { id: 'b' })
+      waiting.resolve()
+      await assert.rejects(pending, { name: 'AbortError' })
+      assert.equal(store.token, 'b-token')
+      assert.equal(listeners.size, 0)
+    }
+  }
+)
+
+function accountActionFixture(initialAction = 'recover') {
+  const route = reactive({ params: { action: initialAction }, hash: '' })
+  const location = {
+    hash: initialAction === 'recover' ? '' : '#token=synthetic-initial',
+    pathname: `/account/${initialAction}`,
+    search: ''
+  }
+  const history = {
+    replaceState: () => {
+      location.hash = ''
+    }
+  }
+  const capabilities = [],
+    submissions = []
+  let refreshes = 0
+  const api = accountComponent(
+    'views/AccountActionView.vue',
+    [
+      'token',
+      'loading',
+      'emailEnabled',
+      'error',
+      'message',
+      'done',
+      'busy',
+      'password',
+      'confirmation',
+      'submit'
+    ],
+    {
+      useRoute: () => route,
+      window: { location, history },
+      accountCapabilities: (options) => {
+        const waiting = deferred()
+        capabilities.push({ ...waiting, ...options })
+        return waiting.promise
+      },
+      requestPasswordReset: () => Promise.resolve(),
+      confirmAccountAction: (...args) => {
+        const waiting = deferred()
+        submissions.push({ ...waiting, args })
+        return waiting.promise
+      },
+      refreshStoredAuth: async () => {
+        refreshes++
+      }
+    }
+  )
+  const navigate = (action, token = '') => {
+    location.hash = token ? `#token=${token}` : ''
+    route.params.action = action
+  }
+  return { api, capabilities, submissions, navigate, refreshes: () => refreshes }
+}
+regression('late recovery capability cannot overwrite the next token action route', async () => {
+  const { api, capabilities, navigate } = accountActionFixture()
+  try {
+    navigate('reset-password', 'synthetic-new')
+    assert.equal(api.token.value, 'synthetic-new')
+    assert.equal(api.loading.value, false)
+    assert.equal(capabilities[0].signal.aborted, true)
+    capabilities[0].resolve({ emailActionsEnabled: false })
+    await settleAccountView()
+    assert.equal(api.error.value, '')
+    assert.equal(api.emailEnabled.value, false)
+  } finally {
+    api.dispose()
+  }
+})
+regression(
+  'account confirmation captures action and token and never publishes into a later route',
+  async () => {
+    const { api, submissions, navigate, refreshes } = accountActionFixture('reset-password')
+    try {
+      api.password.value = api.confirmation.value = 'SyntheticPassword123!'
+      const pending = api.submit()
+      assert.equal(submissions[0].args[0], 'reset-password')
+      assert.equal(submissions[0].args[1], 'synthetic-initial')
+      navigate('verify-email', 'synthetic-other')
+      submissions[0].resolve()
+      await pending
+      assert.equal(api.done.value, false)
+      assert.equal(api.message.value, '')
+      assert.equal(api.token.value, 'synthetic-other')
+      assert.equal(refreshes(), 0)
+      const disposed = api.submit()
+      api.dispose()
+      submissions[1].reject(new Error('late failure'))
+      await disposed
+      assert.equal(api.error.value, '')
+    } finally {
+      api.dispose()
+    }
+  }
+)
+
+regression(
+  'logout-all cannot clear a session replaced and restored with the same token',
+  async () => {
+    const waiting = deferred()
+    const { api, store, listeners } = sessionFixture(() => waiting.promise)
+    const originalToken = store.token
+    const pending = api.logoutAllDevices()
+    store.save('b-token', { id: 'b' })
+    store.save(originalToken, { id: 'a' })
+    waiting.resolve()
+    await assert.rejects(pending, { name: 'AbortError' })
+    assert.equal(store.token, originalToken)
+    assert.equal(listeners.size, 0)
   }
 )

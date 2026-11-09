@@ -1,6 +1,8 @@
 const PAGE_TITLES = {
   WorkspaceHome: '工作台',
   Login: '登录',
+  AccountSecurity: '账户安全',
+  AccountAction: '账户验证与恢复',
   Register: '注册',
   ChangeInitialPassword: '修改密码',
   AdminDashboard: '项目管理',

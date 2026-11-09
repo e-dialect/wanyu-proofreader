@@ -1,0 +1,14 @@
+# Isolated acceptance profile for the existing 4 vCPU / 3674 MiB shared host.
+# Do not apply directly to production. Other colocated services remain outside
+# this budget; reproduce their measured contention in the acceptance environment.
+services:
+  backend:
+    cpus: 2
+    mem_limit: 1g
+    pids_limit: 128
+    environment:
+      GOMEMLIMIT: 768MiB
+  frontend:
+    cpus: 0.5
+    mem_limit: 128m
+    pids_limit: 64

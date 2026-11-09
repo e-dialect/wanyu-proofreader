@@ -71,7 +71,13 @@ case "${FANGJI_BUILD_SHA:-unknown}" in
   ''|*[!A-Za-z0-9._:-]*) echo "Invalid build identifier" >&2; exit 1 ;;
 esac
 if [ "${FANGJI_TELEMETRY_ENABLED:-0}" = 1 ]; then telemetry_value=true; else telemetry_value=false; fi
+case "${FANGJI_NATIVE_DELIVERY_ENABLED:-1}" in
+  0) native_delivery_value=false ;;
+  1) native_delivery_value=true ;;
+  *) echo "FANGJI_NATIVE_DELIVERY_ENABLED must be 0 or 1" >&2; exit 1 ;;
+esac
 printf 'globalThis.__FANGJI_TELEMETRY_ENABLED__ = %s;\n' "$telemetry_value" >> "$temporary_config"
+printf 'globalThis.__FANGJI_NATIVE_DELIVERY_ENABLED__ = %s;\n' "$native_delivery_value" >> "$temporary_config"
 printf 'globalThis.__FANGJI_BUILD_SHA__ = "%s";\n' "${FANGJI_BUILD_SHA:-unknown}" >> "$temporary_config"
 chmod 644 "$temporary_config"
 mv -f "$temporary_config" "$runtime_config"

@@ -189,6 +189,7 @@ routerAdd("PATCH", "/api/fangji/projects/{projectId}", (c) => {
     }
     txDao.save(project)
     if (quorumChanged) fangjiReconcileProjectQuorum(txDao, projectId)
+    if (has("accessMode") || has("password")) require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.access_changed", auth.id, "", projectId, { access_mode: project.getString("access_mode"), password_changed: Boolean(body.password) })
     result = fangjiProjectJson(txDao, project, auth)
   })
   return c.json(200, result)
@@ -201,6 +202,7 @@ routerAdd("DELETE", "/api/fangji/projects/{projectId}", (c) => {
   $app.runInTransaction((txDao) => {
     const { project } = fangjiRequireOwner(txDao, projectId, auth)
     txDao.delete(project)
+    require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.deleted", auth.id, "", projectId)
   })
   return c.noContent(204)
 }, $apis.requireAuth("users"))
@@ -237,6 +239,8 @@ routerAdd("PUT", "/api/fangji/projects/{projectId}/owner", (c) => {
       txDao.save(previousMembership)
     }
     fangjiSyncProjectAcl(txDao, projectId)
+    if (previousOwnerId) require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.member_changed", auth.id, previousOwnerId, projectId, { old_role: "owner", new_role: "manager" })
+    require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.owner_changed", auth.id, nextOwnerId, projectId, { old_role: targetMembership ? targetMembership.getString("role") : "", new_role: "owner" })
     result = fangjiProjectJson(txDao, project, auth)
   })
   return c.json(200, result)
@@ -295,6 +299,7 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/join", (c) => {
     membership.set("source", accessMode)
     membership.set("created_by", auth.id)
     txDao.save(membership)
+    require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.member_changed", auth.id, auth.id, projectId, { old_role: "", new_role: "proofreader" })
     fangjiSyncProjectAcl(txDao, projectId)
     result = fangjiProjectJson(txDao, project, auth)
   })
@@ -366,6 +371,7 @@ routerAdd("PUT", "/api/fangji/projects/{projectId}/members/{userId}", (c) => {
       throw new ForbiddenError("请先从可用成员中选择，或精确查找已知的昵称/用户名")
     }
     let membership = fangjiMembership(txDao, projectId, userId)
+    const oldRole = membership ? membership.getString("role") : ""
     if (!membership) membership = new Record(txDao.findCollectionByNameOrId("project_memberships"))
     membership.set("project", projectId)
     membership.set("user", userId)
@@ -374,6 +380,7 @@ routerAdd("PUT", "/api/fangji/projects/{projectId}/members/{userId}", (c) => {
     membership.set("created_by", auth.id)
     txDao.save(membership)
     fangjiSyncProjectAcl(txDao, projectId)
+    require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.member_changed", auth.id, userId, projectId, { old_role: oldRole, new_role: role })
     result = { id: membership.id, project: projectId, user: userId, role, source: "assigned" }
   })
   return c.json(200, result)
@@ -388,7 +395,10 @@ routerAdd("DELETE", "/api/fangji/projects/{projectId}/members/{userId}", (c) => 
     const { project } = fangjiRequireManager(txDao, projectId, auth)
     if (project.getString("admin") === userId) throw new BadRequestError("不能移除项目所有者")
     const membership = fangjiMembership(txDao, projectId, userId)
-    if (membership) txDao.delete(membership)
+    if (membership) {
+      txDao.delete(membership)
+      require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.member_removed", auth.id, userId, projectId, { old_role: membership.getString("role"), new_role: "" })
+    }
     fangjiSyncProjectAcl(txDao, projectId)
   })
   return c.noContent(204)
@@ -422,6 +432,7 @@ routerAdd("PUT", "/api/fangji/platform/creator-grants/{userId}", (c) => {
     try { user = txDao.findRecordById("users", userId) } catch { throw new NotFoundError("用户不存在") }
     if (fangjiIsPlatformAdmin(user)) throw new BadRequestError("平台管理员的创建权限始终有效且不限量")
     let grant = fangjiCreatorGrant(txDao, userId)
+    const oldLimit = grant ? grant.get("project_limit") : null
     if (!grant) grant = new Record(txDao.findCollectionByNameOrId("project_creator_grants"))
     grant.set("user", userId)
     grant.set("enabled", enabled)
@@ -430,6 +441,7 @@ routerAdd("PUT", "/api/fangji/platform/creator-grants/{userId}", (c) => {
     grant.set("granted_at", new Date().toISOString())
     grant.set("revoked_at", enabled ? "" : new Date().toISOString())
     txDao.save(grant)
+    require(`${__hooks}/lib/security_events.js`).append(txDao, c, "platform.creator_grant_changed", auth.id, userId, "", { old_limit: oldLimit, new_limit: limit, enabled })
     result = {
       user: userId,
       enabled,

@@ -14,7 +14,9 @@
           :aria-pressed="!selectedProviderId"
           :disabled="loading"
           @click="selectProvider('')"
-        >万语校坊账号</button>
+        >
+          万语校坊账号
+        </button>
         <button
           v-for="provider in providers"
           :key="provider.id"
@@ -24,18 +26,24 @@
           :aria-pressed="selectedProviderId === provider.id"
           :disabled="loading"
           @click="selectProvider(provider.id)"
-        >{{ provider.name }}</button>
+        >
+          {{ provider.name }}
+        </button>
       </div>
 
       <form @submit.prevent="handleLogin">
         <div class="form-group">
-          <label for="login-account" class="form-label">{{ selectedProvider ? `${selectedProvider.name}账号` : '昵称或邮箱' }}</label>
+          <label for="login-account" class="form-label">{{
+            selectedProvider ? `${selectedProvider.name}账号` : '昵称或邮箱'
+          }}</label>
           <input
             id="login-account"
             v-model.trim="email"
             type="text"
             class="form-control"
-            :placeholder="selectedProvider ? `请输入${selectedProvider.name}账号` : '请输入昵称或邮箱'"
+            :placeholder="
+              selectedProvider ? `请输入${selectedProvider.name}账号` : '请输入昵称或邮箱'
+            "
             autocomplete="username"
             :disabled="loading"
             required
@@ -64,10 +72,15 @@
           class="btn btn-primary btn-block btn-lg"
           :disabled="loading || !canSubmit"
         >
-          {{ loading ? '登录中...' : selectedProvider ? `通过 ${selectedProvider.name} 登录` : '登录' }}
+          {{
+            loading ? '登录中...' : selectedProvider ? `通过 ${selectedProvider.name} 登录` : '登录'
+          }}
         </button>
       </form>
 
+      <p class="text-center mt-4">
+        <RouterLink to="/account/recover">忘记密码／恢复账号</RouterLink>
+      </p>
       <p class="text-center mt-4 text-sm text-muted">
         还没有账号？
         <RouterLink :to="registerLocation">立即注册</RouterLink>
@@ -93,14 +106,26 @@ const auth = useAuthStore()
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
-const error = ref('')
-const success = computed(() => route.query.passwordChanged === '1' ? '密码已更新，请使用新密码登录。' : '')
+const error = ref(
+  route.query.sessionsEnded === 'unknown'
+    ? '本机已退出，但网络中断，无法确认其他设备是否已退出。请重新登录后再试。'
+    : ''
+)
+const success = computed(() =>
+  route.query.passwordChanged === '1'
+    ? '密码已更新，请使用新密码登录。'
+    : route.query.sessionsEnded === '1'
+      ? '所有设备的现有登录已失效。本机草稿仍保留。'
+      : ''
+)
 const providers = ref([])
 const selectedProviderId = ref('')
 const registerLocation = computed(() => authPageLocation('/register', route.query.redirect))
 
 const canSubmit = computed(() => email.value.trim() && password.value)
-const selectedProvider = computed(() => providers.value.find((provider) => provider.id === selectedProviderId.value) || null)
+const selectedProvider = computed(
+  () => providers.value.find((provider) => provider.id === selectedProviderId.value) || null
+)
 
 async function redirectAfterLogin() {
   const target = authRedirect(route.query.redirect) || '/workspace'
@@ -146,9 +171,12 @@ async function handleLogin() {
     password.value = ''
     await redirectAfterLogin()
   } catch (e) {
-    error.value = getPbMessage(e, selectedProvider.value
-      ? '外部账号登录失败，请检查账号和密码'
-      : '登录失败，请检查昵称、邮箱或密码')
+    error.value = getPbMessage(
+      e,
+      selectedProvider.value
+        ? '外部账号登录失败，请检查账号和密码'
+        : '登录失败，请检查昵称、邮箱或密码'
+    )
   } finally {
     loading.value = false
   }
@@ -159,9 +187,9 @@ async function handleLogin() {
 .auth-methods {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: .5rem;
+  gap: 0.5rem;
   margin-bottom: 1.25rem;
-  padding: .3rem;
+  padding: 0.3rem;
   border-radius: var(--radius);
   background: var(--gray-100);
 }
@@ -169,7 +197,7 @@ async function handleLogin() {
 .auth-method {
   border: 0;
   border-radius: var(--radius-inset);
-  padding: .65rem .75rem;
+  padding: 0.65rem 0.75rem;
   color: var(--gray-600);
   background: transparent;
   cursor: pointer;

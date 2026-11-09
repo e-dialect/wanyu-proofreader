@@ -105,6 +105,7 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/volunteers/generate", (c) =>
       created.push({ id: user.id, username: candidate.username, nickname: candidate.nickname })
     }
     fangjiAccountsSyncProjectAcl(txDao, projectId)
+    require(`${__hooks}/lib/security_events.js`).append(txDao, c, "project.volunteers_created", auth.id, "", projectId, { count: created.length })
   })
 
   const rows = [
