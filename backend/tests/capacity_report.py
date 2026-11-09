@@ -2,6 +2,7 @@
 import json
 import math
 from pathlib import Path
+from capacity_burst import burst_report
 
 HTTP_P95 = {'claim': 800, 'submit': 800, 'arbitrate': 800, 'field_summary': 1000,
             'pdf_descriptor': 500, 'task': 500, 'admin_pages': 500, 'verification': 500}
@@ -28,11 +29,14 @@ def operation(rows, name, p95_limit=None, p99_limit=None):
 def summarize(output, config, reconciliation, returncodes):
     output = Path(output)
     http = lines(output / 'requests.jsonl') + lines(output / 'browser-http.jsonl')
+    burst = burst_report(config, http, lines(output / 'burst-events.jsonl'))
     browser = lines(output / 'browser.jsonl')
     if config['profile'] == 'full':
         http = [r for r in http if r['phase'] == 'steady']
         browser = [r for r in browser if r['phase'] == 'steady']
     gates = []
+    if burst['status'] != 'not_requested':
+        gates.append({'gate': 'synchronized_submit_burst', 'status': burst['status']})
     operations = [operation(http, name, limit, 2000 if name in ('claim', 'submit', 'arbitrate') else None)
                   for name, limit in HTTP_P95.items()]
     gates.extend({'gate': item['operation'], 'status': item['status']} for item in operations)
@@ -83,5 +87,5 @@ def summarize(output, config, reconciliation, returncodes):
     return {'status': status, 'profile': config['profile'], 'threshold_scope': 'steady phase only' if config['profile'] == 'full' else 'accelerated smoke phases',
             'gates': gates, 'http': operations, 'expected_conflicts': {name: sum(r['operation']==name and r.get('status')==409 and r.get('ok') for r in http) for name in {r['operation'] for r in http}}, 'http_samples': len(http), 'source_visible': source,
             'editor_ready_report_only': operation(browser, 'editor_ready'), 'submit_ack': ack,
-            'web_vitals': vitals, 'generators': generators, 'background': background,
+            'submit_burst': burst, 'web_vitals': vitals, 'generators': generators, 'background': background,
             'cache_note': 'Cold/hot identify evidenced browser resource-cache state only. Unknown requests are reported and cannot satisfy the hot/cold full gates.'}

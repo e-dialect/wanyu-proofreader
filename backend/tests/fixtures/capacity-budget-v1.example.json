@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "production_shared_review_required",
+  "reference_profile": "production_shared",
+  "target": {"cpu_cores": 4, "memory_min_bytes": 3700000000, "memory_max_bytes": 4000000000},
+  "runtime": {"gomaxprocs": 2, "gomemlimit_bytes": 805306368},
+  "ceilings": {"combined_rss_bytes": null, "wal_bytes": null, "data_growth_bytes": null, "disk_free_min_bytes": null},
+  "recovery": {"baseline_seconds": 60, "observe_seconds": 120, "dwell_seconds": 60, "rss_growth_bytes": null, "heap_growth_bytes": null},
+  "clock": {"max_uncertainty_ms": null}
+}

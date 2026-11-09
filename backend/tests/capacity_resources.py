@@ -30,10 +30,14 @@ def trend(rows, key):
 class ResourceSampler:
     interval_seconds = 5
 
-    def __init__(self, pid, root, config):
+    def __init__(self, pid, root, config, frontend_pid=None, target_group=None):
         self.pid, self.root, self.config = int(pid), Path(root), config
         self.output = Path(config['output'])
         self.rows, self.last_runtime = [], None
+        self.frontend_pid = frontend_pid
+        self.target_group = target_group
+        self.directory_sample = None
+        self.sample_lock = threading.Lock()
         self.log_offset = (self.root/'server.log').stat().st_size
         self.stopped = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -49,20 +53,44 @@ class ResourceSampler:
             next_sample += self.interval_seconds
 
     def sample(self):
+        with self.sample_lock:
+            self._sample()
+
+    def _sample(self):
         now = time.time()
         row = {'at_ms': round(now * 1000), 'phase': phase_at(self.config, now), 'errors': {}}
+        if 'observation' in self.config:
+            row['observation'] = self.config['observation']
         try:
             values = subprocess.check_output(['ps', '-p', str(self.pid), '-o', 'rss=', '-o', 'pcpu='], text=True, timeout=2).split()
             row['server_rss_bytes'] = int(values[0]) * 1024
             row['server_cpu_percent'] = float(values[1])
         except (OSError, subprocess.SubprocessError, ValueError, IndexError) as error:
             row['errors']['server_process'] = type(error).__name__
+        if self.frontend_pid is not None:
+            try:
+                values = subprocess.check_output(['ps', '-p', str(self.frontend_pid), '-o', 'rss=', '-o', 'pcpu='], text=True, timeout=2).split()
+                row['frontend_rss_bytes'] = int(values[0]) * 1024
+                row['frontend_cpu_percent'] = float(values[1])
+            except (OSError, subprocess.SubprocessError, ValueError, IndexError) as error:
+                row['errors']['frontend_process'] = type(error).__name__
+        if self.target_group is not None:
+            try:
+                processes = subprocess.check_output(['ps', '-axo', 'pgid=,rss=,pcpu='], text=True, timeout=2).splitlines()
+                owned = [line.split() for line in processes if line.split() and int(line.split()[0]) == self.target_group]
+                row['target_group_rss_bytes'] = sum(int(parts[1])*1024 for parts in owned)
+                row['target_group_cpu_percent'] = sum(float(parts[2]) for parts in owned)
+            except (OSError, subprocess.SubprocessError, ValueError, IndexError) as error:
+                row['errors']['target_process_group'] = type(error).__name__
         data = self.root/'data'; db = data/'data.db'
         try:
             row['database_bytes'] = db.stat().st_size
             wal = data/'data.db-wal'
             row['wal_bytes'] = wal.stat().st_size if wal.exists() else 0
-            row['data_directory_bytes'] = sum(p.stat().st_size for p in data.rglob('*') if p.is_file())
+            if self.directory_sample is None or now - self.directory_sample[0] >= 60:
+                self.directory_sample = (now, sum(p.stat().st_size for p in data.rglob('*') if p.is_file()))
+            row['data_directory_bytes'] = self.directory_sample[1]
+            row['data_directory_sample_age_seconds'] = now - self.directory_sample[0]
             disk = shutil.disk_usage(data)
             row['disk_free_bytes'], row['disk_total_bytes'] = disk.free, disk.total
         except OSError as error:
@@ -84,7 +112,7 @@ class ResourceSampler:
             if self.last_runtime:
                 at, runtime = self.last_runtime
                 row['runtime_sample_age_seconds'] = now - at
-                for key in ['heap_bytes', 'goroutines', 'queue_length', 'ocr_queue_length', 'image_queue_length']:
+                for key in ['heap_bytes', 'goroutines', 'queue_length', 'ocr_queue_length', 'image_queue_length', 'gomaxprocs', 'go_memory_limit_bytes']:
                     row[key] = runtime.get(key)
         except OSError as error:
             row['errors']['runtime_log'] = type(error).__name__
@@ -94,6 +122,7 @@ class ResourceSampler:
     def stop(self):
         self.stopped.set()
         self.thread.join(timeout=10)
+        self.directory_sample = None
         self.sample()
         expected = max(1, math.floor(self.config['duration'] / self.interval_seconds))
         required = ('server_rss_bytes', 'wal_bytes', 'data_directory_bytes', 'disk_free_bytes', 'unfinished_jobs')

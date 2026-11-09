@@ -91,9 +91,18 @@
           <li>核对预览、错误行和绑定来源后确认导入，安排独立校对并处理差异。</li>
           <li>分别检查来源保真、质量与授权条件，再从已编选批次准备交付。</li>
         </ol>
-        <RouterLink to="/admin/guide/project-files" @click="helpOpen = false"
-          >查看文件准备与能力边界</RouterLink
-        >
+        <p>
+          <a href="/examples/review-bundle-practice-v1.zip" download>下载虚构完整练习包</a>
+          ·
+          <RouterLink
+            to="/admin/guide/project-files#review-bundle-practice"
+            @click="helpOpen = false"
+            >查看管理员练习步骤</RouterLink
+          >
+        </p>
+        <p class="text-sm text-muted">
+          含 3 条任务、3 页原文和说明；只在独立练习项目使用，来源与交付确认须由人完成。
+        </p>
       </section>
       <p class="text-sm mt-3">
         <a href="/examples/proofreading-practice.csv" download>下载虚构练习 CSV</a

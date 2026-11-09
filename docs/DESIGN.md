@@ -195,6 +195,8 @@ Reka 提供的运行时定位变量在 UI 债务检查中逐个登记；近似�
 
 CSV预检展示前20条有效行的只读样本；`preview_locations`与原preview同索引，单独表达CSV行号和PDF物理页码，不占用用户列名。入口“提取PDF文字层”只承诺当前正式支持能力；练习CSV与正式项目明确区分，不声称它完成ReviewBundle交付。
 
+管理员帮助另提供完整虚构Review Bundle、配套3页PDF和可重放说明，贯通独立校对、来源/许可判断、单批次编选与交付检查；预检不替人确认，不自动登记或授权，外部回执仍须真实接收后填写。
+
 编选列表、创建及详情以query表达`page/view/batch/tab/exception`，交付以`page/view/adoption/package/tab`定位。详情按ID读取，不能从当前列表页推断；会卸载未保存编辑对象的query变化须确认。权限失效不受离页确认阻挡。账户安全归入账户与偏好，不高亮项目。
 
 原生交付仅接受规则显式指定的单个完整入站Bundle。先验证全项目scope_digest，再按目标入站批次构造完整声明；界面分别展示编选项目范围与本包范围。preflight绑定全部正文/来源/前包的preview_sha256，生成按request_id幂等；同key异体409、成功响应丢失可返回同一包并标replayed。交付链为project/recipient/purpose/import_job。旧包字节和历史previous不改写；待定或范围外只交付标识与理由。人工填核查者不是额外身份认证。

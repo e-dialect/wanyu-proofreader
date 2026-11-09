@@ -6,6 +6,7 @@ order-independent, but the Go build is reused across suites by run_all.py.
 """
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -149,10 +150,14 @@ def upgrade_runnable_rule_version(adapters_dir):
     path.write_text(json.dumps(adapter, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
-def build_binary(dest, race=False):
+def build_binary(dest, race=False, build_sha=None):
     command = ['go', 'build']
     if race:
         command.append('-race')
+    if build_sha is not None:
+        if not isinstance(build_sha, str) or not re.fullmatch('[0-9a-f]{40}', build_sha):
+            raise ValueError('build_sha must be an observed full Git SHA')
+        command.append('-ldflags=-X main.commit=' + build_sha)
     subprocess.run([*command, '-o', str(dest), '.'], cwd=BACKEND, check=True)
     return dest
 
