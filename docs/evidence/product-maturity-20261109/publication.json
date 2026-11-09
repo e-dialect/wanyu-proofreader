@@ -16,14 +16,20 @@
       "title": "feat(ops): add bounded runtime and experience measurement",
       "base_branch": "main",
       "scope": "ops",
-      "changed_files": 32,
-      "additions": 1424,
+      "changed_files": 33,
+      "additions": 1428,
       "deletions": 50,
       "binary_files": 0,
       "initial_head_sha": "8d8ef2f675924ce6c4df14e51e7f9c378610dac1",
       "number": 404,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/404",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 32,
+        "additions": 1424,
+        "deletions": 50,
+        "binary_files": 0
+      }
     },
     {
       "index": 2,
@@ -33,14 +39,20 @@
       "title": "feat(import): unify job observation and preparation guidance",
       "base_branch": "feat/maturity-01-observability",
       "scope": "import",
-      "changed_files": 48,
-      "additions": 2006,
-      "deletions": 497,
+      "changed_files": 49,
+      "additions": 2007,
+      "deletions": 498,
       "binary_files": 2,
       "initial_head_sha": "78112917cd9bb59479925420d73e11f2d551a6ed",
       "number": 405,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/405",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 48,
+        "additions": 2006,
+        "deletions": 497,
+        "binary_files": 2
+      }
     },
     {
       "index": 3,
@@ -50,14 +62,20 @@
       "title": "feat(release): derive immutable packages from confirmed adoption",
       "base_branch": "feat/maturity-02-job-workspace",
       "scope": "release",
-      "changed_files": 32,
-      "additions": 1996,
-      "deletions": 344,
+      "changed_files": 31,
+      "additions": 1995,
+      "deletions": 343,
       "binary_files": 0,
       "initial_head_sha": "f56a5dca1ac9655b947cb78c1a5af2e0086e8b7a",
       "number": 406,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/406",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 32,
+        "additions": 1996,
+        "deletions": 344,
+        "binary_files": 0
+      }
     },
     {
       "index": 4,
@@ -67,14 +85,20 @@
       "title": "feat(auth): add account revocation and recovery workflows",
       "base_branch": "feat/maturity-03-delivery",
       "scope": "auth",
-      "changed_files": 91,
-      "additions": 6508,
-      "deletions": 260,
+      "changed_files": 95,
+      "additions": 6790,
+      "deletions": 322,
       "binary_files": 0,
       "initial_head_sha": "17ebe7ec81c3c1d1349f175769e77600a806f3d9",
       "number": 407,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/407",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 91,
+        "additions": 6508,
+        "deletions": 260,
+        "binary_files": 0
+      }
     },
     {
       "index": 5,
@@ -84,14 +108,20 @@
       "title": "fix(auth): enforce transactional permissions and preserve account drafts",
       "base_branch": "feat/maturity-04-account-security",
       "scope": "auth",
-      "changed_files": 92,
-      "additions": 5470,
-      "deletions": 226,
+      "changed_files": 95,
+      "additions": 6002,
+      "deletions": 224,
       "binary_files": 2,
       "initial_head_sha": "27bcb90c2939883b608b9ad685acdf6436808c5b",
       "number": 408,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/408",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 92,
+        "additions": 5470,
+        "deletions": 226,
+        "binary_files": 2
+      }
     },
     {
       "index": 6,
@@ -108,7 +138,13 @@
       "initial_head_sha": "0040f89cd046edccab58944f2a51bd3e12308af5",
       "number": 409,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/409",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 74,
+        "additions": 5337,
+        "deletions": 138,
+        "binary_files": 6
+      }
     },
     {
       "index": 7,
@@ -125,7 +161,13 @@
       "initial_head_sha": "328912df1275748464da116fde1d3c97f57a91eb",
       "number": 410,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/410",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 78,
+        "additions": 3991,
+        "deletions": 309,
+        "binary_files": 7
+      }
     },
     {
       "index": 8,
@@ -142,7 +184,13 @@
       "initial_head_sha": "e784bf515d94e7031f32a710882e50f977ace1ca",
       "number": 411,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/411",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 12,
+        "additions": 1136,
+        "deletions": 0,
+        "binary_files": 0
+      }
     },
     {
       "index": 9,
@@ -159,7 +207,13 @@
       "initial_head_sha": "e6de69786e486a3c2b058f7dca467f63583e49fb",
       "number": 412,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/412",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 18,
+        "additions": 3328,
+        "deletions": 56,
+        "binary_files": 0
+      }
     },
     {
       "index": 10,
@@ -176,7 +230,13 @@
       "initial_head_sha": "29dbda5593ca5e880c58599022b3df76981b20e1",
       "number": 413,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/413",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 10,
+        "additions": 679,
+        "deletions": 98,
+        "binary_files": 0
+      }
     },
     {
       "index": 11,
@@ -193,7 +253,13 @@
       "initial_head_sha": "0991fab18b8e80c27744a707fa1614dbd34528ab",
       "number": 414,
       "url": "https://github.com/e-dialect/wanyu-proofreader/pull/414",
-      "draft": true
+      "draft": true,
+      "initial_diff_statistics": {
+        "changed_files": 19,
+        "additions": 3360,
+        "deletions": 24,
+        "binary_files": 0
+      }
     }
   ],
   "issues": {
@@ -601,5 +667,6 @@
   "merged": false,
   "auto_merge": false,
   "deployed": false,
-  "raw_issue_bodies_or_comments_committed": false
+  "raw_issue_bodies_or_comments_committed": false,
+  "pull_request_head_semantics": "Code snapshot SHA and diff at the CI-corrected layer; top PR also has publication-only documentation commits. Current review head is GitHub headRefOid."
 }
