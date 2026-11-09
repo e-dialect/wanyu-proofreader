@@ -191,5 +191,22 @@
     "capacity-before-exact-fixture.json"
   ],
   "raw_output_directory": "output/maturity/capacity-exact-final-20k",
-  "final_fault_output_directory": "output/maturity/faults-exact-final"
+  "final_fault_output_directory": "output/maturity/faults-exact-final",
+  "formal_capacity_follow_up": {
+    "status": "deferred",
+    "decided_by": "user",
+    "decision_date": "2026-11-09",
+    "reason_code": "isolated_test_environment_unavailable",
+    "reason": "暂无隔离测试机，正式容量验收保留待办。",
+    "scope": [
+      "separate-host 3 x 60 minute capacity acceptance",
+      "production-reference hardware and colocated workload",
+      "reviewed hard resource and cooldown recovery budgets"
+    ],
+    "resume_condition": "Authorized isolated target and independent generator are available; freeze the actual source SHA and reviewed budgets before execution.",
+    "acceptance_requirement_retained": true,
+    "existing_local_evidence_retained": true,
+    "release_gate_waived": false,
+    "awaiting_user_reply": false
+  }
 }
