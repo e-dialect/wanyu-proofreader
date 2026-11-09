@@ -1,0 +1,83 @@
+{
+  "recorded_at_utc": "2026-11-09T05:34:30.775423+00:00",
+  "issue": 420,
+  "base_main": "c728b49c2a075c12e7aeadcef2f1473019066d4e",
+  "runtime_sha": "902eebf7f890405565b9c9775e46e6d3915380cf",
+  "synthetic": true,
+  "production_deployed": false,
+  "full_fault_gate": false,
+  "original_commits": [
+    "4c8f5c9a5ab875d7ee734b6943fb465c59e0095f",
+    "32fc9775659ac314f0c6053ed4d8d1739d53e5d9"
+  ],
+  "local_commits": [
+    "c777c5e94880edfc2c39548a781cb079a4a46ad0",
+    "cafca08ba34125f7dca61357615048beff16444a",
+    "902eebf7f890405565b9c9775e46e6d3915380cf"
+  ],
+  "unit_tests": [
+    {
+      "name": "ownership",
+      "tests": 14,
+      "status": "pass",
+      "duration_seconds": 9.319,
+      "command": "CAPACITY_OWNERSHIP_PLAYWRIGHT=1 NODE_PATH=/private/tmp/wanyu-playwright-runtime/node_modules BROWSER_CHANNEL=chrome python3 -m unittest discover -s backend/tests -p test_capacity_process_ownership.py -v",
+      "log_sha256": "c91c7a59d91cde3ae0b03aa2f6e3c9c28f7736059d327aa4251c4adb87b0ebbf",
+      "execution_source": "clean runtime_sha checkout"
+    },
+    {
+      "name": "fault-tests",
+      "tests": 9,
+      "status": "pass",
+      "duration_seconds": 12.857,
+      "command": "python3 -m unittest discover -s backend/tests -p test_capacity_faults.py -v",
+      "log_sha256": "40e2af4523fb411741de6016438921d41c6c7ba2e78e74d0138800cb9bb0f7ef",
+      "execution_source": "pre-commit worktree with the same runtime and suite files as runtime_sha"
+    },
+    {
+      "name": "remote",
+      "tests": 18,
+      "status": "pass",
+      "duration_seconds": 3.529,
+      "command": "python3 -m unittest discover -s backend/tests -p test_capacity_remote.py -v",
+      "log_sha256": "d6909866f383986fadb140a997ca84d1b0bc0cf542421dd08ea25bbe446b18ee",
+      "execution_source": "pre-commit worktree with the same runtime and suite files as runtime_sha"
+    }
+  ],
+  "functional_smoke": [
+    {
+      "name": "restart",
+      "exit_code": 0,
+      "duration_seconds": 17.07
+    },
+    {
+      "name": "components",
+      "exit_code": 0,
+      "duration_seconds": 41.739
+    }
+  ],
+  "source_unchanged": true,
+  "runtime_dirty_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "runtime_source_sha256": {
+    "backend/tests/capacity_process_ownership.py": "429204db24a013e9e4cc5d49e84bd5bf9d89fa5f7e128bc72412c536a35f4834",
+    "backend/tests/capacity_owned_spawn.cjs": "8e11b38f036d5f9d1876746cd1b7b2d90ba7a11d378ed72894e90ef78d44ff71",
+    "backend/tests/run_capacity_remote.py": "594a95761bf96e3e52cfe449022d0ab9615f778f4407fefd86e8698645d7f9e8",
+    "backend/tests/run_capacity_faults.py": "118fc658f75b08eb23aa060590cc03a78e7e875e0d388038b125ca86fd04c9d8",
+    "backend/tests/test_capacity_process_ownership.py": "04af5335bbc688d9c0da61163c888b02b61b44f09b86d66f481fc7cdaf57095c",
+    "backend/tests/test_capacity_remote.py": "44ecf5ca1a988e5eb7137e22906fbae7cb2f4b44d050e68cacb7abe7e507d233",
+    "backend/tests/test_capacity_faults.py": "e6cabb8697fd1d959f68c0468e8b8905febe4c27eef92b96ebbff21403c4774d"
+  },
+  "full_local_receipt_sha256": "407c2e3af6c1bb4d74c485160d97e812e5bf29d0fdf27435134e8627fdfffae7",
+  "cleanup": {
+    "registered_groups_checked": 6,
+    "registered_groups_empty": true,
+    "ownership_directories_removed": true,
+    "own_worktree_node_python_backend_processes_remaining": 0
+  },
+  "limitations": [
+    "Engineering smoke on synthetic temporary data, not the formal >=15-minute fault campaign.",
+    "No formal capacity, remote SSH, Docker cleanup or production deployment acceptance.",
+    "Ownership covers the fixed suite process group and registered Node detached children; future independently detached Python/native callers need explicit registration.",
+    "Historical receipts remain historical; evidence above was repeated on the stated new-main-derived runtime SHA."
+  ]
+}
