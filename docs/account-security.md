@@ -41,7 +41,7 @@ Go 账户失败、JS 权限操作失败和登录失败共用一个单实例内�
 
 来源由可信代理中间件提供，回退只用直连 IP，忽略源端口和未经信任的 XFF；来源仅以每进程随机盐的 HMAC 指纹保留在内存，来源/IP/指纹不写入事件或日志。每窗口最多保留10组来源指纹，事件类型计数使用固定词表。重复与超预算失败只增加计数，每分钟至多一条 `security_failure_aggregate` 结构化汇总，包含 observed、write_attempts、duplicate/source/global_suppressed 和固定类型的 event_counts；静默后的末个窗口由每分钟任务输出。重启会丢失未输出的内存计数并重置预算，因此这属于首条抽样与聚合，**不是逐请求取证或可靠投递日志**。共享出口的其他账号可能只计入聚合；预算耗尽后的新来源也可能没有单独事件。原生表单进入 hook 前的拒绝、无身份畸形请求、限流早拒绝不保证进入该聚合；结合请求错误率观察趋势。邮件排队/投递不计为成功改密。
 
-`GET /api/fangji/security-events?scope=mine|project|platform&page=1&perPage=25`：最多100条，稳定 `created,id` 倒序。mine 仅本人成功事件且只返回 id/时间/事件名/结果/projectId；project 必须当前项目所有者、manager 或平台管理员，只查询 project_id 对应事件；platform 仅业务 platform_admin。管理视图增加 actor/subject/requestId/details。UI 显示本人最近25条；管理审计可通过此 API 获取。索引覆盖创建时间、主体、操作者、项目。
+`GET /api/fangji/security-events?scope=mine|project|platform&page=1&perPage=25`：最多100条，稳定 `created,id` 倒序。mine 查询 subject_user_id 为本人的账户及权限相关记录，包含 success/denied/failed，且只返回 id/时间/事件名/结果/projectId；仅作为操作者但主体是他人的记录、主体未确认的匿名登录失败不属于 mine；project 必须当前项目所有者、manager 或平台管理员，只查询 project_id 对应事件；platform 仅业务 platform_admin。管理视图增加 actor/subject/requestId/details。UI 显示本人最近25条；管理审计可通过此 API 获取。索引覆盖创建时间、主体、操作者、项目。
 
 每分钟按 failed、denied、success 分别执行一个最多500条的删除批次（各自提交），删除超过30天的失败/拒绝和超过365天的成功事件；`(outcome,created,id)` 索引支持分类型清理。失败清理容量500条/分钟覆盖自身10次/分钟写入预算，成功历史积压不会抢占失败清理批次。稳定运行时，经过共享门禁的失败写入最多600条/小时、30天432,000条，另有当前窗口和清理延迟；成功事件不受该数量预算限制。小实例采用单进程任务；停机期间不会清理，恢复后逐批追赶，磁盘/任务故障需要监控，不能将批次容量当成清理必然成功的承诺。迁移 down 遇已有审计记录拒绝删除集合，需先按既定保留/归档政策处理，不能为回滚直接清空事件。运行版本回滚可保留该新增集合。
 

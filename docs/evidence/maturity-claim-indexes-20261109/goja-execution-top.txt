@@ -1,0 +1,26 @@
+File: [ECMAScript code]
+Type: cpu
+Showing nodes accounting for 1400879.87ms, 98.84% of 1417376.25ms total
+Dropped 125 nodes (cum <= 7086.88ms)
+      flat  flat%   sum%        cum   cum%
+  236.12ms 0.017% 0.017% 631987.48ms 44.59%  <anonymous>.127
+         0     0% 0.017% 631987.48ms 44.59%  <anonymous>.82
+439588.95ms 31.01% 31.03% 439588.95ms 31.01%  appendEvent
+    3.96ms 0.00028% 31.03% 438542.73ms 30.94%  safeRecomputePage
+ 1065.55ms 0.075% 31.11% 438538.77ms 30.94%  recomputePage
+  362.36ms 0.026% 31.13% 396334.59ms 27.96%  <anonymous>.131
+         0     0% 31.13% 396334.59ms 27.96%  <anonymous>.8
+361731.27ms 25.52% 56.65% 395972.23ms 27.94%  <anonymous>.132
+328723.27ms 23.19% 79.85% 330961.09ms 23.35%  <anonymous>.89
+         0     0% 79.85% 289431.55ms 20.42%  <anonymous>.4
+  369.01ms 0.026% 79.87% 289431.55ms 20.42%  <anonymous>.52
+143051.37ms 10.09% 89.96% 150866.61ms 10.64%  <anonymous>.53
+   29.99ms 0.0021% 89.97% 41685.70ms  2.94%  <anonymous>.37
+         0     0% 89.97% 41685.70ms  2.94%  <anonymous>.94
+41565.79ms  2.93% 92.90% 41655.70ms  2.94%  <anonymous>.110
+32417.02ms  2.29% 95.19% 34100.25ms  2.41%  scan
+         0     0% 95.19% 27005.66ms  1.91%  <anonymous>.105
+         0     0% 95.19% 27005.66ms  1.91%  <anonymous>.126
+26616.62ms  1.88% 97.06% 26891.52ms  1.90%  fieldSummary
+25118.60ms  1.77% 98.84% 25163.24ms  1.78%  <anonymous>.137
+         0     0% 98.84% 25163.24ms  1.78%  <anonymous>.28

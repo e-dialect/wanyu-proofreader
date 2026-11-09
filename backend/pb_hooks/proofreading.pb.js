@@ -326,8 +326,8 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/pages/reorder`, (c) => {
     pending.forEach((page) => { pendingById[page.id] = page })
 
     const slots = pending.map((page) => page.getInt("page_number")).sort((a, b) => a - b)
-    const all = txDao.findRecordsByFilter("pages", `project = "${projectId}"`, "-page_number", 100000, 0)
-    const maxPageNumber = all.length ? all[0].getInt("page_number") : 0
+    const last = txDao.findRecordsByFilter("pages", `project = "${projectId}"`, "-page_number", 1, 0)
+    const maxPageNumber = last.length ? last[0].getInt("page_number") : 0
     pending.forEach((page, index) => {
       page.set("page_number", maxPageNumber + index + 1)
       txDao.save(page)

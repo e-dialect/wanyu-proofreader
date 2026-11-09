@@ -1,0 +1,115 @@
+{
+  "synthetic": true,
+  "network": "controlled SDK responses, intentionally ignores abort for stale-result cases",
+  "baseline": false,
+  "results": [
+    {
+      "kind": "adoption",
+      "status": 500,
+      "old_sensitive_content_retained": true,
+      "expected": "network_preserves_last_success"
+    },
+    {
+      "kind": "adoption",
+      "status": 401,
+      "protected_content_cleared": true
+    },
+    {
+      "kind": "adoption",
+      "status": 403,
+      "protected_content_cleared": true
+    },
+    {
+      "kind": "adoption",
+      "status": 404,
+      "protected_content_cleared": true
+    },
+    {
+      "kind": "deliveries",
+      "status": 500,
+      "old_sensitive_content_retained": true,
+      "expected": "network_preserves_last_success"
+    },
+    {
+      "kind": "deliveries",
+      "status": 401,
+      "protected_content_cleared": true
+    },
+    {
+      "kind": "deliveries",
+      "status": 403,
+      "protected_content_cleared": true
+    },
+    {
+      "kind": "deliveries",
+      "status": 404,
+      "protected_content_cleared": true
+    },
+    {
+      "kind": "adoption",
+      "case": "dirty_guard_auth_clear_with_late_success",
+      "safe_navigation": true,
+      "aborted": true
+    },
+    {
+      "kind": "deliveries",
+      "case": "dirty_guard_auth_clear_with_late_success",
+      "safe_navigation": true,
+      "aborted": true
+    },
+    {
+      "kind": "adoptionList",
+      "case": "project_404_adoption-batches",
+      "all_snapshot_cleared": true,
+      "return_to_projects": true
+    },
+    {
+      "kind": "adoptionList",
+      "case": "project_404_adoption-summary",
+      "all_snapshot_cleared": true,
+      "return_to_projects": true
+    },
+    {
+      "kind": "deliveryList",
+      "case": "project_404_deliveries",
+      "all_snapshot_cleared": true,
+      "return_to_projects": true
+    },
+    {
+      "kind": "adoption",
+      "case": "access_lost_hides_create_entry",
+      "hidden": true
+    },
+    {
+      "kind": "adoption",
+      "case": "pending_guard_then_operation_403",
+      "safe_navigation": true
+    },
+    {
+      "kind": "deliveries",
+      "case": "late_preflight_after_read_403",
+      "cleared": true
+    },
+    {
+      "kind": "deliveries",
+      "case": "replayed_generation_copy",
+      "recovered_same_package": true
+    },
+    {
+      "kind": "deliveries",
+      "case": "late_blob_after_identity_loss",
+      "downloads": 0
+    },
+    {
+      "kind": "deliveries",
+      "case": "download_403_clears_page",
+      "cleared": true
+    },
+    {
+      "kind": "adoption",
+      "case": "identity_A_B_A_late_success",
+      "cleared": true
+    }
+  ],
+  "console_errors": []
+}

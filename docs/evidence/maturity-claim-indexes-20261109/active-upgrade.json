@@ -1,0 +1,42 @@
+{
+  "before": {
+    "rows": 20204,
+    "sha256": "3a014d6860526c66a0d8d9e7d6101e0ed7867d3cf4b80ff75da551f236cd009f",
+    "columns": [
+      "project",
+      "proofreader",
+      "page_number",
+      "id",
+      "status",
+      "source_empty"
+    ],
+    "integrity": "ok"
+  },
+  "down": {
+    "rows": 20204,
+    "sha256": "3a014d6860526c66a0d8d9e7d6101e0ed7867d3cf4b80ff75da551f236cd009f",
+    "columns": [
+      "project",
+      "proofreader",
+      "status",
+      "page_number",
+      "id"
+    ],
+    "integrity": "ok",
+    "roundtrip_including_hash_integrity_seconds": 7.082583901006728
+  },
+  "reup": {
+    "rows": 20204,
+    "sha256": "3a014d6860526c66a0d8d9e7d6101e0ed7867d3cf4b80ff75da551f236cd009f",
+    "columns": [
+      "project",
+      "proofreader",
+      "page_number",
+      "id",
+      "status",
+      "source_empty"
+    ],
+    "integrity": "ok",
+    "roundtrip_including_hash_integrity_seconds": 7.012826486956328
+  }
+}

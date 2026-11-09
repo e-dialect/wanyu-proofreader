@@ -1,6 +1,10 @@
 <template>
   <main class="container page adoption-workspace">
-    <WorkspaceLeaveGuard :dirty="dirty" :preserve-query="false" />
+    <WorkspaceLeaveGuard
+      :dirty="dirty"
+      :preserve-query="false"
+      :bypass="accessLost || unavailable"
+    />
     <ProjectWorkspaceNav :project-id="projectId" active="delivery" />
     <header class="page-heading adoption-heading">
       <div>
@@ -27,7 +31,7 @@
           返回批次列表
         </button>
         <button
-          v-else
+          v-else-if="!accessLost && !projectUnavailable"
           type="button"
           class="btn btn-primary"
           :disabled="loading || busy"
@@ -52,6 +56,9 @@
       :busy="loading"
       @retry="load()"
     />
+    <RouterLink v-if="projectUnavailable" to="/admin" class="btn btn-secondary mb-4">
+      返回项目列表
+    </RouterLink>
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
     <AppStatusPanel
@@ -132,6 +139,7 @@
               v-model="createForm.importJobsText"
               :project-id="projectId"
               :disabled="busy"
+              @access-error="pageScope.invalidate($event)"
             />
             <AppField layout="plain"
               ><template #label>说明（可选） </template
@@ -612,7 +620,7 @@ import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.
 import ImportBatchPicker from '@/components/admin/project/ImportBatchPicker.vue'
 import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
 import AppPagination from '@/components/AppPagination.vue'
-import { useAsyncResource } from '@/composables/useAsyncResource'
+import { useProtectedPageScope } from '@/composables/useProtectedPageScope'
 import AppField from '@/components/AppField.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
@@ -650,7 +658,7 @@ import {
   reevaluateAdoptionBatch
 } from '@/services/adoptionService'
 import { downloadText } from '@/lib/downloadText'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
@@ -697,27 +705,11 @@ function openRemoval() {
 const pageStatuses = Object.keys(PAGE_STATUS_LABELS)
 const qualityStates = Object.keys(QUALITY_STATE_LABELS)
 
-const {
-  pending: loadingBatches,
-  error: batchError,
-  reload: reloadBatches,
-  cancel: cancelBatchLoad
-} = useAsyncResource(
-  async ({ signal }, id, page, selectedId) => {
-    const data = await listAdoptionBatches(id, { page, perPage: 25, signal })
-    const nextBatches = data.batches || []
-    const nextId = selectedId
-    const [details, nextSummary] = await Promise.all([
-      loadBatchDetails(nextId, signal),
-      getAdoptionSummary(id, { signal })
-    ])
-    return { data, nextBatches, nextId, details, nextSummary }
-  },
-  { formatError: (cause) => getPbMessage(cause, '加载编选批次失败') }
-)
-const loading = loadingBatches
-const loadError = batchError
+const loading = ref(false)
+const loadError = ref('')
 const loaded = ref(false)
+const unavailable = ref(false)
+const projectUnavailable = ref(false)
 const busy = ref(false)
 const operationError = ref('')
 const message = ref('')
@@ -765,9 +757,7 @@ function applyScopePreset() {
 }
 
 const current = computed(() =>
-  currentRecord.value?.id === currentId.value
-    ? currentRecord.value
-    : batches.value.find((item) => item.id === currentId.value) || null
+  currentRecord.value?.id === currentId.value ? currentRecord.value : null
 )
 const dirty = computed(
   () =>
@@ -782,13 +772,92 @@ const consistent = computed(() => countsConsistent(current.value?.counts))
 const EMPTY_EXCEPTIONS = { exceptions: [], pending: [], pendingTotal: 0 }
 const EMPTY_EVENTS = { events: [], stale: false }
 let projectGeneration = 0
+let loadGeneration = 0
+let readRequest
+let activeOperationRequest
+const pageScope = useProtectedPageScope((status) => {
+  clearProtectedData()
+  loadError.value =
+    status === 401
+      ? '登录状态已失效，当前页面内容已清除。请重新登录后重试。'
+      : '当前账号已无权查看此项目，页面内容已清除。'
+})
+const { accessLost } = pageScope
+function clearDetails() {
+  currentRecord.value = null
+  exceptions.value = { ...EMPTY_EXCEPTIONS }
+  batchEvents.value = { ...EMPTY_EVENTS }
+  activeExceptionId.value = ''
+  confirmOpen.value = removeOpen.value = false
+  for (const key of Object.keys(decisionDrafts)) delete decisionDrafts[key]
+}
+function clearProtectedData() {
+  ++projectGeneration
+  ++loadGeneration
+  loaded.value = loading.value = busy.value = false
+  batches.value = []
+  purposes.value = reasonCodes.value = []
+  summary.value = null
+  operationError.value = message.value = ''
+  historyPage.value = requestedHistoryPage.value = historyTotalPages.value = 1
+  historyTotalItems.value = 0
+  clearDetails()
+  Object.assign(createForm, {
+    purpose: 'public_display',
+    recipient: '',
+    note: '',
+    statuses: [...DEFAULT_STATUSES],
+    qualityStates: [],
+    requirePinyin: false,
+    importJobsText: ''
+  })
+  createStep.value = 1
+  scopePreset.value = 'ready'
+}
+// Preserve the endpoint's authority: a missing project revokes the entire
+// workspace; a missing batch/exception revokes only the selected detail.
+function projectRead(promise) {
+  return promise.catch((cause) => {
+    throw Object.assign(new Error('项目读取失败', { cause }), { requestSource: 'project' })
+  })
+}
+function handleFailure(error, request, requestSource) {
+  if (pageScope.invalidate(error, request)) return true
+  if (!request.isCurrent()) return true
+  if (getPbStatus(error) === 404 && requestSource === 'project') {
+    pageScope.cancel()
+    clearProtectedData()
+    projectUnavailable.value = unavailable.value = true
+    loadError.value = '项目不存在或已被删除，页面资料已清除。请返回项目列表或重试。'
+    return true
+  }
+  if ((getPbStatus(error) === 404 || error?.invalidDetail) && currentId.value) {
+    pageScope.cancel()
+    ++projectGeneration
+    ++loadGeneration
+    loading.value = busy.value = false
+    batches.value = batches.value.filter((item) => item.id !== currentId.value)
+    clearDetails()
+    unavailable.value = true
+    loadError.value = '这份编选批次或所选例外已不可用，请返回批次列表或重试。'
+    return true
+  }
+  return false
+}
 
 watch(projectId, resetProject, { immediate: true })
 watch(
   () => route.query,
   async () => {
     for (const key of Object.keys(decisionDrafts)) delete decisionDrafts[key]
+    unavailable.value = false
+    const previousId = currentId.value
+    const previousScreen = screen.value
     syncQuery()
+    if (previousId !== currentId.value || (!currentId.value && previousScreen !== screen.value)) {
+      activeOperationRequest?.cancel()
+      busy.value = false
+    }
     await load(screen.value === 'list' ? queryPage.value : historyPage.value)
   }
 )
@@ -805,57 +874,54 @@ onBeforeUnmount(() => {
 })
 
 function resetProject() {
-  cancelBatchLoad()
-  ++projectGeneration
-  loaded.value = false
-  screen.value = 'list'
-  createStep.value = 1
-  scopePreset.value = 'ready'
-  detailTab.value = 'overview'
-  activeExceptionId.value = ''
-  confirmOpen.value = removeOpen.value = false
-  busy.value = false
-  batches.value = []
-  currentId.value = ''
-  historyPage.value = requestedHistoryPage.value = 1
-  historyTotalPages.value = 1
-  historyTotalItems.value = 0
-  exceptions.value = { ...EMPTY_EXCEPTIONS }
-  batchEvents.value = { ...EMPTY_EVENTS }
-  summary.value = null
-  operationError.value = message.value = ''
-  for (const key of Object.keys(decisionDrafts)) delete decisionDrafts[key]
-  Object.assign(createForm, {
-    purpose: 'public_display',
-    recipient: '',
-    note: '',
-    statuses: [...DEFAULT_STATUSES],
-    qualityStates: [],
-    requirePinyin: false,
-    importJobsText: ''
-  })
-  currentRecord.value = null
+  pageScope.cancel()
+  clearProtectedData()
+  projectUnavailable.value = unavailable.value = false
   syncQuery()
   return load(screen.value === 'list' ? queryPage.value : 1)
 }
 
 async function load(page = requestedHistoryPage.value) {
   requestedHistoryPage.value = page
-  const result = await reloadBatches(projectId.value, page, currentId.value)
-  if (!result.ok) return
-  const { data, nextBatches, nextId, details, nextSummary } = result.data
-  // Commit history and details together; failed reload keeps drafts and the last page.
-  batches.value = nextBatches
-  currentId.value = nextId
-  if (screen.value === 'detail' && !nextId) screen.value = 'list'
-  historyPage.value = requestedHistoryPage.value = data.page
-  historyTotalPages.value = data.totalPages
-  historyTotalItems.value = data.totalItems
-  purposes.value = data.purposes || []
-  reasonCodes.value = data.reasons || []
-  summary.value = nextSummary
-  applyBatchDetails(details)
-  loaded.value = true
+  readRequest?.cancel()
+  const request = pageScope.capture()
+  readRequest = request
+  const generation = ++loadGeneration
+  const isCurrent = () => request.isCurrent() && generation === loadGeneration
+  const id = projectId.value
+  const nextId = currentId.value
+  loading.value = true
+  loadError.value = ''
+  try {
+    const data = await projectRead(
+      listAdoptionBatches(id, { page, perPage: 25, signal: request.signal })
+    )
+    const [details, nextSummary] = await Promise.all([
+      loadBatchDetails(nextId, request.signal),
+      projectRead(getAdoptionSummary(id, { signal: request.signal }))
+    ])
+    if (!isCurrent()) return
+    // Only the exact detail endpoint is authoritative. Network errors retain
+    // the last successful same-object content; 401/403 and 404 revoke it.
+    batches.value = data.batches || []
+    currentId.value = nextId
+    historyPage.value = requestedHistoryPage.value = data.page
+    historyTotalPages.value = data.totalPages
+    historyTotalItems.value = data.totalItems
+    purposes.value = data.purposes || []
+    reasonCodes.value = data.reasons || []
+    summary.value = nextSummary
+    applyBatchDetails(details)
+    loaded.value = true
+    accessLost.value = unavailable.value = projectUnavailable.value = false
+  } catch (failure) {
+    const error = failure?.requestSource ? failure.cause : failure
+    if (handleFailure(error, request, failure?.requestSource) || !isCurrent()) return
+    loadError.value = getPbMessage(error, '加载编选批次失败')
+  } finally {
+    if (isCurrent()) loading.value = false
+    request.finish()
+  }
 }
 
 async function loadBatchDetails(batchId, signal) {
@@ -876,7 +942,8 @@ async function loadBatchDetails(batchId, signal) {
       ? getAdoptionExceptionByPage(batchId, exceptionQuery.value, { signal })
       : null
   ])
-  if (record.project !== projectId.value) throw new Error('编选批次不属于当前项目')
+  if (record.project !== projectId.value)
+    throw Object.assign(new Error('编选批次不属于当前项目'), { invalidDetail: true })
   if (
     exact?.entry?.pending &&
     !exceptionsData.pending.some((item) => item.page === exact.entry.page)
@@ -909,22 +976,27 @@ function draftFor(pageId) {
 }
 
 async function act(fn, success) {
+  if (accessLost.value) return
+  activeOperationRequest?.cancel()
+  const request = pageScope.capture()
+  activeOperationRequest = request
   const id = projectId.value
   const generation = projectGeneration
-  const isCurrent = () => generation === projectGeneration
+  const isCurrent = () => request.isCurrent() && generation === projectGeneration
   busy.value = true
   operationError.value = ''
   message.value = ''
   try {
-    await fn(id, isCurrent)
+    await fn(id, isCurrent, request.signal)
     if (!isCurrent()) return
     if (success) message.value = success
     await load()
   } catch (e) {
-    if (!isCurrent()) return
+    if (handleFailure(e, request) || !isCurrent()) return
     operationError.value = getPbMessage(e, '操作失败，请重试')
   } finally {
     if (isCurrent()) busy.value = false
+    request.finish()
   }
 }
 
@@ -936,13 +1008,17 @@ async function create() {
     operationError.value = built.error
     return
   }
-  await act(async (id, isCurrent) => {
-    const batch = await createAdoptionBatch(id, {
-      purpose: createForm.purpose,
-      recipient: createForm.recipient.trim(),
-      note: createForm.note.trim(),
-      rule: built.rule
-    })
+  await act(async (id, isCurrent, signal) => {
+    const batch = await createAdoptionBatch(
+      id,
+      {
+        purpose: createForm.purpose,
+        recipient: createForm.recipient.trim(),
+        note: createForm.note.trim(),
+        rule: built.rule
+      },
+      { signal }
+    )
     if (!isCurrent()) return
     // Retain a successfully created draft before previewing: a failed preview
     // must retry this batch instead of silently creating another one.
@@ -951,11 +1027,12 @@ async function create() {
     currentRecord.value = batch
     if (createForm.note === submittedNote) createForm.note = ''
     await navigate({ batch: batch.id, tab: 'overview', page: 1 })
+    if (!isCurrent()) return
     requestedHistoryPage.value = 1
     screen.value = 'detail'
     detailTab.value = 'overview'
     applyBatchDetails({ exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } })
-    await previewAdoptionBatch(batch.id)
+    await previewAdoptionBatch(batch.id, { signal })
     if (!isCurrent()) return
     // 接收方保留：同一批交付常常要按不同用途连续开几条；说明是一次性的。
     if (createForm.note === submittedNote) createForm.note = ''
@@ -965,13 +1042,16 @@ async function create() {
 }
 
 async function preview() {
-  await act(() => previewAdoptionBatch(current.value.id), '已按当前数据重新计算。')
+  await act(
+    (_id, _current, signal) => previewAdoptionBatch(current.value.id, { signal }),
+    '已按当前数据重新计算。'
+  )
 }
 
 async function confirm() {
   if (!current.value || !consistent.value || current.value.status !== 'previewed') return
   await act(
-    () => confirmAdoptionBatch(current.value.id),
+    (_id, _current, signal) => confirmAdoptionBatch(current.value.id, { signal }),
     '已确认本批采用范围；导出与下游都以这份清单为准。'
   )
   if (!operationError.value) confirmOpen.value = false
@@ -980,8 +1060,8 @@ async function confirm() {
 // 重评只追加一条事件，不改写确认时的数字：D5.3 的红线是「追加，不改历史」。
 // 界面上必须把这件事说出来，否则「重新评估」会被读成「把这一批改了」。
 async function reevaluate() {
-  await act(async (_id, isCurrent) => {
-    const result = await reevaluateAdoptionBatch(current.value.id)
+  await act(async (_id, isCurrent, signal) => {
+    const result = await reevaluateAdoptionBatch(current.value.id, { signal })
     if (!isCurrent()) return
     message.value = result.drift
       ? `已追加重评记录：${result.stored.selected}/${result.stored.total} → ${result.current.selected}/${result.current.total}，差异在「${result.drift}」。已确认的数字没有改。`
@@ -991,8 +1071,8 @@ async function reevaluate() {
 
 async function remove() {
   const batchId = current.value.id
-  await act(async (_id, isCurrent) => {
-    await deleteAdoptionBatch(batchId)
+  await act(async (_id, isCurrent, signal) => {
+    await deleteAdoptionBatch(batchId, { signal })
     if (isCurrent()) {
       currentId.value = ''
       await navigate({ page: historyPage.value })
@@ -1002,24 +1082,30 @@ async function remove() {
 }
 
 async function exportManifest(include) {
+  if (accessLost.value || !current.value) return
+  activeOperationRequest?.cancel()
+  const request = pageScope.capture()
+  activeOperationRequest = request
   const generation = projectGeneration
   const batch = current.value
   busy.value = true
   operationError.value = ''
   message.value = ''
   try {
-    const manifest = await exportAdoptionManifest(batch.id, include)
-    if (generation !== projectGeneration) return
+    const manifest = await exportAdoptionManifest(batch.id, include, { signal: request.signal })
+    if (!request.isCurrent() || generation !== projectGeneration) return
     downloadText(JSON.stringify(manifest, null, 2), manifestFilename(batch), 'application/json')
     message.value =
       include === 'select'
         ? includeLabel('select')
         : `${includeLabel('all')}；未采用与待处理的数量写在清单里。`
   } catch (e) {
-    if (generation !== projectGeneration) return
+    if (handleFailure(e, request) || !request.isCurrent() || generation !== projectGeneration)
+      return
     operationError.value = getPbMessage(e, '导出失败')
   } finally {
-    if (generation === projectGeneration) busy.value = false
+    if (request.isCurrent() && generation === projectGeneration) busy.value = false
+    request.finish()
   }
 }
 
@@ -1036,13 +1122,17 @@ async function decide(pageId) {
     operationError.value = '判为不进入本批时必须选一个理由。'
     return
   }
-  await act(async (_id, isCurrent) => {
-    await decideAdoptionException(batchId, {
-      page: pageId,
-      decision: draft.decision,
-      reason: draft.decision === 'exclude' ? draft.reason : '',
-      note
-    })
+  await act(async (_id, isCurrent, signal) => {
+    await decideAdoptionException(
+      batchId,
+      {
+        page: pageId,
+        decision: draft.decision,
+        reason: draft.decision === 'exclude' ? draft.reason : '',
+        note
+      },
+      { signal }
+    )
     if (isCurrent()) delete decisionDrafts[draftKey]
   }, '例外已记录；批次退回草稿，请重新预览再确认。')
 }

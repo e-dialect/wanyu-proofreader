@@ -22,7 +22,7 @@ import capacity_report
 from capacity_burst import make_submit_burst
 from capacity_remote_contract import (VERSION, MAX_LINE, ARTIFACTS, canonical_hash, clean_environment,
     host_identity, validate_budget, validate_init, evaluate_evidence, same_source, observation_seconds, strict_json_loads,
-    CapacityFailure, failure_from_frame, safe_failure)
+    CapacityFailure, failure_from_frame, safe_failure, valid_fault_evidence)
 from capacity_target import stop_process
 
 
@@ -342,8 +342,7 @@ def main():
         gates['mixed_runs'] = 'pass' if all(r['status'] == 'pass' for r in results) else 'fail' if any(r['status'] == 'fail' for r in results) else 'incomplete'
         gates['three_full_repeats'] = 'pass' if args.profile == 'full' else 'incomplete'
         faults = strict_json_loads(args.fault_report.read_text()) if args.fault_report else None
-        valid_faults = bool(faults and faults.get('status') == 'pass' and faults.get('full_fault_gate') is True and faults.get('duration_seconds', 0) >= 900
-            and same_source(source, faults) and all(faults.get('gates', {}).get(name) == 'pass' for name in ('offline','response_loss','restart','revocation','storage')))
+        valid_faults = valid_fault_evidence(faults, source)
         gates['fifteen_minute_faults'] = 'pass' if valid_faults else 'incomplete'
         gates['budget_unchanged'] = 'pass' if budget_bytes is not None and args.budget.read_bytes() == budget_bytes else 'incomplete'
         full = all(value == 'pass' for value in gates.values())

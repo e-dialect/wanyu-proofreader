@@ -54,7 +54,7 @@ import { computed, onMounted } from 'vue'
 import AppField from '@/components/AppField.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import { listSources } from '@/services/sourcesService'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 defineProps({
   modelValue: { type: String, default: '' },
@@ -66,13 +66,17 @@ defineProps({
   },
   label: { type: String, default: '本批来源（可稍后关联）' }
 })
-defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'access-error'])
 const { data, pending, error, reload } = useAsyncResource(({ signal }) => listSources({ signal }), {
   initialData: { items: [] },
   formatError: (cause) => getPbMessage(cause, '来源清单加载失败')
 })
 const items = computed(() => data.value?.items || [])
-const load = () => reload()
+const load = async () => {
+  const result = await reload()
+  if (!result.ok && [401, 403].includes(getPbStatus(result.error)))
+    emit('access-error', result.error)
+}
 onMounted(load)
 </script>
 

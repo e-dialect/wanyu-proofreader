@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Disposable mixed-load protocol probe. Never accepts production URL/data-dir."""
 import argparse
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -16,11 +17,12 @@ import capacity_report
 from capacity_burst import make_submit_burst
 from capacity_reconciliation import snapshot_actor_records, reconcile_submissions
 from capacity_resources import ResourceSampler
+from capacity_remote_contract import valid_fault_evidence
 
 
 def clone_fixture(db, project, entries, pdf_file=None):
     """Clone actual workflow templates offline, preserving attempt/event references."""
-    with sqlite3.connect(db) as sql:
+    with closing(sqlite3.connect(db)) as sql, sql:
         sql.row_factory = sqlite3.Row
         pages = [dict(r) for r in sql.execute('SELECT * FROM pages WHERE project=? ORDER BY page_number', (project,))]
         complete = next(p for p in pages if p['status'] in ('approved','proofread'))
@@ -67,7 +69,7 @@ def clone_fixture(db, project, entries, pdf_file=None):
 
 
 def snapshot_counts(db, project):
-    with sqlite3.connect(db) as sql:
+    with closing(sqlite3.connect(db)) as sql:
         return {
             'proofreads': sql.execute("SELECT COUNT(*) FROM proofreading_attempts WHERE project=? AND kind='proofread'", (project,)).fetchone()[0],
             'submissions': sql.execute("SELECT COUNT(*) FROM verification_events WHERE project=? AND kind='submission'", (project,)).fetchone()[0]
@@ -109,7 +111,7 @@ def reconcile_fixture(root, state, config, http):
     project,secondary,before,actor_ids,actor_baseline=(state[key] for key in ("project","secondary","before","actor_ids","actor_baseline"))
     after=snapshot_counts(db, project['id'])
     acknowledged=sum(r['operation']=='submit' and r.get('status')==200 and r.get('ok') for r in http)
-    with sqlite3.connect(db) as sql:
+    with closing(sqlite3.connect(db)) as sql:
         reconciliation={'integrity':sql.execute('PRAGMA integrity_check').fetchone()[0],
             'duplicate_attempts':sql.execute("SELECT COUNT(*) FROM (SELECT page,proofreader,pass_no,kind,COUNT(*) n FROM proofreading_attempts WHERE project=? GROUP BY page,proofreader,pass_no,kind HAVING n>1)",(project['id'],)).fetchone()[0],
             'before':before,'after':after,'acknowledged_submissions':acknowledged,
@@ -227,9 +229,7 @@ def main():
             with harness.temporary_root() as root:
                 results.append(run_once(binary,root,args,output,repeat+1))
     faults=json.loads(args.fault_report.read_text()) if args.fault_report else None
-    faults_valid=bool(faults and faults.get('status')=='pass' and faults.get('full_fault_gate') is True and faults.get('duration_seconds',0)>=900 and
-                      faults.get('baseline_sha')==manifest['baseline_sha'] and faults.get('dirty_diff_sha256')==manifest['dirty_diff_sha256'] and faults.get('source_sha256')==manifest['source_sha256'] and
-                      all(faults.get('gates',{}).get(name)=='pass' for name in ['offline','response_loss','restart','revocation','storage']))
+    faults_valid=valid_fault_evidence(faults, manifest)
     gates={'mixed_runs': 'pass' if all(r['status']=='pass' for r in results) else
            'invalid_generator' if any(r['status']=='invalid_generator' for r in results) else
            'fail' if any(r['status']=='fail' for r in results) else 'incomplete',
@@ -238,6 +238,7 @@ def main():
            'formal_reference_profile': 'pass' if args.reference_profile=='production_shared' and args.target_cpus==4 and args.target_memory_gib==3.7 else 'incomplete',
            'fifteen_minute_faults': 'pass' if faults_valid else 'incomplete'}
     gates.update({
+        'production_runtime': 'fail' if any(r['resources']['production_runtime_status']=='fail' for r in results) else 'pass' if all(r['resources']['production_runtime_status']=='pass' for r in results) else 'incomplete',
         'resource_sampling':'pass' if all(r['resources']['sampling_status']=='pass' for r in results) else 'incomplete',
         'resource_budget':'incomplete', 'cooldown_recovery':'incomplete', 'separate_generator_host':'incomplete'})
     manifest['separate_generator_host']=False

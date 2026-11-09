@@ -1,0 +1,43 @@
+{
+  "synthetic_metadata_edge_only": true,
+  "all_changes_rolled_back": true,
+  "current_full": {
+    "p50_ms": 19.049547030590475,
+    "max_ms": 22.218035999685526,
+    "plan": [
+      [
+        5,
+        0,
+        116,
+        "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+      ]
+    ],
+    "rows": 64
+  },
+  "candidate_full": {
+    "p50_ms": 3.7811200018040836,
+    "max_ms": 4.251089005265385,
+    "plan": [
+      [
+        5,
+        0,
+        60,
+        "SEARCH pages USING INDEX idx_pages_claim_eligible_order (project=?)"
+      ]
+    ],
+    "rows": 64
+  },
+  "candidate_projection_batch": {
+    "p50_ms": 3.645140037406236,
+    "max_ms": 4.427872016094625,
+    "plan": [
+      [
+        4,
+        0,
+        50,
+        "SEARCH pages USING COVERING INDEX idx_pages_claim_eligible_order (project=?)"
+      ]
+    ],
+    "rows": 64
+  }
+}

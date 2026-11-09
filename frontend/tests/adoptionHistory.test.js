@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import * as adoption from '../src/lib/adoption.js'
-import { asyncResourceFixture } from './helpers/asyncResourceFixture.js'
-import { getPbMessage } from '../src/utils/pbErrors.js'
+import { protectedPageScopeFixture } from './helpers/protectedPageScopeFixture.js'
+import { getPbMessage, getPbStatus } from '../src/utils/pbErrors.js'
 
 // Execute the view's actual setup and async handlers. Vue's small reactive
 // primitives are enough here; service promises stay under test control.
@@ -17,10 +17,12 @@ function fixture(services = {}) {
   let routeChanged
   let watchCount = 0
   const unmount = []
+  const protectedScope = protectedPageScopeFixture((callback) => unmount.push(callback))
   const bindings = {
     ...adoption,
-    useAsyncResource: asyncResourceFixture((callback) => unmount.push(callback)),
+    useProtectedPageScope: protectedScope.useProtectedPageScope,
     getPbMessage,
+    getPbStatus,
     ref: (value) => ({ value }),
     reactive: (value) => value,
     computed: (getter) => ({
@@ -66,13 +68,16 @@ function fixture(services = {}) {
     resetProject, load, selectBatch, batches, currentId, exceptions, batchEvents, summary,
     historyPage, requestedHistoryPage, historyTotalPages, historyTotalItems,
     loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError,
-    exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage
+    exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage,
+    current, currentRecord, accessLost, projectUnavailable, pageScope, busy, message, confirmOpen, removeOpen, dirty, act,
+    clearProtectedData, handleFailure, exportManifest
   }`
   )(...Object.values(bindings))
   return {
     ...state,
     reset: () => state.resetProject(),
     route,
+    changeIdentity: protectedScope.changeIdentity,
     unmount: () => unmount.forEach((callback) => callback())
   }
 }
@@ -87,6 +92,303 @@ function deferred() {
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve))
+
+function assertProtectedDataCleared(state, accessLost = true) {
+  assert.equal(state.accessLost.value, accessLost)
+  assert.equal(state.loaded.value, false)
+  assert.equal(state.loading.value, false)
+  assert.equal(state.busy.value, false)
+  assert.deepEqual(state.batches.value, [])
+  assert.equal(state.current.value, null)
+  assert.equal(state.currentRecord.value, null)
+  assert.equal(state.summary.value, null)
+  assert.deepEqual(state.decisionDrafts, {})
+  assert.deepEqual(state.exceptions.value, { exceptions: [], pending: [], pendingTotal: 0 })
+  assert.deepEqual(state.batchEvents.value, { events: [], stale: false })
+  assert.equal(state.createForm.recipient, '')
+  assert.equal(state.createForm.note, '')
+  assert.equal(state.confirmOpen.value, false)
+  assert.equal(state.removeOpen.value, false)
+  assert.equal(state.message.value, '')
+}
+
+for (const status of [401, 403]) {
+  for (const origin of ['list', 'detail', 'action']) {
+    test(`${origin} ${status} clears adoption authority and sensitive drafts`, async () => {
+      let denied = false
+      const state = fixture({
+        listAdoptionBatches: async () => {
+          if (denied && origin === 'list') throw { status }
+          return { batches: [{ id: 'batch-one' }], page: 1, totalPages: 1, totalItems: 1 }
+        },
+        getAdoptionBatch: async (id) => {
+          if (denied && origin === 'detail') throw { response: { status } }
+          return { id, project: 'project-a', counts: {}, reasons: [] }
+        }
+      })
+      await state.reset()
+      await state.selectBatch('batch-one')
+      state.createForm.recipient = 'private recipient'
+      state.createForm.note = 'private note'
+      state.draftFor('entry-one').note = 'private exception'
+      state.confirmOpen.value = state.removeOpen.value = true
+      state.message.value = 'old success'
+      const pending = state.pageScope.capture()
+      denied = true
+      if (origin === 'action')
+        await state.act(async () => {
+          throw { status }
+        }, '')
+      else await state.load()
+      assertProtectedDataCleared(state)
+      assert.equal(pending.signal.aborted, true)
+      assert.match(state.loadError.value, status === 401 ? /登录状态已失效/ : /无权/)
+      let attempted = false
+      await state.act(async () => {
+        attempted = true
+      }, 'must not publish')
+      assert.equal(attempted, false, 'revoked pages cannot start another mutation')
+    })
+  }
+}
+
+for (const origin of ['list', 'summary']) {
+  for (const status of [404, 500]) {
+    test(`adoption project ${origin} ${status} ${status === 404 ? 'clears the whole workspace' : 'preserves loaded data and drafts'}`, async () => {
+      let failed = false
+      const state = fixture({
+        listAdoptionBatches: async () => {
+          if (failed && origin === 'list') throw { status }
+          return {
+            batches: [{ id: 'batch-one' }, { id: 'batch-two' }],
+            page: 1,
+            totalPages: 1,
+            totalItems: 2
+          }
+        },
+        getAdoptionSummary: async () => {
+          if (failed && origin === 'summary') throw { response: { status } }
+          return { project: 'project-a', private: true }
+        }
+      })
+      await state.reset()
+      await state.selectBatch('batch-one')
+      state.createForm.recipient = 'private recipient'
+      state.draftFor('entry-one').note = 'private decision'
+      state.confirmOpen.value = true
+      assert.equal(state.dirty.value, true)
+      const pending = state.pageScope.capture()
+      failed = true
+      await state.load()
+      if (status === 404) {
+        assertProtectedDataCleared(state, false)
+        assert.equal(state.projectUnavailable.value, true)
+        assert.equal(state.dirty.value, false)
+        assert.equal(pending.signal.aborted, true)
+        assert.match(state.loadError.value, /项目不存在或已被删除/)
+      } else {
+        assert.equal(state.projectUnavailable.value, false)
+        assert.equal(state.accessLost.value, false)
+        assert.equal(state.loaded.value, true)
+        assert.deepEqual(
+          state.batches.value.map((batch) => batch.id),
+          ['batch-one', 'batch-two']
+        )
+        assert.equal(state.current.value.id, 'batch-one')
+        assert.equal(state.summary.value.private, true)
+        assert.equal(state.createForm.recipient, 'private recipient')
+        assert.equal(state.draftFor('entry-one').note, 'private decision')
+        assert.equal(state.dirty.value, true)
+        assert.equal(pending.signal.aborted, false)
+      }
+    })
+  }
+}
+
+test('adoption detail 404 clears the exact authority and never falls back to a list summary', async () => {
+  let missing = false
+  const state = fixture({
+    listAdoptionBatches: async () => ({
+      batches: [{ id: 'batch-one', recipient: 'stale list summary', counts: {} }],
+      page: 1,
+      totalPages: 1,
+      totalItems: 1
+    }),
+    getAdoptionBatch: async (id) => {
+      if (missing) throw { status: 404 }
+      return { id, project: 'project-a', recipient: 'authoritative detail', counts: {} }
+    }
+  })
+  await state.reset()
+  await state.selectBatch('batch-one')
+  state.draftFor('entry-one').note = 'removed object draft'
+  state.confirmOpen.value = true
+  missing = true
+  await state.load()
+  assert.equal(state.currentId.value, 'batch-one', 'the failed deep-link target stays explicit')
+  assert.equal(state.current.value, null)
+  assert.equal(state.confirmOpen.value, false)
+  assert.deepEqual(state.decisionDrafts, {})
+  assert.match(state.loadError.value, /不可用/)
+  assert.equal(state.accessLost.value, false, 'one missing object does not revoke the account')
+  assert.equal(state.projectUnavailable.value, false)
+  state.batches.value.push({ id: 'batch-one', recipient: 'cached summary', counts: {} })
+  assert.equal(state.current.value, null, 'even a cached list item cannot substitute for detail')
+})
+
+test('temporary adoption detail failure preserves same-object drafts and supports retry', async () => {
+  let unavailable = false
+  const state = fixture({
+    getAdoptionBatch: async (id) => {
+      if (unavailable) throw new Error('temporary network failure')
+      return { id, project: 'project-a', recipient: 'same object', counts: {} }
+    }
+  })
+  await state.reset()
+  await state.selectBatch('batch-one')
+  state.draftFor('entry-one').note = 'unsent evidence'
+  unavailable = true
+  await state.load()
+  assert.equal(state.accessLost.value, false)
+  assert.equal(state.current.value.recipient, 'same object')
+  assert.equal(state.draftFor('entry-one').note, 'unsent evidence')
+  assert.equal(state.loadError.value, 'temporary network failure')
+  unavailable = false
+  await state.load()
+  assert.equal(state.loadError.value, '')
+  assert.equal(state.draftFor('entry-one').note, 'unsent evidence')
+})
+
+test('identity replacement aborts adoption reads and late success cannot resurrect cleared data', async () => {
+  const pending = deferred()
+  let signal
+  const state = fixture({
+    listAdoptionBatches: async (_id, options) => {
+      signal = options.signal
+      return pending.promise
+    }
+  })
+  const old = state.reset()
+  state.createForm.recipient = 'account A recipient'
+  state.changeIdentity({ id: 'account-b', role: 'user' })
+  assertProtectedDataCleared(state)
+  assert.equal(signal.aborted, true)
+  pending.resolve({ batches: [{ id: 'private-a' }], page: 1, totalPages: 1, totalItems: 1 })
+  await old
+  assertProtectedDataCleared(state)
+})
+
+test('A to B to A and a fresh adoption reload reject the first session late denial', async () => {
+  const pending = deferred()
+  let calls = 0
+  const state = fixture({
+    listAdoptionBatches: async () =>
+      ++calls === 1
+        ? pending.promise
+        : {
+            batches: [{ id: 'fresh-a' }],
+            page: 1,
+            totalPages: 1,
+            totalItems: 1
+          }
+  })
+  const old = state.reset()
+  state.changeIdentity({ id: 'account-b', role: 'user' })
+  state.changeIdentity({ id: 'account-a', role: 'user' })
+  await state.load()
+  pending.reject({ status: 403 })
+  await old
+  assert.equal(state.accessLost.value, false)
+  assert.equal(state.loadError.value, '')
+  assert.equal(state.batches.value[0].id, 'fresh-a')
+})
+
+test('a created adoption batch arriving after access loss cannot restore the form or preview', async () => {
+  const pending = deferred()
+  let previews = 0
+  const state = fixture({
+    createAdoptionBatch: () => pending.promise,
+    previewAdoptionBatch: async () => {
+      previews++
+    }
+  })
+  await state.reset()
+  state.createForm.recipient = 'account A recipient'
+  const old = state.create()
+  state.changeIdentity(null)
+  pending.resolve({ id: 'late-created', project: 'project-a', counts: {}, status: 'draft' })
+  await old
+  assertProtectedDataCleared(state)
+  assert.equal(previews, 0)
+})
+
+for (const outcome of ['404', 'success']) {
+  test(`switching adoption A to B ignores A export late ${outcome}`, async () => {
+    const pending = deferred()
+    let signal
+    let downloads = 0
+    const state = fixture({
+      exportAdoptionManifest: async (id, _include, options) => {
+        assert.equal(id, 'batch-a')
+        signal = options.signal
+        return pending.promise
+      },
+      downloadText: () => {
+        downloads++
+      }
+    })
+    await state.reset()
+    await state.selectBatch('batch-a')
+    const old = state.exportManifest('select')
+    await state.selectBatch('batch-b')
+    state.draftFor('entry-b').note = 'B evidence stays here'
+    state.confirmOpen.value = true
+    state.message.value = 'B current message'
+    assert.equal(signal.aborted, true)
+    assert.equal(state.busy.value, false)
+    if (outcome === '404') pending.reject({ status: 404 })
+    else pending.resolve({ entries: [{ private: 'batch-a' }] })
+    await old
+    assert.equal(state.currentId.value, 'batch-b')
+    assert.equal(state.current.value.id, 'batch-b')
+    assert.equal(state.draftFor('entry-b').note, 'B evidence stays here')
+    assert.equal(state.confirmOpen.value, true)
+    assert.equal(state.message.value, 'B current message')
+    assert.equal(state.loadError.value, '')
+    assert.equal(state.operationError.value, '')
+    assert.equal(downloads, 0, 'an obsolete export cannot publish a file')
+  })
+}
+
+test('leaving adoption creation cancels a late result before navigation or preview', async () => {
+  const pending = deferred()
+  let signal
+  let previews = 0
+  const state = fixture({
+    createAdoptionBatch: async (_id, _body, options) => {
+      signal = options.signal
+      return pending.promise
+    },
+    previewAdoptionBatch: async () => {
+      previews++
+    }
+  })
+  await state.reset()
+  await state.navigate({ view: 'create' })
+  state.createForm.recipient = 'recipient from the old create screen'
+  const old = state.create()
+  await state.navigate({ page: 1 })
+  assert.equal(signal.aborted, true)
+  pending.resolve({ id: 'late-created', project: 'project-a', counts: {}, status: 'draft' })
+  await old
+  assert.equal(state.screen.value, 'list')
+  assert.equal(state.currentId.value, '')
+  assert.equal(state.current.value, null)
+  assert.deepEqual(state.route.query, { page: 1 })
+  assert.equal(previews, 0)
+  assert.equal(state.message.value, '')
+  assert.equal(state.busy.value, false)
+})
 
 test('page failure preserves successful page/details and retry targets the failed page', async () => {
   let fail = true

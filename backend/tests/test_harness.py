@@ -7,6 +7,7 @@
 import importlib.util
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -23,6 +24,19 @@ REPRO_FROM_ISSUE = (2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566,
 
 
 class ServerExitStatus(unittest.TestCase):
+    def test_disposable_binary_does_not_inherit_temporary_path_dev_mode(self):
+        # PocketBase guesses "go run" for any executable under TMP, including
+        # built capacity binaries. Verify the actual launch arguments explicitly
+        # disable SQL debug logging, without relying on that path heuristic.
+        process = mock.Mock(returncode=0)
+        process.poll.return_value = None
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(harness, 'apply_migrations_individually'), \
+             mock.patch.object(harness.subprocess, 'Popen', return_value=process) as launch, \
+             mock.patch.object(harness.urllib.request, 'urlopen'):
+            with harness.server(Path(directory)/'pocketbase', Path(directory)):
+                self.assertIn('--dev=false', launch.call_args.args[0])
+
     def test_windows_termination_does_not_mask_a_crash(self):
         for platform, stopped, code, accepted in [
             ('nt', True, 1, True), ('nt', False, 1, False),

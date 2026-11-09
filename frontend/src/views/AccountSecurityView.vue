@@ -127,7 +127,8 @@
       <p v-else-if="!events.length" class="text-muted">暂无记录。启用前的历史操作不会补记。</p>
       <ul v-else>
         <li v-for="event in events" :key="event.id">
-          {{ securityEventLabel(event.eventType) }} · {{ formatTime(event.created) }}
+          {{ securityEventLabel(event.eventType) }} · {{ securityOutcomeLabel(event.outcome) }} ·
+          {{ formatTime(event.created) }}
         </li>
       </ul>
     </section>
@@ -179,7 +180,7 @@ import {
   logoutAllDevices,
   listSecurityEvents
 } from '@/services/authService'
-import { passwordProblem, securityEventLabel } from '@/lib/accountSecurity'
+import { passwordProblem, securityEventLabel, securityOutcomeLabel } from '@/lib/accountSecurity'
 import {
   listLocalAccountDrafts,
   exportLocalAccountDrafts,

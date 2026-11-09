@@ -1,0 +1,89 @@
+{
+  "synthetic_schema_20k_16KiB_rows": true,
+  "actual_route_sql_shape": true,
+  "null_source_empty_preserved": true,
+  "runs": {
+    "before": {
+      "claim_present": {
+        "p50_ms": 3.2762959599494934,
+        "max_ms": 7.447951007634401,
+        "rows": 1,
+        "plan": [
+          [
+            5,
+            0,
+            62,
+            "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+          ]
+        ]
+      },
+      "claim_absent": {
+        "p50_ms": 2.639386977534741,
+        "max_ms": 2.762477030046284,
+        "rows": 0,
+        "plan": [
+          [
+            5,
+            0,
+            62,
+            "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+          ]
+        ]
+      },
+      "resume": {
+        "p50_ms": 2.5373350363224745,
+        "max_ms": 2.933324023615569,
+        "rows": 2,
+        "plan": [
+          [
+            5,
+            0,
+            62,
+            "SEARCH pages USING INDEX idx_pages_project_page_number (project=?)"
+          ]
+        ]
+      }
+    },
+    "after": {
+      "claim_present": {
+        "p50_ms": 0.5508480244316161,
+        "max_ms": 0.6056239944882691,
+        "rows": 1,
+        "plan": [
+          [
+            5,
+            0,
+            62,
+            "SEARCH pages USING INDEX idx_pages_claim_active (project=? AND proofreader=?)"
+          ]
+        ]
+      },
+      "claim_absent": {
+        "p50_ms": 0.04948995774611831,
+        "max_ms": 0.056248041801154613,
+        "rows": 0,
+        "plan": [
+          [
+            5,
+            0,
+            62,
+            "SEARCH pages USING INDEX idx_pages_claim_active (project=? AND proofreader=?)"
+          ]
+        ]
+      },
+      "resume": {
+        "p50_ms": 0.5084940348751843,
+        "max_ms": 0.5269090179353952,
+        "rows": 2,
+        "plan": [
+          [
+            5,
+            0,
+            62,
+            "SEARCH pages USING INDEX idx_pages_claim_active (project=? AND proofreader=?)"
+          ]
+        ]
+      }
+    }
+  }
+}

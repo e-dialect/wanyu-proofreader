@@ -31,9 +31,11 @@ await request('/api/fangji/auth/logout-all', { method: 'POST', token: login.toke
 await request('/api/collections/users/auth-refresh', { method: 'POST', token: login.token, expected: 401 })
 await request('/api/fangji/auth/logout-all', { method: 'POST', token: login.token, body: {}, expected: 401 })
 login = await request('/api/collections/users/auth-with-password', { method: 'POST', body: { identity: email, password } })
+await request(`/api/collections/users/records/${user.id}`, { method: 'PATCH', token: login.token, body: { oldPassword: 'wrong-password', password: 'UpdatedSecurityPassword123!', passwordConfirm: 'UpdatedSecurityPassword123!' }, expected: 400 })
 const mine = await request('/api/fangji/security-events', { token: login.token })
 assert.ok(mine.items.some(e => e.eventType === 'account.logout_all'))
-assert.ok(mine.items.every(e => !('requestId' in e) && !('details' in e)))
+assert.ok(mine.items.some(e => e.eventType === 'account.password_changed' && e.outcome === 'failed'))
+assert.ok(mine.items.every(e => Object.keys(e).sort().join(',') === 'created,eventType,id,outcome,projectId'))
 await request(`/api/collections/users/records/${user.id}`, { method: 'PATCH', token: login.token, body: { oldPassword: password, password: 'UpdatedSecurityPassword123!', passwordConfirm: 'UpdatedSecurityPassword123!' } })
 await request('/api/collections/users/auth-refresh', { method: 'POST', token: login.token, expected: 401 })
 // Shared exit: 30 distinct volunteers can attempt login without a low IP cap.
