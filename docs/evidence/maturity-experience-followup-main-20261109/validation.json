@@ -1,0 +1,168 @@
+{
+  "status": "pass",
+  "issues": [
+    418,
+    419
+  ],
+  "base_commit": "c728b49c2a075c12e7aeadcef2f1473019066d4e",
+  "tested_code_commit": "6b663d5635378e470724751337a931511f10ac14",
+  "code_commits": [
+    "af449ad782578d8032fb791641b18e0b23c7b850",
+    "6b663d5635378e470724751337a931511f10ac14"
+  ],
+  "original_reviewed_commits": [
+    "e0c504291c2bebac33985592d9f2f10d21ad7285",
+    "dbb95a0dc6738b9a3d9c80e540adc2b9d41403d2"
+  ],
+  "recorded_at": "2026-11-09T05:31:31Z",
+  "source_sha256": {
+    "README.md": "498d40e85eea28e1b338d00163afc833577974d910409bebdfe5aae0dd8dc216",
+    "backend/csv_inspection_test.go": "cbc4361f6933efcec61da5d22fa0fdd9f60f3cc4f011c06be3146717b8b8d96b",
+    "backend/import_service.go": "9cb4b42196691d3e7663c0dbeeda84c59ca11eccab8824928ddf22397cafc8d6",
+    "backend/pb_migrations/1794204600_import_inspection_budget.js": "141a7215ff7f3d3b01138e6b108f2bd7eefc182ce91be9adfdd9eb0aa2f2bbb1",
+    "backend/tests/check_migrations.py": "c2cb8fc2a7ca432c52efdae5da5eec59122f008dc6e83685e01040e260e4d6ee",
+    "backend/tests/run_frontend_quality_browser.py": "c437f1bbd895a13d824b4b38e4a87725f66113d6b83bb2b3f7079e15fd57d93b",
+    "backend/tests/upload_jobs_integration.mjs": "0ce1c2af96852624bcd46a19f92e9845d63f25eb5c94dfa52cc7d2cf1cc2563f",
+    "frontend/src/views/WorkspaceHomeView.vue": "876dc6a640db88400ff8bb096f90fc5652f21d38fcbd9015424ba4e9bea49505",
+    "frontend/tests/browser/README.md": "6ae3e67f2e2470e857d710819f92ef54fdabbc4a71a1dd551dde0eb249bc3777",
+    "frontend/tests/browser/workspace-ready.cjs": "e947023457b26eb8feec81c1249018ec26b1f27ed07d25163da8079325e60897",
+    "frontend/tests/fixtures/workspace-ready.html": "9bcc784b5f600e9f16db6fd0d394218ea999af0b19fe61611f0f4fd11a870126"
+  },
+  "environment": {
+    "os": "macOS",
+    "node": "24.11.0",
+    "npm": "11.6.1",
+    "go_toolchain": "1.27.3",
+    "python": "3.13.16",
+    "gomaxprocs": 2,
+    "browser_channel": "chrome",
+    "runtime_dev_mode": false
+  },
+  "gates": [
+    {
+      "name": "frontend_unit",
+      "status": "pass",
+      "command": "npm --prefix frontend test",
+      "passed": 590,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "frontend_lint_build",
+      "status": "pass",
+      "commands": [
+        "npm --prefix frontend run lint",
+        "npm --prefix frontend run build"
+      ]
+    },
+    {
+      "name": "csv_go_race",
+      "status": "pass",
+      "command": "GOMAXPROCS=2 go test -C backend -race . -run '^(TestCSVInspection.*|TestProcessCSVInspection.*)$' -count=1 -v",
+      "top_level_tests": 3,
+      "seconds": 6.576,
+      "coverage": [
+        "exact and over UTF-8 byte boundary",
+        "JSON escaping and repeated headers",
+        "all 20 fields and locations preserve whitespace and combining codepoints",
+        "retained legacy preview survives upgrade",
+        "larger retained preview blocks down without schema or content mutation",
+        "Unicode character-count-safe down and up preserve text",
+        "source file preserved and zero pages published"
+      ]
+    },
+    {
+      "name": "mounted_components",
+      "status": "pass",
+      "command": "GOMAXPROCS=2 NODE_PATH=/private/tmp/wanyu-playwright-runtime/node_modules BROWSER_CHANNEL=chrome python3 backend/tests/run_frontend_quality_browser.py --only components",
+      "groups": [
+        "reka-controls",
+        "disclosure",
+        "job-observer",
+        "admin-invalidation",
+        "workspace-ready"
+      ],
+      "admin_invalidation_scenarios": 20,
+      "workspace_ready_scenarios": 3,
+      "workspace_report": {
+        "synthetic": true,
+        "results": [
+          {
+            "role": "manager",
+            "failing": "queues",
+            "counts": {
+              "queues": 3,
+              "managed": 2
+            },
+            "readyEvents": 1,
+            "errors": []
+          },
+          {
+            "role": "manager",
+            "failing": "managed",
+            "counts": {
+              "queues": 2,
+              "managed": 3
+            },
+            "readyEvents": 1,
+            "errors": []
+          },
+          {
+            "role": "reader",
+            "failing": "queues",
+            "counts": {
+              "queues": 3,
+              "managed": 0
+            },
+            "readyEvents": 1,
+            "errors": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_jobs_http_race",
+      "status": "pass",
+      "command": "GOMAXPROCS=2 python3 backend/tests/run_integration.py upload_jobs_integration.mjs --race --env IMPORT_WAIT_TIMEOUT_MS=60000",
+      "complete_preview_and_oversized_rejection": true,
+      "original_download_exact": true,
+      "partial_pages": 0,
+      "terminal_allowance_note": "Existing CI race terminal-state allowance; no latency/capacity claim."
+    },
+    {
+      "name": "migrations",
+      "status": "pass",
+      "command": "GOMAXPROCS=2 python3 backend/tests/check_migrations.py",
+      "migrations": 44,
+      "up_down_up": true,
+      "initial_schema_refusal": true
+    },
+    {
+      "name": "main_checks_preserved",
+      "status": "pass",
+      "existing_browser_scripts_preserved": 30,
+      "added_browser_scripts": [
+        "frontend/tests/browser/workspace-ready.cjs"
+      ],
+      "existing_migration_specs_preserved": 42,
+      "added_migration_specs": [
+        "1794204600_import_inspection_budget.js"
+      ],
+      "changelog_unchanged": true
+    },
+    {
+      "name": "cleanup",
+      "status": "pass",
+      "all_owned_test_commands_exit_code": 0,
+      "owned_backend_vite_browser_processes_remaining": 0,
+      "method": "ps exact worktree and recorded disposable-data paths; only the checker itself matched; no unrelated processes terminated."
+    }
+  ],
+  "limits": [
+    "Synthetic fixtures only; no production data or deployment.",
+    "No capacity acceptance or new formal performance measurement.",
+    "Evidence commit adds documentation only; tested code and test hashes are recorded above.",
+    "Initial sandbox attempt could not access the shared Go cache; the authorized rerun completed with exit 0."
+  ],
+  "raw_logs": "Ignored output/maturity/experience-followup-main/; no credentials or server raw logs copied into this evidence."
+}
