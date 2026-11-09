@@ -171,6 +171,50 @@ try {
   assert.equal(invalidHeaderJob.error_code, 'CSV_HEADER_INVALID')
   assert.ok(invalidHeaderJob.finished_at, 'failed CSV inspection must record its terminal time')
 
+  // Five complete rows fitted the former 5,000-character default; twenty ordinary
+  // rows did not. Exercise the migrated field through upload, worker and HTTP readback.
+  for (const [name, value, fits] of [
+    ['complete-unicode', `  ${'汉a\u0301'.repeat(100)}  `, true],
+    ['over-budget', 'x'.repeat(27000), false]
+  ]) {
+    const source = ['PDF页码,释义', ...Array.from({ length: 20 }, () => `1,${value}`)].join('\r\n')
+    const body = new FormData()
+    body.set('file', new Blob([source], { type: 'text/csv' }), `${name}.csv`)
+    body.set('inspect_only', 'true')
+    const queued = await request(`/api/fangji/projects/${project.id}/imports/csv`, {
+      method: 'POST', token, body, expected: 202
+    })
+    const result = await waitFor(`/api/collections/import_jobs/records/${queued.id}`, token, ['validated', 'failed'])
+    if (fits) {
+      assert.equal(result.status, 'validated')
+      assert.ok(result.inspection_json.length > 5000)
+      assert.ok(Buffer.byteLength(result.inspection_json) <= 512 * 1024)
+      const report = JSON.parse(result.inspection_json)
+      assert.equal(report.preview.length, 20)
+      assert.equal(report.valid_rows, 20)
+      report.preview.forEach((row, index) => {
+        assert.equal(row.释义, value, 'all spaces and combining codepoints must survive')
+        assert.deepEqual(report.preview_locations[index], { csv_line: index + 2, pdf_page: 1 })
+      })
+    } else {
+      assert.equal(result.status, 'failed')
+      assert.equal(result.error_code, 'CSV_PREVIEW_TOO_LARGE')
+      assert.equal(result.inspection_json, '')
+      assert.ok(result.finished_at)
+      await request(`/api/fangji/imports/${result.id}/commit`, { method: 'POST', token, expected: 400 })
+    }
+    const previewPages = await request(
+      `/api/collections/pages/records?filter=${encodeURIComponent(`import_job="${result.id}"`)}`,
+      { token }
+    )
+    assert.equal(previewPages.totalItems, 0, 'inspection must not publish partial pages')
+    const original = await fetch(`${baseUrl}/api/files/${result.collectionId}/${result.id}/${result.source_file}`, {
+      headers: { Authorization: token }
+    })
+    assert.equal(original.status, 200)
+    assert.equal(await original.text(), source, 'inspection must preserve the uploaded original')
+  }
+
   const largeRows = ['\ufeffentry_id,page,词条,释义']
   for (let index = 1; index <= 1200; index += 1) {
     largeRows.push(`${index},${Math.ceil(index / 10)},词条${index},释义${index}`)

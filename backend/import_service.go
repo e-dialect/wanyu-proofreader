@@ -1066,7 +1066,50 @@ type csvInspection struct {
 	PreviewKind      string               `json:"preview_kind"`
 }
 
-const csvInspectionPreviewLimit = 20
+const (
+	csvInspectionPreviewLimit = 20
+	// A complete preview is persisted or rejected; source cells are never shortened.
+	// The migration's character limit also admits every report within this byte cap.
+	maxCSVInspectionBytes = 512 * 1024
+)
+
+var errCSVInspectionTooLarge = errors.New("CSV inspection exceeds the 512 KiB serialized budget")
+
+func marshalCSVInspection(inspection csvInspection) ([]byte, error) {
+	// Reject oversized string data before encoding. JSON escaping can expand text
+	// up to sixfold, so also check the final bytes; neither check changes the text.
+	remaining := maxCSVInspectionBytes
+	consume := func(value string) bool {
+		if len(value) > remaining {
+			return false
+		}
+		remaining -= len(value)
+		return true
+	}
+	if !consume(inspection.Encoding) || !consume(inspection.PDFPageField) || !consume(inspection.PreviewKind) {
+		return nil, errCSVInspectionTooLarge
+	}
+	for _, header := range inspection.Headers {
+		if !consume(header) {
+			return nil, errCSVInspectionTooLarge
+		}
+	}
+	for _, row := range inspection.Preview {
+		for header, value := range row {
+			if !consume(header) || !consume(value) {
+				return nil, errCSVInspectionTooLarge
+			}
+		}
+	}
+	encoded, err := json.Marshal(inspection)
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) > maxCSVInspectionBytes {
+		return nil, errCSVInspectionTooLarge
+	}
+	return encoded, nil
+}
 
 type csvPreviewLocation struct {
 	CSVLine int `json:"csv_line"`
@@ -1189,7 +1232,11 @@ func (s *importService) processCSVInspection(work importWork) {
 			inspection.PreviewLocations = append(inspection.PreviewLocations, csvPreviewLocation{CSVLine: line, PDFPage: page.pdfPage})
 		}
 	}
-	encodedInspection, err := json.Marshal(inspection)
+	encodedInspection, err := marshalCSVInspection(inspection)
+	if errors.Is(err, errCSVInspectionTooLarge) {
+		s.markFatal(work, "CSV_PREVIEW_TOO_LARGE", "前 20 条有效记录的完整预检结果超过 512 KiB，无法生成预览。上传原件已保留，请拆分材料后重新预检。", err)
+		return
+	}
 	if err != nil {
 		s.markFatal(work, "CSV_INSPECTION_SERIALIZE_FAILED", "无法保存 CSV 预检结果。", err)
 		return
