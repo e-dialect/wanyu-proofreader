@@ -1,0 +1,42 @@
+{
+  "before": {
+    "rows": 20204,
+    "sha256": "b7d86c025424a98535bfb80a7b455c468a74e6fa833828ea3074e99dad70e79e",
+    "columns": [
+      "project",
+      "id",
+      "page_number",
+      "pdf_page",
+      "status",
+      "difficulty_tier",
+      "missing_glyph",
+      "proofreader",
+      "proofread_round"
+    ],
+    "integrity": "ok"
+  },
+  "down": {
+    "rows": 20204,
+    "sha256": "b7d86c025424a98535bfb80a7b455c468a74e6fa833828ea3074e99dad70e79e",
+    "columns": [],
+    "integrity": "ok",
+    "roundtrip_including_hash_integrity_seconds": 7.219812366005499
+  },
+  "reup": {
+    "rows": 20204,
+    "sha256": "b7d86c025424a98535bfb80a7b455c468a74e6fa833828ea3074e99dad70e79e",
+    "columns": [
+      "project",
+      "id",
+      "page_number",
+      "pdf_page",
+      "status",
+      "difficulty_tier",
+      "missing_glyph",
+      "proofreader",
+      "proofread_round"
+    ],
+    "integrity": "ok",
+    "roundtrip_including_hash_integrity_seconds": 7.159543982998002
+  }
+}
