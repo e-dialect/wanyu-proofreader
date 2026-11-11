@@ -521,7 +521,11 @@ async function main() {
       await page.setViewportSize({ width: 320, height: 640 })
       await page.getByRole('button', { name: '查看原文', exact: true }).click()
       assert.equal(await toolbarFits(), true, 'Zoom controls fit the 320 px mobile layout')
-      assert((await page.locator('.pdf-scroll').boundingBox()).height >= 50, 'Room to read the PDF')
+      assert((await page.locator('.pdf-scroll').boundingBox()).height >= 64, 'Room to read the PDF')
+      assert(
+        (await page.locator('.fields-panel').boundingBox()).height >= 200,
+        'Room to edit fields'
+      )
       await slider.press('ArrowRight')
       assert.equal(await input.inputValue(), '189')
     })
