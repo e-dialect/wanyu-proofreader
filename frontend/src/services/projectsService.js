@@ -16,6 +16,13 @@ export async function getProject(projectId, { signal } = {}) {
   })
 }
 
+export async function getProjectWorkflow(projectId, { signal } = {}) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/workflow`, {
+    requestKey: null,
+    signal
+  })
+}
+
 export async function listProjects(options = {}) {
   const scope = options.scope || 'all'
   return pb.send(`/api/fangji/projects?scope=${encodeURIComponent(scope)}`, {
