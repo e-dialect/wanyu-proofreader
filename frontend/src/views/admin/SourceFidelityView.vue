@@ -2,8 +2,11 @@
   <main class="container page workspace-page project-workspace-page">
     <header class="page-heading project-detail-heading">
       <div>
-        <RouterLink :to="`/admin/projects/${projectId}?section=work&view=queue`" class="back-link"
-          >← 待办队列</RouterLink
+        <RouterLink
+          :to="todoReturn || `/admin/projects/${projectId}?section=work&view=queue`"
+          class="back-link"
+          ><span aria-hidden="true">← </span
+          >{{ todoReturn ? '返回统一待办' : '项目待办队列' }}</RouterLink
         >
         <h1>
           {{
@@ -61,6 +64,9 @@
       <p v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</p>
       <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
       <template v-if="loaded && view === 'problems'">
+        <p v-if="linkedIssueMissing" class="alert alert-warning" role="alert">
+          链接指向的问题已不在当前列表中。可以返回统一待办刷新，或在下方另选事项。
+        </p>
         <AppStatusPanel
           v-if="!activeIssues.length"
           state="empty"
@@ -149,15 +155,20 @@
               </div>
               <form @submit.prevent="saveIssue(selectedIssue.id)">
                 <AppField label="状态"
-                  ><select v-model="issueEdits[selectedIssue.id].status" class="form-control">
+                  ><select
+                    v-model="issueEdits[selectedIssue.id].status"
+                    class="form-control"
+                    aria-label="问题状态"
+                  >
                     <option v-for="(label, key) in PROBLEM_STATES" :key="key" :value="key">
                       {{ label }}
                     </option>
                   </select></AppField
                 >
-                <AppField label="具体共同原因"
+                <AppField :label="resolvingIssue ? '具体共同原因（必填）' : '具体共同原因'"
                   ><input
                     v-model="issueEdits[selectedIssue.id].cause"
+                    :required="resolvingIssue"
                     class="form-control"
                     maxlength="2000"
                 /></AppField>
@@ -176,9 +187,10 @@
                     placeholder="记录实际处理，或说明无需修改的原因"
                   ></textarea>
                 </AppField>
-                <AppField label="影响范围"
+                <AppField :label="resolvingIssue ? '影响范围（必填）' : '影响范围'"
                   ><input
                     v-model="issueEdits[selectedIssue.id].impact"
+                    :required="resolvingIssue"
                     class="form-control"
                     maxlength="2000"
                 /></AppField>
@@ -310,8 +322,10 @@ import {
 import { getPbMessage } from '@/utils/pbErrors'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import { sourceReviewItems, sourceReviewTarget } from '@/lib/sourceReviewQueue'
+import { todoReturnTarget } from '@/lib/unifiedTodos'
 const route = useRoute()
 const router = useRouter()
+const todoReturn = computed(() => todoReturnTarget(route))
 const projectId = String(route.params.id)
 const view = computed(() =>
   ['problems', 'review', 'policy', 'export'].includes(route.query.view)
@@ -332,6 +346,23 @@ const summary = ref([])
 const selection = ref([])
 const groupReason = ref('')
 const selectedIssueId = ref('')
+const linkedIssueMissing = ref(false)
+const linkedIssue = computed(() => (typeof route.query.issue === 'string' ? route.query.issue : ''))
+function selectLinkedIssue() {
+  if (view.value !== 'problems') return
+  linkedIssueMissing.value = false
+  if (!linkedIssue.value) {
+    if (!activeIssues.value.some((issue) => issue.id === selectedIssueId.value))
+      selectedIssueId.value = activeIssues.value[0]?.id || ''
+    return
+  }
+  const found = activeIssues.value.some((issue) => issue.id === linkedIssue.value)
+  linkedIssueMissing.value = !found
+  selectedIssueId.value = found ? linkedIssue.value : ''
+}
+watch(linkedIssue, () => {
+  if (loaded.value) selectLinkedIssue()
+})
 const reviewScope = computed({
   get: () => (route.query.reviewScope === 'all' ? 'all' : 'todo'),
   set: (value) =>
@@ -343,6 +374,7 @@ const activeIssues = computed(() => problems.value.issues.filter((issue) => issu
 const selectedIssue = computed(() =>
   activeIssues.value.find((issue) => issue.id === selectedIssueId.value)
 )
+const resolvingIssue = computed(() => issueEdits[selectedIssueId.value]?.status === 'resolved')
 const reviewItems = computed(() => sourceReviewItems(summary.value, reviewScope.value))
 const reportsFor = (id) => problems.value.items.filter((report) => report.issue.id === id)
 const issueSignature = (item) =>
@@ -411,7 +443,11 @@ async function load() {
     if (requested === 'problems') {
       problems.value = result
       for (const issue of result.issues) syncIssue(issue)
-      if (!activeIssues.value.some((issue) => issue.id === selectedIssueId.value))
+      if (!loaded.value) selectLinkedIssue()
+      if (
+        !linkedIssueMissing.value &&
+        !activeIssues.value.some((issue) => issue.id === selectedIssueId.value)
+      )
         selectedIssueId.value = activeIssues.value[0]?.id || ''
     } else summary.value = result.items
     loaded.value = true

@@ -6,6 +6,7 @@ const PAGE_TITLES = {
   Register: '注册',
   ChangeInitialPassword: '修改密码',
   AdminDashboard: '项目管理',
+  AdminTodos: '统一待办',
   NewProject: '新建项目',
   ProjectFilesGuide: '文件准备说明',
   ProjectDetail: '项目详情',

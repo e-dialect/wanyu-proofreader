@@ -6,6 +6,12 @@
         <p>查看项目进展，优先处理需要判断的条目。</p>
       </div>
       <div class="page-heading-actions">
+        <RouterLink
+          v-if="auth.isPlatformAdmin || auth.hasManagedProjects"
+          to="/admin/todos"
+          class="btn btn-secondary"
+          >统一待办</RouterLink
+        >
         <AppButton
           variant="ghost"
           :loading="loading"
