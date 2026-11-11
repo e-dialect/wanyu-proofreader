@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   projectWorkspaceLocation,
   projectWorkspaceSubviews,
@@ -11,6 +12,8 @@ import {
   projectWorkflowTarget
 } from '../src/lib/projectWorkflow.js'
 import { normalizeAdminPageQuery } from '../src/lib/adminPageList.js'
+import { createAsyncResource } from '../src/lib/asyncResource.js'
+import { getPbMessage, getPbStatus } from '../src/utils/pbErrors.js'
 
 test('legacy anchors keep each project capability reachable', () => {
   for (const [hash, section, view] of [
@@ -165,4 +168,115 @@ test('other workflow links preserve list context and keep specialized destinatio
       query: { view: action }
     })
   }
+})
+
+const queueSource = readFileSync(
+  new URL('../src/components/admin/project/ProjectWorkQueue.vue', import.meta.url),
+  'utf8'
+)
+function queueFixture(readStats, readNormalizations) {
+  const ref = (value) => ({ value })
+  const useAsyncResource = (loader, options) => {
+    const refs = { data: ref(null), pending: ref(false), error: ref('') }
+    const resource = createAsyncResource(loader, {
+      ...options,
+      onChange: (state) => {
+        for (const key of Object.keys(refs)) refs[key].value = state[key]
+      }
+    })
+    return { ...refs, reload: resource.reload, cancel: resource.cancel }
+  }
+  // Run the production setup and resource lifecycle; only Vue mounting and API reads are stubbed.
+  const setup = queueSource
+    .match(/<script setup>([\s\S]*?)<\/script>/)[1]
+    .replace(/^import .*\n/gm, '')
+  return new Function(
+    'ref',
+    'computed',
+    'onMounted',
+    'defineProps',
+    'defineExpose',
+    'useAsyncResource',
+    'getAdminProjectPageStats',
+    'listNormalizations',
+    'getPbMessage',
+    'getPbStatus',
+    'projectWorkflowTarget',
+    'workflowCount',
+    `${setup}\nreturn { stats, normalizations, accessError, statsError, normalizationError, loadStats, loadNormalizations, reload }`
+  )(
+    ref,
+    (get) => ({
+      get value() {
+        return get()
+      }
+    }),
+    () => {},
+    () => ({ projectId: 'project1', query: {} }),
+    () => {},
+    useAsyncResource,
+    readStats,
+    readNormalizations,
+    getPbMessage,
+    getPbStatus,
+    projectWorkflowTarget,
+    workflowCount
+  )
+}
+
+for (const status of [401, 403, 404]) {
+  test(`queue ${status} clears both counts and rejects a late peer response`, async () => {
+    for (const failingSide of ['stats', 'normalizations']) {
+      let fail = false,
+        finishPeer
+      const peer = new Promise((resolve) => {
+        finishPeer = resolve
+      })
+      const read = (side, initial) => () =>
+        !fail ? initial : side === failingSide ? Promise.reject({ status }) : peer
+      const queue = queueFixture(
+        read('stats', { arbitration: 3 }),
+        read('normalizations', { totalItems: 4 })
+      )
+      await queue.reload()
+      assert.equal(queue.stats.value.arbitration, 3)
+      assert.equal(queue.normalizations.value.totalItems, 4)
+      fail = true
+      const pendingPeer = failingSide === 'stats' ? queue.loadNormalizations() : queue.loadStats()
+      await (failingSide === 'stats' ? queue.loadStats() : queue.loadNormalizations())
+      assert.ok(queue.accessError.value)
+      assert.equal(queue.stats.value, null)
+      assert.equal(queue.normalizations.value, null)
+      finishPeer({ arbitration: 99, totalItems: 99 })
+      await pendingPeer
+      await queue.reload()
+      assert.equal(queue.stats.value, null)
+      assert.equal(queue.normalizations.value, null)
+    }
+    assert.match(
+      queueSource,
+      /<template v-if="accessError">[\s\S]*?<template v-else>[\s\S]*?class="project-todo__list"/
+    )
+    assert.match(queueSource, /<AppButton\s+v-if="!accessError"/)
+  })
+}
+
+test('temporary queue read failures preserve prior counts and allow retry', async () => {
+  let fail = false
+  const queue = queueFixture(
+    () => (fail ? Promise.reject({ status: 0, message: 'offline' }) : { arbitration: 3 }),
+    () => (fail ? Promise.reject({ status: 503, message: 'unavailable' }) : { totalItems: 4 })
+  )
+  await queue.reload()
+  fail = true
+  await queue.reload()
+  assert.equal(queue.accessError.value, '')
+  assert.equal(queue.stats.value.arbitration, 3)
+  assert.equal(queue.normalizations.value.totalItems, 4)
+  assert.equal(queue.statsError.value, 'offline')
+  assert.equal(queue.normalizationError.value, 'unavailable')
+  fail = false
+  await queue.reload()
+  assert.equal(queue.statsError.value, '')
+  assert.equal(queue.normalizationError.value, '')
 })

@@ -6,6 +6,7 @@
         <p>从需要你处理的事项进入，完成后可返回这里继续。</p>
       </div>
       <AppButton
+        v-if="!accessError"
         variant="ghost"
         size="sm"
         :loading="busy"
@@ -15,61 +16,72 @@
         <AppIcon name="refresh" />刷新数量
       </AppButton>
     </header>
-    <AppStatusPanel
-      v-if="statsError"
-      state="error"
-      title="仲裁数量暂不可用"
-      :message="statsError"
-      retry-label="重试"
-      :busy="statsPending"
-      @retry="loadStats"
-    />
-    <AppStatusPanel
-      v-if="normalizationError"
-      state="error"
-      title="归一复核数量暂不可用"
-      :message="normalizationError"
-      retry-label="重试"
-      :busy="normalizationPending"
-      @retry="loadNormalizations"
-    />
-    <p v-if="busy" class="project-todo__read-status" role="status">
-      正在更新队列数量，仍可打开事项处理。
-    </p>
-    <div v-if="priority" class="project-todo__next">
-      <AppIcon name="task" />
-      <p>{{ priority.message }}</p>
-      <RouterLink :to="link(priority.action)" class="btn btn-primary btn-sm"
-        >{{ priority.label }}<AppIcon name="arrow"
+    <template v-if="accessError">
+      <AppStatusPanel state="error" title="当前项目暂不可访问" :message="accessError" />
+      <RouterLink to="/admin" class="project-todo__action"
+        >返回项目列表<AppIcon name="arrow"
       /></RouterLink>
-    </div>
-    <ul class="project-todo__list" aria-label="项目待办事项">
-      <li v-for="item in items" :key="item.key">
-        <span class="project-todo__icon"><AppIcon :name="item.icon" /></span>
-        <div class="project-todo__body">
-          <h3>{{ item.title }}</h3>
-          <p>{{ item.detail }}</p>
-        </div>
-        <div class="project-todo__state" :class="{ 'project-todo__state--active': item.count > 0 }">
-          <strong v-if="item.count !== null">{{ item.count }}<span> 条</span></strong>
-          <span v-else>未读取</span>
-          <small v-if="item.stale && item.count !== null">上次读取</small>
-          <small v-else-if="item.count === 0">{{ item.emptyLabel }}</small>
-          <small v-else-if="item.count === null">打开队列查看</small>
-          <small v-else>{{ item.countLabel }}</small>
-        </div>
-        <RouterLink :to="link(item.key)" class="project-todo__action"
-          >{{ item.label }}<AppIcon name="arrow"
+    </template>
+    <template v-else>
+      <AppStatusPanel
+        v-if="statsError"
+        state="error"
+        title="仲裁数量暂不可用"
+        :message="statsError"
+        retry-label="重试"
+        :busy="statsPending"
+        @retry="loadStats"
+      />
+      <AppStatusPanel
+        v-if="normalizationError"
+        state="error"
+        title="归一复核数量暂不可用"
+        :message="normalizationError"
+        retry-label="重试"
+        :busy="normalizationPending"
+        @retry="loadNormalizations"
+      />
+      <p v-if="busy" class="project-todo__read-status" role="status">
+        正在更新队列数量，仍可打开事项处理。
+      </p>
+      <div v-if="priority" class="project-todo__next">
+        <AppIcon name="task" />
+        <p>{{ priority.message }}</p>
+        <RouterLink :to="link(priority.action)" class="btn btn-primary btn-sm"
+          >{{ priority.label }}<AppIcon name="arrow"
         /></RouterLink>
-      </li>
-    </ul>
-    <p class="project-todo__note">
-      这里的数量均为全项目统计。来源复核与成员问题尚未读取数量，不代表没有待办。
-    </p>
+      </div>
+      <ul class="project-todo__list" aria-label="项目待办事项">
+        <li v-for="item in items" :key="item.key">
+          <span class="project-todo__icon"><AppIcon :name="item.icon" /></span>
+          <div class="project-todo__body">
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.detail }}</p>
+          </div>
+          <div
+            class="project-todo__state"
+            :class="{ 'project-todo__state--active': item.count > 0 }"
+          >
+            <strong v-if="item.count !== null">{{ item.count }}<span> 条</span></strong>
+            <span v-else>未读取</span>
+            <small v-if="item.stale && item.count !== null">上次读取</small>
+            <small v-else-if="item.count === 0">{{ item.emptyLabel }}</small>
+            <small v-else-if="item.count === null">打开队列查看</small>
+            <small v-else>{{ item.countLabel }}</small>
+          </div>
+          <RouterLink :to="link(item.key)" class="project-todo__action"
+            >{{ item.label }}<AppIcon name="arrow"
+          /></RouterLink>
+        </li>
+      </ul>
+      <p class="project-todo__note">
+        这里的数量均为全项目统计。来源复核与成员问题尚未读取数量，不代表没有待办。
+      </p>
+    </template>
   </section>
 </template>
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -78,16 +90,18 @@ import { useAsyncResource } from '@/composables/useAsyncResource'
 import { getAdminProjectPageStats } from '@/services/pagesService'
 import { listNormalizations } from '@/services/schemeConversionService'
 import { projectWorkflowTarget, workflowCount } from '@/lib/projectWorkflow'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 const props = defineProps({
   projectId: { type: String, required: true },
   query: { type: Object, default: () => ({}) }
 })
+const accessError = ref('')
 const {
   data: stats,
   pending: statsPending,
   error: statsError,
-  reload: loadStats
+  reload: readStats,
+  cancel: cancelStats
 } = useAsyncResource(({ signal }) => getAdminProjectPageStats(props.projectId, { signal }), {
   formatError: (error) => getPbMessage(error, '请稍后重试；也可以直接打开仲裁队列。')
 })
@@ -95,12 +109,40 @@ const {
   data: normalizations,
   pending: normalizationPending,
   error: normalizationError,
-  reload: loadNormalizations
+  reload: readNormalizations,
+  cancel: cancelNormalizations
 } = useAsyncResource(
   () =>
     listNormalizations(props.projectId, { status: 'AMBIGUOUS,UNSUPPORTED', page: 1, perPage: 1 }),
   { formatError: (error) => getPbMessage(error, '请稍后重试；也可以直接打开归一复核。') }
 )
+function invalidateAccess(error) {
+  const status = getPbStatus(error)
+  if (![401, 403, 404].includes(status)) return
+  // Stop both reads before clearing either value; a late successful peer cannot restore them.
+  cancelStats()
+  cancelNormalizations()
+  stats.value = null
+  normalizations.value = null
+  accessError.value =
+    status === 401
+      ? '登录状态已失效，请重新登录后打开项目。'
+      : status === 403
+        ? '当前账号已无权查看此项目，请联系项目管理员。'
+        : '项目或待办入口已不可用，请返回项目列表确认。'
+}
+async function loadStats() {
+  if (accessError.value) return
+  const result = await readStats()
+  if (result.error) invalidateAccess(result.error)
+  return result
+}
+async function loadNormalizations() {
+  if (accessError.value) return
+  const result = await readNormalizations()
+  if (result.error) invalidateAccess(result.error)
+  return result
+}
 const busy = computed(() => statsPending.value || normalizationPending.value)
 const arbitrationCount = computed(() => workflowCount(stats.value?.arbitration))
 const normalizationCount = computed(() => workflowCount(normalizations.value?.totalItems))
