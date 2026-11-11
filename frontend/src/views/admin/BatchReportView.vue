@@ -128,8 +128,15 @@
                 >{{ item.recipient || '接收方未记录' }} · 第
                 {{ reportNumber(item.version) }} 版</strong
               >
-              <span class="text-sm" :class="item.withdrawn ? 'text-danger' : 'text-muted'">
-                {{ item.withdrawn ? '已停用' : receiptLabel(item) }}
+              <span
+                class="text-sm"
+                :class="
+                  item.withdrawn || item.workflow_state === 'pending_resolution'
+                    ? 'text-danger'
+                    : 'text-muted'
+                "
+              >
+                {{ receiptLabel(item) }}
               </span>
             </div>
             <p class="text-sm">
@@ -137,7 +144,10 @@
               {{ reportDate(item.created) }} · 正文
               {{ reportNumber(item.reconciliation?.payload_count) }} 条
             </p>
-            <p v-if="item.receipt_state === 'awaiting_receipt' && !item.withdrawn" class="text-sm">
+            <p
+              v-if="item.awaiting_receipt === true && Number.isFinite(item.waiting_seconds)"
+              class="text-sm"
+            >
               等待回执 {{ reportDuration(item.waiting_seconds) }}
             </p>
             <RouterLink
@@ -355,8 +365,8 @@ const {
 
 const awaitingReceiptCount = computed(() => {
   const items = report.value?.deliveries
-  if (!items) return '未记录'
-  return `${reportNumber(items.filter((item) => item.receipt_state === 'awaiting_receipt' && !item.withdrawn).length)} 包`
+  if (!items || items.some((item) => typeof item.awaiting_receipt !== 'boolean')) return '未记录'
+  return `${reportNumber(items.filter((item) => item.awaiting_receipt).length)} 包`
 })
 const importComplete = computed(() =>
   ['completed', 'completed_with_errors'].includes(report.value?.batch.status)

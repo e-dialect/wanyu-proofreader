@@ -1,7 +1,13 @@
-// receipt_state is append-only, so a conflict closed by a resolution keeps its
-// state while pending_actions empties. The card must not keep claiming
-// unfinished upstream work once a resend is allowed.
+// The workflow state comes from the complete event history. The receipt
+// field remains useful for explaining a conflict or a recorded receipt.
 export const receiptLabel = (item) => {
+  if (item.workflow_state === 'withdrawn' || item.withdrawn) return '已停用'
+  if (item.workflow_state === 'returned_resolved') return '退回已处置'
+  if (item.workflow_state === 'pending_resolution') {
+    if (item.receipt_state === 'partial_conflict') return '部分冲突，待上游处置'
+    if (item.receipt_state === 'failed_rolled_back') return '整体失败并回滚，待上游处置'
+    return '退回待处置'
+  }
   const base =
     {
       awaiting_receipt: '对方尚未回执',
