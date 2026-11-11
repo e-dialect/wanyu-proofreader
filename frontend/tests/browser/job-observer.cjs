@@ -116,6 +116,26 @@ const output = path.resolve(__dirname, '../../../output/playwright/job-observer'
       buffer: Buffer.from('PDF页码,词条\n1,虚构\n')
     })
     await page.getByRole('button', { name: '检查 CSV', exact: true }).click()
+    const previewToggle = page.getByRole('button', { name: '查看预览样本（20 条）', exact: true })
+    await previewToggle.waitFor()
+    assert.equal(await previewToggle.getAttribute('aria-expanded'), 'false')
+    const confirmImport = page.getByRole('button', { name: '确认导入', exact: true })
+    await confirmImport.waitFor()
+    assert.ok(
+      (await confirmImport.boundingBox()).y < (await previewToggle.boundingBox()).y,
+      'confirmation and totals precede the optional preview'
+    )
+    assert.match(
+      (await page.locator('dl[aria-label="CSV 检查数量"]').textContent()).replace(/\s/g, ''),
+      /文件行数25可导入25需跳过0/
+    )
+    assert.equal(
+      await page.getByRole('region', { name: 'CSV 预检内容' }).count(),
+      0,
+      'collapsed preview does not mount its rows'
+    )
+    assert.equal(posts, 1, 'viewing inspection does not commit')
+    await previewToggle.click()
     const table = page.getByRole('region', { name: 'CSV 预检内容' }).getByRole('table')
     await table.locator('tbody tr').nth(19).waitFor()
     assert.equal(await table.locator('tbody tr').count(), 20)
@@ -123,6 +143,12 @@ const output = path.resolve(__dirname, '../../../output/playwright/job-observer'
     assert.match(await table.textContent(), /原 CSV 行号.*PDF 物理页码.*csv_line/s)
     assert.match(await table.textContent(), /原始字段/)
     assert.equal(posts, 1, 'read-only preview does not commit')
+    const previewText = await table.textContent()
+    await previewToggle.click()
+    await table.waitFor({ state: 'hidden' })
+    assert.equal(await table.isVisible(), false)
+    await previewToggle.click()
+    assert.equal(await table.textContent(), previewText, 'reopening preserves exact preview values')
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 })
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))

@@ -86,8 +86,44 @@
         {{ csvJob.error_message }}
       </div>
     </div>
+    <div v-if="csvError" role="alert" class="alert alert-error mt-3 preserve-line-breaks">
+      {{ csvError }}
+    </div>
     <div v-if="csvInspection" class="csv-inspection mt-3">
       <div class="font-semibold">导入前检查</div>
+      <dl class="csv-inspection-counts" aria-label="CSV 检查数量">
+        <div>
+          <dt>文件行数</dt>
+          <dd>{{ csvInspection.totalRows }}</dd>
+        </div>
+        <div>
+          <dt>可导入</dt>
+          <dd>{{ csvInspection.validRows }}</dd>
+        </div>
+        <div :class="{ 'csv-inspection-counts__warning': csvInspection.invalidRows > 0 }">
+          <dt>需跳过</dt>
+          <dd>{{ csvInspection.invalidRows }}</dd>
+        </div>
+      </dl>
+      <p v-if="csvInspection.invalidRows > 0" class="csv-inspection-warning" role="note">
+        {{ csvInspection.invalidRows }} 行无法导入，确认后将跳过这些行。
+        可先查看下方错误记录，修改原 CSV 后重新检查。
+      </p>
+      <p v-if="csvJob?.status === 'validated'" class="text-sm text-muted mt-2">
+        检查完成，尚未导入。请核对来源、数量和预览样本，再确认导入。
+      </p>
+      <div v-if="csvJob?.status === 'validated'" class="csv-inspection-action">
+        <AppButton
+          variant="primary"
+          @click="confirmCsvImport"
+          :loading="uploadingCsv"
+          loading-label="正在确认导入"
+          :disabled="uploadingCsv || !csvSourceReady"
+        >
+          确认导入
+        </AppButton>
+        <span v-if="!csvSourceReady" class="text-sm text-muted">等待作业来源核对完成</span>
+      </div>
       <RareCharacterNotice
         :texts="[
           ...csvInspection.headers,
@@ -102,56 +138,51 @@
           csvInspection.minPdfPage && csvInspection.maxPdfPage
             ? `${csvInspection.minPdfPage}–${csvInspection.maxPdfPage}`
             : '无有效页码'
-        }}； 共 {{ csvInspection.totalRows }} 行，可导入 {{ csvInspection.validRows }} 行，需跳过
-        {{ csvInspection.invalidRows }} 行。
+        }}。
       </div>
       <div class="text-sm mt-2">
         检测到的表头：<code>{{ csvInspection.headers.join('、') }}</code>
       </div>
-      <p class="text-sm text-muted mt-2">
-        只读预览前 {{ csvInspection.previewLimit }} 条有效记录，当前显示
-        {{ csvInspection.preview.length }} 条。 这是样本，不代表其余记录均正确；需要修改时，请修改原
-        CSV 后重新检查。
-      </p>
-      <AppDataTable
-        label="CSV 预检内容"
-        v-if="csvInspection.preview.length"
-        class="table-wrapper mt-2"
-        ><template #head>
-          <tr>
-            <th>原 CSV 行号</th>
-            <th>PDF 物理页码</th>
-            <th v-for="header in csvPreviewHeaders" :key="header">{{ header }}</th>
-          </tr>
-        </template>
-        <tr v-for="(row, index) in csvInspection.preview" :key="index">
-          <td>{{ csvInspection.previewLocations[index]?.csvLine ?? '旧记录未保存' }}</td>
-          <td>{{ csvInspection.previewLocations[index]?.pdfPage ?? '旧记录未保存' }}</td>
-          <td v-for="header in csvPreviewHeaders" :key="header">
-            <AppFieldValue
-              :value="row[header]"
-              :lang="fieldValueLanguage(header)"
-              :font-notice="false"
-            />
-          </td>
-        </tr>
-      </AppDataTable>
-      <AppButton
-        v-if="csvJob?.status === 'validated'"
-        variant="primary"
-        class="mt-3"
-        @click="confirmCsvImport"
-        :loading="uploadingCsv"
-        loading-label="正在确认导入"
-        :disabled="uploadingCsv || !csvSourceReady"
+      <AppDisclosure
+        :key="csvJob?.id"
+        class="csv-preview-disclosure mt-3"
+        :label="`查看预览样本（${csvInspection.preview.length} 条）`"
+        lazy
       >
-        确认导入
-      </AppButton>
+        <p class="text-sm text-muted">
+          只读预览前 {{ csvInspection.previewLimit }} 条有效记录，当前显示
+          {{ csvInspection.preview.length }} 条。
+          这是样本，不代表其余记录均正确；需要修改时，请修改原 CSV 后重新检查。
+        </p>
+        <AppDataTable
+          label="CSV 预检内容"
+          v-if="csvInspection.preview.length"
+          class="table-wrapper mt-2"
+          ><template #head>
+            <tr>
+              <th>原 CSV 行号</th>
+              <th>PDF 物理页码</th>
+              <th v-for="header in csvPreviewHeaders" :key="header">{{ header }}</th>
+            </tr>
+          </template>
+          <tr v-for="(row, index) in csvInspection.preview" :key="index">
+            <td>{{ csvInspection.previewLocations[index]?.csvLine ?? '旧记录未保存' }}</td>
+            <td>{{ csvInspection.previewLocations[index]?.pdfPage ?? '旧记录未保存' }}</td>
+            <td v-for="header in csvPreviewHeaders" :key="header">
+              <AppFieldValue
+                :value="row[header]"
+                :lang="fieldValueLanguage(header)"
+                :font-notice="false"
+              />
+            </td>
+          </tr>
+        </AppDataTable>
+        <p v-if="!csvInspection.preview.length" class="text-sm text-muted mt-2">
+          此作业没有可显示的预览样本，请核对检查数量与错误记录。
+        </p>
+      </AppDisclosure>
     </div>
     <div v-if="csvSuccess" class="alert alert-success mt-2" role="status">{{ csvSuccess }}</div>
-    <div v-if="csvError" role="alert" class="alert alert-error mt-2 preserve-line-breaks">
-      {{ csvError }}
-    </div>
     <ImportErrorsPanel
       v-if="csvJob?.id && (csvJob.failed_count > 0 || csvJob.status === 'failed')"
       :project-id="projectId"
@@ -163,6 +194,7 @@
 
 <script setup>
 import AppButton from '@/components/AppButton.vue'
+import AppDisclosure from '@/components/AppDisclosure.vue'
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import { fieldValueLanguage } from '@/lib/fieldValue'
@@ -392,3 +424,46 @@ defineExpose({
   )
 })
 </script>
+
+<style scoped>
+.csv-inspection-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--primary-line);
+}
+.csv-inspection-counts dt {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+.csv-inspection-counts dd {
+  margin: var(--space-1) 0 0;
+  color: var(--ink);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.csv-inspection-counts__warning dd {
+  color: var(--warn-ink);
+}
+.csv-inspection-warning {
+  margin-top: var(--space-3);
+  color: var(--warn-ink);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
+.csv-inspection-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+.csv-preview-disclosure {
+  border-top: 1px solid var(--primary-line);
+  padding-top: var(--space-2);
+}
+</style>
