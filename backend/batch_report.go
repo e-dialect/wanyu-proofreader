@@ -32,6 +32,7 @@ type batchReport struct {
 	Schema      string                            `json:"schema"`
 	GeneratedAt string                            `json:"generated_at"`
 	ProjectID   string                            `json:"project_id"`
+	ProjectName string                            `json:"project_name"`
 	Batch       map[string]any                    `json:"batch"`
 	Metrics     map[string]map[string]batchMetric `json:"metrics"`
 	Adoptions   []map[string]any                  `json:"adoptions"`
@@ -146,6 +147,11 @@ func (s *importService) buildBatchReport(app core.App, projectID, jobID string, 
 	if err != nil {
 		return report, nil, err
 	}
+	project, err := app.FindRecordById("projects", projectID)
+	if err != nil {
+		return report, nil, err
+	}
+	report.ProjectName = project.GetString("name")
 	report.Batch = map[string]any{"id": job.Id, "mode": job.GetString("mode"), "status": job.GetString("status"), "filename": job.GetString("original_filename"), "source": job.GetString("source"), "file_hash": job.GetString("file_hash")}
 	rows := []batchReportEntry{}
 	if err = app.DB().NewQuery(batchReportRowsSQL).Bind(dbx.Params{"project": projectID, "job": jobID}).All(&rows); err != nil {
