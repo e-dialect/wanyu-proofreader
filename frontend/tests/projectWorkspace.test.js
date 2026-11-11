@@ -10,6 +10,7 @@ import {
   projectWorkflowNext,
   projectWorkflowTarget
 } from '../src/lib/projectWorkflow.js'
+import { normalizeAdminPageQuery } from '../src/lib/adminPageList.js'
 
 test('legacy anchors keep each project capability reachable', () => {
   for (const [hash, section, view] of [
@@ -95,16 +96,49 @@ test('workflow guidance prioritizes arbitration and never labels reviewed data r
   assert.match(complete.detail, /检查来源、用途/)
 })
 
-test('workflow links retain exact list filters and reset only the arbitration page', () => {
-  const query = { q: 'a̤̍ 𠮷', qualityState: 'unresolved', status: 'pending', page: '3' }
+test('whole-project arbitration links clear every entry range filter and start on page one', () => {
+  const query = {
+    q: 'a̤̍ 𠮷',
+    qualityState: 'unresolved',
+    minPage: '12',
+    maxPage: '14',
+    status: 'pending',
+    page: '3',
+    perPage: '50',
+    method: 'csv'
+  }
+  const original = { ...query }
   const arbitration = projectWorkflowTarget('project1', 'arbitration', query)
   assert.deepEqual(arbitration.query, {
-    ...query,
+    perPage: '50',
+    method: 'csv',
     section: 'work',
     view: 'entries',
-    status: 'arbitration',
-    page: undefined
+    status: 'arbitration'
   })
+  assert.deepEqual(
+    normalizeAdminPageQuery(arbitration.query, {
+      statuses: ['pending', 'arbitration'],
+      qualityStates: ['unresolved'],
+      pageSizes: [25, 50, 100]
+    }),
+    {
+      q: '',
+      status: 'arbitration',
+      qualityState: '',
+      minPage: '',
+      maxPage: '',
+      page: 1,
+      perPage: 50
+    }
+  )
+  assert.deepEqual(query, original)
+  const entries = projectWorkflowTarget('project1', 'entries', query)
+  assert.deepEqual(entries.query, { ...original, section: 'work', view: 'entries' })
+})
+
+test('other workflow links preserve list context and keep specialized destinations', () => {
+  const query = { q: 'a̤̍ 𠮷', qualityState: 'unresolved', status: 'pending', page: '3' }
   const normalization = projectWorkflowTarget('project1', 'normalization', query)
   assert.deepEqual(normalization.query, {
     ...query,

@@ -51,7 +51,13 @@ export function projectWorkflowTarget(projectId, action, query = {}) {
   const target = (section, view) => projectWorkspaceTarget(projectId, section, view, query)
   if (action === 'arbitration') {
     const result = target('work', 'entries')
-    return { ...result, query: { ...result.query, status: 'arbitration', page: undefined } }
+    // This entry uses the whole-project count, not the previously filtered list.
+    // Clear the range filters consumed by normalizeAdminPageQuery; retain page size.
+    for (const key of ['q', 'qualityState', 'minPage', 'maxPage', 'page']) {
+      delete result.query[key]
+    }
+    result.query.status = 'arbitration'
+    return result
   }
   if (action === 'normalization') {
     const result = target('work', 'normalization')
