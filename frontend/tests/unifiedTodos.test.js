@@ -28,6 +28,13 @@ test('return to a filtered todo follows the same project workflow and never cros
   }
   assert.equal(todoReturnTarget(unrelated), '')
   assert.equal(carryTodoReturn(unrelated, detail).query.todoFrom, undefined)
+  const differentFlow = {
+    ...detail,
+    name: 'ProjectDetail',
+    path: `/admin/projects/${id}`,
+    query: { ...detail.query, section: 'work', view: 'entries' }
+  }
+  assert.equal(carryTodoReturn(differentFlow, detail).query.todoFrom, undefined)
   assert.equal(
     todoActionTarget({ project: { id }, target: { path: '//example.invalid' } }, resolve, filters),
     null

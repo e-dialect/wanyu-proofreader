@@ -504,6 +504,18 @@ test('其余回执状态不受待办数量影响', () => {
   }
 })
 
+test('当前退回和停用状态优先于历史回执字段', () => {
+  const record = { receipt_state: 'awaiting_receipt', pending_actions: [] }
+  for (const [workflow_state, label] of [
+    ['pending_resolution', '退回待处置'],
+    ['returned_resolved', '退回已处置'],
+    ['withdrawn', '已停用'],
+    ['awaiting_receipt', '对方尚未回执']
+  ]) {
+    assert.equal(receiptLabel({ ...record, workflow_state }), label)
+  }
+})
+
 test('列表加载失败写入 loadError，不冒充空记录', async () => {
   const state = await runLoad(async () => {
     throw new Error('Failed to fetch')

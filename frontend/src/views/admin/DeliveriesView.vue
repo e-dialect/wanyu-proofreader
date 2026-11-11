@@ -279,9 +279,11 @@
         <div>
           <h2>交付记录</h2>
           <p v-if="metrics">
-            共 {{ metrics.package_count }} 包 · 未回执
-            {{ metrics.receipt_states.awaiting_receipt }} 包 · 已停用
-            {{ metrics.withdrawn_packages }} 包
+            共 {{ metrics.package_count }} 包
+            <template v-if="Number.isFinite(metrics.awaiting_receipt_packages)">
+              · 待回执 {{ metrics.awaiting_receipt_packages }} 包
+            </template>
+            · 已停用 {{ metrics.withdrawn_packages }} 包
           </p>
         </div>
         <button class="btn btn-secondary btn-sm" :disabled="busy || loading" @click="load">
@@ -315,15 +317,19 @@
             </p>
             <span
               class="text-sm"
-              :class="item.withdrawn || item.rights_blocked ? 'text-danger' : 'text-muted'"
-              >{{
-                item.withdrawn
-                  ? '已停用'
-                  : item.rights_blocked
-                    ? '当前用途许可阻断下载'
-                    : receiptLabel(item)
-              }}</span
+              :class="
+                item.withdrawn ||
+                item.rights_blocked ||
+                item.workflow_state === 'pending_resolution'
+                  ? 'text-danger'
+                  : 'text-muted'
+              "
             >
+              {{ receiptLabel(item) }}
+              <template v-if="!item.withdrawn && item.rights_blocked">
+                · 当前用途许可阻断下载</template
+              >
+            </span>
           </div>
           <button class="btn btn-secondary" :disabled="busy" @click="openDelivery(item)">
             查看交付详情
@@ -350,7 +356,12 @@
         <div class="section-heading">
           <div>
             <h2>{{ item.recipient }} · 第 {{ item.version }} 版</h2>
-            <p>{{ purposeLabel(item.purpose) }} · {{ receiptLabel(item) }}</p>
+            <p>
+              {{ purposeLabel(item.purpose) }} ·
+              <strong :class="{ 'text-danger': item.workflow_state === 'pending_resolution' }">
+                {{ receiptLabel(item) }}
+              </strong>
+            </p>
           </div>
           <button
             class="btn btn-primary"
@@ -370,8 +381,16 @@
         <p v-if="item.pending_actions.length" class="alert alert-warning" role="alert">
           上游待办 {{ item.pending_actions.length }} 项，处置完成后才能重发。
         </p>
-        <p v-if="item.receipt_state === 'awaiting_receipt'" class="text-muted">
-          等待回执 {{ Math.floor(item.waiting_seconds / 3600) }} 小时
+        <p
+          v-if="item.awaiting_receipt === true && Number.isFinite(item.waiting_seconds)"
+          class="text-muted"
+        >
+          等待回执
+          {{
+            item.waiting_seconds < 3600
+              ? '不足 1 小时'
+              : `${Math.floor(item.waiting_seconds / 3600)} 小时`
+          }}
         </p>
         <dl class="delivery-counts">
           <div>
@@ -787,10 +806,16 @@ function handleFailure(error, request, requestSource) {
   }
   return false
 }
-// receipt_state is append-only, so a conflict closed by a resolution keeps its
-// state while pending_actions empties. The card must not keep claiming
-// unfinished upstream work once a resend is allowed.
+// The workflow state comes from the complete event history. The receipt
+// field remains useful for explaining a conflict or a recorded receipt.
 const receiptLabel = (item) => {
+  if (item.workflow_state === 'withdrawn' || item.withdrawn) return '已停用'
+  if (item.workflow_state === 'returned_resolved') return '退回已处置'
+  if (item.workflow_state === 'pending_resolution') {
+    if (item.receipt_state === 'partial_conflict') return '部分冲突，待上游处置'
+    if (item.receipt_state === 'failed_rolled_back') return '整体失败并回滚，待上游处置'
+    return '退回待处置'
+  }
   const base =
     {
       awaiting_receipt: '对方尚未回执',

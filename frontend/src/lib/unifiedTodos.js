@@ -53,7 +53,9 @@ function todoFlow(route) {
     ProjectDetail:
       section === 'work' && view === 'normalization'
         ? 'normalization'
-        : section === 'work' && (!view || view === 'entries')
+        : section === 'work' &&
+            (!view || view === 'entries') &&
+            route.query?.status === 'arbitration'
           ? 'arbitration'
           : '',
     SourceFidelity: !view || ['problems', 'review'].includes(view) ? 'source' : '',
