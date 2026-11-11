@@ -31,13 +31,54 @@ function ownProofreadAttempt(dao, page, userId) {
 // The unique (page,round,proofreader,kind) index guarantees one result per page.
 // Return the complete own history; no arbitrary 100k/100-row truncation.
 function reviewedProofreads(dao, projectId, userId) {
-  const rows = arrayOf(new DynamicModel({ id: "", page_number: 0, submitted_at: "" }))
-  dao.db().newQuery(`SELECT p.id,p.page_number,a.submitted_at
-    FROM proofreading_attempts a JOIN pages p ON p.id=a.page AND p.project=a.project
+  return reviewedProofreadHistory(dao, projectId, userId).items
+}
+
+// Only metadata enters the JS VM. Pagination and cursor position use the same
+// filter and order; a cursor on another page keeps its global position.
+function reviewedProofreadHistory(dao, projectId, userId, options = {}) {
+  const params = { user: userId, project: projectId }
+  let from = `FROM proofreading_attempts a JOIN pages p ON p.id=a.page AND p.project=a.project
     WHERE a.proofreader={:user} AND a.project={:project} AND a.kind='proofread'
-      AND a.round=COALESCE(NULLIF(p.proofread_round,0),1)
-    ORDER BY p.page_number,p.id`).bind({ user: userId, project: projectId }).all(rows)
-  return rows.map(row => ({ id: row.id, page_number: Number(row.page_number), submitted_at: String(row.submitted_at || "") }))
+      AND a.round=COALESCE(NULLIF(p.proofread_round,0),1)`
+  if (options.number) {
+    from += " AND p.page_number={:number}"
+    params.number = options.number
+  }
+  const order = options.sort === "recent" ? "a.submitted_at DESC,p.page_number,p.id" : "p.page_number,p.id"
+  const select = "SELECT p.id,p.page_number,a.submitted_at " + from
+  const paginated = options.page !== undefined
+  let total, page, totalPages
+  let suffix = " ORDER BY " + order
+  if (paginated) {
+    const count = new DynamicModel({ count: 0 })
+    dao.db().newQuery("SELECT COUNT(*) AS count " + from).bind(params).one(count)
+    total = Number(count.count)
+    totalPages = Math.max(1, Math.ceil(total / options.perPage))
+    page = Math.min(options.page, totalPages)
+    params.limit = options.perPage
+    params.offset = (page - 1) * options.perPage
+    suffix += " LIMIT {:limit} OFFSET {:offset}"
+  }
+  const rows = arrayOf(new DynamicModel({ id: "", page_number: 0, submitted_at: "" }))
+  dao.db().newQuery(select + suffix).bind(params).all(rows)
+  const items = rows.map(row => ({ id: row.id, page_number: Number(row.page_number), submitted_at: String(row.submitted_at || "") }))
+  let position = 0
+  if (options.pageId) {
+    if (paginated) {
+      const cursor = new DynamicModel({ position: 0 })
+      dao.db().newQuery(`SELECT COALESCE(MAX(position),0) AS position FROM (
+        SELECT p.id,ROW_NUMBER() OVER (ORDER BY ${order}) AS position ${from}
+      ) WHERE id={:cursor}`).bind({ ...params, cursor: options.pageId }).one(cursor)
+      position = Number(cursor.position)
+    } else {
+      position = items.findIndex(item => item.id === options.pageId) + 1
+    }
+  }
+  return {
+    items, position, total: paginated ? total : items.length,
+    ...(paginated ? { page, perPage: options.perPage, totalPages } : {})
+  }
 }
 
 function arbitrationAttempt(dao, page) {
@@ -190,6 +231,7 @@ module.exports = {
   proofreadAttempts,
   ownProofreadAttempt,
   reviewedProofreads,
+  reviewedProofreadHistory,
   arbitrationAttempt,
   requiredProofreads,
   canonicalRow,

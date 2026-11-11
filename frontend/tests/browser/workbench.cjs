@@ -201,15 +201,17 @@ async function catalogFits(page) {
     const reviewRequested = new Promise((resolve) => {
       reviewedStarted = resolve
     })
-    const reviewUrl = `**/api/fangji/projects/${project.id}/tasks/reviewed`
+    const reviewUrl = `**/api/fangji/projects/${project.id}/tasks/reviewed?*`
     await page.route(reviewUrl, async (route) => {
       reviewedStarted()
       await reviewGate
       await route.continue().catch(() => {})
     })
-    await page.goto(base + `/tasks?view=reviewed&project=${project.id}`)
+    await page.goto(
+      base + `/tasks/projects/${project.id}/submissions?taskView=active&taskProject=${project.id}`
+    )
     await reviewRequested
-    await page.getByRole('link', { name: '进行中', exact: true }).click()
+    await page.getByRole('link', { name: '返回我的任务', exact: true }).click()
     await page.getByRole('button', { name: '继续校对', exact: false }).waitFor()
     assert.equal(await page.getByLabel('正在加载项目', { exact: true }).count(), 0)
     releaseReviewed()
@@ -229,6 +231,11 @@ async function catalogFits(page) {
     await page.getByRole('button', { name: '回看已提交', exact: true }).waitFor()
     writes.length = 0
     await page.getByRole('button', { name: '回看已提交', exact: true }).click()
+    await page.getByRole('heading', { name: '本人提交记录', exact: true }).waitFor()
+    await page
+      .getByRole('link', { name: /回看 第/ })
+      .first()
+      .click()
     await page.locator('[data-task-feedback="readonly"]').waitFor()
     assert.equal(
       await page

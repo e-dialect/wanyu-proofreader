@@ -5,6 +5,13 @@
       <strong id="task-panel-title">当前第 {{ pageNumber || '—' }} 条</strong>
     </div>
     <div class="task-primary-actions">
+      <RouterLink
+        v-if="ownReview"
+        :to="submissionsTarget || returnTarget"
+        class="btn btn-secondary btn-sm"
+      >
+        返回提交记录
+      </RouterLink>
       <div v-if="!mobile" class="task-inline-navigation" aria-label="校对任务导航">
         <button
           class="btn btn-quiet btn-sm"
@@ -70,7 +77,9 @@
           <p v-if="shortcutHints.length" class="text-sm text-muted editor-shortcuts">
             {{ shortcutHints.join(' · ') }}
           </p>
-          <RouterLink :to="returnTarget" class="btn btn-quiet btn-sm">返回任务</RouterLink>
+          <RouterLink v-if="!ownReview" :to="returnTarget" class="btn btn-quiet btn-sm"
+            >返回任务</RouterLink
+          >
           <span v-if="navigationHint" class="text-sm text-muted" role="status">{{
             navigationHint
           }}</span>
@@ -146,6 +155,7 @@ const returnTarget = inject('workReturnTarget', '/tasks')
 const props = defineProps({
   projectName: String,
   ownReview: Boolean,
+  submissionsTarget: [String, Object],
   pageNumber: [String, Number],
   mobile: Boolean,
   overview: Boolean,

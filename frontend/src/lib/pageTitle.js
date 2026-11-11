@@ -18,6 +18,7 @@ const PAGE_TITLES = {
   GateRules: '规则门控',
   Arbitration: '条目仲裁',
   TaskHall: '我的任务',
+  OwnSubmissions: '本人提交记录',
   MyProblems: '我的问题与草稿',
   ProofreaderProfile: '个人中心',
   ProofreadEditor: '校对任务',

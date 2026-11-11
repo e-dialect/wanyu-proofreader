@@ -46,13 +46,6 @@
       >
     </p>
     <AppStatusPanel
-      v-if="taskView === 'reviewed' && reviewError"
-      state="error"
-      :message="reviewError"
-      retry-label="重新读取记录"
-      @retry="loadReviews"
-    />
-    <AppStatusPanel
       v-if="loadError"
       state="error"
       title="项目暂时无法加载"
@@ -119,11 +112,7 @@
       >
         正在更新任务列表，已有内容仍可查看。
       </p>
-      <div
-        v-if="(loading && !hasLoadedProjects) || (taskView === 'reviewed' && reviewPending)"
-        class="project-card-grid"
-        aria-label="正在加载项目"
-      >
+      <div v-if="loading && !hasLoadedProjects" class="project-card-grid" aria-label="正在加载项目">
         <div
           v-for="index in 3"
           :key="index"
@@ -137,13 +126,7 @@
       </div>
 
       <div
-        v-else-if="
-          hasLoadedProjects &&
-          !loading &&
-          !loadError &&
-          (taskView !== 'reviewed' || !reviewError) &&
-          displayQueues.length === 0
-        "
+        v-else-if="hasLoadedProjects && !loading && !loadError && displayQueues.length === 0"
         class="empty-state card"
       >
         <AppIcon name="check" />
@@ -273,19 +256,14 @@
           </AppDisclosure>
 
           <footer class="project-work-card__footer">
-            <span>{{ queueAction(queue).detail }}</span>
+            <span>{{
+              taskView === 'reviewed' ? '选择要回看的本人提交条目' : queueAction(queue).detail
+            }}</span>
             <div class="project-work-card__actions">
               <AppButton
-                type="button"
                 :variant="taskView === 'reviewed' ? 'primary' : 'ghost'"
-                :loading="reviewingProject === queue.project.id"
-                loading-label="正在打开…"
-                :disabled="
-                  loading ||
-                  reviewingProject === queue.project.id ||
-                  claimingProject === queue.project.id
-                "
-                @click="openOwnReview(queue)"
+                :disabled="loading || Boolean(claimingProject)"
+                @click="openOwnSubmissions(queue)"
               >
                 回看已提交
               </AppButton>
@@ -295,10 +273,7 @@
                 :loading="claimingProject === queue.project.id"
                 loading-label="正在打开…"
                 :disabled="
-                  loading ||
-                  claimingProject === queue.project.id ||
-                  reviewingProject === queue.project.id ||
-                  !queueAction(queue).canEnter
+                  loading || claimingProject === queue.project.id || !queueAction(queue).canEnter
                 "
                 @click="enterProject(queue)"
               >
@@ -335,14 +310,10 @@ import '@/styles/work-catalog.css'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { currentUserId } from '@/services/authService'
-import {
-  claimNextProjectPage,
-  listProjectQueueSummaries,
-  listReviewedProofreads
-} from '@/services/pagesService'
+import { claimNextProjectPage, listProjectQueueSummaries } from '@/services/pagesService'
 import { getProofreaderQueueAction, summarizeProofreaderQueues } from '@/lib/workspaceInsights'
 import { taskTierLabel, tierBreakdown } from '@/lib/taskTiers'
-import { formatClaimConflict, formatPbError, getPbMessage } from '@/utils/pbErrors'
+import { formatClaimConflict, formatPbError } from '@/utils/pbErrors'
 import { saveTaskLease, saveGlyphQueue } from '@/lib/taskLease'
 import {
   readPracticeContext,
@@ -359,7 +330,6 @@ const loading = ref(true)
 const hasLoadedProjects = ref(false)
 useQueueReturnPosition(hasLoadedProjects)
 const claimingProject = ref('')
-const reviewingProject = ref('')
 const loadError = ref('')
 const actionError = ref('')
 let active = true
@@ -388,7 +358,6 @@ watch(
   () => {
     actionGeneration++
     claimingProject.value = ''
-    reviewingProject.value = ''
   }
 )
 
@@ -448,48 +417,23 @@ const queueResource = useAsyncResource(
   }
 )
 
-const {
-  data: reviewData,
-  pending: reviewPending,
-  error: reviewError,
-  reload: loadReviews,
-  cancel: cancelReviews
-} = useAsyncResource(
-  async ({ signal }) => {
-    const results = await Promise.allSettled(
-      projectQueues.value.map(async (queue) => ({
-        id: queue.project.id,
-        result: await listReviewedProofreads(queue.project.id, { signal })
-      }))
-    )
-    const failed = results.find((result) => result.status === 'rejected')
-    if (failed) throw failed.reason
-    return Object.fromEntries(results.map((result) => [result.value.id, result.value.result]))
-  },
-  { formatError: (cause) => getPbMessage(cause, '本人提交记录暂时无法加载，请重试。') }
-)
+const loadedQueueScope = ref('')
+const queueScope = computed(() => `${taskView.value}:${selectedProject.value}`)
 const displayQueues = computed(() =>
   projectQueues.value.filter((queue) =>
     taskView.value === 'active'
       ? queue.activeMine > 0
       : taskView.value === 'available'
         ? Boolean(queue.nextPage)
-        : Boolean(reviewData.value?.[queue.project.id]?.items?.length)
+        : loadedQueueScope.value === queueScope.value
   )
 )
 function taskViewRoute(view) {
   return { path: '/tasks', query: { ...route.query, page: undefined, view } }
 }
 watch(
-  () => route.query.view,
-  () => {
-    if (taskView.value !== 'reviewed') cancelReviews()
-  }
-)
-watch(
   () => [route.query.page, route.query.project, route.query.view],
   () => {
-    if (taskView.value === 'reviewed') cancelReviews()
     currentPage.value = Math.max(1, Number(route.query.page) || 1)
     void loadProjects()
   }
@@ -502,12 +446,12 @@ async function loadProjects({ keepActionError = false } = {}) {
   const result = await queueResource.reload()
   if (!result.ok || route.fullPath !== requestedPath) return
   projectQueues.value = result.data.items
+  loadedQueueScope.value = queueScope.value
   queueSummary.value = result.data.summary
   currentPage.value = result.data.page
   totalPages.value = result.data.totalPages
   totalProjects.value = Number(result.data.totalItems) || 0
   hasLoadedProjects.value = true
-  if (taskView.value === 'reviewed') await loadReviews()
 }
 
 function changeProjectPage(page) {
@@ -523,33 +467,28 @@ function taskEditorTarget(queue, pageId) {
   }
 }
 
-async function openOwnReview(queue) {
+function openOwnSubmissions(queue) {
   const projectId = queue?.project?.id
-  if (!projectId || reviewingProject.value || claimingProject.value) return
-  const { isCurrent, isLatest } = beginAction()
-  reviewingProject.value = projectId
-  actionError.value = ''
-  try {
-    const reviewed = await listReviewedProofreads(projectId)
-    if (!isCurrent()) return
-    const first = reviewed.items[0]
-    if (!first?.id) {
-      actionError.value = '你在这个项目里还没有可以回看的已提交条目。'
-      return
+  if (!projectId || claimingProject.value) return
+  const context =
+    queue.project.purpose === 'practice' ? readPracticeContext(route.query, projectId) : null
+  return router.push({
+    name: 'OwnSubmissions',
+    params: { projectId },
+    query: {
+      taskView: taskView.value,
+      taskPage: String(currentPage.value),
+      ...(selectedProject.value === projectId ? { taskProject: projectId } : {}),
+      ...(context?.role === 'proofreader'
+        ? practiceNavigationQuery({ ...context, step: 'reviewed' })
+        : {})
     }
-    await router.push(taskEditorTarget(queue, first.id))
-  } catch (error) {
-    if (!isCurrent()) return
-    actionError.value = getPbMessage(error, '已提交条目暂时打不开，请稍后再试。')
-  } finally {
-    if (isLatest()) reviewingProject.value = ''
-  }
+  })
 }
 
 async function enterProject(queue, tier = '', glyph = false) {
   const projectId = queue?.project?.id
-  if (!projectId || claimingProject.value || reviewingProject.value || !queueAction(queue).canEnter)
-    return
+  if (!projectId || claimingProject.value || !queueAction(queue).canEnter) return
   const { isCurrent, isLatest } = beginAction()
   claimingProject.value = projectId
   actionError.value = ''

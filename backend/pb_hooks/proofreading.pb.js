@@ -172,8 +172,8 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/task`, (c) => {
   // not treat a 200 as an assigned task and reclaim another page. #118 should
   // call this with ?mode=review and skip restoreOrAcquireLease.
   if (!active && !reviewMode) throw new ForbiddenError("该任务当前未分配给你")
-  const ownAttempt = active ? null : proofOwnAttempt(dao, page, auth.id)
-  if (!active && !ownAttempt) throw new ForbiddenError("该任务当前未分配给你")
+  const ownAttempt = reviewMode ? proofOwnAttempt(dao, page, auth.id) : null
+  if (reviewMode && !ownAttempt) throw new ForbiddenError("这条材料目前没有可回看的本人提交，请返回提交记录")
 
   const project = dao.findRecordById("projects", page.getString("project"))
   const payload = {
@@ -191,7 +191,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/task`, (c) => {
       project: { id: project.id, name: project.getString("name"), purpose: project.getString("purpose") || "work" }
     }
   }
-  if (active) {
+  if (active && !reviewMode) {
     payload.proofreader = page.getString("proofreader")
     return c.json(200, payload)
   }
@@ -230,25 +230,39 @@ routerAdd("GET", `${FANGJI_API}/projects/{projectId}/tasks/mine`, (c) => {
 
 routerAdd("GET", `${FANGJI_API}/projects/{projectId}/tasks/reviewed`, (c) => {
   const { assertId: proofAssertId, canProofread: proofCanProofread } = require(`${__hooks}/lib/project_access.js`)
-  const { reviewedProofreads: proofReviewed } = require(`${__hooks}/lib/proofreading_workflow.js`)
+  const { reviewedProofreadHistory: proofHistory } = require(`${__hooks}/lib/proofreading_workflow.js`)
   const auth = c.auth
   if (!auth) throw new ForbiddenError("无权执行此操作")
   if (auth.getBool("must_change_password")) throw new ForbiddenError("首次登录请先修改密码")
   const projectId = proofAssertId(c.request.pathValue("projectId"), "项目")
-  const dao = $app
-  try { dao.findRecordById("projects", projectId) } catch { throw new NotFoundError("项目不存在") }
-  if (!proofCanProofread(dao, projectId, auth)) throw new ForbiddenError("你不是该项目的校对员")
+  const query = c.request.url.query()
+  const positive = (key, label) => {
+    const raw = String(query.get(key) || "")
+    const value = Number(raw)
+    if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(value)) throw new BadRequestError(`${label}必须是正整数`)
+    return value
+  }
+  const paginated = query.has("page")
+  const options = { sort: query.has("sort") ? String(query.get("sort")) : (paginated ? "recent" : "number") }
+  if (!["recent", "number"].includes(options.sort)) throw new BadRequestError("请选择按提交时间或条目号排序")
+  if (query.has("number")) options.number = positive("number", "条目号")
+  const perPage = query.has("perPage") ? Math.min(100, positive("perPage", "每页条数")) : 20
+  if (paginated) {
+    options.page = positive("page", "页码")
+    options.perPage = perPage
+  }
+  options.pageId = String(query.get("pageId") || "")
+  if (options.pageId) proofAssertId(options.pageId, "条目")
 
-  const cursorPageId = String(c.request.url.query().get("pageId") || "")
-  if (cursorPageId) proofAssertId(cursorPageId, "条目")
-
-  const items = proofReviewed(dao, projectId, auth.id)
-  const index = cursorPageId ? items.findIndex((item) => item.id === cursorPageId) : -1
-  return c.json(200, {
-    items,
-    position: index < 0 ? 0 : index + 1,
-    total: items.length
+  let result
+  $app.runInTransaction(dao => {
+    let project
+    try { project = dao.findRecordById("projects", projectId) } catch { throw new NotFoundError("项目不存在") }
+    if (!proofCanProofread(dao, projectId, auth)) throw new ForbiddenError("你不是该项目的校对员")
+    result = proofHistory(dao, projectId, auth.id, options)
+    if (paginated) result.project = { id: project.id, name: project.getString("name"), purpose: project.getString("purpose") || "work" }
   })
+  return c.json(200, result)
 }, $apis.requireAuth("users"))
 
 routerAdd("POST", `${FANGJI_API}/pages/{pageId}/lease/renew`, (c) => {
