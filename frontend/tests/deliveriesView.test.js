@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as pbErrors from '../src/utils/pbErrors.js'
 import { USAGE_PURPOSE_LABELS } from '../src/constants/sourceRegistry.js'
+import { receiptLabel } from '../src/lib/deliveryPresentation.js'
 import { protectedPageScopeFixture } from './helpers/protectedPageScopeFixture.js'
 
 // Execute the shipped SFC callbacks with mocked refs and network, so the
@@ -18,10 +19,6 @@ function extract(pattern, label) {
   return match[1]
 }
 
-const receiptLabelSource = extract(
-  /\nconst receiptLabel = (\(item\) => \{[\s\S]*?\n\})\n/,
-  'receiptLabel'
-)
 const receiptEventNoteSource = extract(
   /\nconst receiptEventNote = (\(event\) => \{[\s\S]*?\n\})\n/,
   'receiptEventNote'
@@ -32,7 +29,6 @@ const helpers = Object.fromEntries(
   errorImports[1].split(',').map((name) => [name.trim(), pbErrors[name.trim()]])
 )
 
-const receiptLabel = new Function(`return (${receiptLabelSource})`)()
 const receiptEventNote = new Function(`return (${receiptEventNoteSource})`)()
 
 function fixture(services = {}) {
@@ -47,6 +43,7 @@ function fixture(services = {}) {
   const bindings = {
     ...helpers,
     USAGE_PURPOSE_LABELS,
+    receiptLabel,
     useProtectedPageScope: protectedScope.useProtectedPageScope,
     ref: (value) => ({ value }),
     reactive: (value) => value,
