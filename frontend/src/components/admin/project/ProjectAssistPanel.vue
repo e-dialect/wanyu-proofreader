@@ -169,7 +169,8 @@
           </button>
         </div>
         <p v-if="blockedTier" class="text-sm text-muted">
-          登记后层级 {{ blockedTier }} · 判据 {{ blockedTierBasis }}
+          重算后难度：{{ taskTierLabel(blockedTier) }}
+          <template v-if="blockedBasisText"> · 判断依据：{{ blockedBasisText }}</template>
         </p>
       </template>
       <p v-if="blockedError" class="alert alert-error" role="alert">{{ blockedError }}</p>
@@ -226,6 +227,7 @@ import {
   truncatedNotice
 } from '@/lib/assistOverview'
 import { hintKindLabel } from '@/lib/fieldHints'
+import { taskTierBasisText, taskTierLabel } from '@/lib/taskTiers'
 import { renderFindingMessage } from '@/lib/findingMessages'
 import {
   listProjectDismissals,
@@ -448,6 +450,8 @@ const blockedError = ref('')
 const blockedTier = ref('')
 
 const blockedTierBasis = ref('')
+
+const blockedBasisText = computed(() => taskTierBasisText(blockedTierBasis.value))
 
 const blockedState = computed(() => conclusionState(blockedRecord.value))
 

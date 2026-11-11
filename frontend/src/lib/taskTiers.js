@@ -12,6 +12,37 @@ export const TIER_LABELS = {
   C: '需要专业知识'
 }
 
+const TIER_BASIS_LABELS = {
+  cross_source_conflict: '不同登记来源给出的值不一致',
+  rights_gate_blocked: '用途授权尚未解决',
+  scanned_read_blocked: '扫描页需要人工辨读',
+  strong_findings_ge_2: '有两处或更多重点疑点',
+  reading_and_meaning_change: '同时包含读音和释义字段',
+  column_merge_blocked: '需先处理字段拆分或合并',
+  strong_findings_eq_1: '有一处重点疑点',
+  missing_pdf_page: '缺少 PDF 原文页码',
+  row_shape_outlier: '字段数量或长度与项目常见情况差异较大',
+  warn_findings_ge_3: '有三处或更多一般疑点',
+  glyph_table_blocked: '需查缺字表补录',
+  pure_transcription: '可按原文核对词条或读音'
+}
+
+export function taskTierLabel(tier, fallback = '难度未记录') {
+  if (tier === 'unknown') return '已评估，线索不足'
+  return Object.hasOwn(TIER_LABELS, tier) ? TIER_LABELS[tier] : fallback
+}
+
+export function taskTierBasisText(basis) {
+  if (!Array.isArray(basis)) return ''
+  return [
+    ...new Set(
+      basis.map((key) =>
+        Object.hasOwn(TIER_BASIS_LABELS, key) ? TIER_BASIS_LABELS[key] : '其他判断依据'
+      )
+    )
+  ].join('；')
+}
+
 export function tierBreakdown(queue) {
   const tiers = queue?.tiers
   if (!tiers || typeof tiers !== 'object') return null
