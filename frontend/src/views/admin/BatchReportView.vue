@@ -100,7 +100,7 @@
               {{ reportNumber(item.counts.total) }} 条范围 ·
               {{ reportNumber(item.counts.selected) }} 采用 ·
               {{ reportNumber(item.counts.excluded) }} 排除 ·
-              {{ reportNumber(item.counts.pending) }} 待处理
+              {{ reportNumber(item.counts.pending) }} 保存时待定
             </p>
             <p v-else class="text-sm text-muted">尚未保存编选数量。</p>
             <RouterLink
