@@ -18,6 +18,8 @@ RUN NODE_OPTIONS=--max-old-space-size=768 npm run build
 
 FROM nginx:1.31-alpine
 
+RUN apk add --no-cache --upgrade 'libxslt>=1.1.43-r4'
+
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY nginx/pocketbase-admin-disabled.conf /opt/fangji/nginx/pocketbase-admin-disabled.conf
 COPY nginx/pocketbase-admin-enabled.conf /opt/fangji/nginx/pocketbase-admin-enabled.conf
