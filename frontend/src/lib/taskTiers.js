@@ -7,9 +7,9 @@
 export const TIER_KEYS = ['A', 'B', 'C']
 
 export const TIER_LABELS = {
-  A: 'A 类 · 照抄型',
-  B: 'B 类 · 需判断',
-  C: 'C 类 · 需专业知识'
+  A: '基础核对',
+  B: '需要判断',
+  C: '需要专业知识'
 }
 
 export function tierBreakdown(queue) {
@@ -17,9 +17,11 @@ export function tierBreakdown(queue) {
   if (!tiers || typeof tiers !== 'object') return null
   // 这块 UI 只做一件事：按层级领任务。所以判据是"有没有 A/B/C 可以领"，
   // 而不是"有没有算过 tier"——一水儿的 unknown 撑起一个空筛选器，比不显示更误导人。
-  const options = TIER_KEYS
-    .map((key) => ({ key, label: TIER_LABELS[key], count: count(tiers[key]) }))
-    .filter((option) => option.count > 0)
+  const options = TIER_KEYS.map((key) => ({
+    key,
+    label: TIER_LABELS[key],
+    count: count(tiers[key])
+  })).filter((option) => option.count > 0)
   if (!options.length) return null
   const unknownCount = count(tiers.other)
   const unlabeledCount = count(tiers.unlabeled)
@@ -27,8 +29,11 @@ export function tierBreakdown(queue) {
   // #247：对不上账不许静默。可筛 + unknown + 未评估 应当等于 claimable，
   // 少的那部分意味着有条目既没进任何一档、也没进"没算过"——正是分层数字虚高的形态。
   // 多出来（负数）同样是异常（同一页被数了两次），所以原样给出去，由渲染端说成一句话。
-  const residual = claimable - options.reduce((total, option) => total + option.count, 0)
-    - unknownCount - unlabeledCount
+  const residual =
+    claimable -
+    options.reduce((total, option) => total + option.count, 0) -
+    unknownCount -
+    unlabeledCount
   return {
     options,
     // "other" 就是算过但落 unknown 的那些；它与 unlabeled 都不进可筛选项，
