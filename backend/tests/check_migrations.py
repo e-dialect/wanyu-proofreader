@@ -428,6 +428,37 @@ SPECS = {
             'scope_digest': {'required': False},
         }),
     },
+    # #433 的报告产物是按项目与入站作业保留的快照；并发生成约束和历史查询
+    # 都必须留在迁移里，JSON/CSV artifact kind 则由同一迁移追加并在回滚时移除。
+    '1794441600_batch_report_exports.js': {
+        'objects': [('table', 'batch_report_exports')],
+        'indexes': ['idx_batch_report_history', 'idx_batch_report_active'],
+        'collection_indexes': ('batch_report_exports', 'idx_batch_report_active'),
+        'unique_indexes': [
+            ('batch_report_exports', 'idx_batch_report_active', ('project', 'import_job', 'created_by')),
+        ],
+        'plans': [
+            ('batch_report_exports',
+             'SELECT id FROM batch_report_exports WHERE project=? AND import_job=? ORDER BY created DESC,id DESC',
+             ('p', 'j'), 'idx_batch_report_history'),
+        ],
+        'fields': [
+            ('batch_report_exports', {
+                'import_job': {'required': True, 'max': 15},
+                'status': {'required': True, 'values_contains': 'completed'},
+                'error_code': {'required': False, 'max': 2000},
+                'error_message': {'required': False, 'max': 2000},
+                'json_artifact': {'required': False},
+                'json_sha256': {'required': False, 'max': 64},
+                'csv_artifact': {'required': False},
+                'csv_sha256': {'required': False, 'max': 64},
+                'generated_at': {'required': False},
+            }),
+            ('project_artifacts', {
+                'kind': {'values_contains': ['batch_report_json', 'batch_report_csv']},
+            }),
+        ],
+    },
 }
 FIRST = '1788940000_initial_schema.js'
 
@@ -591,49 +622,50 @@ def _assert_fields(data, migration, field_spec, problems, expect):
     （assist_rule_gates 就同时被 1789113600 的 down 删除）。把它判成缺失报错，等于要求
     「加字段」类迁移永远不能声明 fields 断言——而那正是这类迁移唯一能写的断言。
     """
-    collection, fields = field_spec
-    with closing(sqlite3.connect(data / 'data.db')) as db:
-        row = db.execute('SELECT fields FROM _collections WHERE name=?', (collection,)).fetchone()
-    if row is None:
-        if expect:
-            problems.append(f'{migration}: collection {collection} missing')
-        return
-    declared = json.loads(row[0])
-    for field_name, conditions in fields.items():
-        target = next((f for f in declared if f.get('name') == field_name), None)
-        if target is None:
-            if not expect:
-                continue
-            problems.append(f'{migration}: field {collection}.{field_name} missing')
+    field_specs = [field_spec] if isinstance(field_spec[0], str) else field_spec
+    for collection, fields in field_specs:
+        with closing(sqlite3.connect(data / 'data.db')) as db:
+            row = db.execute('SELECT fields FROM _collections WHERE name=?', (collection,)).fetchone()
+        if row is None:
+            if expect:
+                problems.append(f'{migration}: collection {collection} missing')
             continue
-        if 'required' in conditions:
-            actual = target.get('required')
-            want = conditions['required']
-            ok = (actual == want) if expect else (actual != want)
-            if not ok:
-                state = 'applied' if expect else 'rolled back'
-                problems.append(
-                    f'{migration}: {collection}.{field_name}.required should be {want} when {state}, got {actual}')
-        if 'max' in conditions:
-            # 长度上限也是契约的一部分：#190 的 canonical_pronunciation 上限在迁移与
-            # handler 里各写了一份，对不上就是「界面拦得住、直接调接口存不进」。
-            # 没写 max 的文本字段在 PocketBase 里存的不是 0 而是缺省，所以这里用 get。
-            actual = target.get('max')
-            want = conditions['max']
-            ok = (actual == want) if expect else (actual != want)
-            if not ok:
-                state = 'applied' if expect else 'rolled back'
-                problems.append(
-                    f'{migration}: {collection}.{field_name}.max should be {want} when {state}, got {actual}')
-        if 'values_contains' in conditions:
-            actual_values = target.get('values', [])
-            want = conditions['values_contains']
-            contains = want in actual_values
-            ok = contains if expect else (not contains)
-            if not ok:
-                state = 'applied' if expect else 'rolled back'
-                problems.append(
-                    f'{migration}: {collection}.{field_name}.values should {"contain" if expect else "exclude"} {want!r} when {state}')
+        declared = json.loads(row[0])
+        for field_name, conditions in fields.items():
+            target = next((f for f in declared if f.get('name') == field_name), None)
+            if target is None:
+                if not expect:
+                    continue
+                problems.append(f'{migration}: field {collection}.{field_name} missing')
+                continue
+            if 'required' in conditions:
+                actual = target.get('required')
+                want = conditions['required']
+                ok = (actual == want) if expect else (actual != want)
+                if not ok:
+                    state = 'applied' if expect else 'rolled back'
+                    problems.append(
+                        f'{migration}: {collection}.{field_name}.required should be {want} when {state}, got {actual}')
+            if 'max' in conditions:
+                # 长度上限也是契约的一部分：#190 的 canonical_pronunciation 上限在迁移与
+                # handler 里各写了一份，对不上就是「界面拦得住、直接调接口存不进」。
+                # 没写 max 的文本字段在 PocketBase 里存的不是 0 而是缺省，所以这里用 get。
+                actual = target.get('max')
+                want = conditions['max']
+                ok = (actual == want) if expect else (actual != want)
+                if not ok:
+                    state = 'applied' if expect else 'rolled back'
+                    problems.append(
+                        f'{migration}: {collection}.{field_name}.max should be {want} when {state}, got {actual}')
+            if 'values_contains' in conditions:
+                actual_values = target.get('values', [])
+                want = conditions['values_contains']
+                wanted_values = want if isinstance(want, list) else [want]
+                contains = all(value in actual_values for value in wanted_values)
+                ok = contains if expect else all(value not in actual_values for value in wanted_values)
+                if not ok:
+                    problems.append(
+                        f'{migration}: {collection}.{field_name}.values should {"contain" if expect else "exclude"} {wanted_values!r} when {"applied" if expect else "rolled back"}')
 
 
 def assert_state(data, expected, through, problems, context):
