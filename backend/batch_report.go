@@ -293,7 +293,7 @@ func (s *importService) addBatchReportWorkflow(app core.App, report *batchReport
 			return err
 		}
 		view := deliveryView(record, events)
-		if view["receipt_state"] == "awaiting_receipt" {
+		if view["awaiting_receipt"] == true {
 			awaiting++
 			if t, ok := parseBatchTime(record.GetString("created")); ok && !t.After(now) {
 				wait := int64(now.Sub(t).Seconds())
@@ -306,7 +306,7 @@ func (s *importService) addBatchReportWorkflow(app core.App, report *batchReport
 		}
 		report.Deliveries = append(report.Deliveries, view)
 	}
-	report.Metrics["efficiency"]["receipt_wait_seconds"] = reportMetric(maxWait, awaiting, "seconds", "release_deliveries.created; explicit receipt events", "尚无接收回执的交付包最长等待时间；下载不等于接收。")
+	report.Metrics["efficiency"]["receipt_wait_seconds"] = reportMetric(maxWait, awaiting, "seconds", "release_deliveries.created; explicit receipt/return/withdrawal events", "尚无接收回执且未退回、未撤回的交付包最长等待时间；下载不等于接收。")
 	if missingWait > 0 {
 		report.Metrics["efficiency"]["receipt_wait_seconds"] = unknownBatchMetric("seconds", "release_deliveries.created", "存在缺少可靠生成时间的交付包。")
 	}

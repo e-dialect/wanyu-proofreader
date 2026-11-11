@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
@@ -104,4 +105,58 @@ func TestBatchReportMigrationRollbackAndCompletedSnapshot(t *testing.T) {
 	if err := app.Save(record); err == nil {
 		t.Fatal("completed report is mutable")
 	}
+}
+
+func TestBatchReportReceiptWaitExcludesReturnedAndWithdrawnPackages(t *testing.T) {
+	app := newSchemaTestApp(t)
+	for _, name := range []string{"1792281600_release_deliveries.js", "1792886400_adoption_batches.js", "1794203000_delivery_adoption.js"} {
+		up, _ := deliveryMigration(t, "pb_migrations/"+name)
+		if err := app.RunInTransaction(up); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snap := deliveryArchiveFixture(t, app)
+	var packages []*core.Record
+	for _, recipient := range []string{"awaiting", "returned", "withdrawn"} {
+		snap.Recipient = recipient
+		r, err := saveDeliveryArchive(app, snap, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		packages = append(packages, r)
+	}
+	collection, _ := app.FindCollectionByNameOrId("release_events")
+	addEvent := func(delivery *core.Record, kind, payload string, sequence int) *core.Record {
+		e := core.NewRecord(collection)
+		e.Set("delivery", delivery.Id)
+		e.Set("kind", kind)
+		e.Set("payload", payload)
+		e.Set("sequence", sequence)
+		e.Set("actor", snap.Operator)
+		if err := app.Save(e); err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	returned := addEvent(packages[1], "return", `{}`, 1)
+	addEvent(packages[2], "withdrawal", `{}`, 1)
+	service := &importService{}
+	check := func(expected string) {
+		report := batchReport{ProjectID: snap.Project, Metrics: map[string]map[string]batchMetric{"efficiency": {}}}
+		if err := service.addBatchReportWorkflow(app, &report, snap.ImportJob, time.Now().Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		metric := report.Metrics["efficiency"]["receipt_wait_seconds"]
+		if metric.Denominator == nil || *metric.Denominator != 1 || metric.Value == nil || *metric.Value < 3600 {
+			t.Fatalf("only genuinely awaiting package should contribute: %+v", metric)
+		}
+		for _, view := range report.Deliveries {
+			if view["id"] == packages[1].Id && (view["workflow_state"] != expected || view["awaiting_receipt"] != false || view["waiting_seconds"] != int64(0)) {
+				t.Fatalf("returned package incorrectly waiting: %+v", view)
+			}
+		}
+	}
+	check("pending_resolution")
+	addEvent(packages[1], "resolution", `{"resolves":"`+returned.Id+`"}`, 2)
+	check("returned_resolved")
 }

@@ -422,8 +422,10 @@ func deliveryView(record *core.Record, events []*core.Record) map[string]any {
 		}
 		views = append(views, map[string]any{"id": event.Id, "sequence": event.GetInt("sequence"), "kind": event.GetString("kind"), "actor": event.GetString("actor"), "created": event.GetString("created"), "payload": payload})
 	}
+	workflowState := deliveryWorkflowState(state, withdrawn, events)
+	awaitingReceipt := workflowState == "awaiting_receipt"
 	waitSeconds := int64(0)
-	if state == "awaiting_receipt" {
+	if awaitingReceipt {
 		waitSeconds = int64(time.Since(record.GetDateTime("created").Time()).Seconds())
 		if waitSeconds < 0 {
 			waitSeconds = 0
@@ -436,7 +438,27 @@ func deliveryView(record *core.Record, events []*core.Record) map[string]any {
 			noticeState = "manual_notice_recorded"
 		}
 	}
-	return map[string]any{"id": record.Id, "package_id": record.GetString("package_id"), "version": snap.Version, "previous": snap.Previous, "change_reason": snap.ChangeReason, "purpose": snap.Purpose, "recipient": snap.Recipient, "import_job": snap.ImportJob, "source_ref": snap.RightsRef, "created": record.GetString("created"), "sha256": record.GetString("sha256"), "reconciliation": reviewbundle.Reconcile(snap), "receipt_state": state, "receipt_channel": channel, "waiting_seconds": waitSeconds, "withdrawn": withdrawn, "notice_state": noticeState, "pending_actions": deliveryPendingActions(events), "events": views, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_ref": snap.SelectionRef, "selection_scope_digest": snap.SelectionScopeDigest}
+	return map[string]any{"id": record.Id, "package_id": record.GetString("package_id"), "version": snap.Version, "previous": snap.Previous, "change_reason": snap.ChangeReason, "purpose": snap.Purpose, "recipient": snap.Recipient, "import_job": snap.ImportJob, "source_ref": snap.RightsRef, "created": record.GetString("created"), "sha256": record.GetString("sha256"), "reconciliation": reviewbundle.Reconcile(snap), "receipt_state": state, "workflow_state": workflowState, "awaiting_receipt": awaitingReceipt, "receipt_channel": channel, "waiting_seconds": waitSeconds, "withdrawn": withdrawn, "notice_state": noticeState, "pending_actions": deliveryPendingActions(events), "events": views, "release_decision": "human_required", "selection_authority": snap.SelectionAuthority, "selection_ref": snap.SelectionRef, "selection_scope_digest": snap.SelectionScopeDigest}
+}
+
+// deliveryWorkflowState describes current work, while receipt_state preserves
+// the latest explicit receipt. Resolving a return is not a successful receipt.
+func deliveryWorkflowState(receipt string, withdrawn bool, events []*core.Record) string {
+	if withdrawn {
+		return "withdrawn"
+	}
+	if len(deliveryPendingActions(events)) > 0 {
+		return "pending_resolution"
+	}
+	for _, event := range events {
+		if event.GetString("kind") == "return" {
+			return "returned_resolved"
+		}
+	}
+	if receipt == "awaiting_receipt" {
+		return "awaiting_receipt"
+	}
+	return "receipt_recorded"
 }
 
 func deliveryPendingActions(events []*core.Record) []string {
@@ -481,6 +503,7 @@ func (s *importService) listDeliveries(c *core.RequestEvent) error {
 	items := []map[string]any{}
 	states := map[string]int{"awaiting_receipt": 0, "success": 0, "partial_conflict": 0, "failed_rolled_back": 0}
 	withdrawn := 0
+	awaitingReceipts := 0
 	rightsImpacted := 0
 	pendingNotices := 0
 	reconciliationStates := map[string]int{"consistent": 0, "inconsistent": 0}
@@ -506,6 +529,9 @@ func (s *importService) listDeliveries(c *core.RequestEvent) error {
 		}
 		reconciliationStates[v["reconciliation"].(reviewbundle.Reconciliation).Status]++
 		states[v["receipt_state"].(string)]++
+		if v["awaiting_receipt"] == true {
+			awaitingReceipts++
+		}
 		if v["withdrawn"] == true {
 			withdrawn++
 		}
@@ -513,7 +539,7 @@ func (s *importService) listDeliveries(c *core.RequestEvent) error {
 	}
 	total := len(items)
 	page, perPage, totalPages := 1, total, 1
-	return c.JSON(200, map[string]any{"items": items, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages, "metrics": map[string]any{"scope": "generated_packages_only", "reconciliation_scope": "immutable_package_snapshot", "rights_scope": "current_source_permissions", "package_count": total, "receipt_states": states, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliationStates}, "dependency_gaps": []string{"X 侧 dry-run 与双方签字", "未保存失败检查次数与全生产线周吞吐"}})
+	return c.JSON(200, map[string]any{"items": items, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages, "metrics": map[string]any{"scope": "generated_packages_only", "reconciliation_scope": "immutable_package_snapshot", "rights_scope": "current_source_permissions", "package_count": total, "receipt_states": states, "awaiting_receipt_packages": awaitingReceipts, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliationStates}, "dependency_gaps": []string{"X 侧 dry-run 与双方签字", "未保存失败检查次数与全生产线周吞吐"}})
 }
 
 func (s *importService) loadManagedDelivery(c *core.RequestEvent) (*core.Record, error) {
