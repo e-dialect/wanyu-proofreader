@@ -121,8 +121,8 @@ func TestManagerTodoProblemsExcludeClosedAndUnreportedIssues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pending, err := review(page); err != nil || !pending {
-		t.Fatalf("unfinished row belongs to existing review queue: %v %v", pending, err)
+	if pending, err := review(page); err != nil || pending {
+		t.Fatalf("row without review entry point must wait for proofreading: %v %v", pending, err)
 	}
 	page.Set("status", "approved")
 	page.Set("verification_basis", "old-source-version")

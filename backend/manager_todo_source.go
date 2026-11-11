@@ -30,8 +30,9 @@ func newTodoSourceReview(app core.App, hooksDir string) (func(*core.Record) (boo
 		return nil, err
 	}
 	value, err := vm.RunString(`(function(dao,page){
+  if(!["approved","proofread","arbitration"].includes(page.getString("status"))) return false;
   // These conditions already make the existing review predicate true; avoid
-  // reading text and historical judgments for every not-yet-submitted row.
+  // reading text and historical judgments for rows awaiting approval.
   if(page.getString("status")!=="approved"&&!page.getBool("source_empty")) return true;
   if(page.getBool("verification_hold")||page.getBool("verification_needs_recheck")) return true;
   const item=require(__hooks+"/lib/source_fidelity.js").completion(dao,page);

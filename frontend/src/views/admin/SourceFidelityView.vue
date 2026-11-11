@@ -225,7 +225,8 @@
         <div class="project-entry-filterbar">
           <AppField label="显示范围"
             ><select v-model="reviewScope" class="form-control">
-              <option value="todo">待完成或需复核</option>
+              <option value="todo">可核验或仲裁</option>
+              <option value="waiting">等待校对（{{ waitingReviewItems.length }}）</option>
               <option value="all">全部条目</option>
             </select></AppField
           ><button class="btn btn-secondary" :disabled="loading" @click="load">刷新队列</button>
@@ -233,11 +234,29 @@
         <p class="text-sm text-muted mb-4">
           已有提交或一致通过的条目可直接补录来源判断；只核验部分字段时，其余保留未核实。
         </p>
+        <p
+          v-if="waitingReviewItems.length && reviewScope !== 'waiting'"
+          class="source-waiting-note"
+        >
+          另有 {{ waitingReviewItems.length }} 条等待校对，尚未计入可核验待办。
+          <RouterLink :to="{ query: { ...route.query, reviewScope: 'waiting' } }"
+            >查看等待条目</RouterLink
+          >
+        </p>
+        <p
+          v-if="reviewScope === 'waiting' && waitingReviewItems.length"
+          class="source-waiting-note"
+        >
+          请校对者先提交校对结果；需要重新校对的条目，请管理员在项目条目中查看进度。
+          <RouterLink :to="`/admin/projects/${projectId}?section=work&view=entries`"
+            >查看项目条目</RouterLink
+          >
+        </p>
         <AppStatusPanel
           v-if="!reviewItems.length"
           state="empty"
           reason="none"
-          :message="summary.length ? '当前范围没有待复核条目，可切换查看全部。' : '暂无条目。'"
+          :message="reviewEmptyMessage"
         />
         <ul v-else class="project-review-list">
           <li v-for="item in reviewItems" :key="item.id">
@@ -254,9 +273,12 @@
                 · 来源判断 {{ item.field_denominator }}/{{ item.required_fields }} 字段</span
               ><span v-if="item.needs_review">依据变更需复核</span
               ><span v-if="item.pending_review">判断暂缓</span>
+              <span v-if="sourceReviewWaitingReason(item)">{{
+                sourceReviewWaitingReason(item)
+              }}</span>
             </div>
             <RouterLink
-              v-if="['approved', 'proofread', 'arbitration'].includes(item.status)"
+              v-if="canOpenSourceReview(item)"
               class="btn btn-secondary btn-sm"
               :to="sourceReviewTarget(projectId, item, reviewScope)"
               >{{ item.status === 'arbitration' ? '仲裁' : '来源核验' }}</RouterLink
@@ -321,7 +343,12 @@ import {
 } from '@/services/verificationService'
 import { getPbMessage } from '@/utils/pbErrors'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
-import { sourceReviewItems, sourceReviewTarget } from '@/lib/sourceReviewQueue'
+import {
+  canOpenSourceReview,
+  sourceReviewItems,
+  sourceReviewTarget,
+  sourceReviewWaitingReason
+} from '@/lib/sourceReviewQueue'
 import { todoReturnTarget } from '@/lib/unifiedTodos'
 const route = useRoute()
 const router = useRouter()
@@ -364,9 +391,10 @@ watch(linkedIssue, () => {
   if (loaded.value) selectLinkedIssue()
 })
 const reviewScope = computed({
-  get: () => (route.query.reviewScope === 'all' ? 'all' : 'todo'),
+  get: () =>
+    ['all', 'waiting'].includes(route.query.reviewScope) ? route.query.reviewScope : 'todo',
   set: (value) =>
-    router.replace({ query: { ...route.query, reviewScope: value === 'all' ? 'all' : undefined } })
+    router.replace({ query: { ...route.query, reviewScope: value === 'todo' ? undefined : value } })
 })
 const emptyTarget = ref(null)
 const emptyReason = ref('')
@@ -376,6 +404,12 @@ const selectedIssue = computed(() =>
 )
 const resolvingIssue = computed(() => issueEdits[selectedIssueId.value]?.status === 'resolved')
 const reviewItems = computed(() => sourceReviewItems(summary.value, reviewScope.value))
+const waitingReviewItems = computed(() => sourceReviewItems(summary.value, 'waiting'))
+const reviewEmptyMessage = computed(() => {
+  if (!summary.value.length) return '暂无条目。'
+  if (reviewScope.value === 'waiting') return '当前没有等待校对的来源核验条目。'
+  return '当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。'
+})
 const reportsFor = (id) => problems.value.items.filter((report) => report.issue.id === id)
 const issueSignature = (item) =>
   JSON.stringify(
@@ -519,6 +553,15 @@ async function markEmpty() {
 }
 </script>
 <style scoped>
+.source-waiting-note {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  background: var(--surface);
+  border-left: 2px solid var(--line);
+  color: var(--gray-600);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
 .fidelity-actions {
   display: flex;
   flex-wrap: wrap;

@@ -20,8 +20,6 @@
       <span class="skeleton-line skeleton-line--short" aria-hidden="true"></span>
       <span class="skeleton-line" aria-hidden="true"></span>
     </div>
-    <p v-else-if="schemeNotice" class="alert alert-warning" role="alert">{{ schemeNotice }}</p>
-
     <template v-else>
       <div class="scheme-view-controls">
         <nav class="scheme-tabs" aria-label="记音整理工作">
@@ -52,7 +50,19 @@
       <p v-if="schemeError" class="alert alert-error" role="alert">{{ schemeError }}</p>
       <p v-if="schemeSuccess" class="alert alert-success" role="status">{{ schemeSuccess }}</p>
       <section v-show="schemeView === 'jobs'" aria-label="转换作业">
-        <div class="admin-list-filters mb-4">
+        <p v-if="adapterError" class="alert alert-error" role="alert">{{ adapterError }}</p>
+        <div v-else-if="!canGenerate" class="scheme-rule-unavailable" role="status">
+          <strong>当前没有可用于正式转换的规则</strong>
+          <p>请联系部署维护者安装经确认的方案规则，准备好后刷新此页。</p>
+          <p v-if="schemeOptions.length" class="text-sm text-muted">
+            当前登记的方案仅供测试或尚不能用于正式转换。
+          </p>
+          <details v-if="schemeNotice" class="text-sm">
+            <summary>查看维护者信息</summary>
+            <p>{{ schemeNotice }}</p>
+          </details>
+        </div>
+        <div v-else class="admin-list-filters mb-4">
           <AppField class="admin-filter-field"
             ><template #label>本批资料用的是哪套方案</template>
             <select v-model="schemeSourceId" class="form-control">
@@ -61,34 +71,26 @@
                 v-for="item in schemeOptions"
                 :key="item.source_scheme_id"
                 :value="item.source_scheme_id"
+                :disabled="item.can_start_conversion !== true"
               >
-                {{ schemeOptionLabel(item) }}
+                {{ schemeOptionLabel(item)
+                }}{{
+                  item.rule_status === 'production' && item.can_start_conversion !== true
+                    ? ' · 暂不可用于正式转换'
+                    : ''
+                }}
               </option>
             </select>
           </AppField>
           <AppButton
             type="button"
             variant="primary"
-            :disabled="schemeBusy || !schemeSourceId"
+            :disabled="schemeBusy || schemeLoading || !selectedConversion"
             @click="runConversion"
           >
             {{ schemeBusy ? '转换中…' : '生成统一拼音' }}
           </AppButton>
         </div>
-        <!-- 规则文件自己声明了能不能跑真实作业。合成夹具在目录里是合法的一等公民
-               （引擎需要它），但它建不出真实作业——这句话必须在按钮旁边说。 -->
-        <p v-if="testOnlySchemes.length" class="text-sm text-muted">
-          {{ testOnlySchemes.join('、') }}
-          声明为「仅测试」：可以选中，但系统会拒绝用它创建真实转换作业。
-          依据不足的方案不能用于正式转换。
-        </p>
-        <details v-if="testOnlySchemes.length" class="text-sm text-muted mb-3">
-          <summary>查看规则状态说明</summary>
-          <p>
-            仅测试方案的原始状态为 <code>rule_status=test</code>；依据不足的登记保持
-            <code>decline</code>，不会猜成生产规则。
-          </p>
-        </details>
         <h3>最近一次转换</h3>
         <JobStatusPanel
           v-if="schemeJobTarget"
@@ -97,7 +99,8 @@
           :observation="schemeObservation"
           @retry="retrySchemeJob"
         />
-        <p v-else class="text-muted">还没有跑过转换。</p>
+        <p v-else-if="!jobError" class="text-muted">还没有跑过转换。</p>
+        <p v-if="jobError" class="alert alert-error" role="alert">{{ jobError }}</p>
         <template v-if="schemeJob">
           <p class="text-sm text-muted">
             状态：{{ conversionJobStatusLabel(schemeJob.status) }} · 规则版本
@@ -126,9 +129,8 @@
       </section>
       <section v-show="schemeView === 'review'" aria-label="归一复核工作区">
         <h3>复核队列</h3>
-        <p class="text-muted">
-          这些条目机器判不出来——要么规则给出多个候选（需人工确认），要么规则根本接不住（暂未支持）——
-          需要人给出统一方案的写法。结论会记下判定人与依据，重跑时保留，不会被下一次批处理推回机器判断。
+        <p class="text-sm text-muted mb-3">
+          核对待确认或暂未支持的记音。确认统一写法时请填写依据，已保存的人工结论在重跑时保留。
         </p>
         <div class="flex gap-2 items-center mb-2" role="group" aria-label="复核队列状态筛选">
           <AppButton
@@ -173,8 +175,10 @@
             </p>
           </div>
         </details>
-        <p v-if="!reviewRows.length" class="text-muted">{{ reviewEmptyMessage }}</p>
-        <template v-else>
+        <p v-if="reviewError" class="alert alert-error" role="alert">{{ reviewError }}</p>
+        <p v-else-if="reviewLoading" class="text-muted" role="status">正在读取复核队列…</p>
+        <p v-else-if="!reviewRows.length" class="text-muted">{{ reviewEmptyMessage }}</p>
+        <template v-if="reviewRows.length">
           <p class="text-sm text-muted">共 {{ reviewTotalItems }} 条待复核。</p>
           <div class="scheme-queue-layout">
             <nav class="scheme-queue" aria-label="选择复核条目">
@@ -217,12 +221,24 @@
                   <p v-if="row.candidates.length" class="text-sm text-muted">
                     候选：{{ row.candidates.join(' / ') }}
                   </p>
-                  <div v-if="reviewDraft[row.id].stale" class="alert alert-warning" role="alert">
+                  <p v-if="reviewBlocked(row)" class="scheme-rule-unavailable" role="status">
+                    {{ reviewBlocked(row) }}
+                  </p>
+                  <div
+                    v-if="
+                      reviewDraft[row.id].stale &&
+                      (!reviewBlocked(row) ||
+                        reviewDraft[row.id].history.length ||
+                        reviewDraft[row.id].requiresReload)
+                    "
+                    class="alert alert-warning"
+                    role="alert"
+                  >
                     <strong>复核依据已变化，旧草稿不能直接提交。</strong>
                     <p>
                       来源、方案或规则版本变化后，须重新核对并填写当前结论与依据；旧稿只供查看，不会自动套用。
                     </p>
-                    <p v-if="row.source_changed">
+                    <p v-if="row.source_changed && !reviewBlocked(row)">
                       当前来源读音或记音列已变化，请先重跑转换，再刷新本队列。
                     </p>
                     <p v-if="reviewDraft[row.id].requiresReload">
@@ -236,6 +252,7 @@
                         reviewBusy ||
                         reviewDraft[row.id].requiresReload ||
                         row.source_changed ||
+                        reviewLocked(row) ||
                         !row.expected_basis
                       "
                       @click="restartReview(row)"
@@ -255,32 +272,46 @@
                       <p>旧写法：{{ old.canonical }}；旧依据：{{ old.basis }}</p>
                     </div>
                   </details>
-                  <AppField class="admin-filter-field"
-                    ><template #label>统一方案的写法</template>
-                    <input
-                      v-model="reviewDraft[row.id].canonical"
-                      class="form-control"
-                      :disabled="reviewBusy || reviewDraft[row.id].stale"
-                    />
-                  </AppField>
-                  <AppField class="admin-filter-field"
-                    ><template #label>依据（必填）</template>
-                    <input
-                      v-model="reviewDraft[row.id].basis"
-                      class="form-control"
-                      maxlength="500"
-                      :disabled="reviewBusy || reviewDraft[row.id].stale"
-                    />
-                  </AppField>
-                  <AppButton
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    :disabled="reviewBusy || !canSubmitNormalizationDraft(reviewDraft[row.id], row)"
-                    @click="saveReview(row)"
+                  <template
+                    v-if="
+                      !reviewBlocked(row) ||
+                      reviewDraft[row.id].canonical ||
+                      reviewDraft[row.id].basis
+                    "
                   >
-                    确认结论
-                  </AppButton>
+                    <AppField class="admin-filter-field"
+                      ><template #label>统一方案的写法</template>
+                      <input
+                        v-model="reviewDraft[row.id].canonical"
+                        class="form-control"
+                        :readonly="reviewLocked(row)"
+                        :disabled="reviewBusy || reviewDraft[row.id].stale"
+                      />
+                    </AppField>
+                    <AppField class="admin-filter-field"
+                      ><template #label>依据（必填）</template>
+                      <input
+                        v-model="reviewDraft[row.id].basis"
+                        class="form-control"
+                        maxlength="500"
+                        :readonly="reviewLocked(row)"
+                        :disabled="reviewBusy || reviewDraft[row.id].stale"
+                      />
+                    </AppField>
+                    <AppButton
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      :disabled="
+                        reviewBusy ||
+                        reviewLocked(row) ||
+                        !canSubmitNormalizationDraft(reviewDraft[row.id], row)
+                      "
+                      @click="saveReview(row)"
+                    >
+                      确认结论
+                    </AppButton>
+                  </template>
                 </div>
               </li>
             </ul>
@@ -322,8 +353,7 @@ import {
   conversionSummaryLines,
   normalizationBadgeClass,
   normalizationStatusLabel,
-  schemeOptionLabel,
-  testOnlySchemeIds
+  schemeOptionLabel
 } from '@/lib/schemeConversion'
 import { getPbMessage } from '@/utils/pbErrors'
 import {
@@ -346,6 +376,16 @@ function setView(value) {
 const schemeOptions = ref([])
 
 const schemeNotice = ref('')
+const adapterError = ref('')
+const jobError = ref('')
+const canGenerate = computed(() =>
+  schemeOptions.value.some((item) => item.can_start_conversion === true)
+)
+const selectedConversion = computed(() =>
+  schemeOptions.value.find(
+    (item) => item.source_scheme_id === schemeSourceId.value && item.can_start_conversion === true
+  )
+)
 
 const schemeSourceId = ref('')
 
@@ -376,6 +416,14 @@ const schemeLoaded = ref(false)
 let schemeObserver
 
 const reviewRows = ref([])
+const reviewError = ref('')
+const reviewLoading = ref(false)
+const reviewBlocked = (row) =>
+  row.review_ready === false
+    ? row.review_block_reason || '暂不能提交复核结论，请刷新队列后再试。'
+    : ''
+const reviewLocked = (row) =>
+  Boolean(reviewError.value || reviewLoading.value || reviewBlocked(row))
 const selectedReviewRows = computed(() => {
   const current =
     reviewRows.value.find((row) => row.id === selectedReviewId.value) || reviewRows.value[0]
@@ -414,8 +462,6 @@ let disposed = false
 
 const schemeSummary = computed(() => conversionSummaryLines(schemeJob.value))
 
-const testOnlySchemes = computed(() => testOnlySchemeIds(schemeOptions.value))
-
 watch(
   () => [schemeJob.value?.id, schemeJob.value?.status],
   ([id, status], previous) => {
@@ -424,10 +470,7 @@ watch(
       ['completed', 'completed_with_errors'].includes(status) &&
       (id !== previous?.[0] || status !== previous?.[1])
     ) {
-      void loadReviews().catch((error) => {
-        if (!disposed)
-          schemeError.value = getPbMessage(error, '转换已完成，复核队列暂时无法读取，请刷新重试。')
-      })
+      void loadReviews().catch(() => {})
     }
   }
 )
@@ -436,19 +479,33 @@ async function loadReviews() {
   const generation = ++reviewGeneration
   const status =
     reviewStatusFilter.value === 'all' ? 'AMBIGUOUS,UNSUPPORTED' : reviewStatusFilter.value
-  const queue = await listNormalizations(projectId, { status, perPage: 10, page: reviewPage.value })
-  if (disposed || generation !== reviewGeneration) return
-  reviewRows.value = queue.items || []
-  if (!reviewRows.value.some((row) => row.id === selectedReviewId.value))
-    selectedReviewId.value = reviewRows.value[0]?.id || ''
-  reviewTotalItems.value = queue.totalItems || 0
-  reviewTotalPages.value = queue.totalPages || 1
-  // 服务端会把越界的 page 夹回最后一页，这里跟回去：不复写的话，界面上写的是
-  // 「第 3 / 2 页」而列表是第 2 页的内容——复核一条少一条时很容易走到这里。
-  reviewPage.value = queue.page || 1
-  // 草稿按条目 id 存：刷新后原来的输入不该串到别的条目上。
-  for (const row of reviewRows.value)
-    reviewDraft.value[row.id] = reconcileNormalizationDraft(reviewDraft.value[row.id], row)
+  reviewLoading.value = true
+  reviewError.value = ''
+  try {
+    const queue = await listNormalizations(projectId, {
+      status,
+      perPage: 10,
+      page: reviewPage.value
+    })
+    if (disposed || generation !== reviewGeneration) return
+    reviewRows.value = queue.items || []
+    if (!reviewRows.value.some((row) => row.id === selectedReviewId.value))
+      selectedReviewId.value = reviewRows.value[0]?.id || ''
+    reviewTotalItems.value = queue.totalItems || 0
+    reviewTotalPages.value = queue.totalPages || 1
+    // 服务端会把越界的 page 夹回最后一页，这里跟回去：不复写的话，界面上写的是
+    // 「第 3 / 2 页」而列表是第 2 页的内容——复核一条少一条时很容易走到这里。
+    reviewPage.value = queue.page || 1
+    // 草稿按条目 id 存：刷新后原来的输入不该串到别的条目上。
+    for (const row of reviewRows.value)
+      reviewDraft.value[row.id] = reconcileNormalizationDraft(reviewDraft.value[row.id], row)
+  } catch (error) {
+    if (!disposed && generation === reviewGeneration)
+      reviewError.value = '暂时无法读取复核队列，请刷新。'
+    throw error
+  } finally {
+    if (!disposed && generation === reviewGeneration) reviewLoading.value = false
+  }
 }
 
 async function setReviewFilter(value) {
@@ -456,42 +513,45 @@ async function setReviewFilter(value) {
   reviewStatusFilter.value = value
   // 换了筛选条件就是换了一份清单，页码必须从头开始。
   reviewPage.value = 1
-  try {
-    await loadReviews()
-  } catch (e) {
-    schemeError.value = getPbMessage(e, '复核队列加载失败。')
-  }
+  await loadReviews().catch(() => {})
 }
 
 async function gotoReviewPage(page) {
   if (page < 1 || page > reviewTotalPages.value) return
   reviewPage.value = page
-  try {
-    await loadReviews()
-  } catch (e) {
-    schemeError.value = getPbMessage(e, '复核队列加载失败。')
-  }
+  await loadReviews().catch(() => {})
 }
 
 async function loadSchemeState() {
   if (schemeLoading.value) return
   schemeLoading.value = true
   schemeError.value = ''
+  adapterError.value = ''
+  jobError.value = ''
   try {
-    const [adapters, conversions] = await Promise.all([
+    const [adapters, conversions] = await Promise.allSettled([
       listSchemeAdapters(),
       schemeJobTarget.value?.id
         ? getConversion(projectId, schemeJobTarget.value.id).then((job) => ({ items: [job] }))
         : listConversions(projectId),
       loadReviews()
     ])
-    schemeOptions.value = adapters.schemes || []
-    schemeNotice.value = adapterNotice(adapters)
     if (disposed) return
-    schemeJobTarget.value = (conversions.items || [])[0] || null
-    if (schemeJobTarget.value) seedSchemeJob(schemeJobTarget.value)
-  } catch (e) {
-    schemeError.value = getPbMessage(e, '拼音归一状态加载失败。')
+    if (adapters.status === 'fulfilled') {
+      schemeOptions.value = adapters.value.schemes || []
+      schemeNotice.value = adapterNotice(adapters.value)
+      if (!selectedConversion.value) schemeSourceId.value = ''
+    } else {
+      schemeOptions.value = []
+      schemeNotice.value = ''
+      adapterError.value = '暂时无法读取可用方案，请刷新。'
+    }
+    if (conversions.status === 'fulfilled') {
+      schemeJobTarget.value = (conversions.value.items || [])[0] || null
+      if (schemeJobTarget.value) seedSchemeJob(schemeJobTarget.value)
+    } else {
+      jobError.value = '暂时无法读取转换记录，请刷新。'
+    }
   } finally {
     schemeLoaded.value = true
     schemeLoading.value = false
@@ -516,6 +576,7 @@ function setupSchemeObserver() {
 }
 
 async function runConversion() {
+  if (schemeBusy.value || schemeLoading.value || !selectedConversion.value) return
   schemeBusy.value = true
   schemeError.value = ''
   schemeSuccess.value = ''
@@ -537,11 +598,11 @@ async function runConversion() {
 
 let reviewSaveGeneration = 0
 function restartReview(row) {
-  restartNormalizationDraft(reviewDraft.value[row.id], row)
+  if (!reviewLocked(row)) restartNormalizationDraft(reviewDraft.value[row.id], row)
 }
 async function saveReview(row) {
   const draft = reviewDraft.value[row.id]
-  if (reviewBusy.value || !canSubmitNormalizationDraft(draft, row)) return
+  if (reviewBusy.value || reviewLocked(row) || !canSubmitNormalizationDraft(draft, row)) return
   const generation = ++reviewSaveGeneration
   const expectedBasis = draft.expectedBasis
   const isCurrent = () =>
@@ -561,7 +622,7 @@ async function saveReview(row) {
     })
     if (!isCurrent()) return
     schemeSuccess.value = `第 ${row.page_number} 条已记为「已复核」，重跑时不会被推回机器判断。`
-    await loadReviews()
+    await loadReviews().catch(() => {})
   } catch (e) {
     if (!isCurrent()) return
     schemeError.value = getPbMessage(e, '保存人工结论失败。')
@@ -591,6 +652,17 @@ defineExpose({ setupSchemeObserver, setView })
 </script>
 
 <style scoped>
+.scheme-rule-unavailable {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+.scheme-rule-unavailable > p,
+.scheme-rule-unavailable > details {
+  margin-top: var(--space-1);
+}
 .scheme-view-controls {
   display: flex;
   flex-wrap: wrap;

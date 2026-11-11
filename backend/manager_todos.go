@@ -55,7 +55,7 @@ func newManagerTodo(project todoProject, stage string) managerTodo {
 		row.Target.Path += "/verification"
 		row.Target.Query = map[string]string{"view": "review"}
 		row.TargetLabel = "查看核验队列"
-		row.Note = "与来源核验的待办范围一致，含尚未完成校对或需重新核验的条目。"
+		row.Note = "已有提交、当前可进入来源核验或仲裁的条目；等待首次校对或资料返工的条目可在来源核验页查看。"
 	case "normalization":
 		row.Target.Query = map[string]string{"section": "work", "view": "normalization", "schemeView": "review"}
 		row.TargetLabel = "查看待复核条目"
