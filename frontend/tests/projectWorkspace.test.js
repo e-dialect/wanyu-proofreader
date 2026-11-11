@@ -244,7 +244,7 @@ for (const status of [401, 403, 404]) {
     const initial = [
       { arbitration: 3 },
       { totalItems: 4 },
-      { items: [{ business_complete: false }] },
+      { items: [{ status: 'proofread', business_complete: false }] },
       { issues: [{ status: 'new', report_count: 3 }] }
     ]
     for (const failingSide of sides) {
@@ -299,7 +299,7 @@ test('temporary queue read failures preserve prior counts and allow retry', asyn
     () =>
       fail
         ? Promise.reject({ status: 0, message: 'offline' })
-        : { items: [{ business_complete: false }] },
+        : { items: [{ status: 'proofread', business_complete: false }] },
     () =>
       fail
         ? Promise.reject({ status: 503, message: 'unavailable' })
@@ -338,12 +338,13 @@ test('new queue counts are unknown until read and use the same destination scope
   assert.equal(workflowProblemCount({ issues: [] }), 0)
   const summary = {
     items: [
-      { id: 'complete', business_complete: true },
-      { id: 'pending', business_complete: false },
-      { id: 'stale', business_complete: true, needs_review: true },
-      { id: 'hold', business_complete: true, pending_review: true },
-      { id: 'excluded', source_empty: true },
-      { id: 'excluded-stale', source_empty: true, needs_review: true }
+      { id: 'complete', status: 'approved', business_complete: true },
+      { id: 'pending', status: 'pending', business_complete: false },
+      { id: 'submitted', status: 'proofread', business_complete: false },
+      { id: 'stale', status: 'approved', business_complete: true, needs_review: true },
+      { id: 'hold', status: 'approved', business_complete: true, pending_review: true },
+      { id: 'excluded', status: 'pending', source_empty: true },
+      { id: 'excluded-stale', status: 'approved', source_empty: true, needs_review: true }
     ]
   }
   const target = projectWorkflowTarget('project', 'review', { reviewScope: 'all' })

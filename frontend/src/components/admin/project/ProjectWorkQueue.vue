@@ -234,9 +234,9 @@ const items = computed(() => [
     key: 'review',
     icon: 'source',
     title: '来源复核',
-    detail: '查看待完成或需复核条目，补录来源判断与核验依据。',
+    detail: '处理已有提交的来源核验或仲裁；等待校对的条目在队列中单列。',
     count: reviewCount.value,
-    countLabel: '待完成或需复核',
+    countLabel: '可核验或仲裁',
     emptyLabel: '当前范围无待办',
     stale: !!reviewError.value,
     label: '打开复核队列'
