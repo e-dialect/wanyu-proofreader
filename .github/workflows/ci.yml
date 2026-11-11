@@ -227,6 +227,20 @@ jobs:
         with:
           node-version: "24"
       - run: npm --prefix frontend ci && npm --prefix frontend run build
+      - &ubuntu-archive-fallback
+        name: Select an available Ubuntu archive
+        run: |
+          if timeout 5s getent ahostsv4 azure.archive.ubuntu.com >/dev/null &&
+             timeout 5s getent ahostsv4 archive.ubuntu.com >/dev/null &&
+             timeout 5s getent ahostsv4 security.ubuntu.com >/dev/null; then
+            exit 0
+          fi
+          mirror=https://mirrors.edge.kernel.org/ubuntu
+          curl --fail --silent --show-error --retry 2 --connect-timeout 5 --max-time 15 \
+            "$mirror/dists/noble-security/InRelease" --output /dev/null
+          # Keep the Ubuntu archive keyring and all enabled pockets, including security.
+          sudo sed -i "s|^URIs:.*|URIs: $mirror/|" /etc/apt/sources.list.d/ubuntu.sources
+          printf 'Using Ubuntu archive mirror %s\n' "$mirror"
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/upload-browser" playwright@1.62.1
@@ -283,6 +297,7 @@ jobs:
           # 而生产 CSP 的 connect-src 不含 http://127.0.0.1:8090，指向它会被拦成
           # "页面暂时无法显示"，于是整条作业只会截到错误边界。
           VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - *ubuntu-archive-fallback
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/assist-browser" playwright@1.62.1
@@ -337,6 +352,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - *ubuntu-archive-fallback
       - name: Install page image renderers
         run: sudo apt-get update && sudo apt-get install -y poppler-utils webp
       - name: Build the SPA for same-origin API calls
@@ -386,6 +402,7 @@ jobs:
           # 与 assist-browser 同一理由：构建期把后端指到同源，否则生产 CSP 的
           # connect-src 不含 http://127.0.0.1:8090，截图只会截到错误边界。
           VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - *ubuntu-archive-fallback
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/quality-browser" playwright@1.62.1
@@ -447,6 +464,7 @@ jobs:
         run: |
           npm --prefix frontend ci
           VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - *ubuntu-archive-fallback
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/scheme-browser" playwright@1.62.1
@@ -589,6 +607,7 @@ jobs:
         run: python3 backend/tests/run_bundle_import_integration.py
       - name: Verify OCR worker failures and restart recovery without external data
         run: python3 backend/tests/run_ocr_runtime_integration.py
+      - *ubuntu-archive-fallback
       - name: Install frontend and mounted component browser
         run: |
           npm --prefix frontend ci
@@ -825,6 +844,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - *ubuntu-archive-fallback
       - name: Extract the actual frontend image for OCR browser verification
         run: |
           container=$(docker create fangji-frontend:ci)
@@ -905,6 +925,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - *ubuntu-archive-fallback
       - name: Install page image renderers
         run: sudo apt-get update && sudo apt-get install -y poppler-utils webp
       - run: python3 backend/tests/run_integration.py pdf_access_integration.mjs --env REQUIRE_PAGE_IMAGES=1
