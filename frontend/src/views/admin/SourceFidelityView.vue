@@ -61,11 +61,25 @@
       <p v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</p>
       <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
       <template v-if="loaded && view === 'problems'">
+        <div class="project-entry-filterbar">
+          <AppField label="显示范围"
+            ><select v-model="problemScope" class="form-control" :disabled="busy">
+              <option value="todo">未处理完成</option>
+              <option value="all">全部事项（含已处理）</option>
+            </select></AppField
+          ><button class="btn btn-secondary" :disabled="loading || busy" @click="load">
+            刷新事项
+          </button>
+        </div>
         <AppStatusPanel
           v-if="!activeIssues.length"
           state="empty"
           reason="none"
-          message="暂无成员报告。"
+          :message="
+            problemScope === 'todo'
+              ? '暂无未处理事项，可切换范围查看已处理历史。'
+              : '暂无成员报告。'
+          "
         />
         <template v-else>
           <section v-if="selection.length" class="card mb-4" aria-label="报告批量处理">
@@ -310,6 +324,7 @@ import {
 import { getPbMessage } from '@/utils/pbErrors'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import { sourceReviewItems, sourceReviewTarget } from '@/lib/sourceReviewQueue'
+import { projectProblemItems } from '@/lib/projectWorkflow'
 const route = useRoute()
 const router = useRouter()
 const projectId = String(route.params.id)
@@ -337,12 +352,24 @@ const reviewScope = computed({
   set: (value) =>
     router.replace({ query: { ...route.query, reviewScope: value === 'all' ? 'all' : undefined } })
 })
+const problemScope = computed({
+  get: () => (route.query.problemScope === 'todo' ? 'todo' : 'all'),
+  set: (value) =>
+    router.replace({ query: { ...route.query, problemScope: value === 'todo' ? 'todo' : 'all' } })
+})
 const emptyTarget = ref(null)
 const emptyReason = ref('')
-const activeIssues = computed(() => problems.value.issues.filter((issue) => issue.report_count > 0))
+const activeIssues = computed(() => projectProblemItems(problems.value.issues, problemScope.value))
 const selectedIssue = computed(() =>
   activeIssues.value.find((issue) => issue.id === selectedIssueId.value)
 )
+watch(activeIssues, (issues) => {
+  const visible = new Set(issues.map((issue) => issue.id))
+  if (!visible.has(selectedIssueId.value)) selectedIssueId.value = issues[0]?.id || ''
+  selection.value = selection.value.filter((id) =>
+    problems.value.items.some((report) => report.id === id && visible.has(report.issue.id))
+  )
+})
 const reviewItems = computed(() => sourceReviewItems(summary.value, reviewScope.value))
 const reportsFor = (id) => problems.value.items.filter((report) => report.issue.id === id)
 const issueSignature = (item) =>
@@ -411,8 +438,6 @@ async function load() {
     if (requested === 'problems') {
       problems.value = result
       for (const issue of result.issues) syncIssue(issue)
-      if (!activeIssues.value.some((issue) => issue.id === selectedIssueId.value))
-        selectedIssueId.value = activeIssues.value[0]?.id || ''
     } else summary.value = result.items
     loaded.value = true
   } catch (error) {

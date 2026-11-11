@@ -33,6 +33,24 @@
         @retry="loadStats"
       />
       <AppStatusPanel
+        v-if="reviewError"
+        state="error"
+        title="来源复核数量暂不可用"
+        :message="reviewError"
+        retry-label="重试"
+        :busy="reviewPending"
+        @retry="loadReviews"
+      />
+      <AppStatusPanel
+        v-if="problemError"
+        state="error"
+        title="成员问题数量暂不可用"
+        :message="problemError"
+        retry-label="重试"
+        :busy="problemPending"
+        @retry="loadProblems"
+      />
+      <AppStatusPanel
         v-if="normalizationError"
         state="error"
         title="归一复核数量暂不可用"
@@ -62,7 +80,9 @@
             class="project-todo__state"
             :class="{ 'project-todo__state--active': item.count > 0 }"
           >
-            <strong v-if="item.count !== null">{{ item.count }}<span> 条</span></strong>
+            <strong v-if="item.count !== null"
+              >{{ item.count }}<span> {{ item.unit || '条' }}</span></strong
+            >
             <span v-else>未读取</span>
             <small v-if="item.stale && item.count !== null">上次读取</small>
             <small v-else-if="item.count === 0">{{ item.emptyLabel }}</small>
@@ -75,7 +95,7 @@
         </li>
       </ul>
       <p class="project-todo__note">
-        这里的数量均为全项目统计。来源复核与成员问题尚未读取数量，不代表没有待办。
+        数量均为全项目统计。来源复核包含待完成条目；成员问题按未处理事项计数，同一事项的多份报告合并计为一项。
       </p>
     </template>
   </section>
@@ -89,7 +109,13 @@ import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import { getAdminProjectPageStats } from '@/services/pagesService'
 import { listNormalizations } from '@/services/schemeConversionService'
-import { projectWorkflowTarget, workflowCount } from '@/lib/projectWorkflow'
+import { getVerificationSummary, getProjectProblems } from '@/services/verificationService'
+import {
+  projectWorkflowTarget,
+  workflowCount,
+  workflowReviewCount,
+  workflowProblemCount
+} from '@/lib/projectWorkflow'
 import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -116,14 +142,36 @@ const {
     listNormalizations(props.projectId, { status: 'AMBIGUOUS,UNSUPPORTED', page: 1, perPage: 1 }),
   { formatError: (error) => getPbMessage(error, '请稍后重试；也可以直接打开归一复核。') }
 )
+const {
+  data: reviews,
+  pending: reviewPending,
+  error: reviewError,
+  reload: readReviews,
+  cancel: cancelReviews
+} = useAsyncResource(() => getVerificationSummary(props.projectId), {
+  formatError: (error) => getPbMessage(error, '请稍后重试；也可以直接打开来源复核。')
+})
+const {
+  data: problems,
+  pending: problemPending,
+  error: problemError,
+  reload: readProblems,
+  cancel: cancelProblems
+} = useAsyncResource(() => getProjectProblems(props.projectId), {
+  formatError: (error) => getPbMessage(error, '请稍后重试；也可以直接打开成员问题。')
+})
 function invalidateAccess(error) {
   const status = getPbStatus(error)
   if (![401, 403, 404].includes(status)) return
-  // Stop both reads before clearing either value; a late successful peer cannot restore them.
+  // Stop every read before clearing values; late successful peers cannot restore them.
   cancelStats()
   cancelNormalizations()
+  cancelReviews()
+  cancelProblems()
   stats.value = null
   normalizations.value = null
+  reviews.value = null
+  problems.value = null
   accessError.value =
     status === 401
       ? '登录状态已失效，请重新登录后打开项目。'
@@ -131,27 +179,36 @@ function invalidateAccess(error) {
         ? '当前账号已无权查看此项目，请联系项目管理员。'
         : '项目或待办入口已不可用，请返回项目列表确认。'
 }
-async function loadStats() {
+async function loadResource(read) {
   if (accessError.value) return
-  const result = await readStats()
+  const result = await read()
   if (result.error) invalidateAccess(result.error)
   return result
 }
-async function loadNormalizations() {
-  if (accessError.value) return
-  const result = await readNormalizations()
-  if (result.error) invalidateAccess(result.error)
-  return result
-}
-const busy = computed(() => statsPending.value || normalizationPending.value)
+const loadStats = () => loadResource(readStats)
+const loadNormalizations = () => loadResource(readNormalizations)
+const loadReviews = () => loadResource(readReviews)
+const loadProblems = () => loadResource(readProblems)
+const busy = computed(
+  () =>
+    statsPending.value || normalizationPending.value || reviewPending.value || problemPending.value
+)
 const arbitrationCount = computed(() => workflowCount(stats.value?.arbitration))
 const normalizationCount = computed(() => workflowCount(normalizations.value?.totalItems))
+const reviewCount = computed(() => workflowReviewCount(reviews.value))
+const problemCount = computed(() => workflowProblemCount(problems.value))
 const priority = computed(() => {
   if (arbitrationCount.value > 0 && !statsError.value)
     return {
       action: 'arbitration',
       label: '处理仲裁',
       message: `先处理 ${arbitrationCount.value} 条独立结果差异。`
+    }
+  if (problemCount.value > 0 && !problemError.value)
+    return {
+      action: 'problems',
+      label: '处理成员问题',
+      message: `${problemCount.value} 项成员问题尚未处理完成。`
     }
   if (normalizationCount.value > 0 && !normalizationError.value)
     return {
@@ -177,8 +234,11 @@ const items = computed(() => [
     key: 'review',
     icon: 'source',
     title: '来源复核',
-    detail: '补录来源判断，处理暂缓或依据变化后的复核。',
-    count: null,
+    detail: '查看待完成或需复核条目，补录来源判断与核验依据。',
+    count: reviewCount.value,
+    countLabel: '待完成或需复核',
+    emptyLabel: '当前范围无待办',
+    stale: !!reviewError.value,
     label: '打开复核队列'
   },
   {
@@ -186,7 +246,11 @@ const items = computed(() => [
     icon: 'help',
     title: '成员报告的问题',
     detail: '查看来源、工具与内容问题，处理后向成员反馈。',
-    count: null,
+    count: problemCount.value,
+    unit: '项',
+    countLabel: '尚未处理完成',
+    emptyLabel: '暂无未处理事项',
+    stale: !!problemError.value,
     label: '处理问题'
   },
   {
@@ -202,7 +266,8 @@ const items = computed(() => [
   }
 ])
 const link = (action) => projectWorkflowTarget(props.projectId, action, props.query)
-const reload = () => Promise.allSettled([loadStats(), loadNormalizations()])
+const reload = () =>
+  Promise.allSettled([loadStats(), loadNormalizations(), loadReviews(), loadProblems()])
 onMounted(reload)
 defineExpose({ reload })
 </script>

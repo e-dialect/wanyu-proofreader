@@ -1,4 +1,21 @@
 import { projectWorkspaceTarget } from './projectWorkspace.js'
+import { sourceReviewItems } from './sourceReviewQueue.js'
+
+export function projectProblemItems(issues, scope = 'all') {
+  return issues.filter(
+    (issue) => issue.report_count > 0 && (scope !== 'todo' || issue.status !== 'resolved')
+  )
+}
+
+export function workflowReviewCount(summary) {
+  return Array.isArray(summary?.items) ? sourceReviewItems(summary.items).length : null
+}
+
+export function workflowProblemCount(problems) {
+  return Array.isArray(problems?.issues)
+    ? projectProblemItems(problems.issues, 'todo').length
+    : null
+}
 
 export function workflowCount(value) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
@@ -66,7 +83,7 @@ export function projectWorkflowTarget(projectId, action, query = {}) {
   if (action === 'review' || action === 'problems') {
     return {
       path: `/admin/projects/${encodeURIComponent(projectId)}/verification`,
-      query: { view: action }
+      query: action === 'problems' ? { view: action, problemScope: 'todo' } : { view: action }
     }
   }
   if (action === 'members' || action === 'rules') {
