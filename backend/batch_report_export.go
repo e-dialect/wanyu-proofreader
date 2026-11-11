@@ -112,9 +112,23 @@ func (s *importService) listBatchReportExports(c *core.RequestEvent) error {
 
 func batchReportCSV(report batchReport, rows []batchReportEntry) []byte {
 	var output strings.Builder
-	output.WriteString("\uFEFFschema,generated_at,project_id,import_job,entry_id,page_number,status,quality_state,current_round_submitters,submitted_fields,source_correct_fields,source_incorrect_fields,source_unverified_fields,final_adoption_at,last_mismatch_at,blocked_reason\r\n")
+	output.WriteString("\uFEFF版本,生成时间,项目标识,导入批次,条目标识,条号,校对状态,质量状态,本轮提交人数,提交字段数,来源正确字段,来源有误字段,未核实字段,最终采用记录时间,最近分歧时间,阻塞原因\r\n")
+	// Keep the existing UI vocabulary. Unknown states retain their original code
+	// so a newer or historical value is never silently given a different meaning.
+	labels := map[string]string{
+		"pending": "待校对", "claimed": "已认领", "proofreading": "校对中",
+		"proofread": "收集中", "arbitration": "待仲裁", "reviewing": "历史处理中",
+		"approved": "校对完成", "rejected": "不适用", "rework": "待返工",
+		"candidate": "待定", "validated": "已确认", "withheld": "暂缓外发",
+	}
+	label := func(value string) string {
+		if translated, ok := labels[value]; ok {
+			return translated
+		}
+		return value
+	}
 	for _, row := range rows {
-		values := []any{report.Schema, report.GeneratedAt, report.ProjectID, report.Batch["id"], row.ID, row.PageNumber, row.Status, row.QualityState, row.Submitted, row.Fields, row.Correct, row.Incorrect, row.Unverified, row.CompletedAt, row.MismatchAt, row.BlockedReason}
+		values := []any{report.Schema, report.GeneratedAt, report.ProjectID, report.Batch["id"], row.ID, row.PageNumber, label(row.Status), label(row.QualityState), row.Submitted, row.Fields, row.Correct, row.Incorrect, row.Unverified, row.CompletedAt, row.MismatchAt, row.BlockedReason}
 		cells := make([]string, len(values))
 		for i, value := range values {
 			cells[i] = toSafeCsvCell(value)
