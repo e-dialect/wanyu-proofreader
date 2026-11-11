@@ -56,9 +56,11 @@
           :inert="loading || pdfLoading"
           :src="pdfUrl"
           :page-image="pageImage"
+          :source-region="visibleSourceRegion"
           :watermark-user-id="watermarkUserId"
           :watermark-project-id="page?.project || ''"
           @image-error="fallbackToPdf"
+          @show-full-page="preferLocalSource = false"
           :page-number="localPdfPage"
           :source-page-number="currentPdfPage"
           :source-total-pages="totalPdfPages"
@@ -92,6 +94,29 @@
                 @click="switchPdfPage(1)"
               >
                 ›
+              </button>
+            </div>
+            <div
+              v-if="hasSourceRegion"
+              class="source-view-options"
+              role="group"
+              aria-label="原文显示范围"
+            >
+              <button
+                type="button"
+                class="pdf-tool"
+                :aria-pressed="Boolean(visibleSourceRegion)"
+                @click="showLocalSource"
+              >
+                本条局部
+              </button>
+              <button
+                type="button"
+                class="pdf-tool"
+                :aria-pressed="!visibleSourceRegion"
+                @click="preferLocalSource = false"
+              >
+                整页
               </button>
             </div>
             <details class="pdf-preview-help">
@@ -363,6 +388,8 @@ const {
   pdfUrl,
   pdfViewerKey,
   pageImage,
+  entryRegion,
+  assetRegion,
   fallbackToPdf,
   localPdfPage,
   totalPdfPages,
@@ -371,6 +398,31 @@ const {
   clampPdfPage,
   switchPdfPage
 } = useProjectPdf(pageRef)
+
+const preferLocalSource = ref(true)
+const hasSourceRegion = computed(() =>
+  Boolean(entryRegion.value && entryRegion.value.entryId === props.page?.id)
+)
+const visibleSourceRegion = computed(() =>
+  preferLocalSource.value &&
+  hasSourceRegion.value &&
+  assetRegion.value?.entryId === props.page?.id &&
+  assetRegion.value?.physicalPage === currentPdfPage.value
+    ? assetRegion.value
+    : null
+)
+watch(
+  () => props.page?.id,
+  () => {
+    preferLocalSource.value = true
+  }
+)
+
+function showLocalSource() {
+  if (!hasSourceRegion.value) return
+  preferLocalSource.value = true
+  currentPdfPage.value = clampPdfPage(entryRegion.value.physicalPage)
+}
 
 watch(currentPdfPage, (value) => {
   pdfPageInput.value = value
@@ -403,6 +455,30 @@ function applyPdfPageInput() {
 </script>
 
 <style scoped>
+.source-view-options {
+  display: inline-flex;
+  max-width: 100%;
+  gap: var(--space-1);
+}
+.source-view-options .pdf-tool {
+  min-height: var(--control-height-sm);
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--pdf-track-strong);
+  border-radius: var(--radius-nav);
+  background: var(--surface);
+  color: var(--pdf-ink);
+  cursor: pointer;
+}
+.source-view-options .pdf-tool[aria-pressed='true'] {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-glow-soft);
+}
+@media (max-width: 768px) {
+  .source-view-options .pdf-tool {
+    min-height: var(--control-height-touch);
+  }
+}
 .editor-panel-body--pdf {
   position: relative;
 }

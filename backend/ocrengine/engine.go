@@ -38,13 +38,15 @@ type Row struct {
 	Cells []Cell `json:"cells"`
 }
 type Result struct {
-	Page       int    `json:"page"`
-	Engine     string `json:"engine"`
-	HasImages  bool   `json:"has_images"`
-	Rows       []Row  `json:"rows"`
-	RawText    string `json:"raw_text"`
-	RawLayout  string `json:"raw_layout"`
-	DurationMS int64  `json:"duration_ms"`
+	SourceSHA256 string        `json:"source_sha256,omitempty"`
+	Geometry     *PageGeometry `json:"geometry,omitempty"`
+	Page         int           `json:"page"`
+	Engine       string        `json:"engine"`
+	HasImages    bool          `json:"has_images"`
+	Rows         []Row         `json:"rows"`
+	RawText      string        `json:"raw_text"`
+	RawLayout    string        `json:"raw_layout"`
+	DurationMS   int64         `json:"duration_ms"`
 }
 
 type bboxWord struct {
@@ -336,6 +338,9 @@ func recognize(ctx context.Context, pdfPath string, page int, language string, r
 	result.Engine = "poppler_text"
 	result.RawLayout = layout
 	result.RawText = raw
+	result.SourceSHA256, result.Geometry = readSourceGeometry(ctx, pdfPath, page)
+	result.Geometry.classify(rows)
+	result.Geometry.rejectSeparatedWords(layout)
 	// Native titles must not hide an unprocessed scanned body. The first formal
 	// shape is a pure text-layer page; even decorative image pages require CSV.
 	if hasImages && len(rows) > 0 {

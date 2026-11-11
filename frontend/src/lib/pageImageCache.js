@@ -14,7 +14,7 @@ export function createPageImageCache({ fetcher = fetch, urls = URL, now = Date.n
     const current = generation
     const response = await fetcher(`${base}/images/${number}/descriptor`, options)
     if (!response.ok) throw Object.assign(new Error('页面图片不可用'), { status: response.status })
-    const descriptor = await response.json()
+    const { sourceRegion = null, ...descriptor } = await response.json()
     if (current !== generation) throw new DOMException('预览已切换', 'AbortError')
     if (
       !descriptor.assetId ||
@@ -35,8 +35,10 @@ export function createPageImageCache({ fetcher = fetch, urls = URL, now = Date.n
     if (assetURL.origin !== expected.origin || assetURL.pathname !== expected.pathname)
       throw new Error('页面图片地址无效')
     const previous = entries.get(number)
-    if (previous?.assetId === descriptor.assetId && previous.expires > now()) return previous
-    if (pending.get(number)?.assetId === descriptor.assetId) return pending.get(number).promise
+    if (previous?.assetId === descriptor.assetId && previous.expires > now())
+      return { image: previous, sourceRegion }
+    const shared = pending.get(number)
+    if (shared?.assetId === descriptor.assetId) return { image: await shared.promise, sourceRegion }
     const promise = (async () => {
       const asset = await fetcher(assetURL.href, options)
       if (!asset.ok) throw Object.assign(new Error('页面图片加载失败'), { status: asset.status })
@@ -57,7 +59,7 @@ export function createPageImageCache({ fetcher = fetch, urls = URL, now = Date.n
     })()
     pending.set(number, { assetId: descriptor.assetId, promise })
     try {
-      return await promise
+      return { image: await promise, sourceRegion }
     } finally {
       if (pending.get(number)?.promise === promise) pending.delete(number)
     }

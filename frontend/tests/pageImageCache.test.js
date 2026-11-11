@@ -20,7 +20,7 @@ test('adjacent blobs are reused only after rechecking live descriptor permission
   const f = fixture(), options = { headers: { Authorization: 'test' }, cache: 'no-store' }
   const first = await f.cache.load(base, 2, options)
   await f.cache.load(base, 3, options)
-  assert.equal(await f.cache.load(base, 2, options), first)
+  assert.equal((await f.cache.load(base, 2, options)).image, first.image)
   assert.equal(f.calls.filter(c => c.url.includes('/asset')).length, 2)
   assert.equal(f.calls.filter(c => c.url.endsWith('/descriptor')).length, 3)
   assert.ok(f.calls.every(c => c.options === options))
@@ -50,6 +50,31 @@ test('clearing during a fetch cannot publish a blob from a previous task/user', 
 test('simultaneous preload and navigation fetch the asset once', async () => {
   const f = fixture()
   const [a, b] = await Promise.all([f.cache.load(base, 2, {}), f.cache.load(base, 2, {})])
-  assert.equal(a, b)
+  assert.equal(a.image, b.image)
   assert.equal(f.calls.filter(c => c.url.includes('/asset')).length, 1)
+})
+
+test('a shared image never reuses another entry’s authorized region', async () => {
+  const f = fixture()
+  const descriptor = {
+    assetId: 'page-2',
+    url: '/api/fangji/pages/task/images/2/asset',
+    width: 100,
+    height: 200,
+    expiresAt: new Date(5000).toISOString()
+  }
+  const region = {
+    entryId: 'first',
+    physicalPage: 2,
+    assetKey: descriptor.assetId,
+    rect: { x: 0.2, y: 0.3, width: 0.5, height: 0.1 }
+  }
+  f.descriptors.set(2, { ...descriptor, sourceRegion: region })
+  const first = await f.cache.load(base, 2, {})
+  f.descriptors.set(2, descriptor)
+  const second = await f.cache.load(base, 2, {})
+  assert.deepEqual(first.sourceRegion, region)
+  assert.equal(second.sourceRegion, null)
+  assert.equal(second.image, first.image)
+  assert.equal(f.calls.filter((c) => c.url.includes('/asset')).length, 1)
 })
