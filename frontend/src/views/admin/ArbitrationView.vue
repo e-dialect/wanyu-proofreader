@@ -521,17 +521,24 @@ import {
 } from '@/lib/sourceReviewQueue'
 import { getPbMessage } from '@/utils/pbErrors'
 import { importJobScope, validImportJob } from '@/lib/adminPageList'
+import { batchReportNavigationQuery, readBatchReportContext } from '@/lib/batchReportContext'
 
 const route = useRoute()
 const router = useRouter()
 const projectId = computed(() => String(route.params.projectId || ''))
 const pageId = computed(() => String(route.params.pageId || ''))
 const importJob = computed(() => importJobScope(route.query.importJob))
+const batchReportContext = computed(() => readBatchReportContext(route.query, projectId.value))
 const arbitrationReturnTarget = computed(() => {
   if (importJob.value && !validImportJob(importJob.value))
     return `/admin/projects/${projectId.value}?section=materials&view=batches#project-ledger`
   const base = `/admin/projects/${projectId.value}?section=work&status=arbitration`
-  return importJob.value ? `${base}&importJob=${importJob.value}` : base
+  const origin = new URLSearchParams(
+    batchReportNavigationQuery(batchReportContext.value)
+  ).toString()
+  return (
+    (importJob.value ? `${base}&importJob=${importJob.value}` : base) + (origin ? `&${origin}` : '')
+  )
 })
 const {
   state: queueState,
@@ -644,7 +651,16 @@ watch(
 
 function arbitrationTarget(project, page) {
   const path = `/admin/projects/${project}/arbitration/${page}`
-  return importJob.value ? { path, query: { importJob: importJob.value } } : path
+  const context = readBatchReportContext(route.query, project)
+  return importJob.value || context
+    ? {
+        path,
+        query: {
+          ...batchReportNavigationQuery(context),
+          ...(importJob.value ? { importJob: importJob.value } : {})
+        }
+      }
+    : path
 }
 
 async function navigateQueue(item, forward = false) {

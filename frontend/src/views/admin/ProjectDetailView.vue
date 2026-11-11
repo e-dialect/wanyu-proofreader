@@ -2,6 +2,7 @@
   <main class="container page workspace-page project-workspace-page">
     <ProjectWorkspaceHeading :project="project" />
     <ProjectWorkspaceNav v-if="project" :project-id="projectId" :active="location.section" />
+    <BatchReportReturn v-if="project" :project-id="projectId" />
     <AppStatusPanel v-if="loadingProject" state="pending" message="正在打开项目…" />
     <AppStatusPanel
       v-else-if="projectError"
@@ -21,7 +22,14 @@
         <RouterLink
           v-for="item in subviews"
           :key="item.key"
-          :to="item.to || link(location.section, item.key)"
+          :to="
+            item.to
+              ? {
+                  path: item.to,
+                  query: batchReportNavigationQuery(readBatchReportContext(route.query, projectId))
+                }
+              : link(location.section, item.key)
+          "
           :class="{ 'is-active': location.view === item.key }"
           :aria-current="location.view === item.key ? 'page' : undefined"
           >{{ item.label }}</RouterLink
@@ -151,6 +159,8 @@ import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import ProjectWorkspaceHeading from '@/components/admin/project/ProjectWorkspaceHeading.vue'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
+import BatchReportReturn from '@/components/admin/project/BatchReportReturn.vue'
+import { batchReportNavigationQuery, readBatchReportContext } from '@/lib/batchReportContext'
 import ProjectImportChoice from '@/components/admin/project/ProjectImportChoice.vue'
 import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
 import ProjectOverview from '@/components/admin/project/ProjectOverview.vue'

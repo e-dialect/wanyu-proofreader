@@ -54,7 +54,7 @@
             <th>来源</th>
           </tr>
         </template>
-        <tr v-for="batch in ledger.batches" :key="batch.id">
+        <tr v-for="batch in ledger.batches" :id="`import-batch-${batch.id}`" :key="batch.id">
           <td>
             <code>{{ batch.id }}</code>
             <RouterLink
@@ -128,12 +128,13 @@
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppButton from '@/components/AppButton.vue'
 import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
-import { onBeforeUnmount, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { batchImportStatus } from '@/lib/batchReport'
 import { listImportLedger } from '@/services/importJobsService'
 import { getPbMessage } from '@/utils/pbErrors'
 const props = defineProps({ projectId: { type: String, required: true } })
+const route = useRoute()
 const ledger = ref(null)
 const selectedErrorJob = ref('')
 let generation = 0,
@@ -151,6 +152,10 @@ async function loadLedger() {
     const value = await listImportLedger(props.projectId)
     if (disposed || version !== generation) return
     ledger.value = value
+    await nextTick()
+    if (!disposed && version === generation && /^#import-batch-[a-z0-9]{15}$/.test(route.hash)) {
+      document.getElementById(route.hash.slice(1))?.scrollIntoView({ block: 'center' })
+    }
   } catch (e) {
     if (disposed || version !== generation) return
     ledger.value = null

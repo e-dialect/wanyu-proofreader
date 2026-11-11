@@ -2,6 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { useArbitrationQueue } from '../src/composables/useArbitrationQueue.js'
+import {
+  batchReportNavigationQuery,
+  readBatchReportContext
+} from '../src/lib/batchReportContext.js'
 
 test('queue distinguishes loading, failure, empty and a single pending item', async () => {
   let fail = true
@@ -92,7 +96,12 @@ test('saved arbitration continues to the new next item without returning to the 
     router: { push: async (path) => paths.push(path) }
   }
   const importJob = ref('')
-  bindings.arbitrationTarget = callback('arbitrationTarget', { importJob })
+  bindings.arbitrationTarget = callback('arbitrationTarget', {
+    importJob,
+    route: { query: {} },
+    batchReportNavigationQuery,
+    readBatchReportContext
+  })
   await callback('continueAfterSubmit', bindings)()
   assert.deepEqual(paths, ['/admin/projects/project/arbitration/next'])
   bindings.refreshQueue = async () => ({

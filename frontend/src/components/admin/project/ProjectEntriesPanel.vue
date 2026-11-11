@@ -35,13 +35,17 @@
       <strong>{{ validImportJob(importJob) ? '仅查看本批次' : '批次链接无效' }}</strong>
       <div>
         <RouterLink
-          v-if="validImportJob(importJob)"
-          :to="{ name: 'ProjectBatchReport', params: { id: projectId, batchId: importJob } }"
+          v-if="validImportJob(importJob) && batchReportContext?.batchId !== importJob"
+          :to="
+            batchReportContext?.batchId === importJob
+              ? batchReportReturnTarget(batchReportContext)
+              : { name: 'ProjectBatchReport', params: { id: projectId, batchId: importJob } }
+          "
           class="btn btn-quiet btn-sm"
-          >返回批次报告</RouterLink
+          >{{ batchReportContext ? '查看本批报告' : '返回批次报告' }}</RouterLink
         >
         <RouterLink
-          v-else
+          v-else-if="!validImportJob(importJob)"
           :to="projectWorkspaceTarget(projectId, 'materials', 'batches')"
           class="btn btn-quiet btn-sm"
           >返回批次台账</RouterLink
@@ -400,7 +404,10 @@
               :to="{
                 name: 'Arbitration',
                 params: { projectId, pageId: pg.id },
-                query: importJob ? { importJob } : {}
+                query: {
+                  ...batchReportNavigationQuery(batchReportContext),
+                  ...(importJob ? { importJob } : {})
+                }
               }"
               class="entry-arbitration-link"
               >仲裁 <AppIcon name="arrow" :size="14"
@@ -505,7 +512,12 @@ import AppFieldValue from '@/components/AppFieldValue.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import AppField from '@/components/AppField.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
+import {
+  batchReportNavigationQuery,
+  batchReportReturnTarget,
+  readBatchReportContext
+} from '@/lib/batchReportContext'
 import { validImportJob } from '@/lib/adminPageList'
 import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
 import { PAGE_STATUS, statusBadgeClass, statusLabel } from '@/constants/pageStatus'
@@ -522,6 +534,8 @@ const props = defineProps({
   refreshLedger: { type: Function, required: true }
 })
 const projectId = props.projectId
+const route = useRoute()
+const batchReportContext = computed(() => readBatchReportContext(route.query, projectId))
 const project = toRef(props, 'project')
 const {
   jumpToPdfPage,

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import * as adoption from '../src/lib/adoption.js'
+import * as batchReportContext from '../src/lib/batchReportContext.js'
+import { nextTick } from 'vue'
 import { protectedPageScopeFixture } from './helpers/protectedPageScopeFixture.js'
 import { getPbMessage, getPbStatus } from '../src/utils/pbErrors.js'
 
@@ -20,6 +22,8 @@ function fixture(services = {}) {
   const protectedScope = protectedPageScopeFixture((callback) => unmount.push(callback))
   const bindings = {
     ...adoption,
+    ...batchReportContext,
+    nextTick,
     useProtectedPageScope: protectedScope.useProtectedPageScope,
     getPbMessage,
     getPbStatus,
