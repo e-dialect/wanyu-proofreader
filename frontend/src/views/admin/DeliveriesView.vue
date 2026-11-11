@@ -22,22 +22,17 @@
         </h1>
         <p>核对交付范围，保留每次交付与后续处置的凭据。</p>
       </div>
-      <button
+      <AppButton
         v-if="!accessLost && !projectUnavailable && view === 'records'"
-        class="btn btn-primary"
+        variant="primary"
         :disabled="busy"
         @click="navigate({ view: 'prepare' })"
       >
         准备新交付
-      </button>
-      <button
-        v-else
-        class="btn btn-secondary"
-        :disabled="busy"
-        @click="navigate({ view: 'records' })"
-      >
+      </AppButton>
+      <AppButton v-else :disabled="busy" @click="navigate({ view: 'records' })">
         返回交付记录
-      </button>
+      </AppButton>
     </header>
     <nav class="delivery-tabs" aria-label="交付工作">
       <button
@@ -83,10 +78,11 @@
     >
       <div class="delivery-steps" aria-label="交付准备步骤">
         <span :aria-current="!preview ? 'step' : undefined">1 选择清单</span
-        ><span :aria-current="preview ? 'step' : undefined">2 检查范围</span
-        ><span>3 人工确认与生成</span>
+        ><span :aria-current="preview && !preview.can_generate ? 'step' : undefined"
+          >2 检查范围</span
+        ><span :aria-current="preview?.can_generate ? 'step' : undefined">3 人工确认与生成</span>
       </div>
-      <h2>发布前检查</h2>
+      <h2>{{ preview ? '核对本次交付范围' : '选择本次交付的编选批次' }}</h2>
       <p class="text-muted">
         使用已确认的编选交接清单。范围外与待处理条目只声明标识和理由，默认不携带正文。
       </p>
@@ -96,7 +92,7 @@
       <p v-if="!nativeDeliveryEnabled" class="text-muted">
         编选直接出包暂未开放，请使用已核查的交接清单。
       </p>
-      <label v-if="nativeDeliveryEnabled" class="form-group mt-3"
+      <label v-if="nativeDeliveryEnabled && !preview" class="form-group mt-3"
         ><span class="form-label">编选批次</span>
         <select
           :value="nativeBatch?.id || ''"
@@ -123,7 +119,7 @@
         </select>
       </label>
       <AppPagination
-        v-if="nativeDeliveryEnabled"
+        v-if="nativeDeliveryEnabled && !preview"
         :page="adoptionPage"
         :total-pages="adoptionPages"
         :busy="busy || loading"
@@ -134,13 +130,12 @@
         交给 {{ nativeBatch.recipient }} ·
         {{ purposeLabel(nativeBatch.purpose) }}；将重新核查完整批次与确认范围。
       </p>
-      <details v-if="nativeDeliveryEnabled" class="mt-3">
-        <summary>兼容旧交接清单</summary>
+      <AppDisclosure v-if="nativeDeliveryEnabled && !preview" class="mt-3" label="兼容旧交接清单">
         <label
           ><input v-model="legacyMode" type="checkbox" :disabled="busy" /> 使用人工核查过的旧 JSON
           清单</label
         >
-      </details>
+      </AppDisclosure>
       <form v-if="!preview" class="settings-form mt-3" @submit.prevent="preflight">
         <div v-if="legacyMode" class="form-group">
           <span class="form-label">批次交接清单</span
@@ -178,24 +173,41 @@
         <p v-if="handoff" class="text-sm">
           交给 {{ handoff.recipient }} · {{ purposeLabel(handoff.purpose) }}
         </p>
-        <template v-if="!legacyMode">
+        <AppDisclosure
+          v-if="!legacyMode"
+          label="这是重发版本（首次交付无需填写）"
+          :default-open="Boolean(previous)"
+        >
           <label class="form-group"
             ><span class="form-label">前一版本包标识（首次留空）</span
             ><input v-model.trim="previous" class="form-control" maxlength="200" :disabled="busy"
           /></label>
-          <label v-if="previous" class="form-group"
-            ><span class="form-label">重发变更说明</span
-            ><input
-              v-model.trim="changeReason"
-              class="form-control"
-              required
-              maxlength="500"
-              :disabled="busy"
-          /></label>
-        </template>
-        <button class="btn btn-primary" :disabled="busy || (legacyMode ? !handoff : !nativeBatch)">
-          {{ busy ? '正在检查…' : '检查本批交付范围' }}
-        </button>
+        </AppDisclosure>
+        <label v-if="!legacyMode && previous" class="form-group"
+          ><span class="form-label">重发变更说明</span
+          ><input
+            v-model.trim="changeReason"
+            class="form-control"
+            required
+            maxlength="500"
+            :disabled="busy"
+        /></label>
+        <p v-if="legacyMode ? !handoff : !nativeBatch" class="text-sm text-muted">
+          {{
+            legacyMode
+              ? '先选择交接清单，再填写核查者并检查范围。'
+              : '先选择已确认的编选批次，再填写核查者并检查范围。'
+          }}
+        </p>
+        <AppButton
+          type="submit"
+          variant="primary"
+          :loading="busy"
+          loading-label="正在检查…"
+          :disabled="legacyMode ? !handoff : !nativeBatch"
+        >
+          检查本批交付范围
+        </AppButton>
       </form>
       <div v-if="preview" class="mt-4" role="status">
         <p v-if="preview.selection_project_counts" class="text-muted">
@@ -246,6 +258,9 @@
           <li v-for="problem in preview.reconciliation.problems" :key="problem">{{ problem }}</li>
         </ul>
         <p class="text-sm text-muted">对账一致不代表可发布。仍须核查许可、交付范围及接收方要求。</p>
+        <p v-if="!preview.can_generate" class="alert alert-warning" role="alert">
+          本次检查未满足出包条件。请按上方原因核对编选范围与来源许可，处理后重新检查。
+        </p>
         <div v-if="preview.can_generate" class="delivery-confirmation">
           <label class="flex gap-2 items-center"
             ><input
@@ -253,9 +268,16 @@
               type="checkbox"
               :disabled="busy"
             />我已核查范围并决定生成本次交付包</label
-          ><button class="btn btn-primary mt-3" :disabled="busy || !confirmed" @click="generate">
+          ><AppButton
+            variant="primary"
+            class="mt-3"
+            :loading="busy"
+            loading-label="正在生成…"
+            :disabled="!confirmed"
+            @click="generate"
+          >
             生成交付包
-          </button>
+          </AppButton>
         </div>
         <button
           type="button"
@@ -336,11 +358,13 @@
       <nav class="delivery-tabs" aria-label="交付详情">
         <button
           :aria-current="detailTab === 'summary' ? 'page' : undefined"
+          :disabled="busy"
           @click="navigate({ package: selectedPackageId, tab: 'summary', page: 1 })"
         >
           范围与凭据</button
         ><button
           :aria-current="detailTab === 'events' ? 'page' : undefined"
+          :disabled="busy"
           @click="navigate({ package: selectedPackageId, tab: 'events', page: 1 })"
         >
           回执与处置
@@ -371,7 +395,9 @@
           上游待办 {{ item.pending_actions.length }} 项，处置完成后才能重发。
         </p>
         <p v-if="item.receipt_state === 'awaiting_receipt'" class="text-muted">
-          等待回执 {{ Math.floor(item.waiting_seconds / 3600) }} 小时
+          等待回执
+          {{ Math.floor(item.waiting_seconds / 3600) }}
+          小时。接收方实际核对后，再登记导入结果；下载交付包不会改变回执状态。
         </p>
         <dl class="delivery-counts">
           <div>
@@ -394,8 +420,7 @@
         <button class="btn btn-secondary mt-3" :disabled="busy" @click="selectEvent(item)">
           登记回执或处置
         </button>
-        <details class="mt-4">
-          <summary>包标识与来源凭据</summary>
+        <AppDisclosure class="mt-4" label="包标识与来源凭据">
           <p class="text-sm">
             包标识：{{ item.package_id }}<br />来源：{{ item.source_ref }} · 批次：{{
               item.import_job
@@ -408,7 +433,7 @@
             前包：{{ item.previous }} · 变更：{{ item.change_reason }}
           </p>
           <p class="text-sm delivery-digest">SHA-256：{{ item.sha256 }}</p>
-        </details>
+        </AppDisclosure>
         <section v-if="detailTab === 'events'" class="delivery-history mt-4">
           <AppPagination
             :page="eventsPage"
@@ -444,95 +469,107 @@
       ref="eventEditor"
       class="card mb-6 delivery-event-editor"
     >
-      <h2>登记：{{ selected.recipient }} 第 {{ selected.version }} 版</h2>
+      <h2 tabindex="-1">登记：{{ selected.recipient }} 第 {{ selected.version }} 版</h2>
       <p class="text-muted">
         保存会追加一条凭据。冲突或失败需由上游修复，再使用新交接清单关联前包重发。
       </p>
       <form class="settings-form" @submit.prevent="saveEvent">
-        <label class="form-group"
-          ><span class="form-label">动作</span
-          ><select v-model="eventForm.kind" class="form-control">
-            <option v-for="(label, value) in eventLabels" :key="value" :value="value">
-              {{ label }}
-            </option>
-          </select></label
-        >
-        <template v-if="eventForm.kind === 'receipt'">
+        <fieldset class="delivery-form-section" :disabled="busy">
+          <legend>1 · 记录发生了什么</legend>
+          <label class="form-group"
+            ><span class="form-label">动作</span
+            ><select v-model="eventForm.kind" class="form-control">
+              <option v-for="(label, value) in eventLabels" :key="value" :value="value">
+                {{ label }}
+              </option>
+            </select></label
+          >
+          <template v-if="eventForm.kind === 'receipt'">
+            <p class="text-sm text-muted">
+              对方自动回传尚未接入。这条记录是人工回执，写在当前包标识和第
+              {{ selected.version }} 版上。失败会记成整体失败，不会改成尚未回执。
+            </p>
+            <label class="form-group"
+              ><span class="form-label">消费方导入结果</span
+              ><select v-model="eventForm.status" class="form-control">
+                <option value="success">全部成功</option>
+                <option value="partial_conflict">部分冲突</option>
+                <option value="failed_rolled_back">整体失败并回滚</option>
+              </select></label
+            >
+            <label class="form-group"
+              ><span class="form-label">影响条数（冲突时填冲突条数）</span
+              ><input
+                v-model.number="eventForm.affected"
+                type="number"
+                min="0"
+                :max="selected.reconciliation.payload_count"
+                class="form-control"
+                required
+            /></label>
+          </template>
+        </fieldset>
+        <fieldset class="delivery-form-section" :disabled="busy">
+          <legend>2 · 填写说明与核查者</legend>
+          <label class="form-group"
+            ><span class="form-label">原因／处置说明</span
+            ><textarea
+              v-model.trim="eventForm.reason"
+              class="form-control"
+              required
+              maxlength="1000"
+            />
+          </label>
+          <label class="form-group"
+            ><span class="form-label">人工核查者</span
+            ><input v-model.trim="eventForm.reviewer" class="form-control" required maxlength="200"
+          /></label>
+          <label class="form-group"
+            ><span class="form-label">修复／通知责任人</span
+            ><input v-model.trim="eventForm.responsible" class="form-control" maxlength="200"
+          /></label>
+        </fieldset>
+        <fieldset class="delivery-form-section" :disabled="busy">
+          <legend>3 · 补充处置关联与凭据</legend>
           <p class="text-sm text-muted">
-            对方自动回传尚未接入。这条记录是人工回执，写在当前包标识和第
-            {{ selected.version }} 版上。失败会记成整体失败，不会改成尚未回执。
+            正常导入可不填写退回位置。涉及停用、失败或上游修复时，请按实际处置留下凭据。
           </p>
           <label class="form-group"
-            ><span class="form-label">消费方导入结果</span
-            ><select v-model="eventForm.status" class="form-control">
-              <option value="success">全部成功</option>
-              <option value="partial_conflict">部分冲突</option>
-              <option value="failed_rolled_back">整体失败并回滚</option>
+            ><span class="form-label">退回位置</span
+            ><select v-model="eventForm.target" class="form-control">
+              <option value="">不涉及上游退回</option>
+              <option value="A">来源与权利</option>
+              <option value="D">批次编选</option>
             </select></label
           >
           <label class="form-group"
-            ><span class="form-label">影响条数（冲突时填冲突条数）</span
-            ><input
-              v-model.number="eventForm.affected"
-              type="number"
-              min="0"
-              :max="selected.reconciliation.payload_count"
-              class="form-control"
-              required
+            ><span class="form-label">处置凭据（停用时填升级记录；失败时填回滚凭据）</span
+            ><input v-model.trim="eventForm.evidence" class="form-control" maxlength="1000"
           /></label>
-        </template>
-        <label class="form-group"
-          ><span class="form-label">原因／处置说明</span
-          ><textarea
-            v-model.trim="eventForm.reason"
-            class="form-control"
-            required
-            maxlength="1000"
-          />
-        </label>
-        <label class="form-group"
-          ><span class="form-label">人工核查者</span
-          ><input v-model.trim="eventForm.reviewer" class="form-control" required maxlength="200"
-        /></label>
-        <label class="form-group"
-          ><span class="form-label">修复／通知责任人</span
-          ><input v-model.trim="eventForm.responsible" class="form-control" maxlength="200"
-        /></label>
-        <label class="form-group"
-          ><span class="form-label">退回位置</span
-          ><select v-model="eventForm.target" class="form-control">
-            <option value="">不涉及上游退回</option>
-            <option value="A">来源与权利</option>
-            <option value="D">批次编选</option>
-          </select></label
-        >
-        <label class="form-group"
-          ><span class="form-label">处置凭据（停用时填升级记录；失败时填回滚凭据）</span
-          ><input v-model.trim="eventForm.evidence" class="form-control" maxlength="1000"
-        /></label>
-        <label v-if="eventForm.kind === 'resolution'" class="form-group"
-          ><span class="form-label">已处置的待办</span
-          ><select v-model="eventForm.resolves" class="form-control" required>
-            <option value="">请选择待办记录</option>
-            <option
-              v-for="event in selected.pending_action_events || []"
-              :key="event.id"
-              :value="event.id"
-            >
-              {{ eventLabel(event.kind) }} · {{ event.created }} · {{ event.payload.reason }}
-            </option>
-          </select></label
-        >
-        <div class="flex gap-2">
-          <button class="btn btn-primary" :disabled="busy">保存凭据</button
-          ><button
+          <label v-if="eventForm.kind === 'resolution'" class="form-group"
+            ><span class="form-label">已处置的待办</span
+            ><select v-model="eventForm.resolves" class="form-control" required>
+              <option value="">请选择待办记录</option>
+              <option
+                v-for="event in selected.pending_action_events || []"
+                :key="event.id"
+                :value="event.id"
+              >
+                {{ eventLabel(event.kind) }} · {{ event.created }} · {{ event.payload.reason }}
+              </option>
+            </select></label
+          >
+        </fieldset>
+        <div class="delivery-form-actions">
+          <AppButton type="submit" variant="primary" :loading="busy" loading-label="正在保存…"
+            >保存凭据</AppButton
+          ><AppButton
             type="button"
-            class="btn btn-secondary"
             :disabled="busy"
             @click="navigate({ ...route.query, editor: route.query.editor ? undefined : 'closed' })"
           >
             取消
-          </button>
+          </AppButton>
         </div>
       </form>
     </section>
@@ -583,6 +620,8 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useProtectedPageScope } from '@/composables/useProtectedPageScope'
 import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
+import AppButton from '@/components/AppButton.vue'
+import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { getAdoptionBatch, listAdoptionBatches } from '@/services/adoptionService'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
@@ -626,7 +665,15 @@ const changeReason = ref('')
 const requestId = ref('')
 const eventBaseline = ref('')
 function navigate(query) {
-  return router.push({ query })
+  const next = { ...query }
+  const returnPage = Math.max(1, Number.parseInt(route.query.returnPage, 10) || listPage.value)
+  if (!next.package && !['prepare', 'impacts'].includes(next.view)) {
+    next.page ??= returnPage
+    delete next.returnPage
+  } else if (returnPage > 1) {
+    next.returnPage = returnPage
+  }
+  return router.push({ query: next })
 }
 function changePage(page) {
   return navigate({ ...route.query, page })
@@ -851,7 +898,10 @@ async function load() {
     const id = projectId.value
     const data = await projectRead(
       listDeliveries(id, {
-        page: view.value === 'records' ? queryPage.value : 1,
+        page:
+          view.value === 'records'
+            ? queryPage.value
+            : Math.max(1, Number.parseInt(route.query.returnPage, 10) || 1),
         signal: request.signal
       })
     )
@@ -971,6 +1021,10 @@ async function download(item) {
   await action((isCurrent, signal) => downloadDelivery(item.id, { signal, isCurrent }))
 }
 function selectEvent(item) {
+  if (selected.value?.id === item.id) {
+    focusEventEditor()
+    return
+  }
   selected.value = item
   Object.assign(eventForm, {
     kind: 'receipt',
@@ -984,7 +1038,13 @@ function selectEvent(item) {
     resolves: ''
   })
   eventBaseline.value = JSON.stringify(eventForm)
-  nextTick(() => eventEditor.value?.scrollIntoView({ block: 'start' }))
+  focusEventEditor()
+}
+function focusEventEditor() {
+  nextTick(() => {
+    eventEditor.value?.scrollIntoView({ block: 'start' })
+    eventEditor.value?.querySelector('h2')?.focus({ preventScroll: true })
+  })
 }
 async function saveEvent() {
   const id = selected.value.id,
@@ -1116,6 +1176,26 @@ watch([previous, changeReason, legacyMode], invalidatePreview)
 }
 .delivery-reviewer {
   max-width: 28rem;
+}
+.delivery-form-section {
+  min-width: 0;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.delivery-form-section legend {
+  padding-right: var(--space-3);
+  font-weight: 600;
+  font-size: var(--text-md);
+}
+.delivery-form-section .form-group:last-child {
+  margin-bottom: 0;
+}
+.delivery-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 .delivery-event-editor {
   scroll-margin-top: var(--space-4);

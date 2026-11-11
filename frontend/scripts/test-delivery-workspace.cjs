@@ -45,6 +45,9 @@ const { chromium } = require('playwright')
     await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).waitFor()
     await page.getByRole('button', { name: '继续处理', exact: true }).click()
     assert.equal(await reviewer.inputValue(), 'Synthetic browser reviewer')
+    await page
+      .getByRole('button', { name: '这是重发版本（首次交付无需填写）', exact: true })
+      .click()
     await page.getByLabel('前一版本包标识（首次留空）', { exact: true }).fill(delivery.id)
     await page
       .getByLabel('重发变更说明', { exact: true })
@@ -65,6 +68,11 @@ const { chromium } = require('playwright')
     await page.waitForURL('**/deliveries?package=*&tab=events&page=1')
     await page.getByRole('button', { name: '登记回执或处置', exact: true }).click()
     await page.getByLabel('原因／处置说明', { exact: true }).fill('unsaved synthetic receipt')
+    await page.getByRole('button', { name: '登记回执或处置', exact: true }).click()
+    assert.equal(
+      await page.getByLabel('原因／处置说明', { exact: true }).inputValue(),
+      'unsaved synthetic receipt'
+    )
     await page.getByRole('button', { name: '范围与凭据', exact: true }).click()
     await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).waitFor()
     await page.getByRole('button', { name: '继续处理', exact: true }).click()
@@ -73,9 +81,23 @@ const { chromium } = require('playwright')
     await page.getByRole('button', { name: '确认离开', exact: true }).click()
     await page.waitForURL(generatedURL)
     await page.screenshot({ path: path.join(out, 'delivery-detail.png'), fullPage: true })
+    // A successful create is already saved. It must continue to its detail
+    // without asking users to discard the form they have just submitted.
+    await page.goto(`${projectPath}/adoption?view=create`)
+    await page.getByLabel('接收方', { exact: true }).fill('Synthetic usability recipient')
+    await page.getByRole('button', { name: '下一步：选择范围', exact: true }).click()
+    await page.getByRole('button', { name: '创建并预览数量', exact: true }).click()
+    await page
+      .getByRole('heading', { name: 'Synthetic usability recipient', exact: true })
+      .waitFor()
+    assert.equal(
+      await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).count(),
+      0
+    )
+    await page.screenshot({ path: path.join(out, 'adoption-created.png'), fullPage: true })
     assert.deepEqual(errors, [])
     console.log(
-      'PASS browser: adoption deep link/reload/back, native preparation and generation, delivery deep link/reload, dirty preparation and receipt query guards; synthetic only'
+      'PASS browser: adoption deep link/reload/back and saved-create transition, native preparation and generation, delivery deep link/reload, dirty preparation and receipt query guards, receipt reopen preservation; synthetic only'
     )
   } finally {
     await browser.close()
