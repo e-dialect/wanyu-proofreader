@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -211,9 +212,17 @@ func TestAssistReadConsistency(t *testing.T) {
 				match = func(q string) bool { return strings.Contains(q, "select count(*) as total from pages") }
 			}
 			token, _ := actor.NewAuthToken()
-			accountTestRequest(t, h, method, path, token, nil, 200)
+			baseline := accountTestRequest(t, h, method, path, token, nil, 200)
 			response := assistReadDuring(t, app, h, method, path, token, match, func() error { return assistReadPublish(app, newPub.Id, oldFinding.Id, nil) })
-			assertAssistReadConflict(t, response)
+			if route == "field_summary" {
+				var original, current map[string]any
+				if response.Code != 200 || json.Unmarshal(baseline.Body.Bytes(), &original) != nil ||
+					json.Unmarshal(response.Body.Bytes(), &current) != nil || !reflect.DeepEqual(original, current) {
+					t.Fatalf("unrelated assist publication changed the field summary: %d %s", response.Code, response.Body.String())
+				}
+			} else {
+				assertAssistReadConflict(t, response)
+			}
 			current := accountTestRequest(t, h, method, path, token, nil, 200)
 			if route == "my_problems" {
 				var body struct{ Items, Drafts []map[string]any }
@@ -320,6 +329,93 @@ func TestAssistReadConsistency(t *testing.T) {
 		}, func() error { assistReadReport(t, app, second, actor.Id); return nil })
 		assertAssistReadConflict(t, response)
 		accountTestRequest(t, h, "GET", "/api/fangji/my-problems", token, nil, 200)
+	})
+
+	t.Run("verification_reads_reports_for_current_page_only", func(t *testing.T) {
+		_, manager, page := newAssistVisibilityFixture(t, app)
+		_, reader, _ := assistReadSecondaryFixture(t, app)
+		reader.Set("role", "user")
+		if err := app.Save(reader); err != nil {
+			t.Fatal(err)
+		}
+		assistReadMembership(t, app, page, reader.Id, "proofreader")
+		other := core.NewRecord(page.Collection())
+		other.Set("project", page.GetString("project"))
+		other.Set("page_number", 2)
+		other.Set("status", "pending")
+		if err := app.Save(other); err != nil {
+			t.Fatal(err)
+		}
+		assistReadReport(t, app, page, reader.Id)
+		assistReadReport(t, app, page, manager.Id)
+		assistReadReport(t, app, other, reader.Id)
+
+		db := app.ConcurrentDB().(*dbx.DB)
+		previous := db.QueryLogFunc
+		defer func() { db.QueryLogFunc = previous }()
+		reads, projectReads := 0, 0
+		db.QueryLogFunc = func(_ context.Context, _ time.Duration, query string, _ *sql.Rows, _ error) {
+			q := strings.ToLower(strings.NewReplacer("`", "", "\"", "", "[", "", "]", "").Replace(query))
+			if strings.Contains(q, "from problem_reports") {
+				reads++
+				if !strings.Contains(q, "page =") {
+					projectReads++
+				}
+			}
+		}
+		for _, scenario := range []struct {
+			user  *core.Record
+			count int
+		}{{manager, 2}, {reader, 1}} {
+			token, _ := scenario.user.NewAuthToken()
+			response := accountTestRequest(t, h, "GET", "/api/fangji/pages/"+page.Id+"/verification", token, nil, 200)
+			var body struct {
+				Reports []struct {
+					Page string `json:"page"`
+				} `json:"reports"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || len(body.Reports) != scenario.count {
+				t.Fatalf("expected %d reports for current page, got %d: %v", scenario.count, len(body.Reports), err)
+			}
+			for _, report := range body.Reports {
+				if report.Page != page.Id {
+					t.Fatal("verification included another page's report")
+				}
+			}
+		}
+		if reads == 0 || projectReads != 0 {
+			t.Fatalf("verification report reads must filter by page: %d reads, %d project-wide", reads, projectReads)
+		}
+	})
+
+	t.Run("verification_downgrade_requires_new_projection", func(t *testing.T) {
+		_, _, page := newAssistVisibilityFixture(t, app)
+		_, manager, _ := assistReadSecondaryFixture(t, app)
+		manager.Set("role", "user")
+		if err := app.Save(manager); err != nil {
+			t.Fatal(err)
+		}
+		member := assistReadMembership(t, app, page, manager.Id, "manager")
+		assistReadReport(t, app, page, manager.Id)
+		token, _ := manager.NewAuthToken()
+		path := "/api/fangji/pages/" + page.Id + "/verification"
+		response := assistReadDuring(t, app, h, "GET", path, token, func(q string) bool {
+			return strings.Contains(q, "from assist_rule_gates")
+		}, func() error {
+			member.Set("role", "proofreader")
+			return app.Save(member)
+		})
+		if response.Code != 403 || strings.Contains(response.Body.String(), `"context":`) {
+			t.Fatalf("downgraded manager received old projection: %d", response.Code)
+		}
+		current := accountTestRequest(t, h, "GET", path, token, nil, 200)
+		var body struct{ Context map[string]any }
+		if err := json.Unmarshal(current.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if _, found := body.Context["machine"]; found {
+			t.Fatal("proofreader received manager machine context")
+		}
 	})
 
 	t.Run("pre_capture_page_is_not_returned", func(t *testing.T) {

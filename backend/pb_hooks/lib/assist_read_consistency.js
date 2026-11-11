@@ -16,7 +16,10 @@ function responseForProjects(dao, projects, authorize, build) {
   try { result = build(access) } catch (error) { failed = true; failure = error }
   // Revocation takes precedence over a version conflict. The client must clear
   // protected state on 401/403 rather than keep it behind a retryable 409.
-  authorize()
+  const finalAccess = authorize()
+  if (access?.manager === true && finalAccess?.manager === false) {
+    throw new ForbiddenError("项目管理权限已变更，请重新打开条目")
+  }
   if (scopes.some((project, index) => basis(dao, project) !== before[index])) throw changed()
   if (failed) throw failure
   return result

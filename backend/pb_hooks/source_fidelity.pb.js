@@ -29,8 +29,11 @@ routerAdd("GET", "/api/fangji/pages/{pageId}/verification", (c) => {
   const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
   const response = require(`${__hooks}/lib/assist_read_consistency.js`).pageResponse($app, c.request.pathValue("pageId"), c.auth, ({ page, manager, actor }) => {
     const context = fidelity.contextFor($app, page)
-    const reports = fidelity.reportsFor($app, context.project, manager ? "" : actor.id).filter(report => report.page === page.id)
-    const announcements = fidelity.list($app, "problem_reports", `page = "${page.id}"`).map(report => {
+    const pageReports = fidelity.list($app, "problem_reports", `page = "${page.id}"`)
+    const reports = pageReports
+      .filter(report => report.getString("project") === context.project && (manager || report.getString("reporter") === actor.id))
+      .map(report => fidelity.reportView($app, report, context, manager))
+    const announcements = pageReports.map(report => {
       const issue = $app.findRecordById("problem_issues", report.getString("issue"))
       const issueContext = fidelity.parse(report.getString("context_json"))
       if (issue.getString("status") === "new" || !issue.getString("public_note")) return null
