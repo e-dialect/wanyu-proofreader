@@ -39,16 +39,36 @@
       </AppButton>
     </div>
     <JobStatusPanel
-      v-if="csvJobTarget"
+      v-if="csvJobTarget && csvStatusVisible"
       label="CSV 导入"
       kind="csv"
       :observation="csvObservation"
       @retry="refreshCsvJob"
     />
-    <div v-if="csvJob" class="import-job-card mt-3">
-      <div class="text-sm mt-2">{{ csvJobProgressText(csvJob) }}</div>
+    <div
+      v-if="csvError && !csvJob"
+      role="alert"
+      class="alert alert-error mt-3 preserve-line-breaks"
+    >
+      {{ csvError }}
+    </div>
+    <div v-if="csvJob" class="csv-inspection mt-3">
+      <template v-if="csvJob.status === 'validated'">
+        <h5 class="csv-inspection-title">检查完成，待确认</h5>
+        <p class="text-sm text-muted mt-2" role="status">
+          尚未写入校对条目。请核对来源、数量和样本，再确认导入。
+        </p>
+      </template>
+      <div
+        v-if="csvSuccess && csvJob.status !== 'validated'"
+        class="alert mt-2"
+        :class="csvJob.failed_count > 0 ? 'alert-warning' : 'alert-success'"
+        role="status"
+      >
+        {{ csvSuccess }}
+      </div>
       <p v-if="csvSourcePending" class="text-sm text-muted mt-2" role="status">正在核对作业来源…</p>
-      <p v-else-if="csvActualSource" class="text-sm mt-2" role="note">
+      <p v-else-if="csvActualSource" class="csv-inspection-source text-sm mt-2" role="note">
         本次实际来源：<strong>{{ csvActualSource.title }}</strong
         >。
         {{ csvJob.status === 'validated' ? '确认导入将沿用这个来源。' : '来源以此作业记录为准。' }}
@@ -61,37 +81,7 @@
       <p v-if="csvSourceError" class="alert alert-warning mt-2" role="alert">
         {{ csvSourceError }} 请刷新后核对，暂不能确认导入。
       </p>
-      <AppButton
-        type="button"
-        variant="secondary"
-        size="sm"
-        class="mt-2"
-        :disabled="uploadingCsv"
-        @click="refreshCsvJob"
-      >
-        刷新检查与导入进度
-      </AppButton>
-      <details class="text-sm text-muted mt-2">
-        <summary>查看作业详情</summary>
-        <p>
-          作业：{{ csvJob.id }}；来源关联：{{ csvJob.source_link }}；来源记录：{{
-            csvJob.source || '未关联'
-          }}；来源标识：{{ csvActualSource?.logical_id || '未读取或未关联' }}
-        </p>
-      </details>
-      <div
-        v-if="csvJob.error_message && csvJob.status !== 'failed'"
-        class="text-sm text-muted mt-1"
-      >
-        {{ csvJob.error_message }}
-      </div>
-    </div>
-    <div v-if="csvError" role="alert" class="alert alert-error mt-3 preserve-line-breaks">
-      {{ csvError }}
-    </div>
-    <div v-if="csvInspection" class="csv-inspection mt-3">
-      <div class="font-semibold">导入前检查</div>
-      <dl class="csv-inspection-counts" aria-label="CSV 检查数量">
+      <dl v-if="csvInspection" class="csv-inspection-counts" aria-label="CSV 检查数量">
         <div>
           <dt>文件行数</dt>
           <dd>{{ csvInspection.totalRows }}</dd>
@@ -105,14 +95,30 @@
           <dd>{{ csvInspection.invalidRows }}</dd>
         </div>
       </dl>
-      <p v-if="csvInspection.invalidRows > 0" class="csv-inspection-warning" role="note">
+      <p v-if="csvInspection?.invalidRows > 0" class="csv-inspection-warning" role="note">
         {{ csvInspection.invalidRows }} 行无法导入，确认后将跳过这些行。
         可先查看下方错误记录，修改原 CSV 后重新检查。
       </p>
-      <p v-if="csvJob?.status === 'validated'" class="text-sm text-muted mt-2">
-        检查完成，尚未导入。请核对来源、数量和预览样本，再确认导入。
+      <p v-if="csvJob.skipped_count > 0" class="csv-inspection-warning" role="note">
+        重复跳过 {{ csvJob.skipped_count }} 条，不新增入库。
       </p>
-      <div v-if="csvJob?.status === 'validated'" class="csv-inspection-action">
+      <div v-if="csvError" role="alert" class="alert alert-error mt-3 preserve-line-breaks">
+        {{ csvError }}
+      </div>
+      <div
+        v-if="csvJob.error_message && csvJob.status !== 'failed'"
+        class="alert alert-warning mt-2 preserve-line-breaks"
+        role="alert"
+      >
+        {{ csvJob.error_message }}
+      </div>
+      <ImportErrorsPanel
+        v-if="csvJob.id && (csvJob.failed_count > 0 || csvJob.status === 'failed')"
+        :project-id="projectId"
+        :job-id="csvJob.id"
+        :revision="`${csvJob.status}:${csvJob.updated || ''}`"
+      />
+      <div v-if="csvInspection && csvJob.status === 'validated'" class="csv-inspection-action">
         <AppButton
           variant="primary"
           @click="confirmCsvImport"
@@ -125,25 +131,14 @@
         <span v-if="!csvSourceReady" class="text-sm text-muted">等待作业来源核对完成</span>
       </div>
       <RareCharacterNotice
+        v-if="csvInspection"
         :texts="[
           ...csvInspection.headers,
           ...csvInspection.preview.flatMap((row) => Object.values(row))
         ]"
       />
-      <div class="text-sm mt-2">
-        编码：{{ csvInspection.encoding || '未知' }}； 页码字段：<code>{{
-          csvInspection.pdfPageField
-        }}</code
-        >； 页码范围：{{
-          csvInspection.minPdfPage && csvInspection.maxPdfPage
-            ? `${csvInspection.minPdfPage}–${csvInspection.maxPdfPage}`
-            : '无有效页码'
-        }}。
-      </div>
-      <div class="text-sm mt-2">
-        检测到的表头：<code>{{ csvInspection.headers.join('、') }}</code>
-      </div>
       <AppDisclosure
+        v-if="csvInspection"
         :key="csvJob?.id"
         class="csv-preview-disclosure mt-3"
         :label="`查看预览样本（${csvInspection.preview.length} 条）`"
@@ -181,14 +176,37 @@
           此作业没有可显示的预览样本，请核对检查数量与错误记录。
         </p>
       </AppDisclosure>
+      <AppDisclosure :key="`process:${csvJob.id}`" class="mt-2" label="查看检查与导入详情" lazy>
+        <JobStatusPanel
+          v-if="!csvStatusVisible"
+          label="CSV 导入"
+          kind="csv"
+          :observation="csvObservation"
+          @retry="refreshCsvJob"
+        />
+        <p class="text-sm">{{ csvJobProgressText(csvJob) }}</p>
+        <p class="text-sm text-muted mt-2">
+          作业：{{ csvJob.id }}；来源关联：{{ csvJob.source_link }}；来源记录：{{
+            csvJob.source || '未关联'
+          }}；来源标识：{{ csvActualSource?.logical_id || '未读取或未关联' }}
+        </p>
+        <template v-if="csvInspection">
+          <p class="text-sm mt-2">
+            编码：{{ csvInspection.encoding || '未知' }}； 页码字段：<code>{{
+              csvInspection.pdfPageField
+            }}</code
+            >； 页码范围：{{
+              csvInspection.minPdfPage && csvInspection.maxPdfPage
+                ? `${csvInspection.minPdfPage}–${csvInspection.maxPdfPage}`
+                : '无有效页码'
+            }}。
+          </p>
+          <p class="text-sm mt-2">
+            检测到的表头：<code>{{ csvInspection.headers.join('、') }}</code>
+          </p>
+        </template>
+      </AppDisclosure>
     </div>
-    <div v-if="csvSuccess" class="alert alert-success mt-2" role="status">{{ csvSuccess }}</div>
-    <ImportErrorsPanel
-      v-if="csvJob?.id && (csvJob.failed_count > 0 || csvJob.status === 'failed')"
-      :project-id="projectId"
-      :job-id="csvJob.id"
-      :revision="`${csvJob.status}:${csvJob.updated || ''}`"
-    />
   </div>
 </template>
 
@@ -267,6 +285,15 @@ const csvSourceReady = computed(
 )
 const csvSourceMismatch = computed(
   () => csvActualSource.value && csvActualSource.value.logical_id !== requestedSourceId.value
+)
+const csvStatusVisible = computed(
+  () =>
+    !['validated', 'completed', 'completed_with_errors'].includes(csvJob.value?.status) ||
+    ['loading', 'stale', 'offline', 'unauthorized', 'unavailable'].includes(
+      csvObservation.value.state
+    ) ||
+    Boolean(csvObservation.value.error) ||
+    Boolean(csvSourceError.value)
 )
 
 let csvPollGeneration = 0
@@ -426,6 +453,14 @@ defineExpose({
 </script>
 
 <style scoped>
+.csv-inspection-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.csv-inspection-source {
+  line-height: 1.7;
+}
 .csv-inspection-counts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
