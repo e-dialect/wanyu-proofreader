@@ -349,7 +349,7 @@ func (s *importService) downloadArtifact(c *core.RequestEvent) error {
 	c.Response.Header().Set("X-Content-Type-Options", "nosniff")
 	c.Response.Header().Set("Content-Disposition", `attachment; filename="`+fileName+`"`)
 	contentType := "text/csv; charset=utf-8"
-	if artifact.GetString("kind") == "ocr_json" {
+	if artifact.GetString("kind") == "ocr_json" || artifact.GetString("kind") == "batch_report_json" {
 		contentType = "application/json; charset=utf-8"
 	}
 	return c.Blob(http.StatusOK, contentType, data)
