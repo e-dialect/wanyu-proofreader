@@ -535,10 +535,9 @@
   .editor-layout.experience-workspace.pdf-collapsed,
   .editor-layout.experience-workspace.pdf-unavailable {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, var(--stacked-pdf-share)) minmax(
-        0,
-        var(--stacked-fields-share)
-      ) auto auto;
+    grid-template-rows:
+      auto minmax(0, var(--stacked-pdf-share)) minmax(0, var(--stacked-fields-share))
+      auto auto;
     padding: var(--space-2);
     gap: var(--space-1);
   }
@@ -613,10 +612,9 @@
     display: none;
   }
   .editor-layout.experience-workspace.source-toggle-inline {
-    grid-template-rows: minmax(0, var(--stacked-pdf-share)) minmax(
-        0,
-        var(--stacked-fields-share)
-      ) auto auto;
+    grid-template-rows:
+      minmax(0, var(--stacked-pdf-share)) minmax(0, var(--stacked-fields-share))
+      auto auto;
   }
   .editor-layout.experience-workspace.source-toggle-inline .source-panel {
     grid-row: 1;
@@ -750,10 +748,9 @@
   }
   .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open) {
     grid-template-columns: minmax(0, 1fr) 44px;
-    grid-template-rows: minmax(0, var(--stacked-pdf-share)) minmax(
-        0,
-        var(--stacked-fields-share)
-      ) auto;
+    grid-template-rows:
+      minmax(0, var(--stacked-pdf-share)) minmax(0, var(--stacked-fields-share))
+      auto;
   }
   .editor-layout.experience-workspace.source-toggle-inline.has-keyboard:not(.keyboard-open)
     .source-panel,
