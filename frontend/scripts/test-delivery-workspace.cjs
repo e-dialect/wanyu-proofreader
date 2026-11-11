@@ -73,6 +73,17 @@ const { chromium } = require('playwright')
       await page.getByLabel('原因／处置说明', { exact: true }).inputValue(),
       'unsaved synthetic receipt'
     )
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 })
+      await page.getByRole('heading', { name: /^登记：/ }).focus()
+      await page.evaluate(() => window.scrollTo(0, 0))
+      assert.ok(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        `receipt editor must fit ${width}px without page overflow`
+      )
+      await page.screenshot({ path: path.join(out, `receipt-${width}.png`), fullPage: true })
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 })
     await page.getByRole('button', { name: '范围与凭据', exact: true }).click()
     await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).waitFor()
     await page.getByRole('button', { name: '继续处理', exact: true }).click()
@@ -95,6 +106,13 @@ const { chromium } = require('playwright')
       0
     )
     await page.screenshot({ path: path.join(out, 'adoption-created.png'), fullPage: true })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    assert.ok(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'adoption summary must fit the mobile viewport'
+    )
+    await page.screenshot({ path: path.join(out, 'adoption-created-mobile.png'), fullPage: true })
     assert.deepEqual(errors, [])
     console.log(
       'PASS browser: adoption deep link/reload/back and saved-create transition, native preparation and generation, delivery deep link/reload, dirty preparation and receipt query guards, receipt reopen preservation; synthetic only'

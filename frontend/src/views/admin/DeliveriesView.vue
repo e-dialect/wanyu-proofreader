@@ -436,6 +436,7 @@
         </AppDisclosure>
         <section v-if="detailTab === 'events'" class="delivery-history mt-4">
           <AppPagination
+            v-if="eventPages > 1"
             :page="eventsPage"
             :total-pages="eventPages"
             :busy="busy || loading"
