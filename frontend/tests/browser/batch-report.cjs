@@ -60,31 +60,36 @@ async function main() {
     status: 201
   })
   const filename = '合成练习批次.csv'
-  const upload = new FormData()
-  upload.set(
-    'file',
-    new Blob(['词头,释义,PDF页码\n练习甲,合成资料,1\n练习乙,合成资料,2\n,,3\n']),
-    filename
-  )
-  upload.set('inspect_only', 'true')
-  const job = await api(`/api/fangji/projects/${project.id}/imports/csv`, {
-    method: 'POST',
-    token: auth.token,
-    body: upload,
-    status: 202
-  })
-  const waitForJob = async (status) => {
+  async function inspectCsv(name, rows) {
+    const upload = new FormData()
+    upload.set('file', new Blob([`词头,释义,PDF页码\n${rows}`]), name)
+    upload.set('inspect_only', 'true')
+    return api(`/api/fangji/projects/${project.id}/imports/csv`, {
+      method: 'POST',
+      token: auth.token,
+      body: upload,
+      status: 202
+    })
+  }
+  const job = await inspectCsv(filename, '练习甲,合成资料,1\n练习乙,合成资料,2\n,,3\n')
+  async function waitForJob(id, status) {
     for (let i = 0; i < 100; i++) {
-      const current = await api(`/api/collections/import_jobs/records/${job.id}`, {
-        token: auth.token
-      })
+      const current = await api(`/api/collections/import_jobs/records/${id}`, { token: auth.token })
       if (current.status === status) return
       assert.notEqual(current.status, 'failed')
       await new Promise((resolve) => setTimeout(resolve, 80))
     }
     throw new Error(`No import status ${status}`)
   }
-  await waitForJob('validated')
+  async function confirmCsv(id, status) {
+    await api(`/api/fangji/imports/${id}/commit`, {
+      method: 'POST',
+      token: auth.token,
+      status: 202
+    })
+    await waitForJob(id, status)
+  }
+  await waitForJob(job.id, 'validated')
   const browser = await chromium.launch({
     channel: process.env.BROWSER_CHANNEL || 'msedge',
     headless: true
@@ -113,12 +118,10 @@ async function main() {
     await reportLink.waitFor()
     assert.ok(page.url().endsWith('section=materials&view=batches#project-ledger'))
 
-    await api(`/api/fangji/imports/${job.id}/commit`, {
-      method: 'POST',
-      token: auth.token,
-      status: 202
-    })
-    await waitForJob('completed_with_errors')
+    await confirmCsv(job.id, 'completed_with_errors')
+    const other = await inspectCsv('另一批.csv', '另一批条目,范围测试,1\n')
+    await waitForJob(other.id, 'validated')
+    await confirmCsv(other.id, 'completed')
     await reportLink.click()
     await page
       .getByText('导入成功', { exact: true })
@@ -128,6 +131,21 @@ async function main() {
     await page.getByText('核验覆盖不等于随机抽检', { exact: false }).waitFor()
     await page.screenshot({ path: path.join(out, '01-desktop.png') })
 
+    await page.getByRole('link', { name: '查看本批条目', exact: true }).click()
+    const scoped = page.getByText('仅查看本批次', { exact: true })
+    await scoped.waitFor()
+    await page.getByText('当前条件 2 条', { exact: true }).waitFor()
+    const entries = page.getByRole('region', { name: '项目条目表' })
+    await entries.getByText('练习甲', { exact: true }).waitFor()
+    assert.equal(await entries.getByText('另一批条目', { exact: true }).count(), 0)
+    assert.equal(await page.getByRole('button', { name: '批量选择', exact: true }).count(), 0)
+    await page.reload()
+    await scoped.waitFor()
+    await page.getByText('当前条件 2 条', { exact: true }).waitFor()
+    await page.getByRole('button', { name: '查看全项目条目', exact: true }).click()
+    await entries.getByText('另一批条目', { exact: true }).waitFor()
+    await page.goBack()
+    await page.getByRole('link', { name: '返回批次报告', exact: true }).click()
     await page.getByRole('link', { name: '生成与下载', exact: true }).click()
     await page.getByRole('button', { name: '生成报告文件', exact: true }).click()
     await page.waitForURL((url) => url.searchParams.has('export'))

@@ -6,6 +6,7 @@
         <RouterLink :to="returnTarget" class="report-back">← 返回批次台账</RouterLink>
         <h1>质量与交付报告</h1>
         <p v-if="report">
+          <template v-if="report.project_name">{{ report.project_name }} · </template>
           {{ report.batch.filename || '导入批次' }} · <code>{{ batchId }}</code>
         </p>
       </div>
@@ -42,7 +43,7 @@
               <RouterLink :to="importTarget" class="report-link">前往材料导入</RouterLink>
             </dd>
             <dd v-else-if="importComplete && needsProofreading">
-              <RouterLink :to="entriesTarget" class="report-link">查看项目条目</RouterLink>
+              <RouterLink :to="entriesTarget" class="report-link">查看本批条目</RouterLink>
             </dd>
           </div>
           <div>
@@ -50,7 +51,7 @@
             <dd class="report-overview-number">
               {{ reportMetricValue(report.metrics.proofreading?.pending_arbitration) }}
             </dd>
-            <dd><RouterLink :to="queueTarget" class="report-link">前往项目待办</RouterLink></dd>
+            <dd><RouterLink :to="queueTarget" class="report-link">查看本批待仲裁</RouterLink></dd>
           </div>
           <div>
             <dt>等待回执</dt>
@@ -303,8 +304,11 @@ const returnTarget = {
   ...projectWorkspaceTarget(projectId, 'materials', 'batches'),
   hash: '#project-ledger'
 }
-const queueTarget = projectWorkspaceTarget(projectId, 'work', 'queue')
-const entriesTarget = projectWorkspaceTarget(projectId, 'work', 'entries')
+const queueTarget = projectWorkspaceTarget(projectId, 'work', 'entries', {
+  importJob: batchId,
+  status: 'arbitration'
+})
+const entriesTarget = projectWorkspaceTarget(projectId, 'work', 'entries', { importJob: batchId })
 const importTarget = computed(() => {
   const method = report.value?.batch.mode
   return projectWorkspaceTarget(projectId, 'materials', 'import', {

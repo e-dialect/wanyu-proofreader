@@ -40,9 +40,9 @@ test('stale queue responses cannot overwrite the new project or page', async () 
 // Run the component's actual callbacks, including their existing submit guard.
 const view = readFileSync(new URL('../src/views/admin/ArbitrationView.vue', import.meta.url), 'utf8')
 function callback(name, bindings) {
-  const source = view.match(new RegExp(`async function ${name}\\(([^)]*)\\) \\{([\\s\\S]*?)\\n\\}\\n`))
+  const source = view.match(new RegExp(`(async )?function ${name}\\(([^)]*)\\) \\{([\\s\\S]*?)\\n\\}\\n`))
   assert.ok(source, name)
-  return new Function(...Object.keys(bindings), `return async function(${source[1]}) {${source[2]}\n}`)(...Object.values(bindings))
+  return new Function(...Object.keys(bindings), `return ${source[1] || ''}function(${source[2]}) {${source[3]}\n}`)(...Object.values(bindings))
 }
 const ref = value => ({ value })
 
@@ -59,11 +59,17 @@ test('unconfirmed differences cannot advance or submit', async () => {
 test('saved arbitration continues to the new next item without returning to the list', async () => {
   const paths = []
   const bindings = { caseVersion: 1, pageId: ref('page'), refreshQueue: async () => ({ totalItems: 3, next: { id: 'next' }, items: [{ id: 'first' }] }), projectId: ref('project'), queueMessage: ref(''), router: { push: async path => paths.push(path) } }
+  const importJob = ref('')
+  bindings.arbitrationTarget = callback('arbitrationTarget', { importJob })
   await callback('continueAfterSubmit', bindings)()
   assert.deepEqual(paths, ['/admin/projects/project/arbitration/next'])
   bindings.refreshQueue = async () => ({ totalItems: 1, next: null, items: [{ id: 'remaining-earlier' }] })
+  importJob.value = 'fixturebatch001'
   await callback('continueAfterSubmit', bindings)()
-  assert.equal(paths[1], '/admin/projects/project/arbitration/remaining-earlier')
+  assert.deepEqual(paths[1], {
+    path: '/admin/projects/project/arbitration/remaining-earlier',
+    query: { importJob: importJob.value }
+  })
 })
 
 test('last item completion and failed continuation keep the saved result and offer recovery', async () => {

@@ -27,6 +27,7 @@ export function reportMetricValue(metric, includeDenominator = true) {
   if (metric.unit === 'seconds') {
     return metric.denominator === 0 ? '暂无待处理' : reportDuration(metric.value)
   }
+  if (metric.unit === 'fields' && metric.denominator === 0) return '尚无提交字段'
   const denominator =
     includeDenominator && Number.isFinite(metric.denominator)
       ? ` / ${reportNumber(metric.denominator)}`
