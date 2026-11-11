@@ -126,7 +126,7 @@ func deliveryRights(app core.App, ref, purpose string) error {
 func (s *importService) readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHandoff) (reviewbundle.DeliverySnapshot, error) {
 	snap := reviewbundle.DeliverySnapshot{}
 	if h.IncludeOutside {
-		return snap, apis.NewForbiddenError("范围外正文交付尚未开放；显式请求也不能绕过权利和 D 侧编选。", nil)
+		return snap, apis.NewForbiddenError("范围外正文交付尚未开放；显式请求也不能绕过权利和用途编选规则。", nil)
 	}
 	job, err := app.FindRecordById("import_jobs", h.ImportJob)
 	if err != nil || job.GetString("project") != projectID || job.GetString("mode") != "bundle" || job.GetString("status") != "completed" {
@@ -150,13 +150,13 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 		return snap, err
 	}
 	if len(pages) > 20000 {
-		return snap, fmt.Errorf("批次超过 20,000 条，请在 D 侧拆分，未截断出包。")
+		return snap, fmt.Errorf("批次超过 20,000 条，请在用途编选环节拆分，未截断出包。")
 	}
 	// A completed import may have skipped source keys belonging to an older
 	// job. import_job then identifies only its newly inserted subset, not the
 	// uploaded batch. Fail closed rather than reconcile that subset as a whole.
 	if job.GetInt("total_count") <= 0 || len(pages) != job.GetInt("total_count") {
-		return snap, deliveryProblem(400, "DELIVERY_IMPORT_INCOMPLETE", "批次关联条目数与入站总数不一致（可能含重放跳过或已删除条目），无法证明完整范围；请退回 A／D 线核查，禁止按子集出包。", "核对入站总数与逐条关联，不自动拆分或补齐。")
+		return snap, deliveryProblem(400, "DELIVERY_IMPORT_INCOMPLETE", "批次关联条目数与入站总数不一致（可能含重放跳过或已删除条目），无法证明完整范围；请退回资料来源或用途编选环节核查，禁止按子集出包。", "核对入站总数与逐条关联，不自动拆分或补齐。")
 	}
 	if len(pages) == 0 || len(pages) != len(h.Entries) {
 		return snap, fmt.Errorf("交接清单必须逐项覆盖整个导入批次（不允许静默遗漏）。")
@@ -231,14 +231,14 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 			snap.SourceVersion = version
 		}
 		if system == "" || id == "" || version == "" || system != snap.SourceSystem || id != snap.SourceID || version != snap.SourceVersion || p.GetString("source_entry_id") == "" {
-			return snap, fmt.Errorf("批次来源三元组缺失或不一致，退回 A 线补齐。")
+			return snap, fmt.Errorf("批次来源三元组缺失或不一致，退回资料来源环节补齐。")
 		}
 		reasons := reasonField.Values
 		if h.NativeBatch != nil {
 			reasons = adoptionReasonCodes()
 		}
 		if item.Scope != "adopted" && !containsStr(reasons, item.Reason) {
-			return snap, fmt.Errorf("范围外与待处理理由必须来自 D 侧同源的 blocked_reason 词表。")
+			return snap, fmt.Errorf("范围外与待处理理由必须使用用途编选支持的阻塞原因。")
 		}
 		snap.Declarations = append(snap.Declarations, reviewbundle.Declaration{EntryID: p.GetString("source_entry_id"), Scope: item.Scope, Reason: item.Reason})
 		switch item.Scope {
@@ -249,7 +249,7 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 		case "adopted":
 			snap.Database.Adopted++
 			if p.GetString("status") != "approved" || normalizeQualityState(p.GetString("quality_state")) == qualityStateWithheld {
-				return snap, fmt.Errorf("采用范围包含未完成校对或暂缓外发条目，须退回 D 线重评。")
+				return snap, fmt.Errorf("采用范围包含未完成校对或暂缓外发条目，须退回用途编选环节重评。")
 			}
 			if businessComplete == nil {
 				businessComplete, err = newDeliveryCompletion(app, s.deliveryHooksDir)
@@ -337,7 +337,7 @@ func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("交接清单无法解析。", err)
 	}
 	if h.IncludeOutside {
-		return apis.NewForbiddenError("范围外正文交付尚未开放，须等待 D 侧授权与更高权限策略。", nil)
+		return apis.NewForbiddenError("范围外正文交付尚未开放，须等待用途编选授权与更高权限策略。", nil)
 	}
 	var snap reviewbundle.DeliverySnapshot
 	err = s.app.RunInTransaction(func(app core.App) error {
@@ -370,7 +370,7 @@ func (s *importService) createDelivery(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("交接清单无法解析。", err)
 	}
 	if h.IncludeOutside {
-		return apis.NewForbiddenError("范围外正文交付尚未开放，须等待 D 侧授权与更高权限策略。", nil)
+		return apis.NewForbiddenError("范围外正文交付尚未开放，须等待用途编选授权与更高权限策略。", nil)
 	}
 	var record *core.Record
 	err = s.app.RunInTransaction(func(app core.App) error {
@@ -634,14 +634,14 @@ func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
 			return apis.NewBadRequestError("全部成功的影响条数须等于包内正文条数。", nil)
 		}
 		if input.Status == "partial_conflict" && (input.Affected == 0 || input.Responsible == "" || !containsStr([]string{"A", "D"}, input.Target)) {
-			return apis.NewBadRequestError("部分冲突须记录非零冲突条数、上游 A／D 线和修复责任人。", nil)
+			return apis.NewBadRequestError("部分冲突须记录非零冲突条数、上游资料来源或用途编选环节和修复责任人。", nil)
 		}
 		if input.Status == "failed_rolled_back" && (strings.TrimSpace(input.Evidence) == "" || input.Responsible == "" || !containsStr([]string{"A", "D"}, input.Target)) {
 			return apis.NewBadRequestError("失败回执须保留回滚凭据、上游工序与责任人。", nil)
 		}
 	case "return":
 		if input.Responsible == "" || !containsStr([]string{"A", "D"}, input.Target) {
-			return apis.NewBadRequestError("退回须指定 A／D 线与责任人。", nil)
+			return apis.NewBadRequestError("退回须指定资料来源或用途编选环节与责任人。", nil)
 		}
 	case "withdrawal":
 		if input.Responsible == "" || strings.TrimSpace(input.Evidence) == "" {

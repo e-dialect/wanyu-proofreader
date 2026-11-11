@@ -155,7 +155,7 @@ func Reconcile(s DeliverySnapshot) Reconciliation {
 		}
 		if d.Scope != "adopted" {
 			if strings.TrimSpace(d.Reason) == "" {
-				add("范围外或待处理条目缺少 D 侧理由。")
+				add("范围外或待处理条目缺少用途编选理由。")
 			}
 			r.Reasons[d.Reason]++
 		}
@@ -277,7 +277,7 @@ func BuildDelivery(snapshot DeliverySnapshot, createdAt string) ([]byte, error) 
 	zw := zip.NewWriter(&out)
 	for _, name := range []string{"checksums.sha256", "delivery.json", "manifest.json", "results.jsonl"} {
 		if len(files[name]) > maxFileBytes {
-			return nil, fmt.Errorf("交付包文件超过 8 MiB 上限，请在 D 侧拆分批次。")
+			return nil, fmt.Errorf("交付包文件超过 8 MiB 上限，请在用途编选环节拆分批次。")
 		}
 		h := &zip.FileHeader{Name: name, Method: zip.Store}
 		h.SetMode(0600)
@@ -293,7 +293,7 @@ func BuildDelivery(snapshot DeliverySnapshot, createdAt string) ([]byte, error) 
 		return nil, err
 	}
 	if out.Len() > maxTotalBytes {
-		return nil, fmt.Errorf("交付包超过 20 MiB 上限，请在 D 侧拆分批次。")
+		return nil, fmt.Errorf("交付包超过 20 MiB 上限，请在用途编选环节拆分批次。")
 	}
 	return out.Bytes(), nil
 }
