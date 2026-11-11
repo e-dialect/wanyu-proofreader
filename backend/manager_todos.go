@@ -379,13 +379,10 @@ func todoDeliveryState(record *core.Record, events []*core.Record) todoDelivery 
 	for _, id := range pending {
 		ids[id] = true
 	}
-	result := todoDelivery{Awaiting: view["receipt_state"] == "awaiting_receipt", PendingActions: len(pending), NeedsNotice: view["notice_state"] == "pending_consumer_notice"}
+	result := todoDelivery{Awaiting: view["awaiting_receipt"] == true, PendingActions: len(pending), NeedsNotice: view["notice_state"] == "pending_consumer_notice"}
 	withdrawal := ""
 	for _, event := range events {
 		kind := event.GetString("kind")
-		if kind == "return" || kind == "withdrawal" {
-			result.Awaiting = false
-		}
 		if kind == "withdrawal" {
 			withdrawal = event.GetString("created")
 		}

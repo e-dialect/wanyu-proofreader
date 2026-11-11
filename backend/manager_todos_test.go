@@ -23,6 +23,9 @@ func TestManagerTodoDeliveryActionsCloseWithoutReopeningReceipt(t *testing.T) {
 		r.Set("created", "2026-11-02 00:00:00.000Z")
 		return r
 	}
+	if deliveryView(record, nil)["workflow_state"] != "awaiting_receipt" {
+		t.Fatal("new package workflow should await receipt")
+	}
 	if !todoDeliveryState(record, nil).Awaiting {
 		t.Fatal("new delivery should await receipt")
 	}
@@ -31,6 +34,9 @@ func TestManagerTodoDeliveryActionsCloseWithoutReopeningReceipt(t *testing.T) {
 	state := todoDeliveryState(record, []*core.Record{returned})
 	if state.Awaiting || state.PendingActions != 1 {
 		t.Fatalf("returned delivery: %+v", state)
+	}
+	if view := deliveryView(record, []*core.Record{returned, solved}); view["workflow_state"] != "returned_resolved" || view["awaiting_receipt"] != false || view["receipt_state"] != "awaiting_receipt" || view["waiting_seconds"] != int64(0) {
+		t.Fatalf("resolved return retains receipt history without waiting: %+v", view)
 	}
 	state = todoDeliveryState(record, []*core.Record{returned, solved})
 	if state.Awaiting || state.PendingActions != 0 {
