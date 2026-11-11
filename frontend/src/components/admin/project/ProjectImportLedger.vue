@@ -10,7 +10,7 @@
     <div v-if="loadingLedger" class="text-muted">加载中...</div>
     <div v-else-if="ledgerError" class="alert alert-error" role="alert">{{ ledgerError }}</div>
     <template v-else-if="ledger">
-      <div class="flex flex-wrap gap-4 text-sm mb-3">
+      <div class="ledger-summary text-sm">
         <span
           ><strong>{{ ledger.summary.total_batches }}</strong> 批</span
         >
@@ -39,12 +39,11 @@
           </template>
         </span>
       </div>
-      <AppDataTable label="项目导入批次台账" class="table-wrapper"
+      <AppDataTable label="项目导入批次台账" table-class="ledger-table"
         ><template #head>
           <tr>
-            <th>作业</th>
-            <th>完成时间</th>
-            <th>文件名</th>
+            <th>批次文件</th>
+            <th>时间</th>
             <th>状态</th>
             <th>输入</th>
             <th>入库</th>
@@ -56,11 +55,22 @@
         </template>
         <tr v-for="batch in ledger.batches" :key="batch.id">
           <td>
-            <code>{{ batch.id }}</code>
+            <strong class="batch-file">{{ batch.original_filename || '文件名未记录' }}</strong>
+            <div v-if="csvJobAction(batch)">
+              <RouterLink
+                :to="csvJobTarget(batch.id)"
+                :aria-label="`${csvJobAction(batch)} · ${batch.original_filename || 'CSV 批次'}`"
+                class="back-link"
+                >{{ csvJobAction(batch) }}</RouterLink
+              >
+            </div>
+            <details class="text-sm text-muted">
+              <summary>批次编号</summary>
+              <code>{{ batch.id }}</code>
+            </details>
           </td>
           <td>{{ batch.finished_at || batch.created || '—' }}</td>
-          <td>{{ batch.original_filename || '—' }}</td>
-          <td>{{ batch.status }}</td>
+          <td>{{ batchImportStatus(batch) }}</td>
           <td>{{ batch.total_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
           <td>{{ batch.inserted_count }} 行</td>
           <td>{{ batch.skipped_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
@@ -81,14 +91,14 @@
           </td>
           <td>
             {{
-              batch.source_hint ||
-              batch.source_logical_id ||
-              (batch.source_link === 'unknown' ? '未登记来源' : '—')
+              batch.source_link === 'unknown'
+                ? '尚未关联来源'
+                : batch.source_hint || batch.source_logical_id || '—'
             }}
           </td>
         </tr>
         <tr v-if="!ledger.batches.length">
-          <td colspan="10" class="text-muted">还没有导入批次。</td>
+          <td colspan="9" class="text-muted">还没有导入批次。</td>
         </tr>
       </AppDataTable>
       <ImportErrorsPanel
@@ -119,9 +129,42 @@ import AppDataTable from '@/components/AppDataTable.vue'
 import AppButton from '@/components/AppButton.vue'
 import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
+import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
+import { normalizeJob } from '@/lib/jobObserver'
 import { listImportLedger } from '@/services/importJobsService'
 import { getPbMessage } from '@/utils/pbErrors'
 const props = defineProps({ projectId: { type: String, required: true } })
+const csvJobTarget = (id) =>
+  projectWorkspaceTarget(props.projectId, 'materials', 'import', { method: 'csv', csvJob: id })
+function csvJobAction(batch) {
+  if (batch.mode === 'skip_invalid') {
+    if (batch.status === 'validated') return '继续确认导入'
+    if (['inspecting', 'queued', 'processing'].includes(batch.status)) return '查看导入进度'
+  }
+  if (
+    ['skip_invalid', 'strict'].includes(batch.mode) &&
+    ['completed', 'completed_with_errors', 'failed', 'cancelled'].includes(batch.status)
+  )
+    return '查看导入结果'
+  return ''
+}
+function batchImportStatus(batch) {
+  if (batch.status === 'inspecting') return '正在检查'
+  if (batch.status === 'importing') return '正在导入'
+  if (batch.status === 'error') return '导入失败'
+  const kind = batch.mode === 'ocr' ? 'ocr' : 'csv'
+  const labels = {
+    queued: '等待处理',
+    awaiting_confirmation: '检查完成，待确认',
+    processing: kind === 'ocr' ? '正在提取' : '正在导入',
+    completed: '导入完成',
+    completed_with_errors: '导入完成，部分失败',
+    failed: '导入失败',
+    cancelled: '已取消'
+  }
+  return labels[normalizeJob(kind, batch).state] || '导入状态未记录'
+}
 const ledger = ref(null)
 const selectedErrorJob = ref('')
 let generation = 0,
@@ -162,3 +205,28 @@ onBeforeUnmount(() => {
 })
 defineExpose({ loadLedger })
 </script>
+
+<style scoped>
+.ledger-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-block: var(--space-3);
+}
+:deep(.ledger-table th),
+:deep(.ledger-table td:nth-child(n + 2):nth-child(-n + 7)) {
+  white-space: nowrap;
+}
+:deep(.ledger-table td:nth-child(8)) {
+  min-width: 12rem;
+}
+:deep(.ledger-table td:last-child) {
+  min-width: 7rem;
+}
+.batch-file {
+  display: block;
+  min-width: 8rem;
+  max-width: 20rem;
+  overflow-wrap: anywhere;
+}
+</style>

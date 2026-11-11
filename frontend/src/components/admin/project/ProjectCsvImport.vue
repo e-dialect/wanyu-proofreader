@@ -2,35 +2,59 @@
   <!-- CSV upload -->
   <div ref="panelElement">
     <h4 class="font-semibold mb-2">从 CSV 导入条目</h4>
-    <p class="text-sm text-muted mb-3">
+    <p v-if="!csvJobTarget" class="text-sm text-muted mb-3">
       选择一列定位 PDF 物理页，再检查并确认导入。其余列保留为校对内容。
     </p>
-    <details class="mb-3">
+    <details v-if="!csvJobTarget" class="mb-3">
       <summary class="text-sm text-muted">查看 CSV 格式要求</summary>
       <p class="text-sm text-muted">
         CSV 第一行填写列名，不能有空白或重复列名。页码从 1 开始，使用 PDF 文件中的实际页序，
         封面也算一页。仅有一个常见页码列名时会为你预选。
       </p>
     </details>
-    <ProjectSourcePicker
-      v-if="!csvJob"
-      v-model="sourceId"
-      class="form-group mt-3"
-      :disabled="uploadingCsv || csvJob?.status === 'validated'"
-    />
-    <input
-      type="file"
-      accept=".csv"
-      @change="onCsvSelected"
-      ref="csvInput"
-      class="file-input-hidden"
+    <div v-if="invalidCsvLink" class="alert alert-warning mt-3" role="alert">
+      此 CSV 检查链接无效，请在批次台账重新选择。
+    </div>
+    <RouterLink v-if="csvJobTarget || invalidCsvLink" :to="ledgerTarget" class="back-link"
+      >返回批次台账</RouterLink
+    >
+    <AppButton
+      v-if="csvJobTarget || invalidCsvLink"
+      class="ml-2"
+      variant="ghost"
+      size="sm"
       :disabled="uploadingCsv"
-    />
-    <AppButton variant="secondary" :disabled="uploadingCsv" @click="csvInput.click()">
-      选择 CSV 文件
-    </AppButton>
-    <span v-if="csvFile" class="csv-selected-file text-sm ml-2">{{ csvFile.name }}</span>
-    <template v-if="csvFile && !csvJobTarget">
+      @click="startAnotherCsv"
+      >{{ hasLocalDraft ? '返回未检查的 CSV' : '检查另一个 CSV' }}</AppButton
+    >
+    <template v-if="!csvJobTarget && !invalidCsvLink">
+      <p v-if="mappingChanged && !csvFile" class="text-sm text-muted mt-3" role="status">
+        请重新选择原 CSV 文件，再选择页码列并检查。先前的检查记录仍可在批次台账中查看。
+      </p>
+      <ProjectSourcePicker
+        v-model="sourceId"
+        class="form-group mt-3"
+        :disabled="uploadingCsv || csvJob?.status === 'validated'"
+      />
+      <input
+        type="file"
+        accept=".csv"
+        @change="onCsvSelected"
+        ref="csvInput"
+        class="file-input-hidden"
+        :disabled="uploadingCsv"
+      />
+      <AppButton
+        ref="csvFileButton"
+        variant="secondary"
+        :disabled="uploadingCsv"
+        @click="csvInput.click()"
+      >
+        选择 CSV 文件
+      </AppButton>
+      <span v-if="csvFile" class="csv-selected-file text-sm ml-2">{{ csvFile.name }}</span>
+    </template>
+    <template v-if="csvFile && !csvJobTarget && !invalidCsvLink">
       <p v-if="readingColumns" class="text-sm text-muted mt-3" role="status">正在读取 CSV 表头…</p>
       <div v-else-if="columnsError" class="alert alert-error mt-3" role="alert">
         <p>{{ columnsError }}</p>
@@ -98,6 +122,16 @@
       {{ csvError }}
     </div>
     <div v-if="csvJob" class="csv-inspection mt-3">
+      <p v-if="csvJob.original_filename" class="csv-selected-file text-sm mt-2">
+        CSV 文件：<strong>{{ csvJob.original_filename }}</strong>
+      </p>
+      <p v-if="csvJob.project_file" class="csv-selected-file text-sm text-muted mt-2">
+        绑定原文 PDF：{{ csvPdf?.name || '正在读取文件名…' }}
+        <span v-if="csvJob.pdf_page_limit > 0"> · {{ csvJob.pdf_page_limit }} 页</span>
+      </p>
+      <p v-else-if="csvJob.pdf_snapshot_captured" class="text-sm text-muted mt-2">
+        检查时未绑定原文 PDF。
+      </p>
       <template v-if="csvJob.status === 'validated'">
         <h5 class="csv-inspection-title">检查完成，待确认</h5>
         <p class="text-sm text-muted mt-2" role="status">
@@ -112,6 +146,12 @@
       >
         {{ csvSuccess }}
       </div>
+      <p v-if="confirmableCsvJob && csvPdfIssue" class="alert alert-warning mt-2" role="alert">
+        {{ csvPdfIssue }}
+        <AppButton v-if="csvJob.project_file" variant="ghost" size="sm" @click="refreshCsvJob">
+          重新核对原文 PDF
+        </AppButton>
+      </p>
       <p v-if="csvSourcePending" class="text-sm text-muted mt-2" role="status">正在核对作业来源…</p>
       <p v-else-if="csvActualSource" class="csv-inspection-source text-sm mt-2" role="note">
         本次实际来源：<strong>{{ csvActualSource.title }}</strong
@@ -124,7 +164,8 @@
         }}」。此处不会改写已有作业的来源。
       </p>
       <p v-if="csvSourceError" class="alert alert-warning mt-2" role="alert">
-        {{ csvSourceError }} 请刷新后核对，暂不能确认导入。
+        {{ csvSourceError }} 暂不能确认导入。
+        <AppButton variant="ghost" size="sm" @click="refreshCsvJob">重新核对来源</AppButton>
       </p>
       <p v-if="csvInspection?.pdfPageField" class="csv-inspection-source text-sm mt-2">
         本次页码列：<strong>{{ csvInspection.pdfPageField }}</strong>
@@ -137,7 +178,7 @@
         class="alert alert-warning mt-2"
         role="alert"
       >
-        本次检查记录的页码列与选择不一致，请更改后重新检查。
+        本次检查记录的页码列无法确认，请重新检查。
       </p>
       <dl v-if="csvInspection" class="csv-inspection-counts" aria-label="CSV 检查数量">
         <div>
@@ -169,18 +210,24 @@
         :job-id="csvJob.id"
         :revision="`${csvJob.status}:${csvJob.updated || ''}`"
       />
-      <div v-if="csvInspection && csvJob.status === 'validated'" class="csv-inspection-action">
+      <div v-if="csvInspection && confirmableCsvJob" class="csv-inspection-action">
         <AppButton
           variant="primary"
           @click="confirmCsvImport"
           :loading="uploadingCsv"
           loading-label="正在确认导入"
-          :disabled="uploadingCsv || !csvSourceReady || !csvMappingReady"
+          :disabled="
+            uploadingCsv ||
+            csvObservation.state !== 'live' ||
+            !csvSourceReady ||
+            !csvMappingReady ||
+            !csvPdfReady
+          "
         >
           确认导入
         </AppButton>
         <AppButton
-          v-if="canChangeColumn"
+          v-if="canChangeColumn && !hasLocalDraft"
           variant="secondary"
           :disabled="uploadingCsv"
           @click="editPageColumn"
@@ -188,9 +235,15 @@
           更改页码列
         </AppButton>
         <span v-if="!csvSourceReady" class="text-sm text-muted">等待作业来源核对完成</span>
+        <span
+          v-if="canChangeColumn && !hasLocalDraft && !canReuseLocalFile"
+          class="text-sm text-muted"
+        >
+          更改页码列需重新选择原 CSV 并检查。
+        </span>
       </div>
       <AppButton
-        v-else-if="canChangeColumn"
+        v-else-if="canChangeColumn && !hasLocalDraft"
         variant="secondary"
         class="mt-3"
         :disabled="uploadingCsv"
@@ -296,7 +349,10 @@ import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
 import JobStatusPanel from '@/components/admin/project/JobStatusPanel.vue'
 import { useJobObserver } from '@/composables/useJobObserver'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
+import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
 import { listSources } from '@/services/sourcesService'
+import { getProjectFile } from '@/services/projectFilesService'
 import {
   commitCsvImport,
   createCsvInspection,
@@ -313,23 +369,32 @@ import {
 import { getPbMessage, getUploadErrorMessage } from '@/utils/pbErrors'
 const props = defineProps({
   projectId: { type: String, required: true },
+  jobLink: { type: String, default: '' },
   refreshPages: { type: Function, required: true },
   refreshStats: { type: Function, required: true },
   refreshQuality: { type: Function, required: true },
   refreshLedger: { type: Function, required: true },
   clearSelection: { type: Function, required: true }
 })
+const emit = defineEmits(['job-change'])
 const projectId = props.projectId
+const ledgerTarget = projectWorkspaceTarget(projectId, 'materials', 'batches')
+const invalidCsvLink = computed(() =>
+  Boolean(props.jobLink && !/^[a-z0-9]{15}$/.test(props.jobLink))
+)
 const loadPages = props.refreshPages
 const loadPageStats = props.refreshStats
 const loadQualitySummary = props.refreshQuality
 const loadLedger = props.refreshLedger
 const csvInput = ref(null)
+const csvFileButton = ref(null)
 const pageColumnInput = ref(null)
 
 const csvFile = ref(null)
 const csvColumns = ref(null)
 const pdfPageColumn = ref('')
+const checkedLocalFile = ref(false)
+const hasLocalDraft = computed(() => Boolean(csvFile.value && !checkedLocalFile.value))
 const readingColumns = ref(false)
 const columnsError = ref('')
 const mappingChanged = ref(false)
@@ -355,13 +420,28 @@ const {
   kind: 'csv',
   job: csvJobTarget,
   panel: panelElement,
-  read: getImportJob
+  read: readCsvJob
 })
 
 const csvActualSource = ref(null)
+const csvPdf = ref(null)
+let csvPdfRequest
+const csvPdfReady = computed(
+  () =>
+    csvJob.value?.pdf_snapshot_captured === true &&
+    (!csvJob.value.project_file ||
+      (csvPdf.value?.id === csvJob.value.project_file && csvPdf.value.ready))
+)
+const csvPdfIssue = computed(() => {
+  if (!csvJob.value?.pdf_snapshot_captured)
+    return '这次检查未记录绑定的原文 PDF，请重新选择原 CSV 并检查。'
+  if (csvPdf.value && csvPdf.value.id === csvJob.value.project_file && !csvPdf.value.ready)
+    return '这次检查绑定的原文 PDF 当前无法使用。请核对原文后重新检查 CSV。'
+  return ''
+})
 const csvSourcePending = ref(false)
 const csvSourceError = ref('')
-const requestedSourceId = ref('')
+const requestedSourceId = ref(null)
 const requestedSourceLabel = ref('未关联来源')
 const csvSourceReady = computed(
   () =>
@@ -370,7 +450,9 @@ const csvSourceReady = computed(
     (!csvJob.value?.source || Boolean(csvActualSource.value))
 )
 const csvSourceMismatch = computed(
-  () => csvActualSource.value && csvActualSource.value.logical_id !== requestedSourceId.value
+  () =>
+    requestedSourceId.value !== null &&
+    Boolean(csvActualSource.value && csvActualSource.value.logical_id !== requestedSourceId.value)
 )
 const csvStatusVisible = computed(
   () =>
@@ -405,18 +487,33 @@ const samplePdfPages = computed(() =>
   ].slice(0, 3)
 )
 const csvMappingReady = computed(() => {
-  const selected = pdfPageColumn.value
+  const field = csvInspection.value?.pdfPageField
   const recorded = csvJob.value?.csv_pdf_page_column
   return (
-    !selected ||
-    (csvInspection.value?.pdfPageField === selected && (!recorded || recorded === selected))
+    Boolean(field && csvInspection.value.headers.includes(field)) &&
+    (!recorded || recorded === field) &&
+    (requestedSourceId.value === null || pdfPageColumn.value === field)
   )
 })
+const canReuseLocalFile = computed(() =>
+  Boolean(
+    csvFile.value && csvColumns.value && checkedLocalFile.value && requestedSourceId.value !== null
+  )
+)
+const confirmableCsvJob = computed(
+  () => csvJob.value?.mode === 'skip_invalid' && csvJob.value.status === 'validated'
+)
 const canChangeColumn = computed(
   () =>
-    Boolean(csvFile.value && csvColumns.value) &&
-    ['validated', 'failed'].includes(csvJob.value?.status)
+    csvJob.value?.mode === 'skip_invalid' && ['validated', 'failed'].includes(csvJob.value.status)
 )
+
+async function readCsvJob(id, options) {
+  const job = await getImportJob(id, options)
+  if (job?.id !== id || job.project !== projectId || !['skip_invalid', 'strict'].includes(job.mode))
+    throw Object.assign(new Error('此 CSV 检查记录不属于当前项目。'), { status: 404 })
+  return job
+}
 
 function resetCsvCheck() {
   csvPollGeneration++
@@ -426,13 +523,41 @@ function resetCsvCheck() {
   csvActualSource.value = null
   csvSourcePending.value = false
   csvSourceError.value = ''
+  csvPdfRequest?.abort()
+  csvPdf.value = null
+  requestedSourceId.value = null
 }
 
 function editPageColumn() {
   if (!canChangeColumn.value || uploadingCsv.value) return
+  if (!canReuseLocalFile.value) {
+    sourceId.value = csvActualSource.value?.logical_id || ''
+    clearCsvFile()
+  } else {
+    checkedLocalFile.value = false
+  }
   resetCsvCheck()
+  emit('job-change', '')
   mappingChanged.value = true
-  nextTick(() => pageColumnInput.value?.focus())
+  nextTick(() => (csvFile.value ? pageColumnInput.value : csvFileButton.value)?.focus())
+}
+
+function clearCsvFile() {
+  columnsRequest?.abort()
+  csvFile.value = null
+  csvColumns.value = null
+  pdfPageColumn.value = ''
+  checkedLocalFile.value = false
+  readingColumns.value = false
+  columnsError.value = ''
+}
+
+function startAnotherCsv() {
+  if (uploadingCsv.value) return
+  if (!hasLocalDraft.value) clearCsvFile()
+  resetCsvCheck()
+  emit('job-change', '')
+  nextTick(() => csvFileButton.value?.focus())
 }
 
 function onCsvSelected(event) {
@@ -441,6 +566,7 @@ function onCsvSelected(event) {
   event.target.value = ''
   resetCsvCheck()
   uploadingCsv.value = false
+  checkedLocalFile.value = false
   csvFile.value = file
   mappingChanged.value = false
   void loadCsvColumns()
@@ -505,6 +631,29 @@ async function performReadCsvSource(job, generation) {
   }
 }
 
+async function readCsvPdf(id) {
+  csvPdfRequest?.abort()
+  csvPdf.value = null
+  if (!id) return
+  const controller = new AbortController()
+  csvPdfRequest = controller
+  const unavailable = { id, name: '文件名不可用', ready: false }
+  try {
+    const file = await getProjectFile(id, { signal: controller.signal })
+    if (controller.signal.aborted) return
+    csvPdf.value =
+      file.id === id && file.project === projectId
+        ? { id, name: file.original_filename || unavailable.name, ready: file.status === 'ready' }
+        : unavailable
+  } catch {
+    if (!controller.signal.aborted) csvPdf.value = unavailable
+  }
+}
+watch(
+  () => [csvJob.value?.id, csvJob.value?.project_file],
+  ([, id]) => readCsvPdf(id)
+)
+
 watch(
   () => [csvJob.value?.id, csvJob.value?.status, csvJob.value?.source],
   async ([id, status], previous) => {
@@ -518,9 +667,7 @@ watch(
     if (csvActualSource.value?.id !== (job.source || '')) await readCsvSource(job, generation)
     if (generation !== csvPollGeneration) return
     if (['completed', 'completed_with_errors'].includes(status)) {
-      csvFile.value = null
-      csvColumns.value = null
-      pdfPageColumn.value = ''
+      if (checkedLocalFile.value && requestedSourceId.value !== null) clearCsvFile()
       props.clearSelection()
       try {
         await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
@@ -560,7 +707,9 @@ async function uploadCsv() {
       pdfPageColumn: pdfPageColumn.value
     })
     if (generation !== csvPollGeneration) return
+    checkedLocalFile.value = true
     observeCsvJob(job)
+    emit('job-change', job.id)
     await readCsvSource(job, generation)
     if (generation !== csvPollGeneration) return
   } catch (e) {
@@ -575,10 +724,12 @@ async function uploadCsv() {
 
 async function confirmCsvImport() {
   if (
-    csvJob.value?.status !== 'validated' ||
+    !confirmableCsvJob.value ||
+    csvObservation.value.state !== 'live' ||
     uploadingCsv.value ||
     !csvSourceReady.value ||
-    !csvMappingReady.value
+    !csvMappingReady.value ||
+    !csvPdfReady.value
   )
     return
   uploadingCsv.value = true
@@ -604,19 +755,29 @@ async function refreshCsvJob() {
   csvError.value = ''
   await retryCsvJob()
   if (generation === csvPollGeneration && csvJob.value)
-    await readCsvSource(csvJob.value, generation)
+    await Promise.all([
+      readCsvSource(csvJob.value, generation),
+      readCsvPdf(csvJob.value.project_file)
+    ])
 }
+watch(
+  () => props.jobLink,
+  (id) => {
+    if ((id || '') === (csvJobTarget.value?.id || '')) return
+    resetCsvCheck()
+    uploadingCsv.value = false
+    if (id && !invalidCsvLink.value) csvJobTarget.value = { id }
+  },
+  { immediate: true }
+)
+
 onBeforeUnmount(() => {
   csvPollGeneration += 1
   columnsRequest?.abort()
+  csvPdfRequest?.abort()
 })
 defineExpose({
-  hasPendingWork: computed(
-    () =>
-      uploadingCsv.value ||
-      Boolean(csvFile.value) ||
-      ['inspecting', 'queued', 'processing', 'validated'].includes(csvJob.value?.status)
-  )
+  hasPendingWork: computed(() => hasLocalDraft.value || (uploadingCsv.value && !csvJobTarget.value))
 })
 </script>
 

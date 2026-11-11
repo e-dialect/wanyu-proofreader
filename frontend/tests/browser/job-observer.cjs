@@ -26,7 +26,8 @@ const inspection = {
 const makeCsvJob = (id, overrides = {}) => ({
   id,
   project: 'project-a',
-  mode: 'csv',
+  mode: 'skip_invalid',
+  pdf_snapshot_captured: true,
   original_filename: 'synthetic.csv',
   status: 'validated',
   total_count: 25,
@@ -251,6 +252,8 @@ const makeCsvJob = (id, overrides = {}) => ({
     }
     const inspectAs = async (job, source = '') => {
       csvJob = job
+      const newCheck = page.getByRole('button', { name: '检查另一个 CSV', exact: true })
+      if (await newCheck.isVisible()) await newCheck.click()
       await csvInput.setInputFiles({
         name: 'synthetic.csv',
         mimeType: 'text/csv',

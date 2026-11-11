@@ -105,7 +105,7 @@
         本批提取失败，暂存条目未发布为任务。提取会在遇到问题后停止，上方不是完整的问题页清单；可缩小页段重试，或将内容整理为
         CSV。
       </p>
-      <RouterLink v-if="published && result.rows" :to="entriesTarget">查看条目并修正</RouterLink>
+      <RouterLink v-if="published && result.rows" :to="entriesTarget">查看本批条目并修正</RouterLink>
       <div v-if="result.artifacts?.length" class="mt-2">
         <p class="text-sm">原始文字、坐标和识别状态保存在受权限保护的中间产物中：</p>
         <AppButton
@@ -181,7 +181,7 @@ const uploadTarget = computed(() => ({
 }))
 const entriesTarget = computed(() => ({
   path: `/admin/projects/${props.projectId}`,
-  query: { section: 'work', view: 'entries' }
+  query: { section: 'work', view: 'entries', importJob: job.value?.id }
 }))
 const jobTarget = ref(null)
 const {

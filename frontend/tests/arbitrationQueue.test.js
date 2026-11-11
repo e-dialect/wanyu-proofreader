@@ -42,7 +42,22 @@ const view = readFileSync(new URL('../src/views/admin/ArbitrationView.vue', impo
 function callback(name, bindings) {
   const source = view.match(new RegExp(`async function ${name}\\(([^)]*)\\) \\{([\\s\\S]*?)\\n\\}\\n`))
   assert.ok(source, name)
-  return new Function(...Object.keys(bindings), `return async function(${source[1]}) {${source[2]}\n}`)(...Object.values(bindings))
+  const batch = bindings.importJob?.value || ''
+  return new Function(
+    ...Object.keys(bindings),
+    'importJob',
+    'validImportJob',
+    'arbitrationTarget',
+    `return async function(${source[1]}) {${source[2]}\n}`
+  )(
+    ...Object.values(bindings),
+    bindings.importJob || ref(''),
+    bindings.validImportJob || ((value) => /^[a-z0-9]{15}$/.test(value)),
+    bindings.arbitrationTarget || ((project, page) => {
+      const path = `/admin/projects/${project}/arbitration/${page}`
+      return batch ? { path, query: { importJob: batch } } : path
+    })
+  )
 }
 const ref = value => ({ value })
 
@@ -64,6 +79,51 @@ test('saved arbitration continues to the new next item without returning to the 
   bindings.refreshQueue = async () => ({ totalItems: 1, next: null, items: [{ id: 'remaining-earlier' }] })
   await callback('continueAfterSubmit', bindings)()
   assert.equal(paths[1], '/admin/projects/project/arbitration/remaining-earlier')
+})
+
+test('batch arbitration keeps its batch on next item and return navigation', async () => {
+  const paths = []
+  const batch = 'batch0000000000'
+  const bindings = {
+    caseVersion: 1,
+    pageId: ref('page'),
+    refreshQueue: async () => ({ totalItems: 2, next: { id: 'next' }, items: [{ id: 'first' }] }),
+    projectId: ref('project'),
+    importJob: ref(batch),
+    queueMessage: ref(''),
+    router: { push: async target => paths.push(target) }
+  }
+  await callback('continueAfterSubmit', bindings)()
+  assert.deepEqual(paths[0], {
+    path: '/admin/projects/project/arbitration/next',
+    query: { importJob: batch }
+  })
+  const navigate = callback('navigateQueue', {
+    projectId: ref('project'),
+    importJob: ref(batch),
+    submitting: ref(false),
+    loading: ref(false),
+    unresolvedHeaders: ref([]),
+    submitError: ref(''),
+    router: { push: async target => paths.push(target) }
+  })
+  await navigate({ id: 'previous' })
+  assert.deepEqual(paths[1], {
+    path: '/admin/projects/project/arbitration/previous',
+    query: { importJob: batch }
+  })
+})
+
+test('invalid or mismatched batch scopes cannot open the project-wide arbitration queue', () => {
+  const service = readFileSync(
+    new URL('../src/services/arbitrationService.js', import.meta.url),
+    'utf8'
+  )
+  assert.match(service, /getArbitrationQueue\(projectId, anchor, importJob = ''\)/)
+  assert.match(service, /\.\.\.\(importJob \? \{ importJob \} : \{\}\)/)
+  assert.match(view, /if \(importJob\.value && !validImportJob\(importJob\.value\)\)[\s\S]*view=batches/)
+  assert.match(view, /\(!importJob\.value \|\| validImportJob\(importJob\.value\)\)/)
+  assert.match(view, /requestedImportJob && result\.page\?\.import_job !== requestedImportJob/)
 })
 
 test('last item completion and failed continuation keep the saved result and offer recovery', async () => {
