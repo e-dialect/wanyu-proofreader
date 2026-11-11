@@ -3,7 +3,7 @@
     <header class="page-heading todo-heading">
       <div>
         <h1>统一待办</h1>
-        <p>找到需要你判断的资料，继续核验、整理与交付。</p>
+        <p>找到需要你处理的事项，继续核验、整理与交付。</p>
       </div>
       <AppButton variant="ghost" :disabled="accessLost" :loading="loading" @click="load">
         <AppIcon name="refresh" />刷新待办
