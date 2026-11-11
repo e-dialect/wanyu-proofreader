@@ -243,7 +243,7 @@
         /></RouterLink>
       </section>
 
-      <ReviewBundlePractice :project-id="projectId" />
+      <ReviewBundlePractice ref="practice" />
     </div>
   </main>
 </template>
@@ -255,33 +255,44 @@ import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ReviewBundlePractice from '@/components/admin/project/ReviewBundlePractice.vue'
 import { useAuthStore } from '@/stores/auth'
+import {
+  practiceGuideTarget,
+  practiceNavigationQuery,
+  practiceProjectId,
+  readPracticeContext
+} from '@/lib/practiceContext'
+import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
 
 const route = useRoute()
 const auth = useAuthStore()
-const projectId = computed(() =>
-  typeof route.query.project === 'string' && /^[a-z0-9]{15}$/.test(route.query.project)
-    ? route.query.project
-    : ''
-)
-const returnTarget = computed(() =>
-  projectId.value
-    ? {
-        path: `/admin/projects/${projectId.value}`,
-        query: {
-          section: 'materials',
-          view: 'import',
-          method: ['pdf', 'csv', 'ocr', 'bundle'].includes(route.query.method)
-            ? route.query.method
-            : 'pdf'
-        }
-      }
-    : auth.canCreateProjects
-      ? '/admin/projects/new'
-      : '/workspace'
-)
+const projectId = computed(() => practiceProjectId(route.query.project))
+const practice = ref(null)
+const verifiedPracticeProject = computed(() => {
+  const project = practice.value?.project
+  return project?.capabilities?.canManage ? project : null
+})
+const hasPracticeContext = computed(() => route.query.practiceProject !== undefined)
+const returnTarget = computed(() => {
+  if (projectId.value) {
+    const method = ['pdf', 'csv', 'ocr', 'bundle'].includes(route.query.method)
+      ? route.query.method
+      : 'pdf'
+    return projectWorkspaceTarget(projectId.value, 'materials', 'import', { method })
+  }
+  const project = verifiedPracticeProject.value
+  if (project) {
+    const context = readPracticeContext(route.query, project.id)
+    return projectWorkspaceTarget(project.id, 'materials', 'import', {
+      method: context?.step === 'import' ? 'bundle' : 'pdf',
+      ...(context ? practiceNavigationQuery(context) : {})
+    })
+  }
+  return !hasPracticeContext.value && auth.canCreateProjects ? '/admin/projects/new' : '/workspace'
+})
 const returnLabel = computed(() => {
   if (projectId.value) return '返回项目材料'
-  return auth.canCreateProjects ? '返回创建项目' : '返回工作台'
+  if (verifiedPracticeProject.value) return '返回练习项目材料'
+  return !hasPracticeContext.value && auth.canCreateProjects ? '返回创建项目' : '返回工作台'
 })
 const guideElement = ref(null)
 const anchors = new Set([
@@ -291,10 +302,8 @@ const anchors = new Set([
   'review-bundle-practice'
 ])
 const anchor = (id) => ({ path: route.path, query: route.query, hash: `#${id}` })
-const practiceAnchor = (role) => ({
-  ...anchor('review-bundle-practice'),
-  query: { ...route.query, practiceRole: role }
-})
+const practiceAnchor = (role) =>
+  practiceGuideTarget({ projectId: route.query.practiceProject, role }, route.query)
 watch(
   () => route.hash,
   async (hash) => {

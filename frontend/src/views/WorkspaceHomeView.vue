@@ -131,6 +131,7 @@
             >
               <div class="workbench-row__body">
                 <h3>{{ item.project.name }}</h3>
+                <ProjectPurposeBadge :purpose="item.project.purpose" />
                 <p>仲裁差异字段</p>
               </div>
               <span class="workbench-attention-count"
@@ -172,7 +173,9 @@
               <span class="workbench-project__name"
                 ><AppIcon name="project" /><span
                   ><strong>{{ project.name }}</strong
-                  ><small>{{ project.managed ? '管理项目' : '参与校对' }}</small></span
+                  ><ProjectPurposeBadge :purpose="project.purpose" /><small>{{
+                    project.managed ? '管理项目' : '参与校对'
+                  }}</small></span
                 ></span
               >
               <span v-if="project.summary" class="workbench-project__progress"
@@ -209,6 +212,7 @@
   </main>
 </template>
 <script setup>
+import ProjectPurposeBadge from '@/components/ProjectPurposeBadge.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { measureBusiness } from '@/lib/businessMetrics'
 import { RouterLink, useRouter } from 'vue-router'

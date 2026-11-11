@@ -5,9 +5,11 @@
     :keyboard-available="keyboardAvailable"
     :suspended="(mobile && overview) || reviewingSubmission"
     :loading="loadingPage"
-    :pdf-enabled="ownReview || (!leaseLost && (!!leaseToken || saving || loadingPage))"
+    :pdf-enabled="
+      ownReview || submittedHere || (!leaseLost && (!!leaseToken || saving || loadingPage))
+    "
     :watermark-user-id="currentUserId"
-    return-to="/tasks"
+    :return-to="returnTarget"
     return-label="返回大厅"
     content-labelled-by="task-panel-title"
     empty-pdf-description="请保存草稿并提交来源问题，待来源 PDF 可用后继续核对。"
@@ -39,11 +41,16 @@
           @retry="loadPage"
         />
         <div v-else class="empty-state-text">页面不存在</div>
-        <RouterLink to="/tasks" class="btn btn-secondary mt-3">返回项目大厅</RouterLink>
+        <RouterLink :to="returnTarget" class="btn btn-secondary mt-3">返回任务列表</RouterLink>
       </div>
       <template v-else>
         <ProofreadTaskFeedback
           :saved="saved"
+          :submitted-here="submittedHere"
+          :no-next-task="noNextTask"
+          :own-submissions-target="ownSubmissionsTarget"
+          :available-tasks-target="availableTasksTarget"
+          :practice-guide="practiceGuide"
           :claim-next-failure="claimNextFailure"
           :claim-next-failure-notice="claimNextFailureNotice"
           :retrying-claim="retryingClaim"
@@ -226,6 +233,11 @@ const {
   saving,
   currentUserId,
   submittedHere,
+  noNextTask,
+  ownSubmissionsTarget,
+  availableTasksTarget,
+  practiceGuide,
+  returnTarget,
   activeField,
   gotoPrevTask,
   gotoNextTask,

@@ -27,6 +27,7 @@ function fixture(submit) {
       'leaseLost',
       'claimNextFailure',
       'submittedHere',
+      'noNextTask',
       'retryingClaim',
       'leaseNavigationAllowed'
     ].map((key) => [key, ref(false)])
@@ -58,6 +59,7 @@ function fixture(submit) {
     isCurrentCase: (snapshot) =>
       snapshot.version === version && snapshot.id === context.page.value.id,
     router: { push: async (path) => calls.navigations.push(path) },
+    taskEditTarget: (pageId) => ({ path: `/tasks/${pageId}/edit`, query: {} }),
     submitConfirmButton: ref({
       focus: () => {
         calls.focused++

@@ -19,6 +19,9 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794442500_project_purpose.js': {
+        'fields': ('projects', {'purpose': {'required': False, 'values_contains': 'practice'}}),
+    },
     '1794204600_import_inspection_budget.js': {
         'fields': ('import_jobs', {'inspection_json': {'max': 524288}}),
     },

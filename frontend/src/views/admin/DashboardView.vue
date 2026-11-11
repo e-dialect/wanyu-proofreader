@@ -154,6 +154,7 @@
               <RouterLink :to="`/admin/projects/${item.project.id}`" class="project-name-link">
                 {{ item.project.name }}
               </RouterLink>
+              <ProjectPurposeBadge :purpose="item.project.purpose" />
             </div>
             <p v-if="item.project.description">{{ item.project.description }}</p>
             <AppDisclosure class="project-status-details" label="状态与创建信息">
@@ -239,6 +240,7 @@
 </template>
 
 <script setup>
+import ProjectPurposeBadge from '@/components/ProjectPurposeBadge.vue'
 import ProjectHubTabs from '@/components/ProjectHubTabs.vue'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'

@@ -188,7 +188,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/task`, (c) => {
     ocr_cells_json: page.getString("ocr_cells_json"),
     row_headers_json: page.getString("row_headers_json"),
     expand: {
-      project: { id: project.id, name: project.getString("name") }
+      project: { id: project.id, name: project.getString("name"), purpose: project.getString("purpose") || "work" }
     }
   }
   if (active) {
