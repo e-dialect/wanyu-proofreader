@@ -45,6 +45,7 @@
       />
       <ProjectImportChoice
         v-if="location.section === 'materials' && location.view === 'import'"
+        :project-id="projectId"
         :method="importMethod"
         @select="selectImport"
       />
