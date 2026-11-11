@@ -1,10 +1,12 @@
 package main
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/pocketbase/core"
 )
 
 func TestTrustedClientIPExtractor(t *testing.T) {
@@ -73,4 +75,45 @@ func TestTrustedClientIPExtractorDefaultsToDirectPeer(t *testing.T) {
 	if got := extractor(request); got != "203.0.113.11" {
 		t.Fatalf("direct extractor = %q, want %q", got, "203.0.113.11")
 	}
+}
+
+func TestNativeAccountRateLimitUsesTrustedClientIP(t *testing.T) {
+	service, app := newExternalIdentityTestService(t)
+	user, _, err := service.resolveOrCreateUser("mock", "native-rate-limit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := user.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	app.Settings().TrustedProxy = core.TrustedProxyConfig{Headers: []string{trustedClientIPHeader}}
+	app.Settings().RateLimits = core.RateLimitsConfig{
+		Enabled: true,
+		Rules: []core.RateLimitRule{
+			{Label: "*:authRefresh", Duration: 60, MaxRequests: 30},
+		},
+	}
+	h := accountTestRouter(t, app)
+
+	refresh := func(peer, forwarded, header string, want int) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodPost, "/api/collections/users/auth-refresh", nil)
+		r.RemoteAddr = peer
+		r.Header.Set("Authorization", token)
+		r.Header.Set(echo.HeaderXForwardedFor, forwarded)
+		r.Header.Set(trustedClientIPHeader, header)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("native refresh status = %d, want %d", w.Code, want)
+		}
+	}
+	for range 30 {
+		refresh("172.18.0.4:49152", "198.51.100.21", "", http.StatusOK)
+	}
+	refresh("172.18.0.4:49153", "198.51.100.21", "198.51.100.22", http.StatusTooManyRequests)
+	refresh("172.18.0.4:49154", "198.51.100.22", "", http.StatusOK)
+	refresh("198.51.100.21:49155", "198.51.100.22", "198.51.100.22", http.StatusTooManyRequests)
 }

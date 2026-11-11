@@ -19,6 +19,7 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204800_native_account_rate_limits.js': {'native_account_limits': True},
     '1794204600_import_inspection_budget.js': {
         'fields': ('import_jobs', {'inspection_json': {'max': 524288}}),
     },
@@ -522,6 +523,8 @@ def assert_applied(data, migration, problems):
             problems.append(f'{migration}: {table} query plan does not use {name}: {plan}')
     if spec.get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=True)
+    if spec.get('native_account_limits'):
+        _assert_native_account_limits(data, migration, problems, expect=True)
     field_spec = spec.get('fields')
     if field_spec:
         _assert_fields(data, migration, field_spec, problems, expect=True)
@@ -550,6 +553,8 @@ def assert_absent(data, migration, problems, context):
     assert_index_replacements(data, migration, problems, up=False)
     if SPECS.get(migration, {}).get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=False)
+    if SPECS.get(migration, {}).get('native_account_limits'):
+        _assert_native_account_limits(data, migration, problems, expect=False)
     present = index_names(data)
     with closing(sqlite3.connect(data / 'data.db')) as db:
         objects = {(row[0], row[1]) for row in db.execute('SELECT type,name FROM sqlite_master')}
@@ -578,6 +583,49 @@ def _assert_mail_links(data, migration, problems, expect):
         contains = path in options.get(key, {}).get('body', '')
         if contains != expect:
             problems.append(f'{migration}: {key} link mismatch after {"up" if expect else "down"}')
+
+
+def _account_limit_settings(data):
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        value = db.execute("SELECT value FROM _params WHERE id='settings'").fetchone()[0]
+    settings = json.loads(value)
+    return settings['rateLimits'], settings['trustedProxy']
+
+
+def _assert_native_account_limits(data, migration, problems, expect):
+    limits, proxy = _account_limit_settings(data)
+    rules = [(rule['label'], rule['maxRequests'], rule['duration'], rule['audience']) for rule in limits['rules']]
+    expected_rules = [
+        ('*:authWithPassword', 240, 60, ''), ('*:authRefresh', 120, 60, ''),
+        ('*:authWithOAuth2', 120, 60, ''), ('*:authWithOTP', 120, 60, ''), ('*:requestOTP', 120, 60, ''),
+    ] if expect else [
+        ('*:auth', 2, 3, ''), ('*:create', 20, 5, ''), ('/api/batch', 3, 1, ''), ('/api/', 300, 10, ''),
+    ]
+    if limits['enabled'] != expect or limits['excludedIPs'] or rules != expected_rules:
+        problems.append(f'{migration}: native rules differ after migration (enabled expected: {expect})')
+    if proxy['useLeftmostIP'] or (proxy['headers'] or []) != (['X-Fangji-Client-IP'] if expect else []):
+        problems.append(f'{migration}: trusted proxy selection differs after migration (enabled expected: {expect})')
+
+
+def _assert_operator_account_limits_preserved(binary, data, problems):
+    # Keep a modified managed policy intact until its proxy header is reviewed.
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 300) WHERE id='settings'")
+    modified = _account_limit_settings(data)
+    output = migrate(binary, data, 'down', 1, expect_success=False)
+    if 'X-Fangji-Client-IP' not in output or _account_limit_settings(data) != modified:
+        problems.append('native account rate limit rollback did not preserve modified proxy policy')
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 240) WHERE id='settings'")
+    # Deliberate operator changes must survive reapplying this migration.
+    migrate(binary, data, 'down', 1)
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 60) WHERE id='settings'")
+    before = _account_limit_settings(data)
+    for command in [('up',), ('down', 1)]:
+        migrate(binary, data, *command)
+        if _account_limit_settings(data) != before:
+            problems.append(f'native account rate limit migration overwrote operator settings on {command[0]}')
 
 
 def _assert_fields(data, migration, field_spec, problems, expect):
@@ -684,6 +732,7 @@ def main():
         if applied(data) != expected:
             problems.append(f'reapply left {applied(data)} != {expected}')
         assert_state(data, expected, expected[-1], problems, 'final up')
+        _assert_operator_account_limits_preserved(binary, data, problems)
 
     if problems:
         print('migration verification failed:', file=sys.stderr)
