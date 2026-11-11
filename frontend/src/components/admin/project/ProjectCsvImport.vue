@@ -105,13 +105,6 @@
       <div v-if="csvError" role="alert" class="alert alert-error mt-3 preserve-line-breaks">
         {{ csvError }}
       </div>
-      <div
-        v-if="csvJob.error_message && csvJob.status !== 'failed'"
-        class="alert alert-warning mt-2 preserve-line-breaks"
-        role="alert"
-      >
-        {{ csvJob.error_message }}
-      </div>
       <ImportErrorsPanel
         v-if="csvJob.id && (csvJob.failed_count > 0 || csvJob.status === 'failed')"
         :project-id="projectId"
@@ -185,6 +178,12 @@
           @retry="refreshCsvJob"
         />
         <p class="text-sm">{{ csvJobProgressText(csvJob) }}</p>
+        <p
+          v-if="csvJob.error_message && csvJob.status !== 'failed'"
+          class="text-sm text-muted mt-2 preserve-line-breaks"
+        >
+          {{ csvJob.error_message }}
+        </p>
         <p class="text-sm text-muted mt-2">
           作业：{{ csvJob.id }}；来源关联：{{ csvJob.source_link }}；来源记录：{{
             csvJob.source || '未关联'

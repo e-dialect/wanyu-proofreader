@@ -33,6 +33,7 @@ const makeCsvJob = (id, overrides = {}) => ({
   processed_count: 25,
   success_count: 25,
   failed_count: 0,
+  error_message: '检测编码：UTF-8；页码字段：PDF页码',
   inspection_json: JSON.stringify(inspection),
   ...overrides
 })
@@ -176,6 +177,11 @@ const makeCsvJob = (id, overrides = {}) => ({
     await confirmImport.waitFor()
     assert.equal(await processToggle.getAttribute('aria-expanded'), 'false')
     assert.equal(await csvStatus.count(), 0, 'normal preflight keeps observer details collapsed')
+    assert.equal(
+      await csvPanel.getByRole('alert').count(),
+      0,
+      'backend processing notes are not warnings'
+    )
     assert.equal(await csvPanel.getByRole('button', { name: /刷新检查|重新读取/ }).count(), 0)
     assert.equal(
       await csvPanel.locator('.alert-success').count(),
@@ -210,8 +216,13 @@ const makeCsvJob = (id, overrides = {}) => ({
     await csvStatus.waitFor()
     assert.equal(await csvPanel.getByRole('button', { name: '重新读取状态' }).count(), 1)
     assert.match(await csvPanel.textContent(), /编码：UTF-8/)
+    const processingNote = csvPanel.getByText('检测编码：UTF-8；页码字段：PDF页码', { exact: true })
+    assert.equal(await processingNote.isVisible(), true)
+    assert.equal(await processingNote.getAttribute('role'), null)
     await processToggle.click()
     await csvStatus.waitFor({ state: 'hidden' })
+    await processingNote.waitFor({ state: 'hidden' })
+    assert.equal(await processingNote.isVisible(), false)
     await previewToggle.click()
     const table = page.getByRole('region', { name: 'CSV 预检内容' }).getByRole('table')
     await table.locator('tbody tr').nth(19).waitFor()
@@ -282,8 +293,8 @@ const makeCsvJob = (id, overrides = {}) => ({
       true
     )
     assert.equal(
-      await csvPanel.getByRole('alert').filter({ hasText: '请先核对错误行的页码。' }).isVisible(),
-      true
+      await csvPanel.getByRole('alert').filter({ hasText: '请先核对错误行的页码。' }).count(),
+      0
     )
     const errorRecords = page.getByRole('region', { name: '导入错误记录', exact: true })
     await errorRecords.getByText('页码无法定位原文', { exact: true }).waitFor()
@@ -335,6 +346,7 @@ const makeCsvJob = (id, overrides = {}) => ({
     await csvStatus.getByRole('button', { name: '重新读取状态' }).click()
     await csvPanel.getByRole('status').filter({ hasText: '成功导入 25 条待校对任务' }).waitFor()
     assert.equal(await csvPanel.locator('.alert-success').count(), 1)
+    assert.equal(await csvPanel.getByRole('alert').filter({ hasText: '检测编码' }).count(), 0)
     await csvStatus.waitFor({ state: 'hidden' })
     await inspectAs(
       makeCsvJob('csv-partial', {
