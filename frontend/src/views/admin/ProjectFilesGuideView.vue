@@ -5,9 +5,12 @@
         <h1 class="compact-page-title">项目文件与校对条目说明</h1>
         <p>从准备资料到交付成果，按你的角色找到下一步。</p>
       </div>
-      <RouterLink :to="returnTarget" class="btn btn-secondary">{{
-        projectId ? '返回项目材料' : '返回创建项目'
-      }}</RouterLink>
+      <div class="guide-heading-actions">
+        <RouterLink :to="anchor('review-bundle-practice')" class="guide-text-link">
+          跳到完整资料包练习 <AppIcon name="arrow" />
+        </RouterLink>
+        <RouterLink :to="returnTarget" class="btn btn-secondary">{{ returnLabel }}</RouterLink>
+      </div>
     </header>
 
     <nav class="guide-role-nav" aria-label="按角色查看操作步骤">
@@ -34,7 +37,13 @@
             <h2 id="guide-manager-title">项目管理员：把资料交给团队</h2>
             <p>推荐准备 PDF 原文和 CSV 条目，再安排至少两人独立核对。</p>
           </div>
-          <RouterLink to="/admin/projects/new" class="btn btn-primary">创建项目</RouterLink>
+          <RouterLink
+            v-if="auth.canCreateProjects"
+            to="/admin/projects/new"
+            class="btn btn-primary"
+          >
+            创建项目
+          </RouterLink>
         </div>
         <ol class="guide-steps">
           <li>
@@ -134,7 +143,7 @@
             </p>
           </AppDisclosure>
         </div>
-        <RouterLink :to="anchor('review-bundle-practice')" class="guide-text-link"
+        <RouterLink :to="practiceAnchor('manager')" class="guide-text-link"
           >用 3 条虚构材料练习完整流程 <AppIcon name="arrow"
         /></RouterLink>
       </section>
@@ -190,6 +199,9 @@
             只有 CSV 时没有来源
             PDF，适合熟悉输入和普通导出；完整编选交付使用下方资料包练习。真实资料的双人操作、难字与移动端仍需团队实际核验。
           </p>
+          <RouterLink :to="practiceAnchor('proofreader')" class="guide-text-link">
+            查看校对者的完整练习清单 <AppIcon name="arrow" />
+          </RouterLink>
         </AppDisclosure>
       </section>
 
@@ -231,83 +243,7 @@
         /></RouterLink>
       </section>
 
-      <section
-        id="review-bundle-practice"
-        tabindex="-1"
-        aria-labelledby="bundle-practice-title"
-        class="guide-section guide-practice"
-      >
-        <div class="guide-section-heading">
-          <div>
-            <h2 id="bundle-practice-title">管理员：完整资料包练习</h2>
-            <p>3 条虚构材料、3 页原文，由两位校对者和管理员完成一次完整交接。</p>
-          </div>
-        </div>
-        <div class="guide-downloads" aria-label="完整练习材料">
-          <a href="/examples/review-bundle-practice-v1.zip" download class="btn btn-primary"
-            >下载虚构 Review Bundle（3 条）</a
-          >
-          <a
-            href="/examples/review-bundle-practice-v1/source.pdf"
-            download
-            class="btn btn-secondary"
-            >下载配套原文 PDF（3 页）</a
-          >
-          <a href="/examples/review-bundle-practice-v1/README.txt" download class="guide-text-link"
-            >下载逐步练习说明</a
-          >
-        </div>
-        <p class="guide-practice-note">
-          材料全部为虚构，不代表方言事实，不含真实身份或凭据。新建名称含「练习」的独立项目，安排两名不同账号的校对者，并请平台管理员协助来源和用途登记。下载不会自动创建记录或确认许可。
-        </p>
-        <div class="guide-reference">
-          <AppDisclosure label="1 · 项目管理员：上传原文与检查资料包" :default-open="true">
-            <p>
-              上传配套 PDF，等待 3 页校验完成；在「材料 → 材料与导入 → Review Bundle」检查 ZIP，核对
-              3 条、来源声明和页码。检查通过不等于已经导入或获准使用。
-            </p>
-          </AppDisclosure>
-          <AppDisclosure label="2 · 平台管理员与项目管理员：核对来源，确认导入">
-            <p>
-              平台管理员核对并登记来源逻辑 ID
-              <code>practice-wanyu-reviewbundle-v1</code
-              >，用途仍可保持未知。项目管理员再次核对项目和来源，再自行确认导入；应为完整成功的同一批
-              3 条。
-            </p>
-          </AppDisclosure>
-          <AppDisclosure label="3 · 两位校对者与项目管理员：独立校对，处理分歧">
-            <p>
-              保存来源核验约定，安排两人独立对照
-              PDF。相同结果自动比较完成；分歧由管理员逐字段仲裁，不得互看尚未公开的结果。下载的说明中另有仅供练习的差异场景。
-            </p>
-          </AppDisclosure>
-          <AppDisclosure label="4 · 两类管理员：来源判断与用途许可">
-            <p>
-              项目管理员补录实际来源判断、依据与页内位置；平台管理员分别判断本次用途和「原始材料转交第三方」。未知或禁止继续阻断，不为完成练习虚填「允许」。
-            </p>
-          </AppDisclosure>
-          <AppDisclosure label="5 · 项目管理员：核对编选范围">
-            <p>
-              用途编选只选择这一个完整入站批次，核对采用、排除、待处理合计为
-              3，再人工确认。本练习不依赖转换规则，「要求记音归一已定稿」可保持未勾选。
-            </p>
-          </AppDisclosure>
-          <AppDisclosure label="6 · 项目管理员：检查交付包，记录真实回执">
-            <p>
-              从已确认编选进入准备交付，填写实际核查人，检查接收方、用途、范围和正文数。预检通过后仍由人决定是否生成；仅下载到本地练习，未真实接收时保持待回执，不代签验收。
-            </p>
-            <p>
-              若当前部署未开放编选直接出包，请使用已经人工核查的交接清单，或请项目负责人确认开放状态。
-            </p>
-          </AppDisclosure>
-        </div>
-        <p class="text-sm text-muted">
-          从头重放请新建独立练习项目。同项目重复上传相同资料包会返回原作业，不会重建任务。权利判断、来源核对、交付确认和真实消费方验收不会由样例替你完成。
-        </p>
-        <RouterLink to="/admin/projects/new" class="guide-text-link"
-          >创建独立练习项目 <AppIcon name="arrow"
-        /></RouterLink>
-      </section>
+      <ReviewBundlePractice :project-id="projectId" />
     </div>
   </main>
 </template>
@@ -317,8 +253,11 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import ReviewBundlePractice from '@/components/admin/project/ReviewBundlePractice.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
 const projectId = computed(() =>
   typeof route.query.project === 'string' && /^[a-z0-9]{15}$/.test(route.query.project)
     ? route.query.project
@@ -336,8 +275,14 @@ const returnTarget = computed(() =>
             : 'pdf'
         }
       }
-    : '/admin/projects/new'
+    : auth.canCreateProjects
+      ? '/admin/projects/new'
+      : '/workspace'
 )
+const returnLabel = computed(() => {
+  if (projectId.value) return '返回项目材料'
+  return auth.canCreateProjects ? '返回创建项目' : '返回工作台'
+})
 const guideElement = ref(null)
 const anchors = new Set([
   'guide-manager',
@@ -346,6 +291,10 @@ const anchors = new Set([
   'review-bundle-practice'
 ])
 const anchor = (id) => ({ path: route.path, query: route.query, hash: `#${id}` })
+const practiceAnchor = (role) => ({
+  ...anchor('review-bundle-practice'),
+  query: { ...route.query, practiceRole: role }
+})
 watch(
   () => route.hash,
   async (hash) => {
@@ -368,6 +317,12 @@ watch(
 <style scoped>
 .guide-heading {
   align-items: flex-start;
+}
+.guide-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 .guide-heading p,
 .guide-section-heading p {
@@ -514,23 +469,6 @@ watch(
   min-height: var(--control-height);
   color: var(--primary);
 }
-.guide-downloads {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-.guide-downloads .btn {
-  white-space: normal;
-  text-align: center;
-}
-.guide-practice-note {
-  padding: var(--space-4);
-  background: var(--paper);
-  border-radius: var(--radius-panel);
-  font-size: var(--text-sm);
-}
 @media (max-width: 768px) {
   .guide-role-nav {
     grid-template-columns: 1fr;
@@ -553,10 +491,6 @@ watch(
   }
   .guide-text-link {
     min-height: var(--control-height-touch);
-  }
-  .guide-downloads {
-    align-items: stretch;
-    flex-direction: column;
   }
 }
 </style>
