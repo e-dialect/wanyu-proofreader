@@ -584,13 +584,6 @@
   .editor-layout.experience-workspace.pdf-unavailable .keyboard-panel {
     grid-row: 4;
   }
-  .editor-layout.experience-workspace .pdf-toolbar {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-  .editor-layout.experience-workspace .pdf-toolbar > * {
-    flex-shrink: 0;
-  }
   .editor-layout.experience-workspace .editor-panel-body--fields {
     padding: var(--space-3);
   }

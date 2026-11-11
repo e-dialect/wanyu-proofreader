@@ -98,6 +98,80 @@ async function holdFirstPdfRead(page) {
   }
 }
 
+async function configurePreviewExpiry(page, outcome) {
+  const now = new Date('2026-11-11T00:00:00Z')
+  const body = Buffer.from(
+    (await fs.readFile(path.resolve(__dirname, '../fixtures/review-pdf.base64'), 'utf8')).trim(),
+    'base64'
+  )
+  const first = {
+    key: 'fixture-pdf',
+    expiresAt: new Date(+now + 60_000).toISOString(),
+    start: 5,
+    end: 5,
+    total: 10
+  }
+  const next = {
+    ...first,
+    key: outcome === 'replace' ? 'replacement-pdf' : first.key,
+    expiresAt: new Date(+now + 300_000).toISOString()
+  }
+  let active = first
+  let descriptorRequests = 0
+  let release
+  const canRenew = new Promise((resolve) => {
+    release = resolve
+  })
+  await page.clock.install({ time: now })
+  await page.addInitScript(() => {
+    const created = []
+    const revoked = []
+    const create = URL.createObjectURL
+    const revoke = URL.revokeObjectURL
+    window.__PDF_PREVIEW_URLS__ = { created, revoked }
+    URL.createObjectURL = (blob) => {
+      const url = create.call(URL, blob)
+      if (blob.type === 'application/pdf') created.push(url)
+      return url
+    }
+    URL.revokeObjectURL = (url) => {
+      revoked.push(url)
+      revoke.call(URL, url)
+    }
+  })
+  await page.route('**/api/fangji/pages/*/pdf/descriptor', async (route) => {
+    if (++descriptorRequests === 1) return route.fulfill({ json: first })
+    await canRenew
+    if (outcome === 'deny') {
+      return route.fulfill({ status: 403, json: { message: '合成测试：原文授权已撤回' } })
+    }
+    active = next
+    return route.fulfill({ json: active })
+  })
+  await page.route('**/api/fangji/pages/*/pdf', (route) =>
+    route.fulfill({
+      contentType: 'application/pdf',
+      headers: {
+        'X-PDF-Preview-Key': active.key,
+        'X-PDF-Expires-At': active.expiresAt,
+        'X-PDF-Start-Page': String(active.start),
+        'X-PDF-End-Page': String(active.end),
+        'X-PDF-Total-Pages': String(active.total)
+      },
+      body
+    })
+  )
+  return { release }
+}
+
+async function waitForRenderedPdf(page) {
+  await page.waitForFunction(
+    () =>
+      document.querySelector('.pdf-canvas')?.width > 1 &&
+      !document.querySelector('.pdf-loading-mask, .pdf-transition-mask')
+  )
+}
+
 async function main() {
   await fs.mkdir(output, { recursive: true })
   const viewer = await fs.readFile(
@@ -114,19 +188,21 @@ async function main() {
   })
   report.browser_version = browser.version()
   report.playwright_version = require('playwright/package.json').version
-  async function scenario(name, run, hold = false) {
+  async function scenario(name, run, hold = false, prepare) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     const errors = []
     const item = { name, pass: false, errors }
     report.scenarios.push(item)
     page.on('pageerror', (error) => errors.push({ message: error.message, stack: error.stack }))
     let barrier
+    let setup
     try {
       await installReviewRoutes(page)
       await page.route('**/api/fangji/access-context', (route) =>
         route.fulfill({ json: { managedProjectIds: [], proofreadingProjectIds: ['project1'] } })
       )
       if (hold) barrier = await holdFirstPdfRead(page)
+      setup = await prepare?.(page)
       await page.goto(
         base +
           '/tests/fixtures/repository-review.html?start=' +
@@ -137,7 +213,7 @@ async function main() {
         return input && !input.readOnly
       })
       if (barrier) await barrier.wait()
-      await run(page, barrier)
+      await run(page, barrier, setup)
       item.probe = await page.evaluate(() => window.__PDF_LIFECYCLE__ || null)
       assert.deepEqual(errors, [], `${name}: no browser exceptions`)
       item.pass = true
@@ -148,6 +224,7 @@ async function main() {
         .screenshot({ path: path.join(output, `${name}.png`), fullPage: true })
         .catch(() => {})
       await barrier?.release()
+      setup?.release()
       await page.close()
     }
   }
@@ -199,8 +276,254 @@ async function main() {
       )
       assert.equal(await page.locator('.pdf-error').count(), 0)
       await page.getByRole('button', { name: '放大', exact: true }).click()
-      await page.locator('.pdf-zoom-label').filter({ hasText: '125%' }).waitFor()
+      assert.equal(
+        await page.getByRole('spinbutton', { name: '原文缩放百分比' }).inputValue(),
+        '125'
+      )
       await page.waitForFunction(() => !document.querySelector('.pdf-loading-mask'))
+    })
+    for (const outcome of ['preserve', 'deny', 'replace']) {
+      await scenario(
+        `expired-preview-${outcome}`,
+        async (page, _barrier, { release }) => {
+          await waitForRenderedPdf(page)
+          await page.getByRole('button', { name: '旋转 90°', exact: true }).click()
+          for (let step = 0; step < 5; step++) {
+            await page.getByRole('button', { name: '放大', exact: true }).click()
+          }
+          await waitForRenderedPdf(page)
+          const before = await page.evaluate(() => {
+            const scroll = document.querySelector('.pdf-scroll')
+            const canvas = document.querySelector('.pdf-canvas')
+            const stage = canvas.closest('.pdf-canvas-stage')
+            scroll.scrollTo(160, 95)
+            window.__originalPdfCanvas__ = canvas
+            return {
+              left: scroll.scrollLeft,
+              top: scroll.scrollTop,
+              width: stage.offsetWidth,
+              height: stage.offsetHeight,
+              url: window.__PDF_PREVIEW_URLS__.created.at(-1)
+            }
+          })
+          assert.ok(before.left > 0 && before.top > 0, 'zoomed fixture must scroll on both axes')
+          assert.ok(before.url?.startsWith('blob:'))
+          await Promise.all([
+            page.waitForRequest('**/api/fangji/pages/*/pdf/descriptor'),
+            page.clock.fastForward(61_000)
+          ])
+          await page.locator('.pdf-transition-mask').waitFor()
+          assert.deepEqual(
+            await page.evaluate((url) => {
+              const viewer = document.querySelector('.pdf-viewer')
+              return {
+                protected: getComputedStyle(viewer).opacity === '0' && viewer.inert,
+                sameCanvas: document.querySelector('.pdf-canvas') === window.__originalPdfCanvas__,
+                revoked: window.__PDF_PREVIEW_URLS__.revoked.includes(url)
+              }
+            }, before.url),
+            { protected: true, sameCanvas: true, revoked: true }
+          )
+          release()
+          if (outcome === 'deny') {
+            await page.getByText('合成测试：原文授权已撤回', { exact: true }).waitFor()
+            assert.equal(await page.locator('.pdf-viewer').count(), 0)
+            return
+          }
+          await waitForRenderedPdf(page)
+          if (outcome === 'replace') {
+            assert.equal(await page.locator('.pdf-zoom-input').inputValue(), '100')
+            assert.equal(
+              await page.evaluate(
+                () => document.querySelector('.pdf-canvas') === window.__originalPdfCanvas__
+              ),
+              false
+            )
+            return
+          }
+          assert.equal(await page.locator('.pdf-zoom-input').inputValue(), '225')
+          const after = await page.evaluate(() => {
+            const scroll = document.querySelector('.pdf-scroll')
+            const canvas = document.querySelector('.pdf-canvas')
+            const stage = canvas.closest('.pdf-canvas-stage')
+            return {
+              left: scroll.scrollLeft,
+              top: scroll.scrollTop,
+              width: stage.offsetWidth,
+              height: stage.offsetHeight,
+              sameCanvas: canvas === window.__originalPdfCanvas__
+            }
+          })
+          assert.deepEqual(
+            [after.left, after.top, after.sameCanvas],
+            [before.left, before.top, true]
+          )
+          assert.ok(
+            Math.abs(after.width - before.width) <= 1 &&
+              Math.abs(after.height - before.height) <= 1,
+            'renewal preserves the rotated stage within layout rounding'
+          )
+        },
+        false,
+        (page) => configurePreviewExpiry(page, outcome)
+      )
+    }
+    await scenario('local-zoom', async (page) => {
+      await page.waitForFunction(() => document.querySelector('.pdf-canvas')?.width > 1)
+      const input = page.getByRole('spinbutton', { name: '原文缩放百分比' })
+      const slider = page.getByRole('slider', { name: '原文缩放滑块' })
+      await input.fill('173')
+      await input.press('Enter')
+      assert.equal(await slider.inputValue(), '173')
+      await slider.press('ArrowRight')
+      assert.equal(await input.inputValue(), '174')
+      const priorBitmap = await page.evaluate(() => {
+        const slider = document.querySelector('.pdf-zoom-range')
+        const input = document.querySelector('.pdf-zoom-input')
+        const event = () => new Event('input', { bubbles: true })
+        slider.value = '175'
+        slider.dispatchEvent(event())
+        input.focus()
+        input.value = '400'
+        input.dispatchEvent(event())
+        return document.querySelector('.pdf-canvas').width
+      })
+      await page.waitForFunction(
+        (prior) => document.querySelector('.pdf-canvas')?.width !== prior,
+        priorBitmap
+      )
+      assert.equal(await input.inputValue(), '400', 'Rendering preserves a pending zoom input')
+      await input.blur()
+      assert.equal(await input.inputValue(), '300')
+      assert.equal(await page.getByRole('button', { name: '放大', exact: true }).isDisabled(), true)
+      await input.fill('120')
+      await input.press('Enter')
+      await page.waitForFunction(() => {
+        const stage = document.querySelector('.pdf-canvas-stage')
+        const canvas = document.querySelector('.pdf-canvas')
+        return Math.abs(stage.clientWidth * devicePixelRatio - canvas.width) < 3
+      })
+
+      const wheel = await page.evaluate(async () => {
+        const wrap = document.querySelector('.pdf-scroll')
+        const stage = document.querySelector('.pdf-canvas-stage')
+        const canvas = document.querySelector('.pdf-canvas')
+        const bounds = wrap.getBoundingClientRect()
+        const clientX = bounds.left + wrap.clientWidth / 2
+        const clientY = bounds.top + wrap.clientHeight / 2
+        wrap.scrollTo(50, 90)
+        const point = () => {
+          const box = stage.getBoundingClientRect()
+          return [(clientX - box.left) / box.width, (clientY - box.top) / box.height]
+        }
+        const before = point()
+        const pixels = canvas.width
+        const send = (target, ctrlKey) =>
+          !target.dispatchEvent(
+            new WheelEvent('wheel', {
+              bubbles: true,
+              cancelable: true,
+              deltaY: -20,
+              ctrlKey,
+              clientX,
+              clientY
+            })
+          )
+        const outside = send(document.querySelector('.proofread-textarea'), true)
+        const ordinary = send(wrap, false)
+        const locallyHandled = [send(wrap, true), send(wrap, true)]
+        await Promise.resolve()
+        await Promise.resolve()
+        const after = point()
+        return {
+          outside,
+          ordinary,
+          locallyHandled,
+          drift: Math.max(...before.map((value, index) => Math.abs(value - after[index]))),
+          keptBitmap: canvas.width === pixels && getComputedStyle(stage).visibility === 'visible'
+        }
+      })
+      assert.equal(wheel.outside, false)
+      assert.equal(wheel.ordinary, false)
+      assert.deepEqual(wheel.locallyHandled, [true, true])
+      assert(wheel.drift < 0.01, `wheel anchor drifted by ${wheel.drift}`)
+      assert.equal(wheel.keptBitmap, true)
+      assert(Number(await input.inputValue()) > 120)
+      await page.waitForFunction(() => {
+        const stage = document.querySelector('.pdf-canvas-stage')
+        const canvas = document.querySelector('.pdf-canvas')
+        return Math.abs(stage.clientWidth * devicePixelRatio - canvas.width) < 3
+      })
+
+      await page.getByRole('button', { name: '适合宽度' }).click()
+      assert.equal(await input.inputValue(), '100')
+      assert.equal(await slider.inputValue(), '100')
+      const webkitGesture = await page.evaluate(() => {
+        const wrap = document.querySelector('.pdf-scroll')
+        const { left, top } = wrap.getBoundingClientRect()
+        const send = (name, scale) =>
+          !wrap.dispatchEvent(
+            Object.assign(new Event(name, { bubbles: true, cancelable: true }), {
+              clientX: left + 100,
+              clientY: top + 100,
+              scale
+            })
+          )
+        return [send('gesturestart', 1), send('gesturechange', 1.25), send('gestureend', 1.25)]
+      })
+      assert.deepEqual(webkitGesture, [true, true, true])
+      assert.equal(await input.inputValue(), '125')
+      const touchPinch = await page.evaluate(() => {
+        const target = document.querySelector('.pdf-scroll')
+        const { left, top } = target.getBoundingClientRect()
+        const touch = (identifier, x) =>
+          new Touch({
+            identifier,
+            target,
+            clientX: left + x,
+            clientY: top + 110
+          })
+        const send = (name, touches) =>
+          !target.dispatchEvent(
+            new TouchEvent(name, {
+              bubbles: true,
+              cancelable: true,
+              touches
+            })
+          )
+        return [
+          send('touchstart', [touch(1, 70)]),
+          send('touchstart', [touch(1, 70), touch(2, 130)]),
+          send('touchmove', [touch(1, 55), touch(2, 145)]),
+          send('touchend', [])
+        ]
+      })
+      assert.deepEqual(touchPinch, [false, true, true, false])
+      assert.equal(await input.inputValue(), '188')
+      assert.equal(await slider.inputValue(), '188')
+
+      const toolbarFits = () =>
+        page.locator('.pdf-toolbar').evaluate((toolbar) => {
+          const box = toolbar.getBoundingClientRect()
+          const controls = [...toolbar.querySelectorAll('button, input')]
+          return (
+            box.width > 0 &&
+            controls.every((control) => {
+              const bounds = control.getBoundingClientRect()
+              return bounds.width > 0 && bounds.left >= box.left && bounds.right <= box.right + 1
+            })
+          )
+        })
+      await page.setViewportSize({ width: 1111, height: 900 })
+      await page.getByRole('separator', { name: '调整原文与编辑区宽度' }).press('Home')
+      assert((await page.locator('.pdf-toolbar').boundingBox()).width < 340)
+      assert.equal(await toolbarFits(), true, 'Zoom controls fit the narrow desktop pane')
+      await page.setViewportSize({ width: 320, height: 640 })
+      await page.getByRole('button', { name: '查看原文', exact: true }).click()
+      assert.equal(await toolbarFits(), true, 'Zoom controls fit the 320 px mobile layout')
+      assert((await page.locator('.pdf-scroll').boundingBox()).height >= 50, 'Room to read the PDF')
+      await slider.press('ArrowRight')
+      assert.equal(await input.inputValue(), '189')
     })
     await scenario(
       'source-read-failure',
