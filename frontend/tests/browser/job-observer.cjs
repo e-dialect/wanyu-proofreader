@@ -67,7 +67,14 @@ const makeCsvJob = (id, overrides = {}) => ({
               : { message: 'synthetic' }
         })
       }
-      if (url.pathname.endsWith('/imports/csv')) {
+      if (url.pathname.endsWith('/imports/csv/columns')) {
+        body = {
+          headers: ['PDF页码', '词条'],
+          page_column_candidates: ['PDF页码'],
+          suggested_page_column: 'PDF页码',
+          preview: [{ line: 2, values: ['1', '虚构'] }]
+        }
+      } else if (url.pathname.endsWith('/imports/csv')) {
         posts++
         body = csvJob
       } else if (url.pathname.endsWith('/commit')) {

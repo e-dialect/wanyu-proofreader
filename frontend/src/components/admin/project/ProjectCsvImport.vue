@@ -2,12 +2,14 @@
   <!-- CSV upload -->
   <div ref="panelElement">
     <h4 class="font-semibold mb-2">从 CSV 导入条目</h4>
-    <p class="text-sm text-muted mb-3">每行生成一条待校对材料。先检查页码与内容，再确认导入。</p>
+    <p class="text-sm text-muted mb-3">
+      选择一列定位 PDF 物理页，再检查并确认导入。其余列保留为校对内容。
+    </p>
     <details class="mb-3">
       <summary class="text-sm text-muted">查看 CSV 格式要求</summary>
       <p class="text-sm text-muted">
-        CSV 需包含 <code>PDF页码</code>、<code>page</code>、<code>pdf_page</code> 或
-        <code>页码</code> 中的一个字段；页码字段用于定位原文，其余字段保留为条目内容。
+        CSV 第一行填写列名，不能有空白或重复列名。页码从 1 开始，使用 PDF 文件中的实际页序，
+        封面也算一页。仅有一个常见页码列名时会为你预选。
       </p>
     </details>
     <ProjectSourcePicker
@@ -27,17 +29,60 @@
     <AppButton variant="secondary" :disabled="uploadingCsv" @click="csvInput.click()">
       选择 CSV 文件
     </AppButton>
-    <span v-if="csvFile" class="text-sm ml-2">{{ csvFile.name }}</span>
-    <div v-if="csvFile" class="mt-3">
-      <AppButton
-        variant="primary"
-        @click="uploadCsv"
-        :loading="uploadingCsv"
-        loading-label="正在检查"
-      >
-        检查 CSV
-      </AppButton>
-    </div>
+    <span v-if="csvFile" class="csv-selected-file text-sm ml-2">{{ csvFile.name }}</span>
+    <template v-if="csvFile && !csvJobTarget">
+      <p v-if="readingColumns" class="text-sm text-muted mt-3" role="status">正在读取 CSV 表头…</p>
+      <div v-else-if="columnsError" class="alert alert-error mt-3" role="alert">
+        <p>{{ columnsError }}</p>
+        <AppButton variant="secondary" size="sm" @click="loadCsvColumns">重新读取表头</AppButton>
+      </div>
+      <div v-else-if="csvColumns" class="csv-mapping" role="group" aria-label="页码列设置">
+        <AppField label="PDF 物理页码列">
+          <select
+            ref="pageColumnInput"
+            v-model="pdfPageColumn"
+            aria-label="PDF 物理页码列"
+            class="form-control"
+            :disabled="uploadingCsv"
+          >
+            <option value="">选择 CSV 中对应的列</option>
+            <option v-for="header in csvColumns.headers" :key="header" :value="header">
+              {{ header }}
+            </option>
+          </select>
+        </AppField>
+        <p v-if="mappingChanged" class="text-sm text-muted">更改后请重新检查，再确认导入。</p>
+        <p v-else-if="!pdfPageColumn" class="text-sm text-muted">
+          {{
+            csvColumns.page_column_candidates?.length > 1
+              ? '检测到多个常见页码列，请选择记录 PDF 实际页序的那一列。'
+              : '请选出记录 PDF 实际页序的列。'
+          }}
+        </p>
+        <p
+          v-else-if="csvColumns.suggested_page_column === pdfPageColumn"
+          class="text-sm text-muted"
+        >
+          已按列名预选，可更改。
+        </p>
+        <ul v-if="columnSamples.length" class="csv-mapping-samples" aria-label="所选列原值样本">
+          <li v-for="item in columnSamples" :key="item.line">
+            <span>第 {{ item.line }} 行</span>
+            <AppFieldValue :value="item.value" empty-label="空白" :font-notice="false" />
+          </li>
+        </ul>
+        <AppButton
+          variant="primary"
+          class="mt-3"
+          @click="uploadCsv"
+          :disabled="!pdfPageColumn"
+          :loading="uploadingCsv"
+          loading-label="正在检查"
+        >
+          检查 CSV
+        </AppButton>
+      </div>
+    </template>
     <JobStatusPanel
       v-if="csvJobTarget && csvStatusVisible"
       label="CSV 导入"
@@ -56,7 +101,7 @@
       <template v-if="csvJob.status === 'validated'">
         <h5 class="csv-inspection-title">检查完成，待确认</h5>
         <p class="text-sm text-muted mt-2" role="status">
-          尚未写入校对条目。请核对来源、数量和样本，再确认导入。
+          尚未写入校对条目。请核对页码列、来源和样本，再确认导入。
         </p>
       </template>
       <div
@@ -80,6 +125,19 @@
       </p>
       <p v-if="csvSourceError" class="alert alert-warning mt-2" role="alert">
         {{ csvSourceError }} 请刷新后核对，暂不能确认导入。
+      </p>
+      <p v-if="csvInspection?.pdfPageField" class="csv-inspection-source text-sm mt-2">
+        本次页码列：<strong>{{ csvInspection.pdfPageField }}</strong>
+        <span v-if="samplePdfPages.length">
+          · 样本为 PDF 第 {{ samplePdfPages.join('、') }} 页</span
+        >
+      </p>
+      <p
+        v-if="csvJob.status === 'validated' && !csvMappingReady"
+        class="alert alert-warning mt-2"
+        role="alert"
+      >
+        本次检查记录的页码列与选择不一致，请更改后重新检查。
       </p>
       <dl v-if="csvInspection" class="csv-inspection-counts" aria-label="CSV 检查数量">
         <div>
@@ -117,12 +175,28 @@
           @click="confirmCsvImport"
           :loading="uploadingCsv"
           loading-label="正在确认导入"
-          :disabled="uploadingCsv || !csvSourceReady"
+          :disabled="uploadingCsv || !csvSourceReady || !csvMappingReady"
         >
           确认导入
         </AppButton>
+        <AppButton
+          v-if="canChangeColumn"
+          variant="secondary"
+          :disabled="uploadingCsv"
+          @click="editPageColumn"
+        >
+          更改页码列
+        </AppButton>
         <span v-if="!csvSourceReady" class="text-sm text-muted">等待作业来源核对完成</span>
       </div>
+      <AppButton
+        v-else-if="canChangeColumn"
+        variant="secondary"
+        class="mt-3"
+        :disabled="uploadingCsv"
+        @click="editPageColumn"
+        >更改页码列</AppButton
+      >
       <RareCharacterNotice
         v-if="csvInspection"
         :texts="[
@@ -211,6 +285,7 @@
 
 <script setup>
 import AppButton from '@/components/AppButton.vue'
+import AppField from '@/components/AppField.vue'
 import AppDisclosure from '@/components/AppDisclosure.vue'
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
 import AppFieldValue from '@/components/AppFieldValue.vue'
@@ -220,9 +295,14 @@ import AppDataTable from '@/components/AppDataTable.vue'
 import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
 import JobStatusPanel from '@/components/admin/project/JobStatusPanel.vue'
 import { useJobObserver } from '@/composables/useJobObserver'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { listSources } from '@/services/sourcesService'
-import { commitCsvImport, createCsvInspection, getImportJob } from '@/services/importJobsService'
+import {
+  commitCsvImport,
+  createCsvInspection,
+  getImportJob,
+  readCsvColumns
+} from '@/services/importJobsService'
 import {
   csvFatalMessage,
   csvFixedSource,
@@ -245,8 +325,15 @@ const loadPageStats = props.refreshStats
 const loadQualitySummary = props.refreshQuality
 const loadLedger = props.refreshLedger
 const csvInput = ref(null)
+const pageColumnInput = ref(null)
 
 const csvFile = ref(null)
+const csvColumns = ref(null)
+const pdfPageColumn = ref('')
+const readingColumns = ref(false)
+const columnsError = ref('')
+const mappingChanged = ref(false)
+let columnsRequest
 
 const sourceId = ref('')
 
@@ -299,17 +386,90 @@ let csvPollGeneration = 0
 
 const csvInspection = computed(() => parseCsvInspection(csvJob.value?.inspection_json))
 
-const csvPreviewHeaders = computed(() => csvInspection.value?.headers || [])
+const csvPreviewHeaders = computed(() => {
+  const inspection = csvInspection.value
+  return inspection?.headers.filter((header) => header !== inspection.pdfPageField) || []
+})
 
-function onCsvSelected(e) {
+const columnSamples = computed(() => {
+  const index = csvColumns.value?.headers.indexOf(pdfPageColumn.value) ?? -1
+  if (index < 0) return []
+  return (csvColumns.value.preview || []).slice(0, 3).map((row) => ({
+    line: row.line,
+    value: row.values[index] ?? ''
+  }))
+})
+const samplePdfPages = computed(() =>
+  [
+    ...new Set(csvInspection.value?.previewLocations.map((row) => row.pdfPage).filter(Boolean))
+  ].slice(0, 3)
+)
+const csvMappingReady = computed(() => {
+  const selected = pdfPageColumn.value
+  const recorded = csvJob.value?.csv_pdf_page_column
+  return (
+    !selected ||
+    (csvInspection.value?.pdfPageField === selected && (!recorded || recorded === selected))
+  )
+})
+const canChangeColumn = computed(
+  () =>
+    Boolean(csvFile.value && csvColumns.value) &&
+    ['validated', 'failed'].includes(csvJob.value?.status)
+)
+
+function resetCsvCheck() {
   csvPollGeneration++
-  csvFile.value = e.target.files[0] || null
   csvSuccess.value = ''
   csvError.value = ''
   csvJobTarget.value = null
   csvActualSource.value = null
   csvSourcePending.value = false
   csvSourceError.value = ''
+}
+
+function editPageColumn() {
+  if (!canChangeColumn.value || uploadingCsv.value) return
+  resetCsvCheck()
+  mappingChanged.value = true
+  nextTick(() => pageColumnInput.value?.focus())
+}
+
+function onCsvSelected(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
+  resetCsvCheck()
+  uploadingCsv.value = false
+  csvFile.value = file
+  mappingChanged.value = false
+  void loadCsvColumns()
+}
+
+async function loadCsvColumns() {
+  if (!csvFile.value) return
+  columnsRequest?.abort()
+  const request = new AbortController()
+  columnsRequest = request
+  readingColumns.value = true
+  columnsError.value = ''
+  csvColumns.value = null
+  pdfPageColumn.value = ''
+  try {
+    const result = await readCsvColumns({ projectId, file: csvFile.value, signal: request.signal })
+    if (request.signal.aborted) return
+    if (!Array.isArray(result?.headers) || !result.headers.length)
+      throw new Error('未读取到 CSV 列名，请检查文件第一行。')
+    csvColumns.value = result
+    pdfPageColumn.value = result.headers.includes(result.suggested_page_column)
+      ? result.suggested_page_column
+      : ''
+  } catch (cause) {
+    if (!request.signal.aborted)
+      columnsError.value = getPbMessage(cause, '暂时无法读取 CSV 表头，请重试。')
+  } finally {
+    if (!request.signal.aborted) readingColumns.value = false
+  }
 }
 
 let csvSourceRead = null
@@ -358,6 +518,9 @@ watch(
     if (csvActualSource.value?.id !== (job.source || '')) await readCsvSource(job, generation)
     if (generation !== csvPollGeneration) return
     if (['completed', 'completed_with_errors'].includes(status)) {
+      csvFile.value = null
+      csvColumns.value = null
+      pdfPageColumn.value = ''
       props.clearSelection()
       try {
         await Promise.all([loadPages(), loadPageStats(), loadQualitySummary(), loadLedger()])
@@ -382,7 +545,7 @@ function observeCsvJob(job) {
 }
 
 async function uploadCsv() {
-  if (!csvFile.value || uploadingCsv.value) return
+  if (!csvFile.value || !pdfPageColumn.value || uploadingCsv.value) return
   uploadingCsv.value = true
   csvError.value = ''
   csvSuccess.value = ''
@@ -393,12 +556,11 @@ async function uploadCsv() {
     const job = await createCsvInspection({
       projectId,
       file: csvFile.value,
-      sourceId: sourceId.value
+      sourceId: sourceId.value,
+      pdfPageColumn: pdfPageColumn.value
     })
     if (generation !== csvPollGeneration) return
     observeCsvJob(job)
-    csvFile.value = null
-    if (csvInput.value) csvInput.value.value = ''
     await readCsvSource(job, generation)
     if (generation !== csvPollGeneration) return
   } catch (e) {
@@ -412,7 +574,13 @@ async function uploadCsv() {
 }
 
 async function confirmCsvImport() {
-  if (csvJob.value?.status !== 'validated' || uploadingCsv.value || !csvSourceReady.value) return
+  if (
+    csvJob.value?.status !== 'validated' ||
+    uploadingCsv.value ||
+    !csvSourceReady.value ||
+    !csvMappingReady.value
+  )
+    return
   uploadingCsv.value = true
   csvError.value = ''
   csvSuccess.value = ''
@@ -440,6 +608,7 @@ async function refreshCsvJob() {
 }
 onBeforeUnmount(() => {
   csvPollGeneration += 1
+  columnsRequest?.abort()
 })
 defineExpose({
   hasPendingWork: computed(
@@ -452,6 +621,39 @@ defineExpose({
 </script>
 
 <style scoped>
+.csv-selected-file {
+  overflow-wrap: anywhere;
+}
+.csv-mapping {
+  padding-block: var(--space-3);
+  max-width: 32rem;
+}
+.csv-mapping .form-group {
+  margin-bottom: var(--space-2);
+}
+.csv-mapping-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  padding: 0;
+  margin: var(--space-2) 0 0;
+}
+.csv-mapping-samples li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.csv-mapping-samples li > span:first-child {
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
 .csv-inspection-title {
   margin: 0;
   font-size: var(--text-md);
@@ -499,5 +701,8 @@ defineExpose({
 .csv-preview-disclosure {
   border-top: 1px solid var(--primary-line);
   padding-top: var(--space-2);
+}
+.csv-preview-disclosure :deep(th) {
+  text-transform: none;
 }
 </style>

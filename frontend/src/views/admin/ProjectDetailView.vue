@@ -77,7 +77,11 @@
         v-show="showImport('ocr')"
         class="card project-section mt-4"
       >
-        <ProjectPanels.ProjectOcrImport :project-id="projectId" @changed="refreshAfterImport" />
+        <ProjectPanels.ProjectOcrImport
+          :project-id="projectId"
+          :active="showImport('ocr')"
+          @changed="refreshAfterImport"
+        />
       </section>
       <section
         v-if="visited.has('bundle')"
