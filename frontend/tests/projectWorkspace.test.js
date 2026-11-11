@@ -110,6 +110,7 @@ test('whole-project arbitration links clear every entry range filter and start o
     qualityState: 'unresolved',
     minPage: '12',
     maxPage: '14',
+    importJob: 'syntheticbatch1',
     status: 'pending',
     page: '3',
     perPage: '50',

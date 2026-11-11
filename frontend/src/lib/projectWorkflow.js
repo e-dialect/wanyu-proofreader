@@ -70,7 +70,7 @@ export function projectWorkflowTarget(projectId, action, query = {}) {
     const result = target('work', 'entries')
     // This entry uses the whole-project count, not the previously filtered list.
     // Clear the range filters consumed by normalizeAdminPageQuery; retain page size.
-    for (const key of ['q', 'qualityState', 'minPage', 'maxPage', 'page']) {
+    for (const key of ['q', 'qualityState', 'minPage', 'maxPage', 'page', 'importJob']) {
       delete result.query[key]
     }
     result.query.status = 'arbitration'

@@ -57,7 +57,7 @@
         >
       </div>
       <p class="practice-progress-note" id="practice-progress-note">
-        手动勾选的自记进度按账号和项目保存在本浏览器，不代表业务状态、来源许可或真人验收。
+        勾选只帮你记住练习到哪一步，并保存在本浏览器。实际工作进度和许可结论以项目记录为准。
       </p>
       <p v-if="!storageAvailable" class="practice-progress-note" role="status">
         当前浏览器无法保存自记进度，本页关闭后勾选会丢失。
