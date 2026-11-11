@@ -212,9 +212,10 @@ jobs:
       - name: Run against a freshly migrated disposable database
         run: python3 backend/tests/run_integration.py ${{ matrix.suite }}
 
+  # Pin jobs installing browser or PDF packages during the ubuntu-latest migration.
   chunk-upload-browser:
     name: Chunk upload browser regression
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -264,7 +265,7 @@ jobs:
 
   assist-browser:
     name: Assist admin, hall and editor screenshots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -325,7 +326,7 @@ jobs:
 
   source-fidelity-browser:
     name: Source verification progress and excluded-task browser regression
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -368,7 +369,7 @@ jobs:
 
   quality-state-browser:
     name: Quality state admin screenshots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -431,7 +432,7 @@ jobs:
 
   scheme-conversion-browser:
     name: Scheme conversion admin screenshots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -560,7 +561,7 @@ jobs:
 
   backend-unicode:
     name: Backend Unicode workflow
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -656,7 +657,7 @@ jobs:
 
   containers:
     name: Containers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out repository
@@ -893,7 +894,7 @@ jobs:
 
   pdf-access:
     name: pdf-access integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
