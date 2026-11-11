@@ -5,8 +5,8 @@
   "branch": "feat/usability-20261112",
   "data": "synthetic-only",
   "frontend_tests": {
-    "tests": 602,
-    "passed": 602,
+    "tests": 605,
+    "passed": 605,
     "failed": 0
   },
   "checks": {
@@ -19,7 +19,9 @@
     "browser_workbench": "pass",
     "browser_review_bundle": "pass",
     "browser_import_errors": "pass",
-    "delivery_integration_and_browser": "pass"
+    "delivery_integration_and_browser": "pass",
+    "browser_source_fidelity_todo_history": "pass",
+    "browser_csv_12_states": "pass"
   },
   "visual_viewports": [
     {
@@ -38,5 +40,11 @@
   ],
   "human_acceptance": "pending",
   "production_deployment": "not performed",
-  "remote_push": "not performed"
+  "remote_push": "published via GitHub git object API with matching commit and tree SHAs",
+  "initial_frontend_tests": {
+    "tests": 602,
+    "passed": 602,
+    "failed": 0
+  },
+  "pull_request": "https://github.com/e-dialect/wanyu-proofreader/pull/432"
 }
