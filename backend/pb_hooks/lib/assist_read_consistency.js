@@ -7,10 +7,7 @@ function changed() {
   return error
 }
 
-function responseForProjects(dao, projects, authorize, build) {
-  const { basis } = require(`${__hooks}/lib/assist_publication.js`)
-  const scopes = [...new Set(projects)].sort()
-  const before = scopes.map(project => basis(dao, project))
+function guardedResponse(hasChanged, authorize, build) {
   const access = authorize()
   let result, failure, failed = false
   try { result = build(access) } catch (error) { failed = true; failure = error }
@@ -20,9 +17,16 @@ function responseForProjects(dao, projects, authorize, build) {
   if (access?.manager === true && finalAccess?.manager === false) {
     throw new ForbiddenError("项目管理权限已变更，请重新打开条目")
   }
-  if (scopes.some((project, index) => basis(dao, project) !== before[index])) throw changed()
+  if (hasChanged()) throw changed()
   if (failed) throw failure
   return result
+}
+
+function responseForProjects(dao, projects, authorize, build) {
+  const { basis } = require(`${__hooks}/lib/assist_publication.js`)
+  const scopes = [...new Set(projects)].sort()
+  const before = scopes.map(project => basis(dao, project))
+  return guardedResponse(() => scopes.some((project, index) => basis(dao, project) !== before[index]), authorize, build)
 }
 
 function responseForProject(dao, project, authorize, build) {
@@ -39,7 +43,27 @@ function projectResponse(dao, projectId, snapshot, build) {
   }, build)
 }
 
-function pageResponse(dao, pageId, snapshot, build, authorizePage) {
+const verificationTables = ["pages", "projects", "project_files", "verification_policies", "project_keyboards", "finding_dismissals",
+  "keyboards", "assist_rule_gates", "sources", "source_usages", "proofreading_attempts", "proofreading_drafts", "problem_reports",
+  "problem_issues", "review_findings", "verification_events", "assist_publications", "_assist_finding_retirements"]
+const verificationTriggers = verificationTables.flatMap(table => ["insert", "delete", "update"]
+  .map(action => `'_verification_read_epoch_${table}_${action}'`))
+
+function verificationBasis(dao, project, page) {
+  const row = new DynamicModel({ revision: "", installed: 0 })
+  dao.db().newQuery(`SELECT
+    COALESCE((SELECT CAST(revision AS TEXT) FROM _verification_read_epochs WHERE scope='global'), '0') || ':' ||
+    COALESCE((SELECT CAST(revision AS TEXT) FROM _verification_read_epochs WHERE scope='project:'||{:project}), '0') || ':' ||
+    COALESCE((SELECT CAST(revision AS TEXT) FROM _verification_read_epochs WHERE scope='page:'||{:page}), '0') || ':' ||
+    COALESCE((SELECT CAST(revision AS TEXT) FROM _verification_read_epochs
+      WHERE scope='file:'||(SELECT project_file FROM pages WHERE id={:page})), '0') AS revision,
+    (SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN (${verificationTriggers.join(",")})) AS installed`)
+    .bind({ project, page }).one(row)
+  if (row.installed !== verificationTriggers.length) throw new Error("verification read epoch triggers incomplete")
+  return row.revision
+}
+
+function pageResponse(dao, pageId, snapshot, build, authorizePage, basisForPage) {
   const access = require(`${__hooks}/lib/project_access.js`)
   const id = access.assertId(pageId, "条目")
   // Only locate the epoch namespace. Discard this record: every page, source
@@ -48,7 +72,9 @@ function pageResponse(dao, pageId, snapshot, build, authorizePage) {
   try { project = dao.findRecordById("pages", id).getString("project") } catch {
     throw new NotFoundError("条目不存在")
   }
-  return responseForProject(dao, project, () => {
+  const basis = basisForPage || require(`${__hooks}/lib/assist_publication.js`).basis
+  const before = basis(dao, project, id)
+  return guardedResponse(() => basis(dao, project, id) !== before, () => {
     const actor = access.currentAuth(dao, snapshot)
     const current = require(`${__hooks}/lib/source_fidelity_access.js`).pageAccess(dao, id, actor)
     if (current.page.getString("project") !== project) throw changed()
@@ -56,6 +82,10 @@ function pageResponse(dao, pageId, snapshot, build, authorizePage) {
     if (authorizePage) authorizePage(authorized)
     return authorized
   }, build)
+}
+
+function verificationResponse(dao, pageId, snapshot, build) {
+  return pageResponse(dao, pageId, snapshot, build, undefined, verificationBasis)
 }
 
 function myProblems(dao, snapshot) {
@@ -100,4 +130,4 @@ function myProblems(dao, snapshot) {
   })
 }
 
-module.exports = { changed, responseForProject, responseForProjects, projectResponse, pageResponse, myProblems }
+module.exports = { changed, responseForProject, responseForProjects, projectResponse, pageResponse, verificationResponse, myProblems }

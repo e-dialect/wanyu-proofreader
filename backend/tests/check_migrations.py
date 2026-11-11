@@ -39,6 +39,16 @@ SPECS = {
         'plans': [('_assist_finding_retirements', 'SELECT publication FROM _assist_finding_retirements WHERE finding=?', ('f',), 'PRIMARY KEY'),
                   ('_assist_page_derivations', 'SELECT difficulty_tier FROM _assist_page_derivations WHERE publication=? AND page=?', ('p','e'), 'PRIMARY KEY')],
     },
+    '1794204900_verification_read_epochs.js': {
+        'objects': [('table', '_verification_read_epochs')] + [
+            ('trigger', f'_verification_read_epoch_{table}_{action}')
+            for table in ('pages', 'projects', 'project_files', 'verification_policies', 'project_keyboards',
+                          'finding_dismissals', 'keyboards', 'assist_rule_gates', 'sources', 'source_usages',
+                          'proofreading_attempts', 'proofreading_drafts', 'problem_reports', 'problem_issues',
+                          'review_findings', 'verification_events', 'assist_publications', '_assist_finding_retirements')
+            for action in ('insert', 'update', 'delete')
+        ],
+    },
     '1794204500_bootstrap_bindings.js': {
         'objects': [('table', 'bootstrap_bindings')],
         'indexes': ['idx_bootstrap_identity'],
@@ -608,24 +618,31 @@ def _assert_native_account_limits(data, migration, problems, expect):
 
 
 def _assert_operator_account_limits_preserved(binary, data, problems):
+    def down_to_account_limits(expect_success=True):
+        target = '1794204800_native_account_rate_limits.js'
+        count = sum(name >= target for name in applied(data))
+        return migrate(binary, data, 'down', count, expect_success=expect_success)
+
     # Keep a modified managed policy intact until its proxy header is reviewed.
     with closing(sqlite3.connect(data / 'data.db')) as db, db:
         db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 300) WHERE id='settings'")
     modified = _account_limit_settings(data)
-    output = migrate(binary, data, 'down', 1, expect_success=False)
+    output = down_to_account_limits(expect_success=False)
     if 'X-Fangji-Client-IP' not in output or _account_limit_settings(data) != modified:
         problems.append('native account rate limit rollback did not preserve modified proxy policy')
     with closing(sqlite3.connect(data / 'data.db')) as db, db:
         db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 240) WHERE id='settings'")
     # Deliberate operator changes must survive reapplying this migration.
-    migrate(binary, data, 'down', 1)
+    down_to_account_limits()
     with closing(sqlite3.connect(data / 'data.db')) as db, db:
         db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 60) WHERE id='settings'")
     before = _account_limit_settings(data)
-    for command in [('up',), ('down', 1)]:
-        migrate(binary, data, *command)
-        if _account_limit_settings(data) != before:
-            problems.append(f'native account rate limit migration overwrote operator settings on {command[0]}')
+    migrate(binary, data, 'up')
+    if _account_limit_settings(data) != before:
+        problems.append('native account rate limit migration overwrote operator settings on up')
+    down_to_account_limits()
+    if _account_limit_settings(data) != before:
+        problems.append('native account rate limit migration overwrote operator settings on down')
 
 
 def _assert_fields(data, migration, field_spec, problems, expect):

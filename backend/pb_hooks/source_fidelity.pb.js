@@ -27,7 +27,7 @@ routerAdd("POST", "/api/fangji/projects/{projectId}/verification-policy", (c) =>
 
 routerAdd("GET", "/api/fangji/pages/{pageId}/verification", (c) => {
   const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
-  const response = require(`${__hooks}/lib/assist_read_consistency.js`).pageResponse($app, c.request.pathValue("pageId"), c.auth, ({ page, manager, actor }) => {
+  const response = require(`${__hooks}/lib/assist_read_consistency.js`).verificationResponse($app, c.request.pathValue("pageId"), c.auth, ({ page, manager, actor }) => {
     const context = fidelity.contextFor($app, page)
     const pageReports = fidelity.list($app, "problem_reports", `page = "${page.id}"`)
     const reports = pageReports

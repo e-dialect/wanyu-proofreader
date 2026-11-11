@@ -418,10 +418,72 @@ func TestAssistReadConsistency(t *testing.T) {
 		}
 	})
 
+	for _, change := range []string{"sibling_source", "current_source", "project_roles", "global_gate"} {
+		t.Run("verification_scope_"+change, func(t *testing.T) {
+			_, actor, page := newAssistVisibilityFixture(t, app)
+			sibling := core.NewRecord(page.Collection())
+			sibling.Set("project", page.GetString("project"))
+			sibling.Set("page_number", 2)
+			sibling.Set("status", "pending")
+			if err := app.Save(sibling); err != nil {
+				t.Fatal(err)
+			}
+			var gate *core.Record
+			if change == "global_gate" {
+				gates, err := app.FindCollectionByNameOrId("assist_rule_gates")
+				if err != nil {
+					t.Fatal(err)
+				}
+				gate = core.NewRecord(gates)
+				gate.Set("producer", "rule")
+				gate.Set("producer_version", "synthetic")
+				gate.Set("kind", "missing_field")
+				gate.Set("message_key", "verification_scope")
+				gate.Set("gate", "warn")
+				if err := app.Save(gate); err != nil {
+					t.Fatal(err)
+				}
+			}
+			token, _ := actor.NewAuthToken()
+			path := "/api/fangji/pages/" + page.Id + "/verification"
+			response := assistReadDuring(t, app, h, "GET", path, token, func(q string) bool {
+				return strings.Contains(q, "from assist_rule_gates")
+			}, func() error {
+				switch change {
+				case "project_roles":
+					project, err := app.FindRecordById("projects", page.GetString("project"))
+					if err != nil {
+						return err
+					}
+					project.Set("column_roles_json", `{"词条":"reading"}`)
+					return app.Save(project)
+				case "global_gate":
+					gate.Set("gate", "off")
+					return app.Save(gate)
+				case "sibling_source":
+					_, err := app.DB().NewQuery("UPDATE pages SET proofread_row_json={:row} WHERE id={:id}").
+						Bind(dbx.Params{"row": `{"词条":"sibling change"}`, "id": sibling.Id}).Execute()
+					return err
+				default:
+					_, err := app.DB().NewQuery("UPDATE pages SET ocr_row_json={:row} WHERE id={:id}").
+						Bind(dbx.Params{"row": `{"词条":"current change"}`, "id": page.Id}).Execute()
+					return err
+				}
+			})
+			if change == "sibling_source" {
+				if response.Code != 200 {
+					t.Fatalf("sibling change invalidated the current page: %d %s", response.Code, response.Body.String())
+				}
+				return
+			}
+			assertAssistReadConflict(t, response)
+		})
+	}
+
 	t.Run("pre_capture_page_is_not_returned", func(t *testing.T) {
 		_, actor, page := newAssistVisibilityFixture(t, app)
 		token, _ := actor.NewAuthToken()
-		response := assistReadDuring(t, app, h, "GET", "/api/fangji/pages/"+page.Id+"/verification", token, func(q string) bool { return strings.Contains(q, "from _assist_basis_epochs") }, func() error {
+		response := assistReadDuring(t, app, h, "GET", "/api/fangji/pages/"+page.Id+"/verification", token, func(q string) bool { return strings.Contains(q, "from _verification_read_epochs") }, func() error {
 			current, err := app.FindRecordById("pages", page.Id)
 			if err != nil {
 				return err
@@ -444,7 +506,7 @@ func TestAssistReadConsistency(t *testing.T) {
 		_, actor, page := newAssistVisibilityFixture(t, app)
 		_, _, other := assistReadSecondaryFixture(t, app)
 		token, _ := actor.NewAuthToken()
-		response := assistReadDuring(t, app, h, "GET", "/api/fangji/pages/"+page.Id+"/verification", token, func(q string) bool { return strings.Contains(q, "from _assist_basis_epochs") }, func() error {
+		response := assistReadDuring(t, app, h, "GET", "/api/fangji/pages/"+page.Id+"/verification", token, func(q string) bool { return strings.Contains(q, "from _verification_read_epochs") }, func() error {
 			current, err := app.FindRecordById("pages", page.Id)
 			if err != nil {
 				return err
