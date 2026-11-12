@@ -46,6 +46,21 @@ test('character search finds categories, glyphs and exact codepoints without nor
     matchingKeyboardKeys(sections, '常用').map((key) => key.value),
     ['ã']
   )
+  for (const query of ['ã', 'a\u0303']) {
+    assert.deepEqual(
+      matchingKeyboardKeys(sections, query).map((key) => key.value),
+      ['ã', 'a\u0303']
+    )
+  }
+  assert.deepEqual(
+    matchingKeyboardKeys(sections, '\u0303').map((key) => key.value),
+    ['a\u0303', '\u0303']
+  )
+  assert.deepEqual(
+    matchingKeyboardKeys(sections, 'U+00E3').map((key) => key.value),
+    ['ã']
+  )
+  assert.deepEqual(matchingKeyboardKeys([{ keys: [{ value: 'ﬃ' }] }], 'ffi'), [])
   assert.deepEqual(matchingKeyboardKeys(sections, 'not-present'), [])
 })
 

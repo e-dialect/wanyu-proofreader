@@ -25,7 +25,13 @@
         {{ sourceCollapsed ? '查看原文' : '收起原文' }}
       </button>
     </div>
-    <section id="review-source" class="editor-panel source-panel" aria-label="来源原文">
+    <section
+      id="review-source"
+      ref="sourcePanel"
+      tabindex="-1"
+      class="editor-panel source-panel"
+      aria-label="来源原文"
+    >
       <h2 id="source-panel-title" class="sr-only">来源 PDF · 物理第 {{ currentPdfPage }} 页</h2>
       <div class="editor-panel-body editor-panel-body--pdf">
         <div
@@ -40,7 +46,15 @@
         </div>
         <div v-else-if="!page" class="alert alert-error" role="alert">页面不存在</div>
         <div v-else-if="pdfError" class="alert alert-error editor-inline-alert" role="alert">
-          {{ pdfError }}
+          <p>{{ pdfError }}</p>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="!canReloadSource"
+            @click="reloadSource"
+          >
+            重新读取原文
+          </button>
         </div>
         <div
           v-if="pdfPageWarning && !loading && !pdfLoading"
@@ -60,6 +74,8 @@
           :watermark-user-id="watermarkUserId"
           :watermark-project-id="page?.project || ''"
           @image-error="fallbackToPdf"
+          :retry-enabled="canReloadSource"
+          @retry="reloadSource"
           @show-full-page="preferLocalSource = false"
           :page-number="localPdfPage"
           :source-page-number="currentPdfPage"
@@ -391,6 +407,7 @@ const {
   entryRegion,
   assetRegion,
   fallbackToPdf,
+  retryProjectPdf,
   localPdfPage,
   totalPdfPages,
   resetPdf,
@@ -398,6 +415,18 @@ const {
   clampPdfPage,
   switchPdfPage
 } = useProjectPdf(pageRef)
+
+const sourcePanel = ref(null)
+const canReloadSource = computed(() =>
+  Boolean(props.page?.id && props.pdfEnabled && !props.loading && !pdfLoading.value)
+)
+function reloadSource() {
+  if (!canReloadSource.value) return
+  // The retry button disappears with the failed viewer; keep keyboard focus in
+  // the persistent source region without selecting or changing editor fields.
+  sourcePanel.value?.focus({ preventScroll: true })
+  return retryProjectPdf()
+}
 
 const preferLocalSource = ref(true)
 const hasSourceRegion = computed(() =>

@@ -168,7 +168,12 @@ test('invalid PDF parsing still reports its real error and bytes are not rewritt
   await tick()
   assert.equal(host.calls.length, 1)
   assert.deepEqual([...host.calls[0].data], [...bytes])
-  document.reject(new Error('Invalid PDF structure.'))
+  document.reject(
+    Object.assign(new Error('Invalid PDF structure.'), { name: 'InvalidPDFException' })
+  )
   await loading
-  assert.equal(host.error.value, 'Invalid PDF structure.')
+  assert.equal(
+    host.error.value,
+    'PDF 文件结构无效，无法预览。可重新读取；若仍失败，请联系项目管理员检查来源文件。'
+  )
 })

@@ -1,6 +1,11 @@
 <template>
   <div ref="viewerRef" class="pdf-viewer">
-    <div class="pdf-toolbar" role="toolbar" aria-label="原文工具">
+    <div
+      v-show="!error || !retryEnabled || isFullscreen"
+      class="pdf-toolbar"
+      role="toolbar"
+      aria-label="原文工具"
+    >
       <slot name="navigation" />
       <div class="pdf-toolbar-group">
         <button
@@ -64,7 +69,18 @@
     <div v-if="fullscreenError" class="alert alert-warning pdf-fullscreen-notice" role="status">
       {{ fullscreenError }}
     </div>
-    <div v-if="error" class="alert alert-error pdf-error" role="alert">{{ error }}</div>
+    <div v-if="error" class="alert alert-error pdf-error" role="alert">
+      <p>{{ error }}</p>
+      <button
+        v-if="retryEnabled"
+        type="button"
+        class="btn btn-secondary btn-sm"
+        :disabled="loading"
+        @click="emit('retry')"
+      >
+        重新读取原文
+      </button>
+    </div>
     <div
       v-else
       ref="wrapRef"
@@ -146,10 +162,11 @@ function reportSourceVisible() {
     measureBusiness('source_visible', performance.now() - sourceStartedAt)
   })
 }
-const emit = defineEmits(['image-error', 'show-full-page'])
+const emit = defineEmits(['image-error', 'show-full-page', 'retry'])
 
 const props = defineProps({
   src: { type: String, default: '' },
+  retryEnabled: { type: Boolean, default: false },
   pageImage: { type: Object, default: null },
   sourceRegion: { type: Object, default: null },
   watermarkUserId: { type: String, default: '' },
@@ -373,10 +390,23 @@ async function loadPdf(src) {
   } catch (e) {
     if (generation !== loadGeneration) return
     pdfDoc = null
-    error.value = e?.message || 'PDF 加载失败'
+    error.value = pdfFailureMessage(e, 'PDF 加载失败')
   } finally {
     if (sourceReadController === readController) sourceReadController = null
     if (generation === loadGeneration) loading.value = false
+  }
+}
+
+function pdfFailureMessage(error, fallback) {
+  switch (error?.name) {
+    case 'InvalidPDFException':
+      return 'PDF 文件结构无效，无法预览。可重新读取；若仍失败，请联系项目管理员检查来源文件。'
+    case 'PasswordException':
+      return '此 PDF 受密码保护，当前无法预览。请联系项目管理员提供可预览的来源文件。'
+    case 'MissingPDFException':
+      return '未找到原文 PDF，请重新读取或联系项目管理员核对来源文件。'
+    default:
+      return error?.message || fallback
   }
 }
 
@@ -491,7 +521,7 @@ async function renderCurrentPage(anchor) {
     }
   } catch (e) {
     if (generation === renderGeneration && e?.name !== 'RenderingCancelledException') {
-      error.value = e?.message || '渲染失败'
+      error.value = pdfFailureMessage(e, '渲染失败')
     }
   } finally {
     if (nextCanvas) {

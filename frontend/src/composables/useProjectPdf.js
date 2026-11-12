@@ -219,7 +219,7 @@ export function useProjectPdf(page) {
       total < end ||
       !(Date.parse(expiresAt) > Date.now())
     )
-      throw new Error('PDF 预览信息无效，请刷新后重试')
+      throw new Error('PDF 预览信息无效，请重新读取原文')
     return descriptor
   }
   function clampPdfPage(value) {
@@ -284,6 +284,17 @@ export function useProjectPdf(page) {
       if (isCurrent()) pdfLoading.value = false
     }
   })
+  function retryProjectPdf() {
+    if (pdfLoading.value || !page.value?.id) return
+    // A manual retry must re-read bytes, including after PDF.js rejected a
+    // cached blob. Keep the descriptor identity/reading page so an unchanged
+    // source resumes in place; resolveProjectPdf rechecks authorization.
+    cache.clear()
+    imageCache.clear()
+    pageImage.value = null
+    pdfUrl.value = null
+    return resolveProjectPdf()
+  }
   function fallbackToPdf() {
     return resolveProjectPdf(true)
   }
@@ -302,6 +313,7 @@ export function useProjectPdf(page) {
     entryRegion,
     assetRegion,
     fallbackToPdf,
+    retryProjectPdf,
     resetPdf,
     resolveProjectPdf,
     clampPdfPage,

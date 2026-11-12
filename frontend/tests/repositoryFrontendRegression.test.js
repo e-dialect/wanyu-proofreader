@@ -714,6 +714,31 @@ regression(
       assert.equal(api.currentPdfPage.value, 6, 'legacy tasks keep the current page')
       assert.equal(api.assetRegion.value, null)
       assert.equal(assetReads, 1, 'authorized identical PDF bytes remain shared')
+      const snapshot = JSON.stringify(page.value)
+      const retry = api.retryProjectPdf()
+      assert.equal(api.pdfLoading.value, true)
+      assert.equal(
+        api.pdfUrl.value,
+        null,
+        'discard the failed viewer while fresh authorization is pending'
+      )
+      assert.equal(api.retryProjectPdf(), undefined, 'do not overlap manual retries')
+      await retry
+      assert.equal(
+        assetReads,
+        2,
+        'manual retry must fetch fresh bytes even for the same authorized asset'
+      )
+      assert.equal(
+        api.currentPdfPage.value,
+        6,
+        'manual retry keeps the current physical page for the same source'
+      )
+      assert.equal(
+        JSON.stringify(page.value),
+        snapshot,
+        'reloading source does not modify the entry'
+      )
     } finally {
       fixture.dispose()
     }
@@ -769,6 +794,11 @@ regression('image access denial forces a fresh PDF permission check', async () =
     assert.equal(api.pdfUrl.value, null)
     assert.equal(api.pdfError.value, '原文权限已撤回')
     assert.deepEqual(revoked, ['blob:protected'])
+    denied = false
+    await api.retryProjectPdf()
+    assert.equal(pdfReads, 3)
+    assert.equal(api.pdfUrl.value, 'blob:protected')
+    assert.equal(api.pdfError.value, '')
   } finally {
     fixture.dispose()
   }
