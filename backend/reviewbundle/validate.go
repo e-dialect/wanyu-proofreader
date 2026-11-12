@@ -44,6 +44,7 @@ type Report struct {
 	SchemaVersion string       `json:"schema_version,omitempty"`
 	BundleID      string       `json:"bundle_id,omitempty"`
 	EntryCount    int          `json:"entry_count"`
+	RightsRef     string       `json:"rights_ref,omitempty"`
 	Errors        []Diagnostic `json:"errors"`
 }
 
@@ -394,6 +395,7 @@ func validateLoaded(files map[string][]byte) Report {
 		SchemaVersion: version,
 		BundleID:      doc.Bundle.BundleID,
 		EntryCount:    entryCount,
+		RightsRef:     doc.RightsRef,
 		Errors:        problems,
 	}
 }
