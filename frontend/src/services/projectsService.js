@@ -16,6 +16,13 @@ export async function getProject(projectId, { signal } = {}) {
   })
 }
 
+export async function getProjectWorkflow(projectId, { signal } = {}) {
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/workflow`, {
+    requestKey: null,
+    signal
+  })
+}
+
 export async function getPracticeProgress(projectId, { signal } = {}) {
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/practice-progress`, {
     requestKey: null,
