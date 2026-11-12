@@ -582,6 +582,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/arbitration`, (c) => {
       id: page.id,
       project: page.getString("project"),
       project_file: page.getString("project_file"),
+      import_job: page.getString("import_job"),
       page_number: page.getInt("page_number"),
       pdf_page: page.getInt("pdf_page"),
       status: page.getString("status"),

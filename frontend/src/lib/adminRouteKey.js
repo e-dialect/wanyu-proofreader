@@ -5,6 +5,7 @@ export function adminRouteKey(route) {
     route.name || '',
     route.params?.id || '',
     route.params?.projectId || '',
-    route.params?.pageId || ''
+    route.params?.pageId || '',
+    route.params?.batchId || ''
   ])
 }
