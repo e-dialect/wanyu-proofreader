@@ -191,7 +191,8 @@ async function catalogFits(page) {
     })
     await page.getByRole('link', { name: '已提交', exact: true }).click()
     await queueRequested
-    await page.locator('[data-task-list-updating]').waitFor()
+    await page.getByLabel('正在加载项目', { exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: '继续校对', exact: false }).count(), 0)
     assert.equal(
       await page.getByText('还没有本人提交记录', { exact: true }).count(),
       0,

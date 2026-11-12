@@ -664,8 +664,23 @@ function progressPct(queue) {
 }
 
 @media (max-width: 480px) {
+  .task-catalog .section-heading {
+    margin-bottom: var(--space-1);
+  }
+  .task-project-search {
+    margin-block: var(--space-1);
+  }
   .task-project-search :deep(.form-group) {
-    flex-basis: 100%;
+    flex: 1 1 9rem;
+  }
+  .task-catalog .catalog-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding-bottom: var(--space-1);
+  }
+  .task-catalog .catalog-summary > div:last-child {
+    grid-column: auto;
+    display: block;
   }
 }
 </style>
