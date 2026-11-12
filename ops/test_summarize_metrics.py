@@ -52,6 +52,48 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(current['backup_evidence_gaps'], 0)
         self.assertEqual(current['status'], 'observed')
 
+    def test_pdf_cache_hit_rate_and_latency_by_build_and_outcome(self):
+        rows = [{'event': 'pdf_preview', 'build_sha': build, 'cache': outcome, 'total_ms': duration,
+                 'ts': stamp, 'source_key': 'private-source', 'page_range': '6-7',
+                 'user_id': 'private-user', 'asset_id': 'private-asset'}
+                for build, outcome, duration, stamp in (
+                    ('a', 'watermark-hit', 0, '2026-11-08T12:00:00Z'),
+                    ('a', 'pages-hit', 5, '2026-11-08T12:00:01Z'),
+                    ('a', 'pages-hit', 10, '2026-11-08T12:00:02Z'),
+                    ('a', 'pages-unreadable-degraded', 250, '2026-11-08T12:00:03Z'),
+                    ('a', 'image-hit', 2, '2026-11-08T12:00:04Z'),
+                    ('b', 'miss-degraded', 100, '2026-11-08T12:00:04Z'),
+                    ('b', 'pages-hit', 10, '2026-11-07T12:00:00Z'),
+                    ('c', 'image-hit', 4, '2026-11-08T12:00:04Z'))]
+        report = summarize(map(json.dumps, rows), since=timestamp('2026-11-08T00:00:00Z'))
+        first, second, image_only = report['pdf_previews']
+        self.assertEqual((first['build'], first['samples'], first['fallback_samples']), ('a', 5, 4))
+        self.assertEqual(first['fallback_cache_hit_rate'], .75)
+        self.assertEqual(first['outcomes']['pages-hit'], {'samples': 2, 'p50_ms': 5, 'p95_ms': 10, 'p99_ms': 10})
+        self.assertEqual(first['outcomes']['watermark-hit']['p95_ms'], 0)
+        self.assertEqual(first['outcomes']['image-hit']['p95_ms'], 2)
+        self.assertEqual((second['build'], second['fallback_samples'], second['fallback_cache_hit_rate']), ('b', 1, 0))
+        self.assertEqual(image_only['fallback_samples'], 0)
+        self.assertIsNone(image_only['fallback_cache_hit_rate'])
+        for private in ('private-source', 'private-user', 'private-asset', '6-7'):
+            self.assertNotIn(private, json.dumps(report))
+        self.assertEqual(report['status'], 'observed')
+
+    def test_empty_window_and_invalid_preview_are_incomplete(self):
+        empty = summarize(['PocketBase started', '{"event":"server_started"}'])
+        self.assertTrue(empty['no_observations'])
+        self.assertEqual(empty['status'], 'incomplete')
+        rows = [{'event': 'pdf_preview', 'cache': 'watermark-hit', 'total_ms': 12,
+                 'ts': '2026-11-08T12:00:00Z'}]
+        outside_window = summarize(map(json.dumps, rows), since=timestamp('2026-11-09T00:00:00Z'))
+        self.assertTrue(outside_window['no_observations'])
+        self.assertEqual(outside_window['status'], 'incomplete')
+        rows.append({'event': 'pdf_preview', 'cache': 'pages-hit', 'total_ms': 'missing'})
+        partial = summarize(map(json.dumps, rows))
+        self.assertFalse(partial['no_observations'])
+        self.assertEqual(partial['invalid_pdf_preview_records'], 1)
+        self.assertEqual(partial['status'], 'incomplete')
+
 
 if __name__ == '__main__':
     unittest.main()

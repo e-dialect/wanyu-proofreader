@@ -4,6 +4,14 @@ export function listSources({ signal } = {}) {
   return pb.send('/api/fangji/sources', { method: 'GET', requestKey: null, signal })
 }
 
+export function getSource(reference, { signal } = {}) {
+  return pb.send(`/api/fangji/sources/${encodeURIComponent(reference)}`, {
+    method: 'GET',
+    requestKey: null,
+    signal
+  })
+}
+
 export function createSource(body) {
   return pb.send('/api/fangji/sources', { method: 'POST', body, requestKey: null })
 }

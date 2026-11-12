@@ -412,7 +412,10 @@ test('problem scope switches retain history and drop hidden bulk selections', as
     ]
   })
   const selectedIssueId = ref('open'),
-    selection = ref([])
+    selection = ref([]),
+    linkedIssueMissing = ref(false),
+    linkedIssue = ref(''),
+    issueEdits = reactive({})
   const { problemScope, activeIssues, selectedIssue } = new Function(
     'computed',
     'watch',
@@ -421,9 +424,24 @@ test('problem scope switches retain history and drop hidden bulk selections', as
     'problems',
     'selectedIssueId',
     'selection',
+    'linkedIssueMissing',
+    'linkedIssue',
+    'issueEdits',
     'projectProblemItems',
     `${scopeSetup}\n${issuesSetup}\nreturn { problemScope, activeIssues, selectedIssue }`
-  )(computed, watch, route, router, problems, selectedIssueId, selection, projectProblemItems)
+  )(
+    computed,
+    watch,
+    route,
+    router,
+    problems,
+    selectedIssueId,
+    selection,
+    linkedIssueMissing,
+    linkedIssue,
+    issueEdits,
+    projectProblemItems
+  )
   assert.deepEqual(
     activeIssues.value.map((issue) => issue.id),
     ['open']
@@ -446,4 +464,22 @@ test('problem scope switches retain history and drop hidden bulk selections', as
   problemScope.value = 'all'
   await nextTick()
   assert.equal(activeIssues.value.length, 2)
+  linkedIssueMissing.value = true
+  selectedIssueId.value = ''
+  problemScope.value = 'todo'
+  await nextTick()
+  problemScope.value = 'all'
+  await nextTick()
+  assert.equal(
+    selectedIssueId.value,
+    '',
+    'missing deep link must not silently select another issue'
+  )
+  linkedIssue.value = 'done'
+  problemScope.value = 'todo'
+  await nextTick()
+  problemScope.value = 'all'
+  await nextTick()
+  assert.equal(selectedIssueId.value, 'done')
+  assert.equal(linkedIssueMissing.value, false)
 })

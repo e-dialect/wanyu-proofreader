@@ -103,7 +103,9 @@ function target(item) {
       path: `/admin/projects/${encodeURIComponent(props.projectId)}/settings`,
       query: practiceContext.value ? practiceNavigationQuery(practiceContext.value) : {}
     }
-  return projectWorkspaceTarget(props.projectId, item.key, undefined, scopedQuery(route.query))
+  const query = scopedQuery(route.query)
+  delete query.todoFrom
+  return projectWorkspaceTarget(props.projectId, item.key, undefined, query)
 }
 </script>
 
