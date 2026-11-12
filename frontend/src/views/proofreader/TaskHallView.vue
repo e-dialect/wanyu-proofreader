@@ -40,10 +40,9 @@
       >
     </nav>
     <p v-if="selectedProject" class="task-project-filter">
-      下方任务列表仅显示所选项目；概况统计包含全部参与项目。<RouterLink
-        :to="{ path: '/tasks', query: { view: taskView } }"
-        >查看全部项目</RouterLink
-      >
+      当前任务列表仅显示所选项目。
+      <template v-if="practiceReturn">查看全部参与项目会退出当前练习范围。</template>
+      <RouterLink :to="allProjectsTarget">查看全部参与项目</RouterLink>
     </p>
     <AppStatusPanel
       v-if="loadError"
@@ -55,10 +54,14 @@
       @retry="loadProjects"
     >
       <p>{{ loadError }}</p>
-      <p v-if="hasLoadedProjects">下方保留上次成功加载的项目和统计，可能不是最新结果。</p>
+      <p v-if="hasCurrentResults">下方保留上次成功加载的项目和统计，可能不是最新结果。</p>
+      <p v-else-if="hasLoadedProjects">本次列表暂不可用，概况保留上次读取的统计。</p>
       <p v-else>项目与统计暂不可用，这不代表没有任务。</p>
     </AppStatusPanel>
 
+    <p v-if="selectedProject || searchQuery" class="text-sm text-muted">
+      以下概况统计全部参与项目。
+    </p>
     <dl class="catalog-summary" aria-label="全部参与项目的校对概况">
       <div>
         <dt>正在处理</dt>
@@ -99,20 +102,45 @@
             }}
           </p>
         </div>
-        <span v-if="hasLoadedProjects && !loading" class="section-count"
+        <span v-if="hasCurrentResults && !loading" class="section-count"
           >{{ totalProjects }} 个项目</span
         >
       </div>
 
+      <form class="task-project-search" role="search" @submit.prevent="applyProjectSearch">
+        <AppField label="搜索项目名称">
+          <input
+            v-model="searchInput"
+            type="search"
+            class="form-control"
+            autocomplete="off"
+            placeholder="输入项目名称"
+            :aria-invalid="searchError ? 'true' : undefined"
+            :aria-describedby="searchError ? 'task-project-search-error' : undefined"
+            @input="searchError = ''"
+          />
+        </AppField>
+        <AppButton type="submit" variant="primary">搜索</AppButton>
+        <AppButton v-if="searchInput || searchQuery" variant="ghost" @click="clearProjectSearch">
+          清除搜索
+        </AppButton>
+      </form>
+      <p v-if="searchError" id="task-project-search-error" class="alert alert-warning" role="alert">
+        {{ searchError }}
+      </p>
+      <p v-if="searchQuery" class="text-sm text-muted task-search-keyword">
+        当前搜索「{{ searchQuery }}」
+      </p>
+
       <p
-        v-if="loading && hasLoadedProjects"
+        v-if="loading && hasCurrentResults"
         class="text-sm text-muted"
         role="status"
         data-task-list-updating
       >
         正在更新任务列表，已有内容仍可查看。
       </p>
-      <div v-if="loading && !hasLoadedProjects" class="project-card-grid" aria-label="正在加载项目">
+      <div v-if="loading && !hasCurrentResults" class="project-card-grid" aria-label="正在加载项目">
         <div
           v-for="index in 3"
           :key="index"
@@ -126,28 +154,35 @@
       </div>
 
       <div
-        v-else-if="hasLoadedProjects && !loading && !loadError && displayQueues.length === 0"
+        v-else-if="hasCurrentResults && !loading && !loadError && displayQueues.length === 0"
         class="empty-state card"
       >
         <AppIcon name="check" />
         <div class="empty-state-text">
           {{
-            taskView === 'active'
-              ? '没有进行中的任务'
-              : taskView === 'reviewed'
-                ? '还没有本人提交记录'
-                : '暂时没有可领取任务'
+            searchQuery
+              ? '当前视图没有匹配的项目'
+              : taskView === 'active'
+                ? '没有进行中的任务'
+                : taskView === 'reviewed'
+                  ? '还没有本人提交记录'
+                  : '暂时没有可领取任务'
           }}
         </div>
         <p>
           {{
-            selectedProject
-              ? '当前项目在此视图没有匹配任务。可以切换视图，或查看全部项目。'
-              : '可以切换任务视图，或加入一个新的项目。'
+            searchQuery
+              ? '可换一个关键词或切换任务视图。'
+              : selectedProject
+                ? '当前项目在此视图没有匹配任务。可以切换视图，或查看全部参与项目。'
+                : '可以切换任务视图，或加入一个新的项目。'
           }}
         </p>
+        <AppButton v-if="searchQuery" variant="secondary" @click="clearProjectSearch">
+          清除搜索
+        </AppButton>
         <RouterLink
-          v-if="taskView === 'active'"
+          v-else-if="taskView === 'active'"
           :to="taskViewRoute('available')"
           class="btn btn-primary"
           >查看待领取任务</RouterLink
@@ -155,7 +190,7 @@
         <RouterLink v-else to="/projects" class="btn btn-secondary">浏览项目</RouterLink>
       </div>
 
-      <div v-else-if="hasLoadedProjects" class="project-card-grid">
+      <div v-else-if="hasCurrentResults" class="project-card-grid">
         <article
           v-for="queue in displayQueues"
           :key="queue.project.id"
@@ -285,7 +320,7 @@
         </article>
       </div>
       <AppPagination
-        v-if="totalPages > 1"
+        v-if="hasCurrentResults && totalPages > 1"
         :page="currentPage"
         :total-pages="totalPages"
         :busy="loading"
@@ -304,6 +339,8 @@ import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppField from '@/components/AppField.vue'
+import { normalizeTaskSearchQuery, taskHallNavigationQuery } from '@/lib/taskHallContext'
 import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import '@/styles/work-catalog.css'
@@ -328,7 +365,6 @@ const route = useRoute()
 const auth = useAuthStore()
 const loading = ref(true)
 const hasLoadedProjects = ref(false)
-useQueueReturnPosition(hasLoadedProjects)
 const claimingProject = ref('')
 const loadError = ref('')
 const actionError = ref('')
@@ -363,7 +399,15 @@ watch(
 
 const projectQueues = ref([])
 const queueSummary = ref(summarizeProofreaderQueues([]))
-const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
+const requestedPage = computed(() => Math.max(1, Number(route.query.page) || 1))
+const currentPage = ref(requestedPage.value)
+const searchQuery = computed(() => normalizeTaskSearchQuery(route.query.q))
+const searchInput = ref(searchQuery.value)
+const searchError = ref('')
+watch(searchQuery, (query) => {
+  searchInput.value = query
+  searchError.value = ''
+})
 const selectedProject = computed(() => String(route.query.project || ''))
 const practiceContext = computed(() => readPracticeContext(route.query, selectedProject.value))
 const {
@@ -402,10 +446,11 @@ const queueResource = useAsyncResource(
   async ({ signal }) => {
     const userId = currentUserId(auth.user)
     if (!userId) throw new Error('登录状态已失效，请重新登录')
-    return listProjectQueueSummaries(currentPage.value, 12, {
+    return listProjectQueueSummaries(requestedPage.value, 12, {
       signal,
       filter: taskView.value,
-      project: selectedProject.value || undefined
+      project: selectedProject.value || undefined,
+      q: searchQuery.value || undefined
     })
   },
   {
@@ -418,35 +463,62 @@ const queueResource = useAsyncResource(
 )
 
 const loadedQueueScope = ref('')
-const queueScope = computed(() => `${taskView.value}:${selectedProject.value}`)
+const queueScope = computed(() =>
+  JSON.stringify([taskView.value, selectedProject.value, searchQuery.value, requestedPage.value])
+)
+const hasCurrentResults = computed(
+  () => hasLoadedProjects.value && loadedQueueScope.value === queueScope.value
+)
+useQueueReturnPosition(computed(() => hasCurrentResults.value && !loading.value))
 const displayQueues = computed(() =>
   projectQueues.value.filter((queue) =>
     taskView.value === 'active'
       ? queue.activeMine > 0
       : taskView.value === 'available'
         ? Boolean(queue.nextPage)
-        : loadedQueueScope.value === queueScope.value
+        : true
   )
 )
+const allProjectsTarget = computed(() => ({
+  path: '/tasks',
+  query: { view: taskView.value, ...(searchQuery.value ? { q: searchQuery.value } : {}) }
+}))
 function taskViewRoute(view) {
-  return { path: '/tasks', query: { ...route.query, page: undefined, view } }
-}
-watch(
-  () => [route.query.page, route.query.project, route.query.view],
-  () => {
-    currentPage.value = Math.max(1, Number(route.query.page) || 1)
-    void loadProjects()
+  const query = { ...route.query, page: undefined, view }
+  const context = practiceContext.value
+  if (practiceReturn.value && context?.role === 'proofreader') {
+    const steps = { active: 'proofread', available: 'claim', reviewed: 'reviewed' }
+    Object.assign(query, practiceNavigationQuery({ ...context, step: steps[view] }))
   }
-)
+  return { path: '/tasks', query }
+}
+function applyProjectSearch() {
+  const query = normalizeTaskSearchQuery(searchInput.value)
+  if ([...query].length > 100) {
+    searchError.value = '项目名称最多输入 100 个字符。'
+    return
+  }
+  searchInput.value = query
+  searchError.value = ''
+  return router.push({
+    path: route.path,
+    query: { ...route.query, page: undefined, q: query || undefined }
+  })
+}
+function clearProjectSearch() {
+  searchInput.value = ''
+  return applyProjectSearch()
+}
+watch(queueScope, () => void loadProjects())
 onMounted(loadProjects)
 
 async function loadProjects({ keepActionError = false } = {}) {
   if (!keepActionError) actionError.value = ''
-  const requestedPath = route.fullPath
+  const scope = queueScope.value
   const result = await queueResource.reload()
-  if (!result.ok || route.fullPath !== requestedPath) return
+  if (!result.ok || queueScope.value !== scope) return
   projectQueues.value = result.data.items
-  loadedQueueScope.value = queueScope.value
+  loadedQueueScope.value = scope
   queueSummary.value = result.data.summary
   currentPage.value = result.data.page
   totalPages.value = result.data.totalPages
@@ -463,7 +535,15 @@ function taskEditorTarget(queue, pageId) {
     queue.project.purpose === 'practice' ? readPracticeContext(route.query, queue.project.id) : null
   return {
     path: `/tasks/${pageId}/edit`,
-    query: context ? practiceNavigationQuery(context) : {}
+    query: {
+      ...taskHallNavigationQuery({
+        view: taskView.value,
+        page: currentPage.value,
+        project: selectedProject.value,
+        q: searchQuery.value
+      }),
+      ...(context ? practiceNavigationQuery(context) : {})
+    }
   }
 }
 
@@ -478,6 +558,7 @@ function openOwnSubmissions(queue) {
     query: {
       taskView: taskView.value,
       taskPage: String(currentPage.value),
+      ...(searchQuery.value ? { taskQ: searchQuery.value } : {}),
       ...(selectedProject.value === projectId ? { taskProject: projectId } : {}),
       ...(context?.role === 'proofreader'
         ? practiceNavigationQuery({ ...context, step: 'reviewed' })
@@ -556,3 +637,35 @@ function progressPct(queue) {
   return Math.round((queue.completed / queue.total) * 100)
 }
 </script>
+
+<style scoped>
+.task-project-search {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+
+.task-project-search :deep(.form-group) {
+  flex: 0 1 20rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.task-project-search :deep(.form-control),
+.task-project-search :deep(.btn) {
+  min-height: 44px;
+}
+
+.task-search-keyword {
+  margin-block-end: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .task-project-search :deep(.form-group) {
+    flex-basis: 100%;
+  }
+}
+</style>

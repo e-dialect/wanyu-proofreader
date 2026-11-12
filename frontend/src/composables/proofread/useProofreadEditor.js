@@ -1,4 +1,5 @@
 import { measureBusiness } from '../../lib/businessMetrics.js'
+import { readTaskHallContext, taskHallNavigationQuery } from '@/lib/taskHallContext'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useFieldNavigation } from '@/composables/useFieldNavigation'
@@ -141,7 +142,12 @@ export function useProofreadEditor() {
     currentPracticeContext.value ? practiceGuideTarget(currentPracticeContext.value) : null
   )
   function taskHallTarget(view, step) {
-    const query = { view, ...(page.value?.project ? { project: page.value.project } : {}) }
+    const hall = readTaskHallContext(route.query)
+    const query = {
+      view,
+      ...(page.value?.project ? { project: page.value.project } : {}),
+      ...(hall?.q ? { q: hall.q } : {})
+    }
     if (currentPracticeContext.value)
       Object.assign(query, practiceNavigationQuery({ ...currentPracticeContext.value, step }))
     return { path: '/tasks', query }
@@ -150,11 +156,15 @@ export function useProofreadEditor() {
     readOwnSubmissionContext(route.query, page.value?.project || route.query.reviewProject)
   )
   const ownSubmissionsTarget = computed(() => {
+    const hall = readTaskHallContext(route.query)
     const context = ownSubmissionContext.value || {
       projectId: page.value?.project,
       page: 1,
       sort: 'recent',
-      taskView: 'reviewed'
+      taskView: hall?.view || 'reviewed',
+      taskPage: hall?.page || 1,
+      taskProject: hall?.project || '',
+      taskQ: hall?.q || ''
     }
     const target = ownSubmissionReturnTarget(context)
     if (!target) return taskHallTarget('reviewed', 'reviewed')
@@ -188,7 +198,7 @@ export function useProofreadEditor() {
                 }
               )
             }
-          : {}),
+          : taskHallNavigationQuery(readTaskHallContext(route.query))),
         ...(context
           ? practiceNavigationQuery({
               ...context,

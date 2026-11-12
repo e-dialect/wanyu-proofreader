@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
+import { normalizeTaskSearchQuery, taskHallNavigationQuery } from '../src/lib/taskHallContext.js'
 
 const deferred = () => {
   let resolve, reject
@@ -28,11 +29,17 @@ function mountActions(view, resourceResults = []) {
     accessContext: {},
     loadAccessContext: async () => ({})
   }
-  const route = { path: '/tasks', fullPath: '/tasks?view=available', query: { view: 'available' } }
+  const route = reactive({
+    path: '/tasks',
+    fullPath: '/tasks?view=available',
+    query: { view: 'available' }
+  })
   let resources = 0
   const environment = {
     ref,
     computed,
+    normalizeTaskSearchQuery,
+    taskHallNavigationQuery,
     useRouter: () => ({ push: async (path) => pushes.push(path) }),
     useRoute: () => route,
     useAuthStore: () => auth,
@@ -111,19 +118,22 @@ test('a current task claim keeps the one-click path and saves its exact lease', 
   const result = mounted.enterProject(queue)
   mounted.request.resolve(claim)
   await result
-  assert.deepEqual(mounted.pushes, [{ path: '/tasks/task1/edit', query: {} }])
+  assert.deepEqual(mounted.pushes, [
+    { path: '/tasks/task1/edit', query: { taskView: 'available', taskPage: '1' } }
+  ])
   assert.equal(mounted.writes[0][1].token, claim.leaseToken)
 })
 
 test('opening own submissions keeps the original queue location without reading or claiming a task', async () => {
   const mounted = mountActions('proofreader/TaskHallView')
   mounted.route.query.project = 'project1'
+  mounted.route.query.q = '莆仙'
   await mounted.openOwnSubmissions(queue)
   assert.deepEqual(mounted.pushes, [
     {
       name: 'OwnSubmissions',
       params: { projectId: 'project1' },
-      query: { taskView: 'available', taskPage: '1', taskProject: 'project1' }
+      query: { taskView: 'available', taskPage: '1', taskProject: 'project1', taskQ: '莆仙' }
     }
   ])
   assert.deepEqual(mounted.writes, [])

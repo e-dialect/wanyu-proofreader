@@ -20,9 +20,7 @@
       <RouterLink v-if="practice" :to="practiceGuideTarget(practice)" class="back-link">
         返回练习步骤
       </RouterLink>
-      <RouterLink :to="{ path: '/tasks', query: { view: 'reviewed' } }" class="back-link">
-        查看全部项目
-      </RouterLink>
+      <RouterLink :to="allProjectsTarget" class="back-link"> 查看全部项目 </RouterLink>
     </div>
 
     <section class="card own-submissions__card" aria-labelledby="own-submissions-results">
@@ -159,7 +157,8 @@ const context = computed(() =>
       reviewSort: route.query.sort,
       taskView: route.query.taskView,
       taskPage: route.query.taskPage,
-      taskProject: route.query.taskProject
+      taskProject: route.query.taskProject,
+      taskQ: route.query.taskQ
     },
     projectId.value
   )
@@ -202,10 +201,15 @@ const hallTarget = computed(() => {
       view: value.taskView,
       ...(value.taskPage > 1 ? { page: String(value.taskPage) } : {}),
       ...(value.taskProject ? { project: value.taskProject } : {}),
+      ...(value.taskQ ? { q: value.taskQ } : {}),
       ...practiceQuery.value
     }
   }
 })
+const allProjectsTarget = computed(() => ({
+  path: '/tasks',
+  query: { view: 'reviewed', ...(context.value?.taskQ ? { q: context.value.taskQ } : {}) }
+}))
 function entryLabel(entry) {
   return entry.page_number > 0 ? `第 ${entry.page_number} 条` : '条目号未记录'
 }

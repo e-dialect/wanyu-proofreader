@@ -5,6 +5,11 @@ import {
   rememberQueueTransition,
   takeQueuePosition
 } from '../src/lib/queueReturn.js'
+import {
+  readOwnSubmissionContext,
+  ownSubmissionNavigationQuery,
+  ownSubmissionReturnTarget
+} from '../src/lib/ownSubmissionContext.js'
 const memory = () => {
   const data = new Map()
   return {
@@ -67,4 +72,59 @@ test('storage errors and external destinations do not interrupt navigation', () 
   }
   assert.doesNotThrow(() => rememberQueueTransition(denied, 'alice', task, { fullPath: '/tasks' }))
   assert.equal(queueReturnTarget(denied, 'alice', task), '/tasks')
+})
+
+test('a searched task returns to its exact queue, including after reload without storage', () => {
+  const storage = memory()
+  const queue = { fullPath: '/tasks?q=%E4%B9%A1%E9%9F%B3%20%25_%26&view=available&page=2' }
+  const editor = {
+    ...task,
+    query: { taskView: 'available', taskPage: '2', taskQ: '乡音 %_&' }
+  }
+  rememberQueueTransition(storage, 'alice', editor, queue, { top: 360 })
+  assert.equal(queueReturnTarget(storage, 'alice', editor), queue.fullPath)
+  rememberQueueTransition(storage, 'alice', queue, editor)
+  assert.deepEqual(takeQueuePosition(storage, 'alice', queue.fullPath), { top: 360, left: 0 })
+  const fresh = new URL(queueReturnTarget(null, 'alice', editor), 'https://queue.invalid')
+  assert.equal(fresh.pathname, '/tasks')
+  assert.equal(fresh.searchParams.get('q'), '乡音 %_&')
+  assert.equal(fresh.searchParams.get('view'), 'available')
+  assert.equal(fresh.searchParams.get('page'), '2')
+  const other = { ...editor, query: { ...editor.query, taskQ: '新项目' } }
+  assert.equal(
+    new URL(queueReturnTarget(storage, 'alice', other), 'https://queue.invalid').searchParams.get(
+      'q'
+    ),
+    '新项目'
+  )
+})
+
+test('submission filtering and the task project search survive the read-only return independently', () => {
+  const projectId = 'project00000001'
+  const context = readOwnSubmissionContext(
+    {
+      reviewProject: projectId,
+      reviewPage: '2',
+      reviewNumber: '7',
+      reviewSort: 'number',
+      taskView: 'reviewed',
+      taskPage: '3',
+      taskQ: '乡音 %_&',
+      taskProject: projectId
+    },
+    projectId
+  )
+  const query = { mode: 'review', ...ownSubmissionNavigationQuery(context) }
+  const target = ownSubmissionReturnTarget(context)
+  assert.equal(target.query.number, '7')
+  assert.equal(target.query.page, '2')
+  assert.equal(target.query.taskPage, '3')
+  assert.equal(target.query.taskQ, '乡音 %_&')
+  const path = new URL(
+    queueReturnTarget(null, 'alice', { ...task, query }),
+    'https://queue.invalid'
+  )
+  assert.equal(path.pathname, `/tasks/projects/${projectId}/submissions`)
+  assert.equal(path.searchParams.get('number'), '7')
+  assert.equal(path.searchParams.get('taskQ'), '乡音 %_&')
 })
