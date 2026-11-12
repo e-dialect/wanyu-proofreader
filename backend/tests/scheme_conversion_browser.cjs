@@ -121,10 +121,14 @@ async function openProject (page, projectId) {
     // 目录里两份文件都在（见 harness.write_scheme_adapters）：可运行副本 + 仓库夹具，
     // 所以这一屏上「仅测试」和「能用」两种选项同时在场——只截到其中一种的话，
     // 这条断言分不清「标记正确」与「给所有方案都盖了个章」。
-    assert.match(text, /仅测试/, '选择器要标出声明为 test 的方案')
-    assert.match(text, /拒绝用它创建真实转换作业/, '要说明标了「仅测试」意味着什么，而不是只贴一个标签')
-    const optionTexts = await schemeSection(manager).locator('select option').allInnerTexts()
-    assert.ok(optionTexts.some((one) => !/仅测试/.test(one)), `不能所有方案都被标成仅测试：${JSON.stringify(optionTexts)}`)
+    assert.match(text, /标为「仅测试」的方案不能用于正式转换/, '转换作业要说明标为「仅测试」的方案不能用于正式转换')
+    const options = await schemeSection(manager).locator('select option[value]:not([value=""])').evaluateAll(
+      (elements) => elements.map((option) => ({ label: option.textContent.trim(), disabled: option.disabled }))
+    )
+    assert.ok(options.some(({ label, disabled }) => /仅测试/.test(label) && disabled),
+      `声明为 test 的方案必须标注且不可选：${JSON.stringify(options)}`)
+    assert.ok(options.some(({ label, disabled }) => !/仅测试/.test(label) && !disabled),
+      `可用于正式转换的方案必须可选：${JSON.stringify(options)}`)
     await schemeSection(manager).getByRole('button', { name: /^人工复核/ }).click()
     await schemeSection(manager).getByRole('navigation', { name: '选择复核条目' }).getByRole('button', { name: /需人工确认/ }).first().click()
     const reviewText = await schemeSection(manager).innerText()

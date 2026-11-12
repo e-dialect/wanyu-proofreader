@@ -2,6 +2,8 @@ import { readOwnSubmissionContext, ownSubmissionReturnTarget } from './ownSubmis
 import { readPracticeContext, practiceNavigationQuery } from './practiceContext.js'
 import { readTaskHallContext, taskHallReturnTarget } from './taskHallContext.js'
 
+import { importJobScope, validImportJob } from './adminPageList.js'
+
 const prefix = 'wanyu:queue-return:v1'
 const key = (userId, kind) => `${prefix}:${encodeURIComponent(userId || '')}:${kind}`
 const kindOf = (route) =>
@@ -80,15 +82,22 @@ export function queueReturnTarget(storage, userId, route) {
     }
     return `/tasks?${new URLSearchParams(target.query)}`
   }
+  const importJob = importJobScope(route.query?.importJob)
+  if (kind === 'arbitration' && importJob && !validImportJob(importJob))
+    return `/admin/projects/${route.params.projectId}?section=materials&view=batches#project-ledger`
   if (
     context &&
-    (kind !== 'arbitration' || context.projectId === String(route.params?.projectId || ''))
+    (kind !== 'arbitration' ||
+      (context.projectId === String(route.params?.projectId || '') &&
+        validImportJob(
+          new URL(context.path, 'https://queue.invalid').searchParams.get('importJob')
+        ) === importJob))
   )
     return context.path
   if (kind === 'arbitration')
     return route.query?.mode === 'verification'
       ? `/admin/projects/${route.params.projectId}/verification?view=review`
-      : `/admin/projects/${route.params.projectId}?section=work&status=arbitration`
+      : `/admin/projects/${route.params.projectId}?section=work&status=arbitration${importJob ? `&importJob=${importJob}` : ''}`
   return '/tasks'
 }
 

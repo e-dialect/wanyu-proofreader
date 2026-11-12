@@ -16,15 +16,23 @@ func (s *importService) arbitrationQueue(e *core.RequestEvent) error {
 		return err
 	}
 	query := e.Request.URL.Query()
+	importJob, err := projectImportJobFilter(s.app, projectID, query)
+	if err != nil {
+		return err
+	}
 	page, size := pageArgument(query.Get("page"), 1, 1000000), pageArgument(query.Get("perPage"), 25, 100)
 	type item struct {
 		ID         string `db:"id" json:"id"`
 		PageNumber int    `db:"page_number" json:"page_number"`
 	}
 	var result map[string]any
-	err := s.app.RunInTransaction(func(app core.App) error {
+	err = s.app.RunInTransaction(func(app core.App) error {
 		params := dbx.Params{"project": projectID}
 		where := " FROM pages WHERE project={:project} AND status='arbitration'"
+		if importJob != "" {
+			where += " AND import_job={:importJob}"
+			params["importJob"] = importJob
+		}
 		var count int
 		if err := app.DB().NewQuery("SELECT COUNT(*)" + where).Bind(params).Row(&count); err != nil {
 			return err
@@ -35,6 +43,9 @@ func (s *importService) arbitrationQueue(e *core.RequestEvent) error {
 			anchor, err := app.FindRecordById("pages", anchorID)
 			if err != nil || anchor.GetString("project") != projectID {
 				return apis.NewNotFoundError("队列条目不存在或不属于当前项目", nil)
+			}
+			if importJob != "" && anchor.GetString("import_job") != importJob {
+				return apis.NewNotFoundError("队列条目不属于所选导入批次。", nil)
 			}
 			params["number"], params["anchor"] = anchor.GetInt("page_number"), anchor.Id
 			before := " AND (page_number < {:number} OR (page_number = {:number} AND id < {:anchor}))"

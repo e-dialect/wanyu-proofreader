@@ -164,6 +164,35 @@ async function catalogFits(page) {
       'Queue statistics stay compact'
     )
     await page.screenshot({ path: path.join(output, 'desktop-task-catalog.png') })
+    const shellGeometry = await page.evaluateHandle(() =>
+      ['.app-canvas', '.shell-header', '.app-page'].map((selector) => {
+        const node = document.querySelector(selector)
+        const { x, width } = node.getBoundingClientRect()
+        return { selector, node, x, width }
+      })
+    )
+    const assertShellGeometry = async () => {
+      assert.equal(
+        await shellGeometry.evaluate((elements) =>
+          elements.every(({ selector, node, x, width }) => {
+            const current = document.querySelector(selector)
+            const bounds = current.getBoundingClientRect()
+            return current === node && bounds.x === x && bounds.width === width
+          })
+        ),
+        true,
+        'The shared shell stays in place across catalog and immersive routes'
+      )
+    }
+    await page.route(
+      claimRequest,
+      async (route) => {
+        // Exercise navigation beyond Chromium's recent-input exclusion window.
+        await new Promise((resolve) => setTimeout(resolve, 650))
+        await route.continue()
+      },
+      { times: 1 }
+    )
     await page.getByRole('button', { name: '继续校对', exact: false }).click()
     await page.waitForURL(
       (url) =>
@@ -172,8 +201,12 @@ async function catalogFits(page) {
         url.searchParams.get('taskPage') === '1' &&
         url.searchParams.get('taskProject') === project.id
     )
+    await page.locator('.experience-workspace').waitFor()
+    await assertShellGeometry()
     await page.getByRole('link', { name: '返回队列', exact: true }).click()
     await page.waitForURL(base + queuePath)
+    await assertShellGeometry()
+    await shellGeometry.dispose()
     let releaseQueue, queueStarted
     const queueGate = new Promise((resolve) => {
       releaseQueue = resolve

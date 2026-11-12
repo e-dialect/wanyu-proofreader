@@ -87,6 +87,26 @@ const projectionSQL = `WITH summary AS (
         pending_count, withdrawn_count, unrecorded_count
  FROM _field_audit_totals WHERE project={:project} AND submitted_fields > 0
 )`
+// One SQLite statement pins both the paginated counters and the legacy count to
+// the same read snapshot. The legacy row also carries the count on an empty page.
+const summaryWithLegacySQL = paged => `WITH paged AS (${paged}), legacy AS (
+  SELECT COUNT(*) AS total FROM pages p WHERE p.project = {:project}
+  AND p.status = 'approved' AND NOT EXISTS (
+    SELECT 1 FROM proofreading_attempts a WHERE a.page = p.id AND a.kind = 'proofread'
+  )
+)
+SELECT COALESCE(paged.field_name, '') AS field_name,
+  COALESCE(paged.submitted_fields, 0) AS submitted_fields,
+  COALESCE(paged.correct_count, 0) AS correct_count,
+  COALESCE(paged.incorrect_count, 0) AS incorrect_count,
+  COALESCE(paged.pending_count, 0) AS pending_count,
+  COALESCE(paged.withdrawn_count, 0) AS withdrawn_count,
+  COALESCE(paged.unrecorded_count, 0) AS unrecorded_count,
+  COALESCE(paged.total_items, 0) AS total_items,
+  COALESCE(paged.row_position, 0) AS row_position,
+  legacy.total AS legacy_total
+FROM legacy LEFT JOIN paged ON 1=1 ORDER BY paged.row_position`
+
 function readModelEnabled(dao) {
   const table = new DynamicModel({ total: 0 })
   // A future collection schema rebuild can remove SQLite triggers. Missing
@@ -103,19 +123,15 @@ function readModelEnabled(dao) {
 }
 function fieldSummary(dao, project, query) {
   const requested = pagination(query)
-  const rows = arrayOf(new DynamicModel({ field_name: "", submitted_fields: 0, correct_count: 0, incorrect_count: 0, pending_count: 0, withdrawn_count: 0, unrecorded_count: 0, total_items: 0, row_position: 0 }))
-  dao.db().newQuery(readModelEnabled(dao) ? projectionSQL + pagedSummarySQL.slice(resultsSQL.length) : pagedSummarySQL)
+  const rows = arrayOf(new DynamicModel({ field_name: "", submitted_fields: 0, correct_count: 0, incorrect_count: 0, pending_count: 0, withdrawn_count: 0, unrecorded_count: 0, total_items: 0, row_position: 0, legacy_total: 0 }))
+  const paged = readModelEnabled(dao) ? projectionSQL + pagedSummarySQL.slice(resultsSQL.length) : pagedSummarySQL
+  dao.db().newQuery(summaryWithLegacySQL(paged))
     .bind({ project, limit: requested.perPage, offset: (requested.page - 1) * requested.perPage }).all(rows)
-  const info = pageInfo(rows.length ? Number(rows[0].total_items) : 0, requested.page, requested.perPage)
-  const legacy = new DynamicModel({ total: 0 })
-  dao.db().newQuery(`SELECT COUNT(*) AS total FROM pages p WHERE p.project = {:project}
-    AND p.status = 'approved' AND NOT EXISTS (
-      SELECT 1 FROM proofreading_attempts a WHERE a.page = p.id AND a.kind = 'proofread'
-    )`).bind({ project }).one(legacy)
+  const info = pageInfo(Number(rows[0].total_items), requested.page, requested.perPage)
   return { ...info,
     basis: "latest_recorded_judgment_per_submission_field; historical_recorded_source_basis; not_current_source_revalidation",
-    legacyApprovedPagesWithoutSubmissions: Number(legacy.total),
-    items: rows.map(row => ({ field: row.field_name, submittedFields: Number(row.submitted_fields),
+    legacyApprovedPagesWithoutSubmissions: Number(rows[0].legacy_total),
+    items: rows.filter(row => row.row_position > 0).map(row => ({ field: row.field_name, submittedFields: Number(row.submitted_fields),
       correctCount: Number(row.correct_count), incorrectCount: Number(row.incorrect_count),
       evaluatedCount: Number(row.correct_count) + Number(row.incorrect_count),
       unverifiedCount: Number(row.pending_count) + Number(row.withdrawn_count) + Number(row.unrecorded_count),

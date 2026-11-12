@@ -63,8 +63,8 @@ async function main() {
     const panel = page.getByRole('region', { name: '提取 PDF 文字层', exact: true })
     await panel.getByRole('button', { name: '提取文字层', exact: true }).waitFor()
     await panel.getByLabel('提取结束页').fill('201')
-    await panel.getByRole('button', { name: '提取文字层', exact: true }).click()
     await panel.getByText('单次最多识别 200 页，请分段发起。', { exact: true }).waitFor()
+    assert.equal(await panel.getByRole('button', { name: '提取文字层', exact: true }).isDisabled(), true)
     await panel.getByLabel('提取结束页').fill('1')
     // A transport failure must keep the form recoverable; the retry reaches the
     // real local worker and real protected server routes below.
@@ -73,7 +73,7 @@ async function main() {
     await panel.getByRole('alert').waitFor()
     assert.equal(await panel.getByLabel('提取结束页').inputValue(), '1')
     await panel.getByRole('button', { name: '确认本次请求状态', exact: true }).click()
-    await panel.getByText('识别完成', { exact: true }).waitFor({ timeout: 60000 })
+    await panel.getByText('提取完成', { exact: true }).waitFor({ timeout: 60000 })
     await panel.getByText('本次作业页段：PDF 物理第 1 页。', { exact: true }).waitFor()
     await page.getByRole('navigation', { name: '项目工作区' }).getByRole('link', { name: '校勘', exact: true }).click()
     await page.locator('#project-entries tbody tr').first().waitFor()
@@ -104,7 +104,7 @@ async function main() {
     assert.ok(JSON.stringify(JSON.parse(raw)).includes('HELLO OCR'))
     await panel.screenshot({ path: path.join(out, 'ocr-completed-desktop.png') })
     await page.reload()
-    await panel.getByText('识别完成', { exact: true }).waitFor()
+    await panel.getByText('提取完成', { exact: true }).waitFor()
     await page.setViewportSize({ width: 390, height: 844 })
     await panel.scrollIntoViewIfNeeded()
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
@@ -121,7 +121,7 @@ async function main() {
     await panel.getByRole('button', { name: '确认本次请求状态', exact: true }).waitFor()
     assert.equal(await panel.getByRole('button', { name: '提取文字层', exact: true }).isDisabled(), true)
     await page.reload()
-    await panel.getByText('识别完成', { exact: true }).waitFor({ timeout: 60000 })
+    await panel.getByText('提取完成', { exact: true }).waitFor({ timeout: 60000 })
     const jobs = await api(`/api/collections/import_jobs/records?filter=${encodeURIComponent(`project="${project.id}" && mode="ocr"`)}`, { token })
     assert.equal(jobs.totalItems, 2, 'two explicit intents, not an extra job for either retry or reload')
     assert.equal(jobs.items.filter(job => job.id === lostJobId).length, 1)
@@ -138,8 +138,12 @@ async function main() {
       assert.notEqual(current.status, 'error', current.error_message)
       await new Promise(resolve => setTimeout(resolve, 50))
     }
+    // New intents bind the PDF currently shown in the panel. Refresh after
+    // replacing it through the API before testing the mixed-page rejection.
+    await panel.getByRole('button', { name: '刷新原文', exact: true }).click()
+    await panel.getByText('synthetic-mixed-ocr.pdf', { exact: true }).waitFor()
     await panel.getByRole('button', { name: '提取文字层', exact: true }).click()
-    await panel.getByText('识别失败', { exact: true }).waitFor({ timeout: 60000 })
+    await panel.getByText('提取失败', { exact: true }).waitFor({ timeout: 60000 })
     await panel.getByText(/^PDF 物理第 1 页：扫描页难字安全未达标/).waitFor()
     const rejectedJobs = await api(`/api/collections/import_jobs/records?filter=${encodeURIComponent(`project="${project.id}" && mode="ocr" && status="failed"`)}`, { token })
     assert.equal(rejectedJobs.totalItems, 1)
