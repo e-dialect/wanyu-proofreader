@@ -10,6 +10,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -29,6 +30,8 @@ SUPER_PASSWORD = 'UnicodeTest12345!'
 def integration_env(base_url, extra=None):
     env = {**os.environ,
            'PB_URL': base_url,
+           # Node suites invoke Python for fixture archives and CSV parsing.
+           'PYTHON': os.environ.get('PYTHON') or sys.executable,
            'APP_ADMIN_EMAIL': ADMIN_EMAIL,
            'APP_ADMIN_PASSWORD': ADMIN_PASSWORD,
            'PB_ADMIN_EMAIL': SUPER_EMAIL,

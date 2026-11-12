@@ -8,6 +8,10 @@ from collections import defaultdict
 from pathlib import Path
 
 
+PDF_FALLBACK_CACHE_HITS = frozenset({'watermark-hit', 'pages-hit'})
+PDF_PREVIEW_OUTCOMES = PDF_FALLBACK_CACHE_HITS | {'miss-degraded', 'pages-unreadable-degraded', 'image-hit'}
+
+
 def percentile(values, fraction):
     ordered = sorted(values)
     return ordered[max(0, math.ceil(len(ordered) * fraction) - 1)] if ordered else None
@@ -35,10 +39,12 @@ def summarize(lines, since=None, until=None):
     failures = defaultdict(int)
     vitals = {}
     runtime = []
+    pdf_previews = defaultdict(lambda: defaultdict(list))
     malformed = 0
     gaps = 0
     audit_gaps = 0
     missing_timestamps = 0
+    invalid_pdf_previews = 0
     stamps = []
     jobs = defaultdict(lambda: {'wait': [], 'duration': [], 'results': defaultdict(int)})
     for line in lines:
@@ -78,6 +84,15 @@ def summarize(lines, since=None, until=None):
             vitals[identity] = sample
         elif kind in ('runtime_sample', 'container_sample'):
             runtime.append(event)
+        elif kind == 'pdf_preview':
+            build = event.get('build_sha', 'unknown')
+            outcome = event.get('cache')
+            value = event.get('total_ms')
+            if (isinstance(build, str) and isinstance(outcome, str) and outcome in PDF_PREVIEW_OUTCOMES and
+                    type(value) is int and value >= 0):
+                pdf_previews[build][outcome].append(value)
+            else:
+                invalid_pdf_previews += 1
         elif kind == 'collection_gap':
             gaps += 1
         elif kind == 'security_audit_persist_failed':
@@ -111,8 +126,25 @@ def summarize(lines, since=None, until=None):
         except ValueError:
             pass
     backup_gaps = sum(value.get('status') != 'current' for value in backup_states)
+    pdf_preview_report = []
+    for build, outcomes in sorted(pdf_previews.items()):
+        samples = sum(len(values) for values in outcomes.values())
+        fallback_samples = samples - len(outcomes.get('image-hit', ()))
+        fallback_hits = sum(len(outcomes.get(outcome, ())) for outcome in PDF_FALLBACK_CACHE_HITS)
+        pdf_preview_report.append({
+            'build': build, 'samples': samples, 'fallback_samples': fallback_samples,
+            'fallback_cache_hit_rate': fallback_hits / fallback_samples if fallback_samples else None,
+            'outcomes': {outcome: {'samples': len(values), 'p50_ms': percentile(values, .5),
+                                   'p95_ms': percentile(values, .95), 'p99_ms': percentile(values, .99)}
+                         for outcome, values in sorted(outcomes.items())},
+        })
+    no_observations = not (operations or metrics or runtime or pdf_previews or
+                           any(job['wait'] or job['duration'] for job in jobs.values()))
+    incomplete = (no_observations or gaps or malformed or audit_gaps or missing_timestamps or
+                  backup_gaps or invalid_pdf_previews)
     return {
-        'status': 'incomplete' if gaps or malformed or audit_gaps or missing_timestamps or backup_gaps else 'observed',
+        'status': 'incomplete' if incomplete else 'observed',
+        'no_observations': no_observations,
         'collection_gaps': gaps, 'malformed_lines': malformed,
         'audit_persistence_gaps': audit_gaps, 'missing_timestamps': missing_timestamps,
         'window': {'first': min(stamps).isoformat() if stamps else None, 'last': max(stamps).isoformat() if stamps else None},
@@ -121,6 +153,8 @@ def summarize(lines, since=None, until=None):
                         'unexpected_5xx_rate': failures[k] / len(v)} for k, v in sorted(operations.items())],
         'browser': [{'build': k[0], 'metric': k[1], 'entry_route': k[2], 'viewport': k[3], 'samples': len(v),
                      'p75': percentile(v, .75), 'small_sample': len(v) < 200} for k, v in sorted(metrics.items())],
+        'pdf_previews': pdf_preview_report,
+        'invalid_pdf_preview_records': invalid_pdf_previews,
         'runtime_samples': len(runtime),
         'peak_heap_bytes': max((e.get('heap_bytes', 0) for e in runtime), default=0),
         'peak_container_memory_bytes': max((e.get('container_memory_bytes', 0) for e in runtime), default=0),
