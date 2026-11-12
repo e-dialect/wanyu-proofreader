@@ -35,7 +35,7 @@
       <strong>{{ validImportJob(importJob) ? '仅查看本批次' : '批次链接无效' }}</strong>
       <div>
         <RouterLink
-          v-if="validImportJob(importJob) && batchReportsAvailable"
+          v-if="validImportJob(importJob)"
           :to="{ name: 'ProjectBatchReport', params: { id: projectId, batchId: importJob } }"
           class="btn btn-quiet btn-sm"
           >返回批次报告</RouterLink
@@ -505,7 +505,7 @@ import AppFieldValue from '@/components/AppFieldValue.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import AppField from '@/components/AppField.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { validImportJob } from '@/lib/adminPageList'
 import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
 import { PAGE_STATUS, statusBadgeClass, statusLabel } from '@/constants/pageStatus'
@@ -522,7 +522,6 @@ const props = defineProps({
   refreshLedger: { type: Function, required: true }
 })
 const projectId = props.projectId
-const batchReportsAvailable = useRouter().hasRoute('ProjectBatchReport')
 const project = toRef(props, 'project')
 const {
   jumpToPdfPage,

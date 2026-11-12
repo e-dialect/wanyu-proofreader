@@ -14,11 +14,17 @@
           >
             <AppIcon name="menu" />
           </button>
-          <RouterLink v-if="immersive" :to="returnTarget" class="shell-return"
-            ><AppIcon name="back" /><span>返回队列</span></RouterLink
+          <RouterLink
+            v-if="todoReturn || immersive"
+            :to="returnTarget"
+            class="shell-return"
+            :class="{ 'shell-todo-return': todoReturn }"
+            ><AppIcon name="back" /><span>{{
+              todoReturn ? '返回统一待办' : '返回队列'
+            }}</span></RouterLink
           >
-          <span v-if="immersive" class="shell-header__brand">万语校坊</span>
-          <div v-else class="shell-location-context" aria-label="当前位置">
+          <span v-if="immersive && !todoReturn" class="shell-header__brand">万语校坊</span>
+          <div v-else-if="!todoReturn" class="shell-location-context" aria-label="当前位置">
             <span class="shell-area">{{ shellArea }}</span>
             <span class="shell-location-divider" aria-hidden="true">/</span>
             <span class="shell-location">{{ pageTitleFor(route.name) }}</span>
@@ -139,6 +145,7 @@ import { useAuthStore } from '@/stores/auth'
 import { pageTitleFor } from '@/lib/pageTitle'
 import { isImmersiveRoute, navigationArea, rememberWork } from '@/lib/workbenchNavigation'
 import { browserSessionStorage, queueReturnTarget } from '@/lib/queueReturn'
+import { todoReturnTarget } from '@/lib/unifiedTodos'
 import { browserLocalStorage } from '@/lib/onboarding'
 import AppNavigation from '@/components/AppNavigation.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -178,8 +185,9 @@ const shellArea = computed(() => {
     ] || '工作空间'
   )
 })
-const returnTarget = computed(() =>
-  queueReturnTarget(browserSessionStorage(), auth.user?.id, route)
+const todoReturn = computed(() => todoReturnTarget(route))
+const returnTarget = computed(
+  () => todoReturn.value || queueReturnTarget(browserSessionStorage(), auth.user?.id, route)
 )
 provide('workReturnTarget', returnTarget)
 

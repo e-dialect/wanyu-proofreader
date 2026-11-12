@@ -13,6 +13,7 @@ import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
 import Discovery from '../../src/views/ProjectDiscoveryView.vue'
 import pb from '../../src/lib/pocketbase'
 import '../../src/style.css'
+import '../../src/workbench.css'
 
 // The real view and services use synthetic in-memory responses only.
 pb.authStore = new BaseAuthStore()
@@ -20,6 +21,7 @@ const projects = [
   { id: 'password-project', name: '口令体验项目', access_mode: 'password' },
   { id: 'public-project', name: '公开体验项目', access_mode: 'public' },
 ].map(project => ({ ...project, description: '仅用于界面回归的虚构项目。', capabilities: {} }))
+window.discoveryFixture = { failCatalogRefresh: false }
 let requests = 0
 pb.send = async (path, options = {}) => {
   if (path.endsWith('/join')) {
@@ -31,9 +33,14 @@ pb.send = async (path, options = {}) => {
       throw { response: { message: '项目口令不正确，请重试。' } }
     }
     project.capabilities = { isMember: true, canProofread: true, projectRole: 'proofreader' }
-    return project
+    return structuredClone(project)
   }
-  if (path.startsWith('/api/fangji/projects?')) return projects
+  if (path.startsWith('/api/fangji/projects?')) {
+    if (window.discoveryFixture.failCatalogRefresh) {
+      throw { response: { message: '项目目录刷新失败，请重试。' } }
+    }
+    return structuredClone(projects)
+  }
   throw new Error(`Unexpected fixture request: ${path}`)
 }
 const router = createRouter({ history: createMemoryHistory(), routes: [
