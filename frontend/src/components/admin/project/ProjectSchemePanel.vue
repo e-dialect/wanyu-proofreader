@@ -65,7 +65,11 @@
         <div v-else class="admin-list-filters mb-4">
           <AppField class="admin-filter-field"
             ><template #label>本批资料用的是哪套方案</template>
-            <select v-model="schemeSourceId" class="form-control">
+            <select
+              v-model="schemeSourceId"
+              class="form-control"
+              :aria-describedby="hasTestOnlySchemes ? 'scheme-test-only-hint' : undefined"
+            >
               <option value="">请选择</option>
               <option
                 v-for="item in schemeOptions"
@@ -91,6 +95,13 @@
             {{ schemeBusy ? '转换中…' : '生成统一拼音' }}
           </AppButton>
         </div>
+        <p
+          v-if="!adapterError && canGenerate && hasTestOnlySchemes"
+          id="scheme-test-only-hint"
+          class="text-sm text-muted mb-3"
+        >
+          标为「仅测试」的方案不能用于正式转换。
+        </p>
         <h3>最近一次转换</h3>
         <JobStatusPanel
           v-if="schemeJobTarget"
@@ -380,6 +391,9 @@ const adapterError = ref('')
 const jobError = ref('')
 const canGenerate = computed(() =>
   schemeOptions.value.some((item) => item.can_start_conversion === true)
+)
+const hasTestOnlySchemes = computed(() =>
+  schemeOptions.value.some((item) => item.rule_status === 'test')
 )
 const selectedConversion = computed(() =>
   schemeOptions.value.find(

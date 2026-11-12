@@ -469,6 +469,11 @@ function formatDate(value) {
   .admin-catalog .page-heading {
     margin-bottom: var(--space-3);
   }
+  .admin-catalog .page-heading-actions {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
   .admin-catalog .project-hub-tabs {
     margin-bottom: var(--space-3);
   }
