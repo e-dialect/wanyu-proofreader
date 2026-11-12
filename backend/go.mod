@@ -1,6 +1,6 @@
 module fangji/backend
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/dop251/goja v0.0.0-20261021140635-64adc8bb4d51
