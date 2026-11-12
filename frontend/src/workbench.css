@@ -149,6 +149,11 @@
   gap: var(--space-3);
   min-width: 0;
 }
+.shell-todo-return {
+  min-height: var(--control-height-touch);
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
 .shell-location {
   color: var(--ink);
   font-size: var(--text-sm);

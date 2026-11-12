@@ -32,6 +32,8 @@ const items = [
 function target(item) {
   if (item.key === 'settings')
     return `/admin/projects/${encodeURIComponent(props.projectId)}/settings`
-  return projectWorkspaceTarget(props.projectId, item.key, undefined, route.query)
+  const query = { ...route.query }
+  delete query.todoFrom
+  return projectWorkspaceTarget(props.projectId, item.key, undefined, query)
 }
 </script>

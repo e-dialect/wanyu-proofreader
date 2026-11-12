@@ -269,7 +269,7 @@ assert.equal(snapshotQueue.items[0].normalization_status, 'AMBIGUOUS', '校对�
 const exactRow = await api(`/api/fangji/pages/${byHeadword.甲.id}/normalization`, {
   method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'be533', basis: '我觉得对' }
 })
-assert.match(exactRow.message, /机器已经判定了/, JSON.stringify(exactRow))
+assert.match(exactRow.message, /机器已给出结果，不能在此直接覆盖/, JSON.stringify(exactRow))
 const reviewedRow = await api(`/api/fangji/pages/${byHeadword.庚.id}/normalization`, {
   method: 'POST', token, expected: 400, body: { canonical_pronunciation: 'bu533', basis: '我觉得对' }
 })

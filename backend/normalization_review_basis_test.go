@@ -339,3 +339,31 @@ func TestNormalizationBlankHumanReadingCannotReviveOCRSource(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizationQueueReadinessKeepsRowsWhenRulesUnavailable(t *testing.T) {
+	s, page, project, _, mux, token := normalizationReviewFixture(t)
+	original := queueReviewRow(t, mux, token, project)
+	if original["review_ready"] != true || original["review_block_reason"] != "" {
+		t.Fatalf("matching rule should permit review: %+v", original)
+	}
+	source := page.GetString("source_scheme_id")
+	adapter := s.schemes.adapters[source]
+	if s.schemes.schemes()[0].CanStartConversion {
+		t.Fatal("test adapter must not advertise real conversion capability")
+	}
+	delete(s.schemes.adapters, source)
+	missing := queueReviewRow(t, mux, token, project)
+	if missing["review_ready"] != false || !strings.Contains(missing["review_block_reason"].(string), "恢复") || missing["id"] != page.Id {
+		t.Fatalf("missing rule must leave row readable and explain blocked save: %+v", missing)
+	}
+	status, _ := reviewRequest(t, mux, token, "/api/fangji/pages/"+page.Id+"/normalization", decisionBody(missing["expected_basis"].(string)))
+	if status != 400 {
+		t.Fatalf("missing rule allowed save: %d", status)
+	}
+	s.schemes.adapters[source] = adapter
+	adapter.RuleVersion += "-changed"
+	changed := queueReviewRow(t, mux, token, project)
+	if changed["review_ready"] != false || !strings.Contains(changed["review_block_reason"].(string), "重跑") {
+		t.Fatalf("changed rule must require rerun: %+v", changed)
+	}
+}
