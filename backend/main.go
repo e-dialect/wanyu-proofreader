@@ -85,6 +85,7 @@ func main() {
 	importer.registerArtifacts()
 	importer.registerDeliveries(hooksDir)
 	importer.registerProjectExport()
+	importer.registerBatchReports()
 	importer.registerQualityState()
 	importer.registerImportLedger()
 	importer.registerAdoption()

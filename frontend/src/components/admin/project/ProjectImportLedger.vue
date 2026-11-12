@@ -57,10 +57,20 @@
         <tr v-for="batch in ledger.batches" :key="batch.id">
           <td>
             <code>{{ batch.id }}</code>
+            <RouterLink
+              :to="{
+                name: 'ProjectBatchReport',
+                params: { id: props.projectId, batchId: batch.id }
+              }"
+              :aria-label="`质量与交付报告 · ${batch.original_filename || batch.id}`"
+              class="batch-report-link"
+            >
+              质量与交付报告
+            </RouterLink>
           </td>
           <td>{{ batch.finished_at || batch.created || '—' }}</td>
           <td>{{ batch.original_filename || '—' }}</td>
-          <td>{{ batch.status }}</td>
+          <td>{{ batchImportStatus(batch.status) }}</td>
           <td>{{ batch.total_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
           <td>{{ batch.inserted_count }} 行</td>
           <td>{{ batch.skipped_count }} {{ batch.count_unit === 'pages' ? '页' : '行' }}</td>
@@ -119,6 +129,8 @@ import AppDataTable from '@/components/AppDataTable.vue'
 import AppButton from '@/components/AppButton.vue'
 import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
 import { onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
+import { batchImportStatus } from '@/lib/batchReport'
 import { listImportLedger } from '@/services/importJobsService'
 import { getPbMessage } from '@/utils/pbErrors'
 const props = defineProps({ projectId: { type: String, required: true } })
@@ -162,3 +174,18 @@ onBeforeUnmount(() => {
 })
 defineExpose({ loadLedger })
 </script>
+
+<style scoped>
+.batch-report-link {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  min-height: var(--control-height);
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .batch-report-link {
+    min-height: var(--control-height-touch);
+  }
+}
+</style>

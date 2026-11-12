@@ -108,6 +108,7 @@ func (s *importService) listPagedDeliveries(c *core.RequestEvent) error {
 		states := map[string]int{"awaiting_receipt": 0, "success": 0, "partial_conflict": 0, "failed_rolled_back": 0}
 		reconciliations := map[string]int{"consistent": 0, "inconsistent": 0}
 		withdrawn, rightsImpacted, pendingNotices := 0, 0, 0
+		awaitingReceipts := 0
 		rights := map[string]bool{}
 		blockedByID := map[string]bool{}
 		for _, record := range metadata {
@@ -137,6 +138,9 @@ func (s *importService) listPagedDeliveries(c *core.RequestEvent) error {
 				}
 			}
 			states[state]++
+			if deliveryWorkflowState(state, stopped, byDelivery[record.Id]) == "awaiting_receipt" {
+				awaitingReceipts++
+			}
 			if stopped {
 				withdrawn++
 				if !notified {
@@ -162,7 +166,7 @@ func (s *importService) listPagedDeliveries(c *core.RequestEvent) error {
 			view["rights_blocked"] = blockedByID[record.Id]
 			items = append(items, view)
 		}
-		result = map[string]any{"items": items, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages, "metrics": map[string]any{"scope": "generated_packages_only", "reconciliation_scope": "immutable_package_snapshot", "rights_scope": "current_source_permissions", "package_count": total, "receipt_states": states, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliations}, "dependency_gaps": []string{"X 侧 dry-run 与双方签字", "未保存失败检查次数与全生产线周吞吐"}}
+		result = map[string]any{"items": items, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages, "metrics": map[string]any{"scope": "generated_packages_only", "reconciliation_scope": "immutable_package_snapshot", "rights_scope": "current_source_permissions", "package_count": total, "receipt_states": states, "awaiting_receipt_packages": awaitingReceipts, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliations}, "dependency_gaps": []string{"X 侧 dry-run 与双方签字", "未保存失败检查次数与全生产线周吞吐"}}
 		return nil
 	})
 	if err != nil {

@@ -79,6 +79,11 @@ const routes = [
         component: () => import('@/views/admin/ProjectDetailView.vue')
       },
       {
+        path: 'projects/:id/batch-reports/:batchId',
+        name: 'ProjectBatchReport',
+        component: () => import('@/views/admin/BatchReportView.vue')
+      },
+      {
         path: 'projects/:id/deliveries',
         name: 'ProjectDeliveries',
         component: () => import('@/views/admin/DeliveriesView.vue')
