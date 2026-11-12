@@ -51,7 +51,9 @@
         </div>
         <PdfSinglePageViewer
           v-if="pdfUrl"
-          :style="{ visibility: loading || pdfLoading ? 'hidden' : 'visible' }"
+          :key="pdfViewerKey"
+          :class="{ 'pdf-preview-pending': loading || pdfLoading }"
+          :inert="loading || pdfLoading"
           :src="pdfUrl"
           :page-image="pageImage"
           :watermark-user-id="watermarkUserId"
@@ -359,6 +361,7 @@ const {
   pdfPageWarning,
   allowedPdfPages,
   pdfUrl,
+  pdfViewerKey,
   pageImage,
   fallbackToPdf,
   localPdfPage,
@@ -408,5 +411,8 @@ function applyPdfPageInput() {
   inset: 0;
   z-index: var(--z-mask);
   background: var(--surface);
+}
+.pdf-preview-pending {
+  opacity: 0;
 }
 </style>
