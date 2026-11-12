@@ -120,12 +120,16 @@ const originalIssue = {
       }
     ]
     await page.getByRole('button', { name: '刷新队列', exact: true }).click()
-    await page.getByText('当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。', { exact: true }).waitFor()
+    await page
+      .getByText('当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。', { exact: true })
+      .waitFor()
     await scope.selectOption('all')
     await page.locator('.project-review-list > li').waitFor()
     assert.equal(await page.locator('.project-review-list > li').count(), 1)
     await scope.selectOption('todo')
-    await page.getByText('当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。', { exact: true }).waitFor()
+    await page
+      .getByText('当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。', { exact: true })
+      .waitFor()
     checks.filteredEmptyReview = true
     state.issue = clone(originalIssue)
     await problems()
