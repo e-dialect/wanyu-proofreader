@@ -36,7 +36,8 @@ export async function listProjectQueueSummaries(page = 1, perPage = 12, options 
       page,
       perPage,
       ...(options.filter ? { filter: options.filter } : {}),
-      ...(options.project ? { project: options.project } : {})
+      ...(options.project ? { project: options.project } : {}),
+      ...(options.q ? { q: options.q } : {})
     },
     signal: options.signal,
     requestKey: null

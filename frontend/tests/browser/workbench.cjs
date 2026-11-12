@@ -194,7 +194,13 @@ async function catalogFits(page) {
       { times: 1 }
     )
     await page.getByRole('button', { name: '继续校对', exact: false }).click()
-    await page.waitForURL('**/tasks/*/edit')
+    await page.waitForURL(
+      (url) =>
+        /^\/tasks\/[^/]+\/edit$/.test(url.pathname) &&
+        url.searchParams.get('taskView') === 'active' &&
+        url.searchParams.get('taskPage') === '1' &&
+        url.searchParams.get('taskProject') === project.id
+    )
     await page.locator('.experience-workspace').waitFor()
     await assertShellGeometry()
     await page.getByRole('link', { name: '返回队列', exact: true }).click()
@@ -218,7 +224,8 @@ async function catalogFits(page) {
     })
     await page.getByRole('link', { name: '已提交', exact: true }).click()
     await queueRequested
-    await page.locator('[data-task-list-updating]').waitFor()
+    await page.getByLabel('正在加载项目', { exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: '继续校对', exact: false }).count(), 0)
     assert.equal(
       await page.getByText('还没有本人提交记录', { exact: true }).count(),
       0,

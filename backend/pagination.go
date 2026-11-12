@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
@@ -435,6 +436,15 @@ func (s *importService) proofreadingQueues(e *core.RequestEvent) error {
 		// narrow that scope but never grant access to another project.
 		predicate += " AND id={:selectedProject}"
 		params["selectedProject"] = project
+	}
+	if name := strings.TrimSpace(query.Get("q")); name != "" {
+		if utf8.RuneCountInString(name) > 100 {
+			return apis.NewBadRequestError("项目名称搜索内容不能超过 100 个字符", nil)
+		}
+		// Filter the authorized queues before pagination, while queue_summary
+		// continues to summarize all authorized projects. % and _ are literal.
+		predicate += " AND instr(lower(name),lower({:nameQuery})) > 0"
+		params["nameQuery"] = name
 	}
 	var result map[string]any
 	err := withReadSnapshot(e.Request.Context(), s.app, func(tx *dbx.Tx) error {

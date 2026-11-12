@@ -1,5 +1,6 @@
 import { readOwnSubmissionContext, ownSubmissionReturnTarget } from './ownSubmissionContext.js'
 import { readPracticeContext, practiceNavigationQuery } from './practiceContext.js'
+import { readTaskHallContext, taskHallReturnTarget } from './taskHallContext.js'
 
 import { importJobScope, validImportJob } from './adminPageList.js'
 
@@ -52,6 +53,35 @@ export function queueReturnTarget(storage, userId, route) {
     }
   }
   const context = read(storage, userId, kind)
+  const hall =
+    kind === 'proofread' && route.query?.mode !== 'review' ? readTaskHallContext(route.query) : null
+  if (hall) {
+    const target = taskHallReturnTarget(hall)
+    const practice = readPracticeContext(route.query, hall.project || undefined)
+    if (practice?.role === 'proofreader')
+      Object.assign(target.query, practiceNavigationQuery(practice))
+    if (context) {
+      const saved = new URL(context.path, 'https://queue.invalid')
+      const params = saved.searchParams
+      const savedHall = readTaskHallContext({
+        taskView: params.get('view') || 'active',
+        taskPage: params.get('page'),
+        taskProject: params.get('project'),
+        taskQ: params.get('q')
+      })
+      const savedPractice = readPracticeContext(
+        Object.fromEntries(params),
+        hall.project || undefined
+      )
+      if (
+        saved.pathname === '/tasks' &&
+        JSON.stringify(savedHall) === JSON.stringify(hall) &&
+        JSON.stringify(savedPractice) === JSON.stringify(practice)
+      )
+        return context.path
+    }
+    return `/tasks?${new URLSearchParams(target.query)}`
+  }
   const importJob = importJobScope(route.query?.importJob)
   if (kind === 'arbitration' && importJob && !validImportJob(importJob))
     return `/admin/projects/${route.params.projectId}?section=materials&view=batches#project-ledger`

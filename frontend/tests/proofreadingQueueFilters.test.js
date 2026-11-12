@@ -19,7 +19,7 @@ const loader = hallSource.match(
 )?.[1]
 assert.ok(loader, 'the mounted task hall must keep a queue resource loader')
 
-test('queue service preserves the old default and forwards only supplied filter/project options', async () => {
+test('queue service preserves the old default and forwards only supplied filter, project and search options', async () => {
   const calls = []
   const service = new Function('pb', `return (${serviceBody})`)({
     send: (...args) => {
@@ -33,11 +33,11 @@ test('queue service preserves the old default and forwards only supplied filter/
     { query: { page: 1, perPage: 12 }, signal: undefined, requestKey: null }
   ])
   const signal = new AbortController().signal
-  await service(2, 12, { signal, filter: 'reviewed', project: 'selected-project' })
+  await service(2, 12, { signal, filter: 'reviewed', project: 'selected-project', q: '莆仙' })
   assert.deepEqual(calls[1], [
     '/api/fangji/proofreading-queues',
     {
-      query: { page: 2, perPage: 12, filter: 'reviewed', project: 'selected-project' },
+      query: { page: 2, perPage: 12, filter: 'reviewed', project: 'selected-project', q: '莆仙' },
       signal,
       requestKey: null
     }
@@ -45,7 +45,7 @@ test('queue service preserves the old default and forwards only supplied filter/
 })
 
 for (const filter of ['active', 'available', 'reviewed']) {
-  test(`the ${filter} hall requests exactly its filtered page and selected project without scanning`, async () => {
+  test(`the ${filter} hall requests exactly its filtered page and project search without scanning`, async () => {
     const calls = []
     const signal = new AbortController().signal
     const expected = {
@@ -58,9 +58,10 @@ for (const filter of ['active', 'available', 'reviewed']) {
     const bindings = {
       currentUserId: () => 'reader',
       auth: { user: { id: 'reader' } },
-      currentPage: { value: 2 },
+      requestedPage: { value: 2 },
       selectedProject: { value: 'selected-project' },
       taskView: { value: filter },
+      searchQuery: { value: '莆仙' },
       listProjectQueueSummaries: (...args) => {
         calls.push(args)
         return Promise.resolve(expected)
@@ -70,7 +71,7 @@ for (const filter of ['active', 'available', 'reviewed']) {
       ...Object.values(bindings)
     )
     assert.equal(await load({ signal }), expected)
-    assert.deepEqual(calls, [[2, 12, { signal, filter, project: 'selected-project' }]])
+    assert.deepEqual(calls, [[2, 12, { signal, filter, project: 'selected-project', q: '莆仙' }]])
   })
 }
 

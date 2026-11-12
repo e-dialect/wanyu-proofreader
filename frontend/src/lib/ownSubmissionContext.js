@@ -1,3 +1,5 @@
+import { normalizeTaskSearchQuery } from './taskHallContext.js'
+
 const recordId = (value) => (typeof value === 'string' && /^[a-z0-9]{15}$/.test(value) ? value : '')
 const positive = (value, fallback = 1, maximum = 1000000) => {
   if (!['string', 'number'].includes(typeof value) || !/^[1-9]\d*$/.test(String(value)))
@@ -21,7 +23,8 @@ export function readOwnSubmissionContext(query = {}, projectId) {
     taskView: ['active', 'available', 'reviewed'].includes(query.taskView)
       ? query.taskView
       : 'reviewed',
-    taskProject: query.taskProject === project ? project : ''
+    taskProject: query.taskProject === project ? project : '',
+    taskQ: normalizeTaskSearchQuery(query.taskQ)
   }
 }
 
@@ -38,7 +41,10 @@ export function ownSubmissionNavigationQuery(context) {
     taskView: ['active', 'available', 'reviewed'].includes(context.taskView)
       ? context.taskView
       : 'reviewed',
-    ...(context.taskProject === context.projectId ? { taskProject: context.taskProject } : {})
+    ...(context.taskProject === context.projectId ? { taskProject: context.taskProject } : {}),
+    ...(normalizeTaskSearchQuery(context.taskQ)
+      ? { taskQ: normalizeTaskSearchQuery(context.taskQ) }
+      : {})
   }
 }
 
@@ -54,7 +60,8 @@ export function ownSubmissionReturnTarget(context) {
       ...(query.reviewNumber ? { number: query.reviewNumber } : {}),
       taskPage: query.taskPage,
       taskView: query.taskView,
-      ...(query.taskProject ? { taskProject: query.taskProject } : {})
+      ...(query.taskProject ? { taskProject: query.taskProject } : {}),
+      ...(query.taskQ ? { taskQ: query.taskQ } : {})
     }
   }
 }

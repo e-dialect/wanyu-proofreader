@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -89,7 +90,7 @@ func TestPaginationAndQueueIsolation(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		if strings.HasPrefix(path, "/api/fangji/proofreading-queues") {
+		if strings.HasPrefix(path, "/api/fangji/proofreading-queues") && !req.URL.Query().Has("q") {
 			oldRequest := httptest.NewRequest(http.MethodGet, strings.Replace(path, "/api/fangji/proofreading-queues", "/legacy-proofreading-queues", 1), nil)
 			oldRequest.Header = req.Header.Clone()
 			oldResponse := httptest.NewRecorder()
@@ -221,6 +222,63 @@ func TestPaginationAndQueueIsolation(t *testing.T) {
 	}
 	// 租约过期后第 2 页重新可领，A 类回到 2 条；自己交过的那条仍然不在里面。
 	assertTiers(t, queues, map[string]float64{"A": 2, "B": 2, "C": 0, "other": 1, "unlabeled": 94}, 5)
+	// Project-name search intersects authorization and task filters before paging.
+	// The frozen legacy oracle has no search contract; retain its checks above.
+	if _, err := app.DB().NewQuery("UPDATE projects SET name='检索_% Alpha 0' WHERE id={:id}").Bind(dbx.Params{"id": project.Id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 4; i++ {
+		id := fmt.Sprintf("searchp%08d", i)
+		name := fmt.Sprintf("检索_%% Alpha %d", i)
+		if i == 4 {
+			name = "Other project"
+		}
+		if _, err := app.DB().NewQuery(`INSERT INTO projects(id,name,admin,required_proofreads,access_mode) VALUES ({:id},{:name},{:owner},2,'members_only')`).Bind(dbx.Params{"id": id, "name": name, "owner": owner.Id}).Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if i != 3 {
+			if _, err := app.DB().NewQuery(`INSERT INTO project_memberships(id,project,user,role,source,created_by) VALUES ({:id},{:project},{:user},'proofreader','assigned',{:owner})`).Bind(dbx.Params{"id": fmt.Sprintf("searchm%08d", i), "project": id, "user": reader.Id, "owner": owner.Id}).Execute(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := app.DB().NewQuery(`INSERT INTO pages(id,project,page_number,pdf_page,status,proofreader,proofread_round) VALUES ('searchpage00001','searchp00000001',1,1,'claimed',{:user},1)`).Bind(dbx.Params{"user": reader.Id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	queuePath := "/api/fangji/proofreading-queues"
+	global := request(queuePath, reader, 200)
+	for _, query := range []string{"q=" + url.QueryEscape("  检索_% aLPHa  "), "q=%25", "q=_"} {
+		result := request(queuePath+"?"+query+"&page=2&perPage=2", reader, 200)
+		if result["totalItems"] != float64(3) || result["totalPages"] != float64(2) || result["page"] != float64(2) || len(result["items"].([]any)) != 1 || result["items"].([]any)[0].(map[string]any)["project"].(map[string]any)["id"] != "searchp00000002" {
+			t.Fatalf("search must precede pagination and exclude foreign projects: %v", result)
+		}
+	}
+	for filter, want := range map[string]string{"available": project.Id, "reviewed": project.Id, "active": "searchp00000001"} {
+		result := request(queuePath+"?q=alpha&filter="+filter, reader, 200)
+		if result["totalItems"] != float64(1) || result["items"].([]any)[0].(map[string]any)["project"].(map[string]any)["id"] != want || !reflect.DeepEqual(result["summary"], global["summary"]) {
+			t.Fatalf("search/filter intersection or global summary changed: %v", result)
+		}
+	}
+	for _, query := range []string{"q=absent", "q=alpha&project=searchp00000003", "q=%25x", "q=_x", "q=" + url.QueryEscape(strings.Repeat("字", 100))} {
+		result := request(queuePath+"?"+query, reader, 200)
+		if result["totalItems"] != float64(0) || !reflect.DeepEqual(result["summary"], global["summary"]) {
+			t.Fatalf("literal or scoped name search failed: %v", result)
+		}
+	}
+	if result := request(queuePath+"?q=alpha&project="+project.Id, reader, 200); result["totalItems"] != float64(1) {
+		t.Fatal(result)
+	}
+	if result := request(queuePath+"?q=alpha", outsider, 200); result["totalItems"] != float64(0) {
+		t.Fatal("search leaked projects to an unrelated user", result)
+	}
+	if result := request(queuePath+"?q=%20%20", reader, 200); !reflect.DeepEqual(result, global) {
+		t.Fatal("whitespace search must match the unfiltered response", result)
+	}
+	tooLong := request(queuePath+"?q="+url.QueryEscape(strings.Repeat("字", 101)), reader, 400)
+	if !strings.Contains(fmt.Sprint(tooLong["message"]), "100 个字符") {
+		t.Fatal("overlong search needs an actionable Chinese message", tooLong)
+	}
+
 }
 
 func TestProjectInsightsAccessFiltersAndStats(t *testing.T) {

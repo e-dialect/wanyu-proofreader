@@ -214,7 +214,7 @@ async function dismissOnboarding (page) {
     const tierButton = hall.locator('.queue-tiers .queue-tier:not([disabled])').first()
     const tierLabel = (await tierButton.innerText()).trim()
     await tierButton.click({ timeout: 30000 })
-    await hall.waitForURL(/\/tasks\/[a-z0-9]+\/edit$/, { timeout: 60000 })
+    await hall.waitForURL((url) => /^\/tasks\/[a-z0-9]+\/edit$/.test(url.pathname) && url.searchParams.get('taskView') === 'available' && url.searchParams.get('taskPage') === '1', { timeout: 60000 })
     await hall.locator('.proofread-fields').first().waitFor({ timeout: 60000 })
     await dismissOnboarding(hall)
     assert.match(tierLabel, /·\s*\d+/, `层级按钮没带数量：${tierLabel}`)
