@@ -537,11 +537,11 @@
           ><input v-model.trim="eventForm.responsible" class="form-control" maxlength="200"
         /></label>
         <label class="form-group"
-          ><span class="form-label">退回位置</span
+          ><span class="form-label">退回环节</span
           ><select v-model="eventForm.target" class="form-control">
             <option value="">不涉及上游退回</option>
             <option v-for="target in returnTargets" :key="target" :value="target">
-              {{ deliveryStageLabels[target] }}
+              {{ deliveryStageLabel(target) }}
             </option>
           </select></label
         >
@@ -770,10 +770,10 @@ function openImpact(item) {
 }
 
 const deliveryStageLabels = {
-  A: '来源与权利',
-  B: '条目校对与仲裁',
-  C: '拼音归一复核',
-  D: '批次编选',
+  A: '来源与材料准备',
+  B: '校对与仲裁',
+  C: '拼音整理与复核',
+  D: '用途编选',
   E: '交付与回执'
 }
 const deliveryStageLabel = (target) =>

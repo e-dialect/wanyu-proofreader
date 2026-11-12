@@ -73,7 +73,7 @@ async function main() {
     await page.getByLabel('原因／处置说明').fill('合成消费方整体失败并已回滚；此截图不是 X 侧实测')
     await page.getByLabel('人工核查者', { exact: true }).fill('synthetic-receipt-reviewer')
     await page.getByLabel('修复／通知责任人').fill('synthetic-A-owner')
-    await page.getByLabel('退回位置').selectOption('A')
+    await page.getByLabel('退回环节').selectOption('A')
     await page.getByLabel('处置凭据（停用时填升级记录；失败时填回滚凭据）').fill('synthetic-rollback-evidence')
     await page.getByRole('button', { name: '保存凭据', exact: true }).click()
     await article.getByText('整体失败并回滚', { exact: false }).waitFor()

@@ -156,7 +156,7 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 	// job. import_job then identifies only its newly inserted subset, not the
 	// uploaded batch. Fail closed rather than reconcile that subset as a whole.
 	if job.GetInt("total_count") <= 0 || len(pages) != job.GetInt("total_count") {
-		return snap, deliveryProblem(400, "DELIVERY_IMPORT_INCOMPLETE", "批次关联条目数与入站总数不一致（可能含重放跳过或已删除条目），无法证明完整范围；请退回资料来源或用途编选环节核查，禁止按子集出包。", "核对入站总数与逐条关联，不自动拆分或补齐。")
+		return snap, deliveryProblem(400, "DELIVERY_IMPORT_INCOMPLETE", "批次关联条目数与入站总数不一致（可能含重放跳过或已删除条目），无法证明完整范围；请退回来源与材料准备或用途编选环节核查，禁止按子集出包。", "核对入站总数与逐条关联，不自动拆分或补齐。")
 	}
 	if len(pages) == 0 || len(pages) != len(h.Entries) {
 		return snap, fmt.Errorf("交接清单必须逐项覆盖整个导入批次（不允许静默遗漏）。")
@@ -231,7 +231,7 @@ func (s *importService) readDeliverySnapshot(app core.App, projectID, operator s
 			snap.SourceVersion = version
 		}
 		if system == "" || id == "" || version == "" || system != snap.SourceSystem || id != snap.SourceID || version != snap.SourceVersion || p.GetString("source_entry_id") == "" {
-			return snap, fmt.Errorf("批次来源三元组缺失或不一致，退回资料来源环节补齐。")
+			return snap, fmt.Errorf("批次来源信息缺失或不一致，请核对并补齐来源系统、资料标识、版本及每条记录的来源标识。")
 		}
 		reasons := reasonField.Values
 		if h.NativeBatch != nil {
@@ -357,7 +357,7 @@ func (s *importService) deliveryPreflight(c *core.RequestEvent) error {
 		r.Status = "inconsistent"
 		r.Problems = append(r.Problems, buildErr.Error())
 	}
-	return c.JSON(200, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "release_decision": "human_required", "can_generate": buildErr == nil, "dependency_gaps": []string{"当前使用旧人工交接清单兼容模式；建议改用已确认编选批次", "#184 独立导出列整合待接入；旧 CSV 不是本交付包", "X 侧真实 dry-run 与双方签字尚待实测"}})
+	return c.JSON(200, map[string]any{"reconciliation": r, "preview_sha256": reviewbundle.SnapshotDigest(snap), "release_decision": "human_required", "can_generate": buildErr == nil, "dependency_gaps": []string{"当前使用旧人工交接清单兼容模式；建议改用已确认编选批次", "工作 CSV 用于查看校对记录，不能替代包含范围声明与核对信息的正式交付包", "接收方试导入与双方交接确认尚待完成"}})
 }
 
 func (s *importService) createDelivery(c *core.RequestEvent) error {
@@ -539,7 +539,7 @@ func (s *importService) listDeliveries(c *core.RequestEvent) error {
 	}
 	total := len(items)
 	page, perPage, totalPages := 1, total, 1
-	return c.JSON(200, map[string]any{"items": items, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages, "metrics": map[string]any{"scope": "generated_packages_only", "reconciliation_scope": "immutable_package_snapshot", "rights_scope": "current_source_permissions", "package_count": total, "receipt_states": states, "awaiting_receipt_packages": awaitingReceipts, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliationStates}, "dependency_gaps": []string{"X 侧 dry-run 与双方签字", "未保存失败检查次数与全生产线周吞吐"}})
+	return c.JSON(200, map[string]any{"items": items, "page": page, "perPage": perPage, "totalItems": total, "totalPages": totalPages, "metrics": map[string]any{"scope": "generated_packages_only", "reconciliation_scope": "immutable_package_snapshot", "rights_scope": "current_source_permissions", "package_count": total, "receipt_states": states, "awaiting_receipt_packages": awaitingReceipts, "withdrawn_packages": withdrawn, "rights_impacted_packages": rightsImpacted, "pending_consumer_notices": pendingNotices, "reconciliation_states": reconciliationStates}, "dependency_gaps": []string{"接收方试导入与双方交接确认", "未保存失败检查次数与全生产线周吞吐"}})
 }
 
 func (s *importService) loadManagedDelivery(c *core.RequestEvent) (*core.Record, error) {
@@ -634,14 +634,14 @@ func (s *importService) appendDeliveryEvent(c *core.RequestEvent) error {
 			return apis.NewBadRequestError("全部成功的影响条数须等于包内正文条数。", nil)
 		}
 		if input.Status == "partial_conflict" && (input.Affected == 0 || input.Responsible == "" || !containsStr([]string{"A", "D"}, input.Target)) {
-			return apis.NewBadRequestError("部分冲突须记录非零冲突条数、上游资料来源或用途编选环节和修复责任人。", nil)
+			return apis.NewBadRequestError("部分冲突须记录非零冲突条数、退回环节（来源与材料准备或用途编选）和修复责任人。", nil)
 		}
 		if input.Status == "failed_rolled_back" && (strings.TrimSpace(input.Evidence) == "" || input.Responsible == "" || !containsStr([]string{"A", "D"}, input.Target)) {
 			return apis.NewBadRequestError("失败回执须保留回滚凭据、上游工序与责任人。", nil)
 		}
 	case "return":
 		if input.Responsible == "" || !containsStr([]string{"A", "D"}, input.Target) {
-			return apis.NewBadRequestError("退回须指定资料来源或用途编选环节与责任人。", nil)
+			return apis.NewBadRequestError("退回须指定处理环节（来源与材料准备或用途编选）与责任人。", nil)
 		}
 	case "withdrawal":
 		if input.Responsible == "" || strings.TrimSpace(input.Evidence) == "" {
