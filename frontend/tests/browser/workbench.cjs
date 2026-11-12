@@ -165,7 +165,13 @@ async function catalogFits(page) {
     )
     await page.screenshot({ path: path.join(output, 'desktop-task-catalog.png') })
     await page.getByRole('button', { name: '继续校对', exact: false }).click()
-    await page.waitForURL('**/tasks/*/edit')
+    await page.waitForURL(
+      (url) =>
+        /^\/tasks\/[^/]+\/edit$/.test(url.pathname) &&
+        url.searchParams.get('taskView') === 'active' &&
+        url.searchParams.get('taskPage') === '1' &&
+        url.searchParams.get('taskProject') === project.id
+    )
     await page.getByRole('link', { name: '返回队列', exact: true }).click()
     await page.waitForURL(base + queuePath)
     let releaseQueue, queueStarted

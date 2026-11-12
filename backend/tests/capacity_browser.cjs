@@ -256,7 +256,7 @@ async function main() {
               await start.waitFor()
               sourceStarted = performance.now()
               await start.click()
-              await page.waitForURL('**/tasks/*/edit')
+              await page.waitForURL(url => /^\/tasks\/[^/]+\/edit$/.test(url.pathname) && url.searchParams.get('taskView') === 'available' && url.searchParams.get('taskPage') === '1' && url.searchParams.get('taskProject') === config.project)
             }
             const current = page.url()
             await page.locator('.proofread-textarea').first().waitFor()
