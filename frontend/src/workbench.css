@@ -4,17 +4,20 @@
   --shell-header: 56px;
 }
 .app-shell {
+  --shell-sidebar-inset: var(--shell-sidebar);
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: var(--shell-sidebar) minmax(0, 1fr);
+  grid-template-columns: var(--shell-sidebar-inset) minmax(0, 1fr);
 }
 .app-sidebar {
+  grid-area: 1 / 1;
   position: sticky;
   top: 0;
   align-self: start;
   height: 100dvh;
   border-right: 1px solid var(--line);
   background: var(--paper-quiet);
+  z-index: calc(var(--z-sticky) + 1);
 }
 .app-navigation {
   display: flex;
@@ -118,6 +121,13 @@
 .app-page {
   min-width: 0;
 }
+.app-canvas {
+  /* Only the content inset changes between catalog and immersive routes. */
+  grid-area: 1 / 1 / 2 / -1;
+}
+.app-page {
+  padding-inline-start: var(--shell-sidebar-inset);
+}
 .shell-header {
   height: var(--shell-header);
   display: flex;
@@ -125,6 +135,7 @@
   justify-content: space-between;
   gap: var(--space-3);
   padding: 0 var(--space-6);
+  padding-inline-start: calc(var(--shell-sidebar-inset) + var(--space-6));
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   position: sticky;
@@ -263,7 +274,7 @@
   font-size: var(--text-md);
 }
 .app-shell--immersive {
-  display: block;
+  --shell-sidebar-inset: 0px;
 }
 .app-shell--immersive .shell-header {
   padding-inline: var(--space-4);
@@ -580,7 +591,7 @@
 }
 @media (max-width: 1100px) {
   .app-shell {
-    grid-template-columns: minmax(0, 1fr);
+    --shell-sidebar-inset: 0px;
   }
   .app-sidebar {
     display: none;

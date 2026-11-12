@@ -70,29 +70,68 @@ async function main() {
         fullPage: true
       })
 
+      await page.evaluate(() => {
+        window.discoveryFixture.failCatalogRefresh = true
+      })
+      const joined = page.locator('.project-joined-banner')
+      const myProjects = joined.getByRole('link', { name: '查看我的项目', exact: true })
+      const start = joined.getByRole('link', { name: '开始校对', exact: true })
       await password.fill('demo-passphrase')
       await password.press('Enter')
       await password.press('Enter')
       assert.equal(await requests.innerText(), '加入请求：2')
-      await passwordProject.getByRole('link', { name: '进入校对' }).waitFor()
-      assert.match(await passwordProject.innerText(), /已加入此项目/)
+      await joined.getByText('已加入 口令体验项目', { exact: true }).waitFor()
+      await passwordProject.waitFor({ state: 'detached' })
+      assert.equal(
+        await joined.getByRole('status').evaluate((node) => node === document.activeElement),
+        true
+      )
+      assert.equal(
+        await start.getAttribute('href'),
+        '/tasks?project=password-project&view=available'
+      )
 
       const button = publicProject.getByRole('button', { name: '加入项目' })
       await button.click()
-      await publicProject.getByRole('link', { name: '进入校对' }).waitFor()
+      await joined.getByText('已加入 公开体验项目', { exact: true }).waitFor()
       assert.equal(await requests.innerText(), '加入请求：3')
+      await publicProject.waitFor({ state: 'detached' })
+      await page.getByText('目前没有可加入的项目', { exact: true }).waitFor()
+      await page
+        .getByRole('alert')
+        .getByText('项目目录刷新失败，请重试。', { exact: true })
+        .waitFor()
+      assert.equal(await start.getAttribute('href'), '/tasks?project=public-project&view=available')
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+        `${pageWidth}px joined feedback must not widen the page`
+      )
       await page.screenshot({
         path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-joined.png`),
         fullPage: true
       })
-      await publicProject.getByRole('link', { name: '进入校对' }).click()
+      await myProjects.click()
+      for (const project of [passwordProject, publicProject]) {
+        const work = project.getByRole('link', { name: '进入校对', exact: true })
+        await work.waitFor()
+        assert.match(await project.innerText(), /已加入此项目/)
+      }
+      await page.evaluate(() => {
+        window.discoveryFixture.failCatalogRefresh = false
+      })
+      await page.getByRole('button', { name: '重新加载', exact: true }).click()
+      await page.getByRole('alert').waitFor({ state: 'detached' })
+      assert.equal(await passwordProject.count(), 1)
+      assert.equal(await publicProject.count(), 1)
+      await publicProject.getByRole('link', { name: '进入校对', exact: true }).click()
       await page.getByText('合成导航目标', { exact: true }).waitFor()
       assert.deepEqual(errors, [])
       assert.deepEqual(apiRequests, [], 'Fixture made a real API request')
       await page.close()
     }
     console.log(
-      `PASS: desktop/mobile Enter, duplicate protection, error recovery, public join and member navigation. Screenshots: ${output}`
+      `PASS: desktop/mobile join and keyboard flow, two memberships during a refresh failure, retry and task navigation. Screenshots: ${output}`
     )
   } finally {
     await browser.close()

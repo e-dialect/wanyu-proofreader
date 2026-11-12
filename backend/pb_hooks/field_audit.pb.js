@@ -7,8 +7,15 @@ routerAdd("GET", "/api/fangji/pages/{pageId}/events", (c) => {
 }, $apis.requireAuth("users"))
 
 routerAdd("GET", "/api/fangji/projects/{projectId}/field-error-summary", (c) => {
-  const projectId = require(`${__hooks}/lib/project_access.js`).assertId(c.request.pathValue("projectId"), "项目")
-  const result = require(`${__hooks}/lib/assist_read_consistency.js`).projectResponse($app, projectId, c.auth, () =>
-    require(`${__hooks}/lib/field_audit.js`).fieldSummary($app, projectId, c.request.url.query()))
+  const access = require(`${__hooks}/lib/project_access.js`)
+  const projectId = access.assertId(c.request.pathValue("projectId"), "项目")
+  const authorize = () => access.requireManager($app, projectId, access.currentAuth($app, c.auth))
+  authorize()
+  let result
+  try {
+    result = require(`${__hooks}/lib/field_audit.js`).fieldSummary($app, projectId, c.request.url.query())
+  } finally {
+    authorize()
+  }
   return c.json(200, result)
 }, $apis.requireAuth("users"))
