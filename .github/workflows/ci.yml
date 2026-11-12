@@ -5,6 +5,8 @@ on:
     branches:
       - main
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -49,8 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # The whitespace gate diffs against the PR base, which the default
-          # shallow checkout does not contain.
+          # Diff checks need the PR or merge group base from git history.
           fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
@@ -88,9 +89,14 @@ jobs:
         # A bare `git diff --check` compares the working tree to the index, which
         # is always clean right after checkout, so it can never fail in CI.
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -eu
+          if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            test -n "$BASE"
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            git merge-base --is-ancestor "$BASE" HEAD
+          fi
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             git diff --check "$BASE" HEAD
           else
@@ -580,7 +586,7 @@ jobs:
       - name: Check formatting of touched frontend sources
         working-directory: .
         env:
-          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORMAT_BASE: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}
         run: python3 scripts/check_prettier.py --base "${FORMAT_BASE:-origin/main}"
 
       - name: Scan repository history for secrets
