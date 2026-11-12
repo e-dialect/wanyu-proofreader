@@ -162,7 +162,7 @@ async function waitFor(check) {
     await api(`/api/fangji/pages/${fixture.pages[2].id}/empty-source`, fixture.admin, 'POST', { basis: exclusionView.context.basis, empty: false, reason: '合成浏览器验收：管理员明确撤回排除确认' })
     await member.reload()
     await member.getByRole('button', { name: '恢复草稿任务', exact: true }).first().click()
-    await member.waitForURL(`**/tasks/${fixture.pages[2].id}/edit`)
+    await member.waitForURL((url) => url.pathname === `/tasks/${fixture.pages[2].id}/edit` && url.searchParams.get("fromProblems") === "1" && url.searchParams.get("problemView") === "all")
     await member.getByLabel('词条 校对结果', { exact: true }).waitFor()
     assert.equal(await member.getByLabel('词条 校对结果', { exact: true }).inputValue(), savedMemberWork.词条)
 
