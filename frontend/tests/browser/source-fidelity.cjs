@@ -117,20 +117,44 @@ const originalIssue = {
         pending_review: false,
         field_denominator: 1,
         required_fields: 1
+      },
+      {
+        id: 'synthetic-waiting-page',
+        page_number: 2,
+        status: 'pending',
+        business_complete: false,
+        source_empty: false,
+        needs_review: false,
+        pending_review: false,
+        field_denominator: 0,
+        required_fields: 1
       }
     ]
+    const noActionableItems = page.getByText(
+      '当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。',
+      { exact: true }
+    )
+    const reviewRows = page.locator('.project-review-list > li')
     await page.getByRole('button', { name: '刷新队列', exact: true }).click()
-    await page.getByText('当前范围没有待复核条目，可切换查看全部。', { exact: true }).waitFor()
+    await noActionableItems.waitFor()
     await scope.selectOption('all')
-    await page.locator('.project-review-list > li').waitFor()
-    assert.equal(await page.locator('.project-review-list > li').count(), 1)
+    await reviewRows.filter({ hasText: '第 1 条' }).waitFor()
+    await reviewRows.filter({ hasText: '第 2 条' }).waitFor()
+    assert.equal(await reviewRows.count(), 2)
     await scope.selectOption('todo')
-    await page.getByText('当前范围没有待复核条目，可切换查看全部。', { exact: true }).waitFor()
+    await noActionableItems.waitFor()
     checks.filteredEmptyReview = true
+    await page.getByRole('link', { name: '查看等待条目', exact: true }).click()
+    const waitingRow = reviewRows.filter({ hasText: '第 2 条' })
+    await waitingRow.getByText('等待校对者提交，已有首份提交后即可核验来源。').waitFor()
+    assert.equal(await scope.inputValue(), 'waiting')
+    assert.equal(await reviewRows.count(), 1)
+    assert.equal(await waitingRow.getByRole('link', { name: '来源核验', exact: true }).count(), 0)
+    checks.waitingReviewRequiresSubmission = true
     state.issue = clone(originalIssue)
     await problems()
     const feedback = page.getByRole('textbox', { name: '受理反馈／实际处理', exact: true })
-    const status = page.getByRole('combobox', { name: /^状态/ })
+    const status = page.getByRole('combobox', { name: '问题状态', exact: true })
     const save = page.getByRole('button', { name: '保存处理与反馈', exact: true })
     const expectValue = async (locator, value) => {
       await locator.waitFor()
