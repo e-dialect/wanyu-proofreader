@@ -374,13 +374,16 @@ func TestAssistActualProcessCrashRecoveryAndExclusiveDataDirectory(t *testing.T)
 	}
 	hooks := copyAssistProcessHooks(t, root)
 	migration, _ := startAssistProcess(t, data, hooks, "", "", "migrate", "up")
+	// Full migrations run in a race-instrumented child. Allow for slow shared CI
+	// runners while still failing and reaping the child if it genuinely hangs.
+	const migrationTimeout = 2 * time.Minute
 	select {
 	case <-migration.done:
 		if migration.err != nil {
 			t.Fatalf("actual main migration failed: %v (private log %s)", migration.err, migration.log)
 		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("actual main migrations did not finish")
+	case <-time.After(migrationTimeout):
+		t.Fatalf("actual main migrations did not finish within %s", migrationTimeout)
 	}
 	firstBootstrap := filepath.Join(root, "first-bootstrap-entered")
 	first, base := startAssistProcess(t, data, hooks, barrier, firstBootstrap)
