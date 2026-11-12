@@ -24,12 +24,14 @@ export function useProofreadSubmission({
   reviewingSubmission,
   initialRowJson,
   submittedHere,
+  noNextTask,
   resetNeighbors,
   clearStoredLease,
   draftStatus,
   glyphQueueFor,
   saveClaimedLease,
   router,
+  taskEditTarget,
   clearGlyphQueue,
   loadResearchNotice,
   isLeaseFailure,
@@ -58,6 +60,7 @@ export function useProofreadSubmission({
     saved.value = ''
     saveError.value = ''
     claimNextFailure.value = false
+    noNextTask.value = false
     const projectId = page.value?.project
     const userId = currentUserId.value
     const rowJson = stringifyEditedRow()
@@ -110,20 +113,22 @@ export function useProofreadSubmission({
           saveClaimedLease(nextPage)
           setTaskFlash(window.sessionStorage, saved.value)
           leaseNavigationAllowed.value = true
-          await router.push(`/tasks/${nextPage.id}/edit`)
+          await router.push(taskEditTarget(nextPage.id))
           return
         }
         clearGlyphQueue(projectId)
-        saved.value += ' 当前项目暂无下一条可由你处理的任务。'
+        noNextTask.value = true
       } catch (claimError) {
         if (!isCurrentCase(scope)) return
         // 缺字专队耗尽（后端 404）要明确结束，而不是卡在"自动领取失败/重试"里循环。
         if (glyphQueueFor(projectId) && getPbStatus(claimError) === 404) {
           clearGlyphQueue(projectId)
           claimNextFailure.value = false
+          noNextTask.value = true
           saved.value += ' 缺字待登记队列已清空。'
         } else {
           claimNextFailure.value = true
+          noNextTask.value = false
           console.warn('Failed to claim next page after successful proofread submit:', claimError)
         }
       }
@@ -163,18 +168,17 @@ export function useProofreadSubmission({
         setTaskFlash(window.sessionStorage, saved.value)
         claimNextFailure.value = false
         leaseNavigationAllowed.value = true
-        await router.push(`/tasks/${nextPage.id}/edit`)
+        await router.push(taskEditTarget(nextPage.id))
         return
       }
       claimNextFailure.value = false
-      if (!saved.value.includes('暂无下一条')) {
-        saved.value += ' 当前项目暂无下一条可由你处理的任务。'
-      }
+      noNextTask.value = true
     } catch (claimError) {
       if (!isCurrentCase(scope)) return
       if (glyphQueueFor(page.value.project) && getPbStatus(claimError) === 404) {
         clearGlyphQueue(page.value.project)
         claimNextFailure.value = false
+        noNextTask.value = true
         saved.value = '缺字待登记队列已清空。'
       } else {
         console.warn('Failed to retry claim after proofread submit:', claimError)

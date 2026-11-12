@@ -32,10 +32,22 @@ export async function createCsvImport({ projectId, file, sourceId = '' }) {
   })
 }
 
-export async function createCsvInspection({ projectId, file, sourceId = '' }) {
+export async function readCsvColumns({ projectId, file, signal }) {
+  const body = new FormData()
+  body.append('file', file)
+  return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/imports/csv/columns`, {
+    method: 'POST',
+    body,
+    signal,
+    requestKey: null
+  })
+}
+
+export async function createCsvInspection({ projectId, file, sourceId = '', pdfPageColumn = '' }) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('inspect_only', 'true')
+  if (pdfPageColumn) formData.append('pdf_page_column', pdfPageColumn)
   if (sourceId) formData.append('source_id', sourceId)
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/imports/csv`, {
     method: 'POST',
@@ -51,10 +63,18 @@ export async function commitCsvImport(jobId) {
   })
 }
 
-export async function startOcr({ projectId, startPage, endPage, language, layout, requestId }) {
+export async function startOcr({
+  projectId,
+  startPage,
+  endPage,
+  language,
+  layout,
+  requestId,
+  projectFileId
+}) {
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/imports/ocr`, {
     method: 'POST',
-    body: { startPage, endPage, language, layout, requestId },
+    body: { startPage, endPage, language, layout, requestId, projectFileId },
     requestKey: null
   })
 }

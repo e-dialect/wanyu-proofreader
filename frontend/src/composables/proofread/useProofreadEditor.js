@@ -9,6 +9,11 @@ import { shouldIgnoreEditorShortcut } from '@/lib/onboarding'
 import { getChangedFields } from '@/lib/workspaceInsights'
 import { prepareFieldHints, gatedNotice } from '@/lib/fieldHints'
 import { takeTaskFlash } from '@/lib/taskDraft'
+import {
+  practiceGuideTarget,
+  practiceNavigationQuery,
+  readPracticeContext
+} from '@/lib/practiceContext'
 import { proofreadSubmitLabel, proofreadTaskFeedback } from '@/lib/taskFeedback'
 import { loadGlyphQueue, saveGlyphQueue } from '@/lib/taskLease'
 import { currentUserId as getCurrentUserId } from '@/services/authService'
@@ -43,6 +48,7 @@ export function useProofreadEditor() {
     snapshot.version === caseVersion && snapshot.id === page.value?.id
   const route = useRoute()
   const router = useRouter()
+  const workReturnTarget = inject('workReturnTarget', '/tasks')
   const onboardingRef = inject('proofreaderOnboarding', ref(null))
   const researchNotice = ref(null)
   const researchLoaded = ref(false)
@@ -119,6 +125,33 @@ export function useProofreadEditor() {
       ownReview.value || saving.value || submittedHere.value || leaseLost.value || !leaseToken.value
   )
   const projectName = computed(() => page.value?.expand?.project?.name || '当前项目')
+  const noNextTask = ref(false)
+  const currentPracticeContext = computed(() => {
+    const context = readPracticeContext(route.query, page.value?.project)
+    return context?.role === 'proofreader' && page.value?.expand?.project?.purpose === 'practice'
+      ? { ...context, step: ownReview.value ? 'reviewed' : 'proofread' }
+      : null
+  })
+  const practiceGuide = computed(() =>
+    currentPracticeContext.value ? practiceGuideTarget(currentPracticeContext.value) : null
+  )
+  function taskHallTarget(view, step) {
+    const query = { view, ...(page.value?.project ? { project: page.value.project } : {}) }
+    if (currentPracticeContext.value)
+      Object.assign(query, practiceNavigationQuery({ ...currentPracticeContext.value, step }))
+    return { path: '/tasks', query }
+  }
+  const ownSubmissionsTarget = computed(() => taskHallTarget('reviewed', 'reviewed'))
+  const availableTasksTarget = computed(() => taskHallTarget('available', 'claim'))
+  function taskEditTarget(pageId) {
+    const context = currentPracticeContext.value
+    return {
+      path: `/tasks/${encodeURIComponent(pageId)}/edit`,
+      query: context
+        ? practiceNavigationQuery({ ...context, step: ownReview.value ? 'reviewed' : 'proofread' })
+        : {}
+    }
+  }
   const changedFields = computed(() =>
     getChangedFields(rowHeaders.value, originalRow.value, editedRow.value)
   )
@@ -371,7 +404,9 @@ export function useProofreadEditor() {
     glyphQueueFor,
     router,
     captureCase,
-    isCurrentCase
+    isCurrentCase,
+    returnTarget: workReturnTarget,
+    taskEditTarget
   })
   const {
     openReturnModal,
@@ -397,7 +432,9 @@ export function useProofreadEditor() {
     router,
     captureCase,
     isCurrentCase,
-    leaseNavigationAllowed
+    leaseNavigationAllowed,
+    returnTarget: workReturnTarget,
+    taskEditTarget
   })
   const {
     onTextChange,
@@ -468,12 +505,14 @@ export function useProofreadEditor() {
     reviewingSubmission,
     initialRowJson,
     submittedHere,
+    noNextTask,
     resetNeighbors,
     clearStoredLease,
     draftStatus,
     glyphQueueFor,
     saveClaimedLease,
     router,
+    taskEditTarget,
     clearGlyphQueue,
     loadResearchNotice,
     isLeaseFailure,
@@ -562,6 +601,7 @@ export function useProofreadEditor() {
     leaseLost.value = false
     leaseNavigationAllowed.value = false
     submittedHere.value = false
+    noNextTask.value = false
     claimNextFailure.value = false
     retryingClaim.value = false
     textareaRefs.clear()
@@ -625,12 +665,12 @@ export function useProofreadEditor() {
 
   function gotoPrevTask() {
     if (!canSwitchPrev.value) return
-    router.push(`/tasks/${prevTaskId.value}/edit`)
+    router.push(taskEditTarget(prevTaskId.value))
   }
 
   function gotoNextTask() {
     if (!canSwitchNext.value) return
-    router.push(`/tasks/${nextTaskId.value}/edit`)
+    router.push(taskEditTarget(nextTaskId.value))
   }
 
   async function loadResearchNotice() {
@@ -775,6 +815,11 @@ export function useProofreadEditor() {
     navigationHint,
     neighborsState,
     submittedHere,
+    noNextTask,
+    ownSubmissionsTarget,
+    availableTasksTarget,
+    practiceGuide,
+    returnTarget: workReturnTarget,
     canSwitchPrev,
     canSwitchNext,
     releasing,

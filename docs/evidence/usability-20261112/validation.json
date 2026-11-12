@@ -1,0 +1,58 @@
+{
+  "date": "2026-11-12",
+  "timezone": "Asia/Shanghai",
+  "base": "36043569fc977e309a74a13c6fe2e578a8c1923d",
+  "branch": "feat/usability-20261112",
+  "data": "synthetic-only",
+  "frontend_tests": {
+    "tests": 605,
+    "passed": 605,
+    "failed": 0
+  },
+  "checks": {
+    "eslint": "pass",
+    "prettier_touched_files": "pass",
+    "production_build": "pass",
+    "ui_debt": "pass",
+    "diff_whitespace": "pass",
+    "browser_job_observer": "pass",
+    "browser_workbench": "pass",
+    "browser_review_bundle": "pass",
+    "browser_import_errors": "pass",
+    "delivery_integration_and_browser": "pass",
+    "browser_source_fidelity_todo_history": "pass",
+    "browser_csv_12_states": "pass",
+    "browser_role_practice_and_full_review_bundle": "pass"
+  },
+  "visual_viewports": [
+    {
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "scope": "delivery receipt"
+    }
+  ],
+  "human_acceptance": "pending",
+  "production_deployment": "not performed",
+  "remote_push": "published via GitHub git object API with matching commit and tree SHAs",
+  "initial_frontend_tests": {
+    "tests": 602,
+    "passed": 602,
+    "failed": 0
+  },
+  "pull_request": "https://github.com/e-dialect/wanyu-proofreader/pull/432",
+  "role_practice_commit": "d66988f",
+  "ci_previous_head": {
+    "sha": "aa26b6189777ce19cb304c48dc452a6b9c2a21d9",
+    "run": 43079446150,
+    "browser_failure": "old collapsed CSV locator; fixed and full local workflow passed",
+    "container_failure": "frontend libxslt 1.1.43-r3; scanner reports CVE-2026-87636 and CVE-2026-9947; not changed in this PR"
+  }
+}

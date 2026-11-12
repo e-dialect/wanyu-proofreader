@@ -19,7 +19,7 @@ func TestSyntheticFixturesPass(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !report.OK || report.EntryCount != 2 || len(report.Errors) != 0 {
+		if !report.OK || report.EntryCount != 2 || len(report.Errors) != 0 || report.RightsRef != "src-synthetic-0001" {
 			t.Fatalf("%s: %#v", name, report)
 		}
 		again, err := ValidateDir(filepath.Join("testdata", "review-bundle-v0", name))

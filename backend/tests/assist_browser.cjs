@@ -195,14 +195,14 @@ async function dismissOnboarding (page) {
     // 而 #162 要的是分层并存（评审抓到旧图只有一枚 B 芯片）。
     assert.ok(await hall.locator('.queue-tier').count() >= 2, '大厅层级条不足两档，证明不了分层')
     const hallText = await strip.innerText()
-    assert.match(hallText, /A 类 · 照抄型 · \d+/, `层级条里没有 A 档：${hallText}`)
-    assert.match(hallText, /B 类 · 需判断 · \d+/, `层级条里没有 B 档：${hallText}`)
+    assert.match(hallText, /基础核对 · \d+/, `层级条里没有 A 档：${hallText}`)
+    assert.match(hallText, /需要判断 · \d+/, `层级条里没有 B 档：${hallText}`)
     await shoot(hall, 'hall-tiers')
     // ---------- 层级条上的两种"没有档"（#247） ----------
     // unknown（算过但信号不足）与 unlabeled（从没算过）必须各说各的；账对得上时不许
     // 出现差额告警，中性计数也不许是可点的领取入口（unknown 领不了）。
     const stripText = await hall.locator('.queue-tiers').first().innerText()
-    assert.match(stripText, /A 类 · 照抄型 · 2/, `A 档计数不对：${stripText}`)
+    assert.match(stripText, /基础核对 · 2/, `A 档计数不对：${stripText}`)
     assert.match(stripText, /信号不足 1/, `unknown 没按新文案呈现：${stripText}`)
     assert.match(stripText, /未评估 1/, `unlabeled 没按新文案呈现：${stripText}`)
     assert.equal(await hall.locator('.queue-tier--warn').count(), 0, `账对得上却出现差额告警：${stripText}`)
@@ -304,11 +304,11 @@ async function dismissOnboarding (page) {
     await submit.click()
     // 回读串必须带 who/when/basis 三件，缺一件这条结论就不可复核
     await adminSession.getByText(/授权未决｜登记于 \d{4}-\d{2}-\d{2} \d{2}:\d{2}｜依据：浏览器验收[^｜]+｜登记者：\S/).waitFor({ timeout: 60000 })
-    const tierLine = adminSession.getByText(/登记后层级/)
+    const tierLine = adminSession.getByText(/重算后难度：/)
     await tierLine.waitFor({ timeout: 60000 })
     const tierText = await tierLine.innerText()
-    assert.match(tierText, /层级 C/, `登记 rights_gate 之后层级没落到 C：${tierText}`)
-    assert.match(tierText, /rights_gate_blocked/, `判据里没有人工桶：${tierText}`)
+    assert.match(tierText, /重算后难度：需要专业知识/, `登记 rights_gate 之后层级没落到 C：${tierText}`)
+    assert.match(tierText, /用途授权尚未解决/, `判据里没有人工桶：${tierText}`)
     assert.equal(await adminSession.getByRole('button', { name: '撤销结论' }).isDisabled(), false,
       '已经有结论却不能撤销')
     await panel.scrollIntoViewIfNeeded()

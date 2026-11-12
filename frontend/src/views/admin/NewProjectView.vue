@@ -1,11 +1,17 @@
 <template>
   <main class="container page page-form">
     <div class="flex items-center gap-3 mb-6">
-      <RouterLink to="/admin" class="btn btn-secondary btn-sm">← 返回</RouterLink>
-      <h1 class="compact-page-title">创建新项目</h1>
+      <RouterLink :to="backTarget" class="btn btn-secondary btn-sm">← 返回</RouterLink>
+      <h1 class="compact-page-title">{{ isPractice ? '创建练习项目' : '创建新项目' }}</h1>
     </div>
 
-    <div class="alert mb-4" role="note">
+    <div v-if="isPractice" class="alert mb-4" role="note">
+      <strong>用虚构材料练习</strong>
+      <p class="text-sm mt-2">
+        创建后回到练习步骤。请在这里使用练习包与配套原文，正式资料请另选项目。
+      </p>
+    </div>
+    <div v-else class="alert mb-4" role="note">
       <strong>创建后如何准备文件？</strong>
       <p class="text-sm mt-2">
         可仅上传 PDF（原文预览；启用本地文字层提取后可另行提取；不支持扫描页）、仅导入
@@ -40,7 +46,7 @@
               v-model="form.name"
               type="text"
               class="form-control"
-              placeholder="如：《莆田方言词典》校对项目"
+              :placeholder="isPractice ? '如：我的校对练习' : '如：《莆田方言词典》校对项目'"
               required
             />
           </AppField>
@@ -85,7 +91,9 @@
         </fieldset>
         <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
         <div v-if="success" class="alert alert-success" role="status">
-          项目已创建，正在打开材料工作区。
+          {{
+            isPractice ? '练习项目已创建，正在返回练习步骤。' : '项目已创建，正在打开材料工作区。'
+          }}
         </div>
 
         <div class="flex gap-3">
@@ -96,11 +104,15 @@
                   ? '正在打开…'
                   : '创建中…'
                 : createdProject
-                  ? '打开材料工作区'
-                  : '创建项目'
+                  ? isPractice
+                    ? '返回练习步骤'
+                    : '打开材料工作区'
+                  : isPractice
+                    ? '创建练习项目'
+                    : '创建项目'
             }}
           </button>
-          <RouterLink to="/admin" class="btn btn-secondary">取消</RouterLink>
+          <RouterLink :to="backTarget" class="btn btn-secondary">取消</RouterLink>
         </div>
       </form>
     </div>
@@ -109,15 +121,25 @@
 
 <script setup>
 import AppField from '@/components/AppField.vue'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { createProject } from '@/services/projectsService'
+import { practiceGuideTarget, practiceStep } from '@/lib/practiceContext'
 import { getPbMessage } from '@/utils/pbErrors'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const isPractice = computed(() => route.query.purpose === 'practice')
+const currentPractice = (projectId) => ({
+  projectId,
+  role: 'manager',
+  step: practiceStep('manager', route.query.practiceStep)
+})
+const backTarget = computed(() =>
+  isPractice.value ? practiceGuideTarget(currentPractice(''), route.query) : '/admin'
+)
 const loading = ref(false)
 const checkingPermission = ref(true)
 const error = ref('')
@@ -176,7 +198,10 @@ async function handleSubmit() {
   error.value = ''
   try {
     if (!createdProject.value) {
-      const project = await createProject({ ...form.value })
+      const project = await createProject({
+        ...form.value,
+        ...(isPractice.value ? { purpose: 'practice' } : {})
+      })
       if (!isCurrent()) return
       createdProject.value = project
       createdOwnerId.value = auth.user?.id
@@ -187,14 +212,20 @@ async function handleSubmit() {
       void auth.loadAccessContext({ force: true }).catch(() => {})
     }
     if (!isCurrent()) return
-    await router.replace({
-      path: `/admin/projects/${createdProject.value.id}`,
-      query: { section: 'materials', view: 'import' }
-    })
+    await router.replace(
+      isPractice.value
+        ? practiceGuideTarget(currentPractice(createdProject.value.id), route.query)
+        : {
+            path: `/admin/projects/${createdProject.value.id}`,
+            query: { section: 'materials', view: 'import' }
+          }
+    )
   } catch (e) {
     if (!isCurrent()) return
     error.value = createdProject.value
-      ? '项目已创建，但材料工作区尚未打开。请重试打开，无需重新创建。'
+      ? isPractice.value
+        ? '练习项目已创建，但未能打开练习步骤。请重试返回，无需重新创建。'
+        : '项目已创建，但材料工作区尚未打开。请重试打开，无需重新创建。'
       : getPbMessage(e, '创建失败，请重试')
   } finally {
     if (isCurrent()) loading.value = false

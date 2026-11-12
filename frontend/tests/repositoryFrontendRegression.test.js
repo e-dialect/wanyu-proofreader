@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { computed, reactive, ref, watch as vueWatch } from 'vue'
 import { createAccountViewScope } from '../src/lib/accountViewScope.js'
+import { createPdfPreviewCache } from '../src/lib/pdfPreviewCache.js'
+import { createPageImageCache } from '../src/lib/pageImageCache.js'
 import * as accountSecurity from '../src/lib/accountSecurity.js'
 import * as localAccountData from '../src/lib/localAccountData.js'
 import { adminRouteKey } from '../src/lib/adminRouteKey.js'
@@ -506,6 +508,8 @@ regression(
         {
           loadTaskLease: () => ({ token: 'token', expiresAt: 'future' }),
           saveTaskLease: () => {},
+          unref: (value) =>
+            value && typeof value === 'object' && 'value' in value ? value.value : value,
           renewTaskLease: () => {
             started.resolve()
             return waiting.promise
@@ -530,6 +534,8 @@ regression(
       )
       Object.assign(context, {
         page: ref({ id: 'a' }),
+        returnTarget: ref('/tasks?view=active&project=project-a'),
+        taskEditTarget: (pageId) => ({ path: `/tasks/${pageId}/edit`, query: {} }),
         captureCase: () => version,
         isCurrentCase: (scope) => scope === version
       })
@@ -637,6 +643,60 @@ regression('PDF fallback arms expiration to recheck the authorization window', a
   } finally {
     globalThis.fetch = originalFetch
     globalThis.setTimeout = originalTimer
+  }
+})
+
+regression('image access denial forces a fresh PDF permission check', async () => {
+  const expiresAt = new Date(Date.now() + 60_000).toISOString()
+  let denied = false
+  let pdfReads = 0
+  const revoked = []
+  const fetcher = async (url) => {
+    if (url.includes('/images/')) return new Response(null, { status: denied ? 403 : 404 })
+    if (url.endsWith('/descriptor')) {
+      return Response.json({ key: 'pdf', start: 1, end: 1, total: 1, expiresAt })
+    }
+    pdfReads++
+    if (denied) return Response.json({ message: '原文权限已撤回' }, { status: 403 })
+    return new Response('synthetic-pdf', {
+      headers: {
+        'X-PDF-Preview-Key': 'pdf',
+        'X-PDF-Expires-At': expiresAt,
+        'X-PDF-Start-Page': '1',
+        'X-PDF-End-Page': '1',
+        'X-PDF-Total-Pages': '1'
+      }
+    })
+  }
+  const fixture = evaluate('composables/useProjectPdf.js', ['useProjectPdf'], {
+    pb: {
+      authStore: { record: { id: 'u' }, token: 'token', onChange: () => () => {} },
+      buildURL: (value) => `https://example.test${value}`
+    },
+    fetch: fetcher,
+    setTimeout: () => 1,
+    clearTimeout: () => {},
+    createPdfPreviewCache: () =>
+      createPdfPreviewCache({
+        urls: {
+          createObjectURL: () => 'blob:protected',
+          revokeObjectURL: (url) => revoked.push(url)
+        }
+      }),
+    createPageImageCache: () => createPageImageCache({ fetcher })
+  })
+  try {
+    const api = fixture.useProjectPdf(ref({ id: 'page', pdf_page: 1 }))
+    await api.resolveProjectPdf()
+    assert.equal(api.pdfUrl.value, 'blob:protected')
+    denied = true
+    await api.resolveProjectPdf()
+    assert.equal(pdfReads, 2)
+    assert.equal(api.pdfUrl.value, null)
+    assert.equal(api.pdfError.value, '原文权限已撤回')
+    assert.deepEqual(revoked, ['blob:protected'])
+  } finally {
+    fixture.dispose()
   }
 })
 

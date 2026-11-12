@@ -189,8 +189,8 @@ async function waitFor(check) {
       await submit.getByRole('button', { name: '确认提交', exact: true }).click()
       // The current task status is the visible submission outcome; the same
       // wording is also retained inside the collapsed operation-history note.
-      const submittedStatus = worker.locator('[role="status"][data-task-feedback="submitted"]')
-      await submittedStatus.getByText('当前项目暂无下一条可由你处理的任务', { exact: false }).waitFor()
+      const submittedStatus = worker.locator('section.editor-completion-note[role="status"]')
+      await submittedStatus.getByText('当前暂时没有下一条可由你处理；这不表示项目全部完成。', { exact: false }).waitFor()
       const process = await api(`/api/fangji/projects/${research.project.id}/verification-export`, fixture.admin, 'POST', { mode: 'all' })
       assert.ok(process.events.some(event => event.kind === 'research_submission' && event.ref === research.session.id && event.payload.row.记音 === 'ka⁵³³'))
       assert.deepEqual(worker.__errors, [])

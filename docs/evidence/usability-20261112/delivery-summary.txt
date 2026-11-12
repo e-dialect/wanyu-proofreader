@@ -1,0 +1,13 @@
+PASS: completed overlapping import cannot export its newly inserted subset as the full inbound batch
+PASS: complete batch coverage, manual handoff counts, humans, purpose and transfer gates; refused generation writes nothing
+PASS: true server archive matches database provenance and values, excluded text absent, stale preview and corruption rejected
+PASS: five roles including owner without membership; generation/download/receipt protected, outside text refused, no public file access, immutable evidence
+PASS: owner and raw parent deletions cannot orphan delivery evidence; archive remains accessible; empty projects can delete
+PASS: all required responsible parties reject empty and whitespace-only names without appending history
+PASS: sequential and concurrent duplicate resolutions rejected without duplicating history
+PASS: authoritative native selection, whole-project digest drift, concurrent idempotency, permission-before-replay and independent paged detail/history
+PASS browser: adoption deep link/reload/back and saved-create transition, native preparation and generation, delivery deep link/reload, dirty preparation and receipt query guards, receipt reopen preservation; synthetic only
+PASS: receipt three states, responsible upstream return/resolution, versioned resend, rights impact, append-only withdrawal and notice, pending durations
+PASS: delivery obeys source recheck, deferred review, changed basis and blocking reports; stale previews write nothing; dedicated recheck restores adopted-only delivery
+PASS integration: E delivery uses only generated synthetic data; real consumer dry-run and signatures remain pending
+PASS isolated delivery integration and browser workflow

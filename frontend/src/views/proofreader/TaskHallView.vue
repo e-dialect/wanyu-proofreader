@@ -11,6 +11,13 @@
       </AppButton>
     </header>
 
+    <div v-if="practiceReturn" class="alert mb-4" role="note">
+      <p>
+        <strong>{{ practiceProject.name }}</strong> · 练习项目
+      </p>
+      <RouterLink :to="practiceReturn" class="btn btn-secondary btn-sm">返回练习步骤</RouterLink>
+    </div>
+
     <nav class="task-view-tabs" aria-label="任务视图">
       <RouterLink
         :to="taskViewRoute('active')"
@@ -188,6 +195,7 @@
                   }}
                 </span>
                 <h3>{{ queue.project.name }}</h3>
+                <ProjectPurposeBadge :purpose="queue.project.purpose" />
               </div>
             </div>
             <span class="project-progress-number"
@@ -314,6 +322,7 @@
 </template>
 
 <script setup>
+import ProjectPurposeBadge from '@/components/ProjectPurposeBadge.vue'
 import { computed, ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
@@ -332,9 +341,16 @@ import {
   listReviewedProofreads
 } from '@/services/pagesService'
 import { getProofreaderQueueAction, summarizeProofreaderQueues } from '@/lib/workspaceInsights'
-import { tierBreakdown } from '@/lib/taskTiers'
+import { taskTierLabel, tierBreakdown } from '@/lib/taskTiers'
 import { formatClaimConflict, formatPbError, getPbMessage } from '@/utils/pbErrors'
 import { saveTaskLease, saveGlyphQueue } from '@/lib/taskLease'
+import {
+  readPracticeContext,
+  practiceNavigationQuery,
+  practiceGuideTarget,
+  canUsePracticeProject
+} from '@/lib/practiceContext'
+import { getProject } from '@/services/projectsService'
 
 const router = useRouter()
 const route = useRoute()
@@ -380,6 +396,34 @@ const projectQueues = ref([])
 const queueSummary = ref(summarizeProofreaderQueues([]))
 const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 const selectedProject = computed(() => String(route.query.project || ''))
+const practiceContext = computed(() => readPracticeContext(route.query, selectedProject.value))
+const {
+  data: practiceProject,
+  pending: practicePending,
+  error: practiceError,
+  reload: readPracticeProject,
+  cancel: cancelPracticeProject
+} = useAsyncResource(async ({ signal }, context) => {
+  const project = await getProject(context.projectId, { signal })
+  return canUsePracticeProject(project, context.role, auth.isPlatformAdmin) ? project : null
+})
+const practiceReturn = computed(() =>
+  !practicePending.value &&
+  !practiceError.value &&
+  practiceContext.value &&
+  practiceProject.value?.id === practiceContext.value.projectId &&
+  canUsePracticeProject(practiceProject.value, practiceContext.value.role, auth.isPlatformAdmin)
+    ? practiceGuideTarget(practiceContext.value)
+    : null
+)
+watch(
+  practiceContext,
+  (context) => {
+    if (context) void readPracticeProject(context)
+    else cancelPracticeProject()
+  },
+  { immediate: true }
+)
 const taskView = computed(() =>
   ['active', 'available', 'reviewed'].includes(route.query.view) ? route.query.view : 'active'
 )
@@ -470,6 +514,15 @@ function changeProjectPage(page) {
   router.push({ path: route.path, query: { ...route.query, page: String(page) } })
 }
 
+function taskEditorTarget(queue, pageId) {
+  const context =
+    queue.project.purpose === 'practice' ? readPracticeContext(route.query, queue.project.id) : null
+  return {
+    path: `/tasks/${pageId}/edit`,
+    query: context ? practiceNavigationQuery(context) : {}
+  }
+}
+
 async function openOwnReview(queue) {
   const projectId = queue?.project?.id
   if (!projectId || reviewingProject.value || claimingProject.value) return
@@ -484,7 +537,7 @@ async function openOwnReview(queue) {
       actionError.value = '你在这个项目里还没有可以回看的已提交条目。'
       return
     }
-    await router.push(`/tasks/${first.id}/edit`)
+    await router.push(taskEditorTarget(queue, first.id))
   } catch (error) {
     if (!isCurrent()) return
     actionError.value = getPbMessage(error, '已提交条目暂时打不开，请稍后再试。')
@@ -509,7 +562,7 @@ async function enterProject(queue, tier = '', glyph = false) {
       actionError.value = glyph
         ? '缺字待登记队列暂时没有可领取的条目。'
         : tier
-          ? `${tier} 类暂时没有可领取的条目，换个层级或按默认顺序领一条。`
+          ? `暂无可领取的「${taskTierLabel(tier, '所选难度')}」任务，可选择其他难度或按默认顺序领取。`
           : '该项目暂无你可处理的条目。'
       await loadProjects({ keepActionError: true })
       return
@@ -521,7 +574,7 @@ async function enterProject(queue, tier = '', glyph = false) {
       expiresAt: page.leaseExpiresAt
     })
     saveGlyphQueue(window.sessionStorage, { userId, projectId, glyph })
-    await router.push(`/tasks/${page.id}/edit`)
+    await router.push(taskEditorTarget(queue, page.id))
   } catch (e) {
     if (!isCurrent()) return
     actionError.value = `进入项目失败：${formatClaimConflict(e, '该项目的下一条任务可能已被其他校对员接取，请刷新后重试')}`

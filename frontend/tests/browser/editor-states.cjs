@@ -179,20 +179,19 @@ async function stableFeedback(browser, width) {
   )
   await page.screenshot({ path: path.join(output, `feedback-${width}-claiming.png`) })
   finishNext()
-  await page.waitForFunction(() =>
-    document.querySelector('[data-task-feedback="submitted"]')?.textContent.includes('暂无下一条')
-  )
+  const completion = page.locator('.editor-completion-note[role="status"]')
+  await completion
+    .getByText('当前暂时没有下一条可由你处理；这不表示项目全部完成。', { exact: true })
+    .waitFor()
   assert.match(await feedback.innerText(), /已提交/)
   assert.equal(
     await page.getByRole('button', { name: '本条已提交', exact: true }).isDisabled(),
     true
   )
   assert.equal(submissions, 3)
-  await page.getByText('最近一次操作结果', { exact: true }).click()
-  await page
-    .locator('.editor-result-note')
-    .getByText(/合成确认：校对已提交/)
-    .waitFor()
+  await completion.getByText(/合成确认：校对已提交/).waitFor()
+  await completion.getByRole('link', { name: '查看本人本项目提交', exact: true }).waitFor()
+  await completion.getByRole('link', { name: '查看本项目可领取任务', exact: true }).waitFor()
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const motion = await feedback.locator('.editor-feedback-copy').evaluate((element) => ({
     animation: getComputedStyle(element).animationName,

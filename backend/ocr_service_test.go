@@ -314,7 +314,10 @@ func TestOCRInternalReadAndCreateErrorsKeepRetryableIntent(t *testing.T) {
 		mux.ServeHTTP(response, request)
 		return response
 	}
-	body := `{"requestId":"synthetic-retry-intent-0001"}`
+	if response := post(`{"requestId":"synthetic-other-source-0001","projectFileId":"outdated-pdf"}`); response.Code != 400 || creationReached {
+		t.Fatalf("a different displayed PDF must require choosing the current source: %d reached=%v %s", response.Code, creationReached, response.Body)
+	}
+	body := `{"requestId":"synthetic-retry-intent-0001","projectFileId":"` + file.Id + `"}`
 	if response := post(body); response.Code != 503 || !creationReached {
 		t.Fatalf("persistence failure must preserve intent: %d reached=%v %s", response.Code, creationReached, response.Body)
 	}
@@ -322,6 +325,10 @@ func TestOCRInternalReadAndCreateErrorsKeepRetryableIntent(t *testing.T) {
 	first := post(body)
 	if first.Code != 202 {
 		t.Fatalf("same intent cannot recover: %d %s", first.Code, first.Body)
+	}
+	file.Set("is_primary", false)
+	if err := app.Save(file); err != nil {
+		t.Fatal(err)
 	}
 	again := post(body)
 	if again.Code != 202 {
@@ -336,6 +343,9 @@ func TestOCRInternalReadAndCreateErrorsKeepRetryableIntent(t *testing.T) {
 	saved, err := app.FindRecordById("import_jobs", original["id"].(string))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if saved.GetString("project_file") != file.Id {
+		t.Fatal("accepted job lost the PDF shown when the request was made")
 	}
 	options := saved.GetString("ocr_options_json")
 	saved.Set("ocr_options_json", "broken")

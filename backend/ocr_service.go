@@ -32,11 +32,12 @@ const ocrEngineEnv = "OCR_ENGINE_ENABLED"
 var ocrRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{16,80}$`)
 
 type ocrOptions struct {
-	RequestID string `json:"requestId,omitempty"`
-	StartPage int    `json:"startPage"`
-	EndPage   int    `json:"endPage"`
-	Language  string `json:"language"`
-	Layout    string `json:"layout"`
+	ProjectFileID string `json:"projectFileId,omitempty"`
+	RequestID     string `json:"requestId,omitempty"`
+	StartPage     int    `json:"startPage"`
+	EndPage       int    `json:"endPage"`
+	Language      string `json:"language"`
+	Layout        string `json:"layout"`
 }
 
 func normalizeOCROptions(options ocrOptions, pageLimit int) (ocrOptions, error) {
@@ -169,6 +170,9 @@ func (s *importService) startOCR(c *core.RequestEvent) error {
 	}
 	if projectFileID == "" {
 		return apis.NewBadRequestError("请先上传项目的 PDF 文件，再发起识别。", nil)
+	}
+	if requested.ProjectFileID != "" && requested.ProjectFileID != projectFileID {
+		return apis.NewBadRequestError("主 PDF 已更换，请刷新当前原文并重新核对提取页段。", nil)
 	}
 	options, err := normalizeOCROptions(requested, pdfPageLimit)
 	if err != nil {

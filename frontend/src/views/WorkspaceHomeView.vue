@@ -5,15 +5,20 @@
         <h1>工作台</h1>
         <p class="workbench-introduction">你的校勘工作与项目进展</p>
       </div>
-      <AppButton
-        variant="ghost"
-        :loading="loading"
-        :disabled="loading"
-        @click="refresh"
-        aria-label="刷新工作台"
-      >
-        <AppIcon name="refresh" /><span class="workbench-refresh-label">刷新</span>
-      </AppButton>
+      <div class="page-heading-actions">
+        <RouterLink v-if="accessReady && canManage" to="/admin/todos" class="btn btn-secondary">
+          全部项目待办
+        </RouterLink>
+        <AppButton
+          variant="ghost"
+          :loading="loading"
+          :disabled="loading"
+          @click="refresh"
+          aria-label="刷新工作台"
+        >
+          <AppIcon name="refresh" /><span class="workbench-refresh-label">刷新</span>
+        </AppButton>
+      </div>
     </header>
     <AppStatusPanel
       v-if="accessError"
@@ -131,6 +136,7 @@
             >
               <div class="workbench-row__body">
                 <h3>{{ item.project.name }}</h3>
+                <ProjectPurposeBadge :purpose="item.project.purpose" />
                 <p>仲裁差异字段</p>
               </div>
               <span class="workbench-attention-count"
@@ -172,7 +178,9 @@
               <span class="workbench-project__name"
                 ><AppIcon name="project" /><span
                   ><strong>{{ project.name }}</strong
-                  ><small>{{ project.managed ? '管理项目' : '参与校对' }}</small></span
+                  ><ProjectPurposeBadge :purpose="project.purpose" /><small>{{
+                    project.managed ? '管理项目' : '参与校对'
+                  }}</small></span
                 ></span
               >
               <span v-if="project.summary" class="workbench-project__progress"
@@ -198,9 +206,6 @@
         <RouterLink v-if="auth.hasProofreadingProjects || !canManage" to="/tasks/problems"
           >问题与草稿<AppIcon name="arrow"
         /></RouterLink>
-        <RouterLink v-if="canManage" to="/admin?filter=attention"
-          >全部项目待办<AppIcon name="arrow"
-        /></RouterLink>
         <RouterLink v-if="auth.hasProofreadingProjects || !canManage" to="/tasks"
           >我的任务<AppIcon name="arrow"
         /></RouterLink>
@@ -209,6 +214,7 @@
   </main>
 </template>
 <script setup>
+import ProjectPurposeBadge from '@/components/ProjectPurposeBadge.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { measureBusiness } from '@/lib/businessMetrics'
 import { RouterLink, useRouter } from 'vue-router'
