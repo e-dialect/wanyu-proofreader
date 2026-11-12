@@ -6,6 +6,7 @@
       :bypass="accessLost || unavailable"
     />
     <ProjectWorkspaceNav :project-id="projectId" active="delivery" />
+    <BatchReportReturn v-if="!accessLost && !projectUnavailable" :project-id="projectId" />
     <header class="page-heading adoption-heading">
       <div>
         <div class="page-eyebrow">项目交付</div>
@@ -25,7 +26,7 @@
           v-if="screen !== 'list'"
           type="button"
           :disabled="busy"
-          @click="navigate({ page: historyPage })"
+          @click="navigate({ listPage: historyPage })"
         >
           返回批次列表
         </AppButton>
@@ -57,6 +58,17 @@
     <RouterLink v-if="projectUnavailable" to="/admin" class="btn btn-secondary mb-4">
       返回项目列表
     </RouterLink>
+    <div v-if="visibleCreateConflict" class="alert alert-warning" role="alert">
+      <p>本项目已有同用途的未确认编选。它可能包含其他批次，请打开后核对范围。</p>
+      <button
+        type="button"
+        class="btn btn-secondary btn-sm"
+        :disabled="busy"
+        @click="selectBatch(visibleCreateConflict.id)"
+      >
+        查看已有未确认编选
+      </button>
+    </div>
     <div v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</div>
     <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
     <AppStatusPanel
@@ -82,6 +94,38 @@
         <p v-if="createStep === 2" class="adoption-create-summary">
           <strong>{{ createForm.recipient }}</strong> · {{ purposeLabel(createForm.purpose) }}
         </p>
+        <div v-if="reportScopeRequested" class="adoption-report-scope">
+          <p v-if="reportScopePending" role="status">正在核对报告所用的导入批次…</p>
+          <div v-else-if="reportScopeError" class="alert alert-warning" role="alert">
+            <p>{{ reportScopeError }}</p>
+            <button
+              v-if="requestedReportBatch"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              @click="verifyReportScope"
+            >
+              重新核对批次
+            </button>
+          </div>
+          <template v-else-if="verifiedReportBatch">
+            <p v-if="customReportScope">
+              自选导入批次。至少保留一个批次；若需整个项目，请返回编选列表新建。
+            </p>
+            <p v-else>
+              导入范围仅限 <strong>{{ verifiedReportBatch.filename }}</strong> ·
+              {{ verifiedReportBatch.entries }} 条已入册
+            </p>
+            <button
+              v-if="createStep === 2 && !customReportScope"
+              type="button"
+              class="btn btn-quiet btn-sm"
+              :disabled="busy"
+              @click="openCustomReportScope"
+            >
+              改为自选范围
+            </button>
+          </template>
+        </div>
         <form @submit.prevent="createStep === 1 ? nextCreateStep() : create()">
           <fieldset class="adoption-form-body" :disabled="busy || loading">
             <div v-show="createStep === 1" class="adoption-form-grid">
@@ -137,6 +181,8 @@
                 >
               </AppDisclosure>
               <ImportBatchPicker
+                v-if="!reportScopeRequested || (verifiedReportBatch && customReportScope)"
+                :require-selection="reportScopeRequested"
                 v-model="createForm.importJobsText"
                 :project-id="projectId"
                 :disabled="busy"
@@ -164,7 +210,9 @@
                 type="submit"
                 variant="primary"
                 :loading="busy"
-                :disabled="loading"
+                :disabled="
+                  loading || !reportScopeReady || (createStep === 2 && !hasSelectedReportScope)
+                "
                 loading-label="正在创建…"
               >
                 {{ createStep === 1 ? '下一步：选择范围' : '创建并预览数量' }}
@@ -216,7 +264,7 @@
           <div class="adoption-counts">
             <div class="adoption-count">
               <span class="adoption-count-value">{{ counts.total }}</span
-              ><span>本批条目</span>
+              ><span>项目条目</span>
             </div>
             <div class="adoption-count">
               <span class="adoption-count-value">{{ counts.selected }}</span
@@ -231,6 +279,9 @@
               ><span title="待处理（规则判不了）">待处理</span>
             </div>
           </div>
+          <p v-if="current.status !== 'draft'" class="text-sm text-muted">
+            项目条目是统计时的项目总数。进入本批只计实际选入的条目，所选导入范围之外的条目计入「已定不进入」。
+          </p>
           <p v-if="!consistent" class="alert alert-warning" role="alert">
             三个数之和对不上总数，界面不照抄：请重新预览；若仍不一致，说明数据被绕过接口改过。
           </p>
@@ -264,7 +315,7 @@
               class="btn btn-primary"
               :to="{
                 path: `/admin/projects/${projectId}/deliveries`,
-                query: { view: 'prepare', adoption: current.id }
+                query: { view: 'prepare', adoption: current.id, ...reportQuery }
               }"
               >准备交付包</RouterLink
             >
@@ -577,7 +628,7 @@
       <p v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</p>
       <p>交给 {{ current?.recipient }} · {{ purposeLabel(current?.purpose) }}。</p>
       <p>
-        进入 {{ counts.selected }} 条，范围外 {{ counts.excluded }} 条，待处理
+        进入 {{ counts.selected }} 条，已定不进入 {{ counts.excluded }} 条，待处理
         {{ counts.pending }} 条。确认后保留这一次的规则、数量与凭据。
       </p>
       <p v-if="counts.pending" class="alert alert-warning" role="alert">
@@ -636,13 +687,16 @@ import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
 import ImportBatchPicker from '@/components/admin/project/ImportBatchPicker.vue'
+import BatchReportReturn from '@/components/admin/project/BatchReportReturn.vue'
+import { batchReportNavigationQuery, readBatchReportContext } from '@/lib/batchReportContext'
+import { getBatchReport } from '@/services/batchReportService'
 import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppPagination from '@/components/AppPagination.vue'
 import { useProtectedPageScope } from '@/composables/useProtectedPageScope'
 import AppField from '@/components/AppField.vue'
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import {
   DECISION_LABELS,
@@ -682,7 +736,24 @@ import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
-const queryPage = computed(() => Math.max(1, Number.parseInt(route.query.page, 10) || 1))
+const projectId = computed(() => String(route.params.id))
+const reportContext = computed(() => readBatchReportContext(route.query, projectId.value))
+const reportQuery = computed(() => batchReportNavigationQuery(reportContext.value))
+
+function positivePage(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return 1
+  if (!/^[1-9]\d*$/.test(String(value))) return 1
+  const page = Number(value)
+  return Number.isSafeInteger(page) ? page : 1
+}
+const queryPage = computed(() => positivePage(route.query.page))
+const routeListPage = computed(() =>
+  positivePage(
+    route.query.listPage ??
+      route.query.returnPage ??
+      (!route.query.batch && route.query.view !== 'create' ? route.query.page : undefined)
+  )
+)
 function exceptionFromQuery(query) {
   // Canonical links win when both keys exist; entry remains a read-only alias.
   return typeof query.exception === 'string'
@@ -694,29 +765,35 @@ function exceptionFromQuery(query) {
 const exceptionQuery = computed(() => exceptionFromQuery(route.query))
 function navigate(query) {
   const canonical = { ...query }
+  delete canonical.returnPage
+  for (const key of [
+    'reportProject',
+    'reportBatch',
+    'reportExport',
+    'reportHistoryPage',
+    'reportSection'
+  ])
+    delete canonical[key]
+  const listPage = positivePage(
+    canonical.listPage ??
+      route.query.listPage ??
+      route.query.returnPage ??
+      (screen.value === 'list' ? historyPage.value : routeListPage.value)
+  )
+  if (listPage > 1) canonical.listPage = String(listPage)
+  else delete canonical.listPage
   const selected = exceptionFromQuery(query)
   delete canonical.entry
   if (selected) canonical.exception = selected
   else delete canonical.exception
-  if (canonical.batch || canonical.view === 'create') {
-    const returnPage = Math.max(
-      1,
-      Number.parseInt(canonical.returnPage ?? route.query.returnPage, 10) || historyPage.value
-    )
-    if (returnPage > 1) canonical.returnPage = returnPage
-    else delete canonical.returnPage
-  } else {
-    delete canonical.returnPage
-  }
-  return router.push({ query: canonical })
+  return router.push({ query: { ...canonical, ...reportQuery.value } })
 }
 function changeTab(tab) {
   return navigate({ batch: currentId.value, tab, page: 1 })
 }
 function changePage(page) {
-  return navigate({ ...route.query, page })
+  return screen.value === 'list' ? navigate({ listPage: page }) : navigate({ ...route.query, page })
 }
-const projectId = computed(() => String(route.params.id))
 const screen = ref('list')
 const createStep = ref(1)
 const scopePreset = ref('ready')
@@ -742,6 +819,7 @@ const unavailable = ref(false)
 const projectUnavailable = ref(false)
 const busy = ref(false)
 const operationError = ref('')
+const createConflict = ref(null)
 const message = ref('')
 
 const batches = ref([])
@@ -768,6 +846,108 @@ const createForm = reactive({
   importJobsText: ''
 })
 
+const visibleCreateConflict = computed(() =>
+  screen.value === 'create' && createConflict.value?.purpose === createForm.purpose
+    ? createConflict.value
+    : null
+)
+
+const reportScopeRequested = computed(
+  () => route.query.view === 'create' && route.query.importJob !== undefined
+)
+const requestedReportBatch = computed(() => {
+  const batchId = reportContext.value?.batchId
+  return reportScopeRequested.value && batchId && route.query.importJob === batchId ? batchId : ''
+})
+const reportScopePending = ref(false)
+const reportScopeError = ref('')
+const verifiedReportBatch = ref(null)
+const customReportScope = ref(false)
+const savedCreateTransition = ref(false)
+let reportScopeRequest
+let reportScopeKey = ''
+const reportScopeReady = computed(
+  () => !reportScopeRequested.value || verifiedReportBatch.value?.id === requestedReportBatch.value
+)
+const hasSelectedReportScope = computed(
+  () =>
+    !reportScopeRequested.value ||
+    !customReportScope.value ||
+    createForm.importJobsText.split(/[,，\s]+/).some(Boolean)
+)
+
+function openCustomReportScope() {
+  if (!verifiedReportBatch.value) return
+  createForm.importJobsText = verifiedReportBatch.value.id
+  customReportScope.value = true
+}
+
+function syncReportScope() {
+  const key = reportScopeRequested.value ? `${projectId.value}:${requestedReportBatch.value}` : ''
+  if (key === reportScopeKey) return
+  reportScopeKey = key
+  createForm.importJobsText = ''
+  customReportScope.value = false
+  if (key) createStep.value = 1
+  void verifyReportScope()
+}
+
+async function verifyReportScope() {
+  reportScopeRequest?.cancel()
+  verifiedReportBatch.value = null
+  reportScopePending.value = false
+  reportScopeError.value = ''
+  if (!reportScopeRequested.value || accessLost.value) return
+  const batchId = requestedReportBatch.value
+  if (!batchId) {
+    reportScopeError.value = '未能确认本链接指向的导入批次。请返回批次报告重新打开编选。'
+    return
+  }
+  const request = pageScope.capture()
+  reportScopeRequest = request
+  const id = projectId.value
+  reportScopePending.value = true
+  try {
+    const report = await getBatchReport(id, batchId, request.signal)
+    if (!request.isCurrent() || requestedReportBatch.value !== batchId || projectId.value !== id)
+      return
+    if (
+      report?.schema !== 'WanyuBatchReport/v1' ||
+      report.project_id !== id ||
+      report.batch?.id !== batchId
+    )
+      throw new Error('读取到的批次与本报告不一致。')
+    if (!['completed', 'completed_with_errors'].includes(report.batch.status)) {
+      reportScopeError.value = '本批次尚未完成导入。请完成导入后再核对。'
+      return
+    }
+    const entries = report.metrics?.import?.retained?.value
+    if (!Number.isSafeInteger(entries) || entries < 0) {
+      reportScopeError.value = '暂时无法核对本批次的入册数量。'
+      return
+    }
+    if (entries === 0) {
+      reportScopeError.value = '本批次暂无已入册条目，无法从这里创建编选。'
+      return
+    }
+    const filename = typeof report.batch.filename === 'string' ? report.batch.filename.trim() : ''
+    verifiedReportBatch.value = {
+      id: batchId,
+      filename: filename || '未记录文件名的导入批次',
+      entries
+    }
+  } catch (cause) {
+    if (!request.isCurrent() || pageScope.invalidate(cause, request)) return
+    reportScopeError.value =
+      getPbStatus(cause) === 404
+        ? '本批次已不可用，请返回批次台账重新选择。'
+        : '暂时无法核对本批次。请重试或返回批次报告。'
+  } finally {
+    if (request.isCurrent()) reportScopePending.value = false
+    request.finish()
+  }
+}
+
 const visibleExceptions = computed(() => {
   const active =
     exceptions.value.pending.find((item) => item.page === activeExceptionId.value) ||
@@ -780,7 +960,7 @@ function openCreate() {
   createStep.value = 1
 }
 function nextCreateStep() {
-  createStep.value = 2
+  if (reportScopeReady.value) createStep.value = 2
 }
 function applyScopePreset() {
   if (scopePreset.value === 'ready') createForm.statuses = [...DEFAULT_STATUSES]
@@ -792,7 +972,13 @@ const current = computed(() =>
 const dirty = computed(
   () =>
     (screen.value === 'create' &&
-      Boolean(createForm.recipient || createForm.note || createForm.importJobsText)) ||
+      !savedCreateTransition.value &&
+      Boolean(
+        createForm.recipient ||
+        createForm.note ||
+        createForm.importJobsText ||
+        customReportScope.value
+      )) ||
     Object.values(decisionDrafts).some(
       (draft) => draft.note || draft.reason || draft.decision !== 'select'
     )
@@ -844,6 +1030,7 @@ function clearProtectedData() {
   purposes.value = reasonCodes.value = []
   summary.value = null
   operationError.value = message.value = ''
+  createConflict.value = null
   historyPage.value = requestedHistoryPage.value = historyTotalPages.value = 1
   historyTotalItems.value = 0
   clearDetails()
@@ -858,6 +1045,11 @@ function clearProtectedData() {
   })
   createStep.value = 1
   scopePreset.value = 'ready'
+  reportScopeKey = ''
+  reportScopePending.value = false
+  reportScopeError.value = ''
+  verifiedReportBatch.value = null
+  customReportScope.value = false
 }
 // Preserve the endpoint's authority: a missing project revokes the entire
 // workspace; a missing batch/exception revokes only the selected detail.
@@ -896,14 +1088,16 @@ watch(
   async () => {
     for (const key of Object.keys(decisionDrafts)) delete decisionDrafts[key]
     unavailable.value = false
+    createConflict.value = null
     const previousId = currentId.value
     const previousScreen = screen.value
     syncQuery()
+    syncReportScope()
     if (previousId !== currentId.value || (!currentId.value && previousScreen !== screen.value)) {
       activeOperationRequest?.cancel()
       busy.value = false
     }
-    await load(screen.value === 'list' ? queryPage.value : historyPage.value)
+    await load(routeListPage.value)
   }
 )
 function syncQuery() {
@@ -923,11 +1117,8 @@ function resetProject() {
   clearProtectedData()
   projectUnavailable.value = unavailable.value = false
   syncQuery()
-  return load(
-    screen.value === 'list'
-      ? queryPage.value
-      : Math.max(1, Number.parseInt(route.query.returnPage, 10) || 1)
-  )
+  syncReportScope()
+  return load(routeListPage.value)
 }
 
 async function load(page = requestedHistoryPage.value) {
@@ -1024,7 +1215,7 @@ function draftFor(pageId) {
   return decisionDrafts[key]
 }
 
-async function act(fn, success) {
+async function act(fn, success, onError) {
   if (accessLost.value) return
   activeOperationRequest?.cancel()
   const request = pageScope.capture()
@@ -1041,7 +1232,7 @@ async function act(fn, success) {
     if (success) message.value = success
     await load()
   } catch (e) {
-    if (handleFailure(e, request) || !isCurrent()) return
+    if (handleFailure(e, request) || !isCurrent() || onError?.(e)) return
     operationError.value = getPbMessage(e, '操作失败，请重试')
   } finally {
     if (isCurrent()) busy.value = false
@@ -1049,48 +1240,82 @@ async function act(fn, success) {
   }
 }
 
+function handleCreateConflict(error, purpose) {
+  const batch = error?.response?.batch
+  if (
+    getPbStatus(error) !== 409 ||
+    batch?.project !== projectId.value ||
+    batch.purpose !== purpose ||
+    !['draft', 'previewed'].includes(batch.status) ||
+    typeof batch.id !== 'string' ||
+    !/^[a-z0-9]{15}$/.test(batch.id)
+  )
+    return false
+  createConflict.value = { id: batch.id, purpose }
+  return true
+}
+
 async function create() {
-  if (busy.value) return
+  if (busy.value || !reportScopeReady.value) return
+  createConflict.value = null
+  const submittedPurpose = createForm.purpose
   const submittedNote = createForm.note
-  const built = ruleFromForm(createForm)
+  const built = ruleFromForm({
+    ...createForm,
+    importJobsText:
+      reportScopeRequested.value && !customReportScope.value
+        ? verifiedReportBatch.value.id
+        : createForm.importJobsText
+  })
   if (built.error) {
     operationError.value = built.error
     return
   }
-  await act(async (id, isCurrent, signal) => {
-    const batch = await createAdoptionBatch(
-      id,
-      {
-        purpose: createForm.purpose,
-        recipient: createForm.recipient.trim(),
-        note: createForm.note.trim(),
-        rule: built.rule
-      },
-      { signal }
-    )
-    if (!isCurrent()) return
-    // Retain a successfully created draft before previewing: a failed preview
-    // must retry this batch instead of silently creating another one.
-    batches.value = [batch, ...batches.value.filter((item) => item.id !== batch.id)]
-    currentId.value = batch.id
-    currentRecord.value = batch
-    // The create request has succeeded: this is now a saved batch, not an
-    // unsaved form. Its own transition must not trigger the leave warning.
-    screen.value = 'detail'
-    if (createForm.note === submittedNote) createForm.note = ''
-    await navigate({ batch: batch.id, tab: 'overview', page: 1, returnPage: 1 })
-    if (!isCurrent()) return
-    requestedHistoryPage.value = 1
-    screen.value = 'detail'
-    detailTab.value = 'overview'
-    applyBatchDetails({ exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } })
-    await previewAdoptionBatch(batch.id, { signal })
-    if (!isCurrent()) return
-    // 接收方保留：同一批交付常常要按不同用途连续开几条；说明是一次性的。
-    if (createForm.note === submittedNote) createForm.note = ''
-    screen.value = 'detail'
-    detailTab.value = 'overview'
-  }, '批次已创建并完成预览；核对数量后再确认。')
+  if (reportScopeRequested.value && !built.rule.importJobs.length) {
+    operationError.value = '请至少选择一个导入批次。'
+    return
+  }
+  await act(
+    async (id, isCurrent, signal) => {
+      const batch = await createAdoptionBatch(
+        id,
+        {
+          purpose: submittedPurpose,
+          recipient: createForm.recipient.trim(),
+          note: createForm.note.trim(),
+          rule: built.rule
+        },
+        { signal }
+      )
+      if (!isCurrent()) return
+      // Retain a successfully created draft before previewing: a failed preview
+      // must retry this batch instead of silently creating another one.
+      batches.value = [batch, ...batches.value.filter((item) => item.id !== batch.id)]
+      currentId.value = batch.id
+      currentRecord.value = batch
+      if (createForm.note === submittedNote) createForm.note = ''
+      savedCreateTransition.value = true
+      try {
+        await nextTick()
+        if (!isCurrent()) return
+        await navigate({ batch: batch.id, tab: 'overview', page: 1 })
+      } finally {
+        savedCreateTransition.value = false
+      }
+      if (!isCurrent()) return
+      screen.value = 'detail'
+      detailTab.value = 'overview'
+      applyBatchDetails({ exceptions: { ...EMPTY_EXCEPTIONS }, events: { ...EMPTY_EVENTS } })
+      await previewAdoptionBatch(batch.id, { signal })
+      if (!isCurrent()) return
+      // 接收方保留：同一批交付常常要按不同用途连续开几条；说明是一次性的。
+      if (createForm.note === submittedNote) createForm.note = ''
+      screen.value = 'detail'
+      detailTab.value = 'overview'
+    },
+    '批次已创建并完成预览；核对数量后再确认。',
+    (error) => handleCreateConflict(error, submittedPurpose)
+  )
 }
 
 async function preview() {
@@ -1127,7 +1352,7 @@ async function remove() {
     await deleteAdoptionBatch(batchId, { signal })
     if (isCurrent()) {
       currentId.value = ''
-      await navigate({ page: historyPage.value })
+      await navigate({ listPage: historyPage.value })
     }
   }, '草稿已删除。')
   if (!operationError.value) removeOpen.value = false
@@ -1195,6 +1420,20 @@ function selectBatch(id) {
 </script>
 
 <style scoped>
+.adoption-report-scope {
+  padding: var(--space-3);
+  margin-block: var(--space-3);
+  border: 1px solid var(--primary-line);
+  border-radius: var(--radius-panel);
+  background: var(--primary-glow-soft);
+  overflow-wrap: anywhere;
+}
+.adoption-report-scope p {
+  margin: 0;
+}
+.adoption-report-scope .btn {
+  margin-top: var(--space-2);
+}
 .adoption-form-body {
   min-width: 0;
   padding: 0;

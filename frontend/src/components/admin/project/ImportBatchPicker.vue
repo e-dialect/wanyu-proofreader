@@ -1,8 +1,14 @@
 <template>
   <div>
     <fieldset class="import-batch-picker">
-      <legend>导入批次（可选）</legend>
-      <p class="text-sm text-muted">不选择时使用整个项目；选择后只从这些批次取条目。</p>
+      <legend>{{ requireSelection ? '导入批次（至少选择一个）' : '导入批次（可选）' }}</legend>
+      <p class="text-sm text-muted">
+        {{
+          requireSelection
+            ? '只从所选批次取条目。'
+            : '不选择时使用整个项目；选择后只从这些批次取条目。'
+        }}
+      </p>
       <p v-if="pending" role="status">正在读取导入批次…</p>
       <p v-else-if="error" class="text-sm text-muted" role="status">
         暂时无法读取批次，已选范围仍保留。
@@ -36,7 +42,9 @@
           :value="modelValue"
           class="form-control"
           :disabled="disabled"
-          placeholder="多个批次以逗号分隔；留空表示整个项目"
+          :placeholder="
+            requireSelection ? '多个批次以逗号分隔' : '多个批次以逗号分隔；留空表示整个项目'
+          "
           @input="$emit('update:modelValue', $event.target.value)"
       /></AppField>
     </details>
@@ -52,7 +60,8 @@ import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 const props = defineProps({
   projectId: { type: String, required: true },
   modelValue: { type: String, default: '' },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  requireSelection: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:modelValue', 'access-error'])
 const { data, pending, error, reload } = useAsyncResource(() => listImportLedger(props.projectId), {

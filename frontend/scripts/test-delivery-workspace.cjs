@@ -28,6 +28,13 @@ const { chromium } = require('playwright')
       { backend, admin }
     )
     const projectPath = `${origin}/admin/projects/${project.id}`
+    const deliveryPath = new URL(`${projectPath}/deliveries`).pathname
+    const isDeliveryDetail = (url, tab) =>
+      url.pathname === deliveryPath &&
+      Boolean(url.searchParams.get('package')) &&
+      url.searchParams.get('tab') === tab &&
+      url.searchParams.get('page') === '1' &&
+      url.searchParams.get('listPage') === '1'
     await page.goto(`${projectPath}/adoption?batch=${batch.id}&tab=overview&page=1`)
     await page.getByRole('heading', { name: batch.recipient, exact: true }).waitFor()
     await page.reload()
@@ -59,13 +66,18 @@ const { chromium } = require('playwright')
     // release approval. The persisted contract still says human_required.
     await page.locator('.delivery-confirmation input[type="checkbox"]').check()
     await page.getByRole('button', { name: /生成交付包/ }).click()
-    await page.waitForURL('**/deliveries?package=*&tab=summary&page=1')
+    await page.waitForURL((url) => isDeliveryDetail(url, 'summary'))
     await page.getByRole('button', { name: '下载交付包', exact: true }).waitFor()
-    const generatedURL = page.url()
+    const generatedURL = new URL(page.url())
+    const generatedPackage = generatedURL.searchParams.get('package')
+    assert.notEqual(generatedPackage, delivery.id, '生成后应打开新交付包，而不是前一版本')
     await page.reload()
     await page.getByRole('button', { name: '下载交付包', exact: true }).waitFor()
     await page.getByRole('button', { name: '回执与处置', exact: true }).click()
-    await page.waitForURL('**/deliveries?package=*&tab=events&page=1')
+    await page.waitForURL(
+      (url) =>
+        isDeliveryDetail(url, 'events') && url.searchParams.get('package') === generatedPackage
+    )
     await page.getByRole('button', { name: '登记回执或处置', exact: true }).click()
     await page.getByLabel('原因／处置说明', { exact: true }).fill('unsaved synthetic receipt')
     await page.getByRole('button', { name: '登记回执或处置', exact: true }).click()
@@ -87,11 +99,21 @@ const { chromium } = require('playwright')
     await page.getByRole('button', { name: '范围与凭据', exact: true }).click()
     await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).waitFor()
     await page.getByRole('button', { name: '继续处理', exact: true }).click()
-    assert.match(page.url(), /tab=events/)
+    assert.ok(isDeliveryDetail(new URL(page.url()), 'events'))
     await page.getByRole('button', { name: '范围与凭据', exact: true }).click()
     await page.getByRole('button', { name: '确认离开', exact: true }).click()
-    await page.waitForURL(generatedURL)
+    await page.waitForURL(generatedURL.href)
     await page.screenshot({ path: path.join(out, 'delivery-detail.png'), fullPage: true })
+    await page.getByRole('button', { name: '返回交付记录', exact: true }).click()
+    await page.waitForURL(
+      ({ pathname, searchParams }) =>
+        pathname === deliveryPath &&
+        searchParams.get('view') === 'records' &&
+        searchParams.get('page') === '1' &&
+        !searchParams.has('listPage') &&
+        !searchParams.has('package')
+    )
+    await page.getByRole('heading', { name: '交付记录', exact: true }).waitFor()
     // A successful create is already saved. It must continue to its detail
     // without asking users to discard the form they have just submitted.
     await page.goto(`${projectPath}/adoption?view=create`)

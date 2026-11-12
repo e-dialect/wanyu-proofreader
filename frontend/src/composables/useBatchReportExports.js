@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { pendingReportExport, reportId } from '@/lib/batchReport'
+import { normalizeReportHistoryPage } from '@/lib/batchReportContext'
 import {
   createBatchReportExport,
   downloadBatchReportArtifact,
@@ -17,7 +18,7 @@ export function useBatchReportExports(projectId, batchId, scope) {
   const selectedLoading = ref(false)
   const selectedError = ref('')
   const history = ref(null)
-  const historyPage = ref(1)
+  const historyPage = computed(() => normalizeReportHistoryPage(route.query.historyPage))
   const historyLoading = ref(false)
   const historyError = ref('')
   const actionError = ref('')
@@ -54,9 +55,8 @@ export function useBatchReportExports(projectId, batchId, scope) {
     historyError.value = ''
     try {
       const result = await listBatchReportExports(projectId, batchId, page, request.signal)
-      if (!request.isCurrent()) return
+      if (!request.isCurrent() || page !== historyPage.value) return
       history.value = result
-      historyPage.value = page
     } catch (error) {
       if (request.isCurrent() && !scope.invalidate(error, request))
         historyError.value = getPbMessage(error, '历史报告暂时无法读取。')
@@ -66,9 +66,26 @@ export function useBatchReportExports(projectId, batchId, scope) {
     }
   }
 
-  function historyTarget(id) {
-    return { path: route.path, query: { ...route.query, export: id }, hash: route.hash }
+  function historyTarget(id, page = historyPage.value) {
+    return {
+      path: route.path,
+      query: { ...route.query, export: id, historyPage: String(normalizeReportHistoryPage(page)) },
+      hash: '#report-exports'
+    }
   }
+
+  function changeHistoryPage(page) {
+    return router.push({
+      path: route.path,
+      query: { ...route.query, historyPage: String(normalizeReportHistoryPage(page)) },
+      hash: '#report-history'
+    })
+  }
+
+  watch(historyPage, () => {
+    history.value = null
+    void loadHistory()
+  })
 
   async function readSelected(showLoading = true) {
     stopRead()
@@ -122,14 +139,14 @@ export function useBatchReportExports(projectId, batchId, scope) {
       const item = await createBatchReportExport(projectId, batchId, request.signal)
       if (!request.isCurrent()) return
       if (!reportId(item?.id)) throw new Error('未收到报告记录，请先刷新历史列表。')
-      await router.replace(historyTarget(item.id))
+      await router.replace(historyTarget(item.id, 1))
       if (!request.isCurrent()) return
       if (!selected.value && pendingReportExport(item)) selected.value = item
-      void loadHistory(1)
+      void loadHistory()
     } catch (error) {
       if (!request.isCurrent() || scope.invalidate(error, request)) return
       actionError.value = getPbMessage(error, '无法生成报告，请刷新历史后重试。')
-      void loadHistory(1)
+      void loadHistory()
     } finally {
       if (request.isCurrent()) creating.value = false
       request.finish()
@@ -174,6 +191,7 @@ export function useBatchReportExports(projectId, batchId, scope) {
     downloading,
     clear,
     loadHistory,
+    changeHistoryPage,
     readSelected,
     historyTarget,
     generate,

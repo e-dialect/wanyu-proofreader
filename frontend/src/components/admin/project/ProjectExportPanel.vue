@@ -2,9 +2,7 @@
   <!-- Export section -->
   <section id="project-export" class="card project-section mb-6">
     <div class="card-title">导出结果</div>
-    <RouterLink :to="`/admin/projects/${projectId}/deliveries`" class="btn btn-secondary mb-3"
-      >交付包与回执</RouterLink
-    >
+    <RouterLink :to="deliveryTarget" class="btn btn-secondary mb-3">交付包与回执</RouterLink>
     <h3>核验结果 CSV</h3>
     <p class="text-sm text-muted mb-3">
       项目全量文件含完成状态，未完成记录会明确标为导入值回退。业务已完成文件排除阻塞问题、暂缓判断和依据失效的记录，保留实际声调写法与合法空白。
@@ -80,8 +78,9 @@
 
 <script setup>
 import AppField from '@/components/AppField.vue'
-import { onBeforeUnmount, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { batchReportNavigationQuery, readBatchReportContext } from '@/lib/batchReportContext'
 import { exportVerification } from '@/services/verificationService'
 import { downloadText } from '@/lib/downloadText'
 import { downloadProjectExport } from '@/services/projectExportService'
@@ -92,6 +91,11 @@ const props = defineProps({
   project: { type: Object, required: true }
 })
 const projectId = props.projectId
+const route = useRoute()
+const deliveryTarget = computed(() => ({
+  path: `/admin/projects/${encodeURIComponent(projectId)}/deliveries`,
+  query: batchReportNavigationQuery(readBatchReportContext(route.query, projectId))
+}))
 const project = toRef(props, 'project')
 const exporting = ref(false)
 

@@ -2,13 +2,14 @@
   <main class="container page workspace-page project-workspace-page">
     <header class="page-heading">
       <div>
-        <RouterLink :to="`/admin/projects/${projectId}`" class="back-link">← 返回项目</RouterLink>
+        <RouterLink :to="projectReturnTarget" class="back-link">← 返回项目</RouterLink>
         <div class="page-eyebrow">项目配置</div>
         <h1>{{ project?.name || '项目设置' }}</h1>
         <p>维护项目资料、核验规则和参与方式。</p>
       </div>
     </header>
     <ProjectWorkspaceNav :project-id="projectId" active="settings" />
+    <BatchReportReturn :project-id="projectId" />
     <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
     <div v-if="success" class="alert alert-success" role="status">{{ success }}</div>
     <AppStatusPanel v-if="loading" state="pending" message="正在加载项目配置…" />
@@ -590,6 +591,8 @@ import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppField from '@/components/AppField.vue'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
+import BatchReportReturn from '@/components/admin/project/BatchReportReturn.vue'
+import { batchReportNavigationQuery, readBatchReportContext } from '@/lib/batchReportContext'
 import WorkspaceLeaveGuard from '@/components/admin/project/WorkspaceLeaveGuard.vue'
 import ProjectVerificationPolicy from '@/components/admin/project/ProjectVerificationPolicy.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
@@ -624,6 +627,10 @@ const auth = useAuthStore()
 const projectId = computed(() =>
   String(Array.isArray(route.params.id) ? route.params.id[0] : route.params.id)
 )
+const projectReturnTarget = computed(() => ({
+  path: `/admin/projects/${encodeURIComponent(projectId.value)}`,
+  query: batchReportNavigationQuery(readBatchReportContext(route.query, projectId.value))
+}))
 const settingsView = computed(() => {
   const legacy = {
     '#project-details': 'general',

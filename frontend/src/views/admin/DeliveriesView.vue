@@ -34,6 +34,7 @@
         返回交付记录
       </AppButton>
     </header>
+    <BatchReportReturn :project-id="projectId" />
     <nav class="delivery-tabs" aria-label="交付工作">
       <button
         type="button"
@@ -86,7 +87,10 @@
       <p class="text-muted">
         使用已确认的编选交接清单。范围外与待处理条目只声明标识和理由，默认不携带正文。
       </p>
-      <RouterLink :to="`/admin/projects/${projectId}/adoption`" class="btn btn-quiet btn-sm"
+      <p v-if="batchReportContext" class="text-sm text-muted">
+        下方列出本项目的编选批次，请核对用途与接收方。
+      </p>
+      <RouterLink :to="adoptionTarget" class="btn btn-quiet btn-sm"
         >前往用途编选，确认交付范围 →</RouterLink
       >
       <p v-if="!nativeDeliveryEnabled" class="text-muted">
@@ -312,6 +316,7 @@
           刷新
         </button>
       </div>
+      <p v-if="batchReportContext" class="text-sm text-muted">显示此项目的全部交付包。</p>
       <p v-if="loading" role="status">正在加载交付记录…</p>
       <div v-else-if="loadError" class="text-muted">
         交付记录暂时无法读取，请用上方「重新加载」重试。
@@ -395,6 +400,14 @@
             下载交付包
           </button>
         </div>
+        <p
+          v-if="
+            batchReportContext && item.import_job && item.import_job !== batchReportContext.batchId
+          "
+          class="text-sm text-muted"
+        >
+          当前交付包属于另一个导入批次。
+        </p>
         <p v-if="item.withdrawn" class="alert alert-warning" role="alert">
           已停用 ·
           {{ item.notice_state === 'manual_notice_recorded' ? '已登记人工通知' : '待通知消费方' }}
@@ -459,7 +472,7 @@
             :total-pages="eventPages"
             :busy="busy || loading"
             label="交付事件分页"
-            @change="changePage"
+            @change="changeEventsPage"
           />
           <h3>回执与处置记录</h3>
           <p v-if="!item.events.length" class="text-muted">尚无回执或处置记录。</p>
@@ -559,11 +572,11 @@
             正常导入可不填写退回位置。涉及停用、失败或上游修复时，请按实际处置留下凭据。
           </p>
           <label class="form-group"
-            ><span class="form-label">退回位置</span
+            ><span class="form-label">退回环节</span
             ><select v-model="eventForm.target" class="form-control">
               <option value="">不涉及上游退回</option>
               <option v-for="target in returnTargets" :key="target" :value="target">
-                {{ deliveryStageLabels[target] }}
+                {{ deliveryStageLabel(target) }}
               </option>
             </select></label
           >
@@ -651,7 +664,9 @@ import AppPagination from '@/components/AppPagination.vue'
 import { getAdoptionBatch, listAdoptionBatches } from '@/services/adoptionService'
 import ProjectWorkspaceNav from '@/components/admin/project/ProjectWorkspaceNav.vue'
 import ProjectSourcePicker from '@/components/admin/project/ProjectSourcePicker.vue'
+import BatchReportReturn from '@/components/admin/project/BatchReportReturn.vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { batchReportNavigationQuery, readBatchReportContext } from '@/lib/batchReportContext'
 import {
   appendDeliveryEvent,
   checkDelivery,
@@ -673,6 +688,14 @@ const router = useRouter()
 const projectId = computed(() => String(route.params.id))
 const queryPage = computed(() => Math.max(1, Number.parseInt(route.query.page, 10) || 1))
 const detailTab = computed(() => (route.query.tab === 'events' ? 'events' : 'summary'))
+const batchReportContext = computed(() => readBatchReportContext(route.query, projectId.value))
+const adoptionTarget = computed(() => ({
+  path: `/admin/projects/${encodeURIComponent(projectId.value)}/adoption`,
+  query: {
+    ...batchReportNavigationQuery(batchReportContext.value),
+    ...(batchReportContext.value ? { reportSection: 'adoption' } : {})
+  }
+}))
 const listPage = ref(1)
 const eventsPage = ref(1)
 const listPages = ref(1)
@@ -691,18 +714,30 @@ const changeReason = ref('')
 const requestId = ref('')
 const eventBaseline = ref('')
 function navigate(query) {
-  const next = { ...query }
-  const returnPage = Math.max(1, Number.parseInt(route.query.returnPage, 10) || listPage.value)
-  if (!next.package && !['prepare', 'impacts'].includes(next.view)) {
-    next.page ??= returnPage
-    delete next.returnPage
-  } else if (returnPage > 1) {
-    next.returnPage = returnPage
+  const target = { ...query }
+  delete target.returnPage
+  const savedListPage =
+    route.query.listPage ||
+    route.query.returnPage ||
+    String(view.value === 'records' ? queryPage.value : listPage.value || 1)
+  if (target.view === 'records') {
+    if (view.value !== 'records' || target.page === undefined) target.page = savedListPage
+    target.package = undefined
+    target.tab = undefined
+    target.editor = undefined
+    target.listPage = undefined
+  } else if (target.package || target.view === 'prepare' || target.view === 'impacts') {
+    target.listPage ||= savedListPage
   }
-  return router.push({ query: next })
+  return router.push({
+    query: { ...target, ...batchReportNavigationQuery(batchReportContext.value) }
+  })
 }
 function changePage(page) {
   return navigate({ ...route.query, page })
+}
+function changeEventsPage(page) {
+  return navigate({ ...route.query, page: String(page) })
 }
 let adoptionGeneration = 0
 let adoptionRequest
@@ -764,17 +799,22 @@ onBeforeUnmount(() => {
   ++operationGeneration
 })
 function openDelivery(item) {
-  return navigate({ package: item.id, tab: 'summary', page: 1 })
+  return navigate({
+    package: item.id,
+    tab: 'summary',
+    page: 1,
+    listPage: String(view.value === 'records' ? queryPage.value : listPage.value || 1)
+  })
 }
 function openImpact(item) {
   return openDelivery(item)
 }
 
 const deliveryStageLabels = {
-  A: '来源与权利',
-  B: '条目校对与仲裁',
-  C: '拼音归一复核',
-  D: '批次编选',
+  A: '来源与材料准备',
+  B: '校对与仲裁',
+  C: '拼音整理与复核',
+  D: '用途编选',
   E: '交付与回执'
 }
 const deliveryStageLabel = (target) =>
@@ -917,7 +957,7 @@ async function load() {
         page:
           view.value === 'records'
             ? queryPage.value
-            : Math.max(1, Number.parseInt(route.query.returnPage, 10) || 1),
+            : Math.max(1, Number.parseInt(route.query.listPage ?? route.query.returnPage, 10) || 1),
         signal: request.signal
       })
     )

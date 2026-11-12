@@ -15,20 +15,25 @@ test('workspace tabs preserve verified practice context and clear the todo retur
   const context = { projectId: 'practiceproj001', role: 'manager', step: 'import' }
   const props = { projectId: context.projectId }
   const practiceContext = { value: context }
+  const reportQuery = {
+    value: { reportProject: context.projectId, reportBatch: 'batch0000000000' }
+  }
   const route = { query: { ...practiceNavigationQuery(context), todoFrom: 'source', q: 'sample' } }
   const navigate = new Function(
     'props',
     'practiceContext',
+    'reportQuery',
     'practiceNavigationQuery',
     'projectWorkspaceTarget',
     'route',
     `const practiceQueryKeys = ['practiceProject', 'practiceRole', 'practiceStep']; ${scopedQuery}; ${target}; return target`
-  )(props, practiceContext, practiceNavigationQuery, projectWorkspaceTarget, route)
+  )(props, practiceContext, reportQuery, practiceNavigationQuery, projectWorkspaceTarget, route)
   const work = navigate({ key: 'work' })
   assert.equal(work.query.todoFrom, undefined)
   assert.equal(work.query.practiceProject, context.projectId)
   assert.equal(work.query.practiceRole, context.role)
   assert.equal(work.query.q, 'sample')
+  assert.equal(work.query.reportBatch, 'batch0000000000')
   assert.equal(navigate({ key: 'settings' }).query.practiceProject, context.projectId)
   practiceContext.value = null
   const unverified = navigate({ key: 'work' })

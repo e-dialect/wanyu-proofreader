@@ -32,6 +32,12 @@ import {
   readPracticeContext
 } from '@/lib/practiceContext'
 import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
+import {
+  batchReportNavigationQuery,
+  normalizeReportHistoryPage,
+  readBatchReportContext
+} from '@/lib/batchReportContext'
+import { reportId } from '@/lib/batchReport'
 import '@/styles/project-workspace.css'
 
 const props = defineProps({
@@ -40,6 +46,19 @@ const props = defineProps({
   projectName: { type: String, default: '' }
 })
 const route = useRoute()
+const reportQuery = computed(() =>
+  batchReportNavigationQuery(
+    route.name === 'ProjectBatchReport' && route.params.id === props.projectId
+      ? {
+          projectId: props.projectId,
+          batchId: reportId(route.params.batchId),
+          exportId: reportId(route.query.export),
+          historyPage: normalizeReportHistoryPage(route.query.historyPage),
+          section: 'overview'
+        }
+      : readBatchReportContext(route.query, props.projectId)
+  )
+)
 const auth = useAuthStore()
 const requestedContext = computed(() => readPracticeContext(route.query, props.projectId))
 const {
@@ -101,11 +120,17 @@ function target(item) {
   if (item.key === 'settings')
     return {
       path: `/admin/projects/${encodeURIComponent(props.projectId)}/settings`,
-      query: practiceContext.value ? practiceNavigationQuery(practiceContext.value) : {}
+      query: {
+        ...(practiceContext.value ? practiceNavigationQuery(practiceContext.value) : {}),
+        ...reportQuery.value
+      }
     }
-  const query = scopedQuery(route.query)
+  const query = scopedQuery(route.name === 'ProjectBatchReport' ? {} : route.query)
   delete query.todoFrom
-  return projectWorkspaceTarget(props.projectId, item.key, undefined, query)
+  return projectWorkspaceTarget(props.projectId, item.key, undefined, {
+    ...query,
+    ...reportQuery.value
+  })
 }
 </script>
 

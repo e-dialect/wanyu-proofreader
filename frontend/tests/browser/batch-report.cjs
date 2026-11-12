@@ -116,7 +116,7 @@ async function main() {
     await succeeded.getByText('未记录', { exact: true }).waitFor()
     await page.getByRole('link', { name: '返回批次台账' }).click()
     await reportLink.waitFor()
-    assert.ok(page.url().endsWith('section=materials&view=batches#project-ledger'))
+    assert.ok(page.url().endsWith(`section=materials&view=batches#import-batch-${job.id}`))
 
     await confirmCsv(job.id, 'completed_with_errors')
     const other = await inspectCsv('另一批.csv', '另一批条目,范围测试,1\n')
@@ -171,7 +171,7 @@ async function main() {
 
     await page.getByRole('link', { name: '返回批次台账' }).click()
     await reportLink.click()
-    const historyLink = page.getByRole('link', { name: new RegExp(`打开报告 .*${jobId}`) })
+    const historyLink = page.getByRole('link', { name: new RegExp(`打开历史报告文件 .*${jobId}`) })
     await historyLink.click()
     await json.waitFor()
     await page.setViewportSize({ width: 390, height: 844 })

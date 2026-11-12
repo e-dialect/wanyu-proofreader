@@ -57,11 +57,7 @@
             <dt>等待回执</dt>
             <dd class="report-overview-number">{{ awaitingReceiptCount }}</dd>
             <dd>
-              <RouterLink
-                :to="{ name: 'ProjectDeliveries', params: { id: projectId } }"
-                class="report-link"
-                >前往项目交付</RouterLink
-              >
+              <a href="#report-delivery" class="report-link">查看本批交付与回执</a>
             </dd>
           </div>
         </dl>
@@ -73,15 +69,28 @@
           <div>
             <h2 id="report-adoption">用途编选</h2>
             <p class="text-sm text-muted">
-              下列数字按编选时保存的完整范围显示，不能分摊为本导入批次的数量。
+              下列数量取各编选记录保存时的结果，核对总数包含未采用条目，不能分摊为本导入批次的数量。
             </p>
           </div>
-          <RouterLink
-            :to="{ name: 'ProjectAdoption', params: { id: projectId } }"
-            class="report-link"
-          >
-            前往项目编选
-          </RouterLink>
+          <div class="report-heading-actions">
+            <RouterLink
+              v-if="canCreateForBatch"
+              :to="
+                reportActionTarget(
+                  'ProjectAdoption',
+                  { view: 'create', importJob: batchId },
+                  'adoption'
+                )
+              "
+              class="btn btn-secondary"
+              >为本批新建编选</RouterLink
+            >
+            <RouterLink
+              :to="reportActionTarget('ProjectAdoption', {}, 'adoption')"
+              class="report-link"
+              >浏览项目全部编选</RouterLink
+            >
+          </div>
         </div>
         <p v-if="!report.adoptions.length" class="report-empty">没有涵盖本批次的编选记录。</p>
         <ul v-else class="report-records">
@@ -97,18 +106,14 @@
               {{ adoptionScope(item) }} · 记录时间 {{ reportDate(item.recorded_at) }}
             </p>
             <p v-if="item.counts" class="text-sm record-numbers">
-              {{ reportNumber(item.counts.total) }} 条范围 ·
+              核对 {{ reportNumber(item.counts.total) }} 条 ·
               {{ reportNumber(item.counts.selected) }} 采用 ·
               {{ reportNumber(item.counts.excluded) }} 排除 ·
               {{ reportNumber(item.counts.pending) }} 保存时待定
             </p>
             <p v-else class="text-sm text-muted">尚未保存编选数量。</p>
             <RouterLink
-              :to="{
-                name: 'ProjectAdoption',
-                params: { id: projectId },
-                query: { batch: item.id }
-              }"
+              :to="reportActionTarget('ProjectAdoption', { batch: item.id }, 'adoption')"
               class="report-link"
             >
               查看编选记录
@@ -150,16 +155,25 @@
             >
               等待回执 {{ reportDuration(item.waiting_seconds) }}
             </p>
-            <RouterLink
-              :to="{
-                name: 'ProjectDeliveries',
-                params: { id: projectId },
-                query: { package: item.id }
-              }"
-              class="report-link"
-            >
-              查看交付详情
-            </RouterLink>
+            <div class="report-heading-actions">
+              <RouterLink
+                v-if="item.awaiting_receipt || item.workflow_state === 'pending_resolution'"
+                :to="
+                  reportActionTarget(
+                    'ProjectDeliveries',
+                    { package: item.id, tab: 'events' },
+                    'delivery'
+                  )
+                "
+                class="btn btn-secondary"
+                >{{ item.awaiting_receipt ? '登记本包回执' : '处理退回事项' }}</RouterLink
+              >
+              <RouterLink
+                :to="reportActionTarget('ProjectDeliveries', { package: item.id }, 'delivery')"
+                class="report-link"
+                >查看交付详情</RouterLink
+              >
+            </div>
           </li>
         </ul>
       </section>
@@ -197,6 +211,8 @@
         </div>
         <p v-if="actionError" class="alert alert-error" role="alert">{{ actionError }}</p>
         <div v-if="selectedId || selectedError" class="report-selected" aria-label="所选报告文件">
+          <h3>所选历史报告文件</h3>
+          <p class="text-sm text-muted">文件保留生成时的数据；本页上方仍展示当前批次的最新记录。</p>
           <p v-if="selectedLoading" role="status">正在读取生成状态…</p>
           <div v-else-if="selectedError" role="alert">
             <p>{{ selectedError }}</p>
@@ -247,7 +263,7 @@
           >
         </p>
 
-        <div class="record-heading report-history-heading">
+        <div id="report-history" class="record-heading report-history-heading">
           <h3>历史报告</h3>
           <AppButton variant="ghost" size="sm" :loading="historyLoading" @click="loadHistory()">
             刷新历史
@@ -255,7 +271,9 @@
         </div>
         <p v-if="historyLoading && !history" role="status">正在读取历史报告…</p>
         <p v-if="historyError" class="alert alert-error" role="alert">{{ historyError }}</p>
-        <p v-else-if="history && !history.items.length" class="report-empty">尚未生成报告文件。</p>
+        <p v-else-if="history && !history.items.length" class="report-empty">
+          {{ historyPage > 1 ? '这一页没有报告文件，可返回上一页查看。' : '尚未生成报告文件。' }}
+        </p>
         <ul v-if="history?.items.length" class="report-records report-history">
           <li v-for="item in history.items" :key="item.id">
             <div>
@@ -265,9 +283,9 @@
             <RouterLink
               :to="historyTarget(item.id)"
               :aria-current="item.id === selectedId ? 'true' : undefined"
-              :aria-label="`打开报告 ${reportDate(item.generated_at || item.created)} ${item.id}`"
+              :aria-label="`打开历史报告文件 ${reportDate(item.generated_at || item.created)} ${item.id}`"
               class="report-link"
-              >{{ item.id === selectedId ? '当前报告' : '打开报告' }}</RouterLink
+              >{{ item.id === selectedId ? '已选文件' : '打开历史文件' }}</RouterLink
             >
           </li>
         </ul>
@@ -277,7 +295,7 @@
           :has-next="history.hasNext"
           :busy="historyLoading"
           label="历史报告分页"
-          @change="loadHistory"
+          @change="changeHistoryPage"
         />
       </section>
     </template>
@@ -285,7 +303,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import AppButton from '@/components/AppButton.vue'
 import AppPagination from '@/components/AppPagination.vue'
@@ -303,6 +321,7 @@ import {
   reportNumber
 } from '@/lib/batchReport'
 import { receiptLabel } from '@/lib/deliveryPresentation'
+import { batchReportNavigationQuery } from '@/lib/batchReportContext'
 import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
 import { getBatchReport } from '@/services/batchReportService'
 import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
@@ -312,16 +331,25 @@ const projectId = String(route.params.id)
 const batchId = String(route.params.batchId)
 const returnTarget = {
   ...projectWorkspaceTarget(projectId, 'materials', 'batches'),
-  hash: '#project-ledger'
+  hash: `#import-batch-${batchId}`
 }
-const queueTarget = projectWorkspaceTarget(projectId, 'work', 'entries', {
-  importJob: batchId,
-  status: 'arbitration'
-})
-const entriesTarget = projectWorkspaceTarget(projectId, 'work', 'entries', { importJob: batchId })
+const queueTarget = computed(() =>
+  projectWorkspaceTarget(projectId, 'work', 'entries', {
+    ...reportContextQuery('overview'),
+    importJob: batchId,
+    status: 'arbitration'
+  })
+)
+const entriesTarget = computed(() =>
+  projectWorkspaceTarget(projectId, 'work', 'entries', {
+    ...reportContextQuery('overview'),
+    importJob: batchId
+  })
+)
 const importTarget = computed(() => {
   const method = report.value?.batch.mode
   return projectWorkspaceTarget(projectId, 'materials', 'import', {
+    ...reportContextQuery('overview'),
     method:
       method === 'ocr' ? 'ocr' : ['bundle', 'review_bundle'].includes(method) ? 'bundle' : 'csv'
   })
@@ -357,6 +385,7 @@ const {
   creating,
   downloading,
   loadHistory,
+  changeHistoryPage,
   readSelected,
   historyTarget,
   generate,
@@ -371,6 +400,58 @@ const awaitingReceiptCount = computed(() => {
 const importComplete = computed(() =>
   ['completed', 'completed_with_errors'].includes(report.value?.batch.status)
 )
+const canCreateForBatch = computed(
+  () => importComplete.value && Number(report.value?.metrics.import?.retained?.value) > 0
+)
+
+function reportContextQuery(section) {
+  return batchReportNavigationQuery({
+    projectId,
+    batchId,
+    exportId: selectedId.value,
+    historyPage: historyPage.value,
+    section
+  })
+}
+function reportActionTarget(name, query, section) {
+  return {
+    name,
+    params: { id: projectId },
+    query: { ...reportContextQuery(section), ...query }
+  }
+}
+
+let restoredAnchor = ''
+async function restoreReportSection() {
+  const anchor = route.hash
+  if (!report.value || historyLoading.value || selectedLoading.value || restoredAnchor === anchor)
+    return
+  if (
+    ![
+      '#batch-overview-heading',
+      '#report-adoption',
+      '#report-delivery',
+      '#report-exports',
+      '#report-history'
+    ].includes(anchor)
+  )
+    return
+  await nextTick()
+  if (route.hash !== anchor) return
+  const target = document.getElementById(anchor.slice(1))
+  if (target) {
+    target.scrollIntoView({ block: 'start' })
+    restoredAnchor = anchor
+  }
+}
+watch(
+  () => route.hash,
+  () => {
+    restoredAnchor = ''
+    void restoreReportSection()
+  }
+)
+watch([report, historyLoading, selectedLoading], restoreReportSection)
 const modeLabel = computed(
   () =>
     ({
