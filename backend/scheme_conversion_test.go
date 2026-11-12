@@ -21,7 +21,7 @@ func TestReadingColumnsFromReportsWhatItCannotDecide(t *testing.T) {
 	}{
 		{"not annotated yet", "", nil, "还没有标注列角色"},
 		{"broken json", "{not json", nil, "无法解析"},
-		{"no reading column", `{"词头":"headword","释义":"meaning"}`, nil, "没有把任何一列标成记音列"},
+		{"no reading column", `{"词头":"headword","释义":"meaning"}`, nil, "尚未设置记音列"},
 		{"one reading column", `{"词头":"headword","读音":"reading"}`, []string{"读音"}, ""},
 		// 多个记音列必须拒绝而不是挑一个：挑哪个都会静默丢掉另一列的转换结果。
 		{"two reading columns", `{"拼音":"reading","IPA":"reading"}`, nil, "一次只转换一列"},
@@ -350,9 +350,9 @@ func TestReviewBlockedReasonIsFourDifferentSentences(t *testing.T) {
 		{string(scheme.Ambiguous), true, ""},
 		{string(scheme.Unsupported), true, ""},
 		{"", false, "还没有跑过转换"},
-		{string(scheme.Exact), false, "机器已经判定了"},
+		{string(scheme.Exact), false, "机器已给出结果"},
 		{string(scheme.Reviewed), false, "已经有人给过结论"},
-		{"NOPE", false, "不在可复核的取值范围内"},
+		{"NOPE", false, "当前状态不支持人工复核"},
 	}
 	seen := map[string]string{}
 	for _, tc := range cases {

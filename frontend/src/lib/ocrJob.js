@@ -30,12 +30,14 @@ export function ocrCellSummary(value) {
     }))
     .filter((item) => item.count)
 }
-export function validateOcrRange(start, end) {
+export function validateOcrRange(start, end, pageLimit) {
   const first = Number(start),
     last = Number(end)
   if (!Number.isSafeInteger(first) || first < 1 || !Number.isSafeInteger(last) || last < first)
     return '请输入有效的 PDF 起止页码（从 1 开始）。'
   if (last - first + 1 > 200) return '单次最多识别 200 页，请分段发起。'
+  if (Number.isSafeInteger(pageLimit) && pageLimit > 0 && last > pageLimit)
+    return `当前 PDF 共 ${pageLimit} 页，请在 1–${pageLimit} 页之间选择。`
   return ''
 }
 export function ocrProgress(job) {

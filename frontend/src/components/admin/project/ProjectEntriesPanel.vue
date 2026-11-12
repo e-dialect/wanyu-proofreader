@@ -5,15 +5,16 @@
         <h2>条目管理</h2>
         <p class="entry-list-counts" :aria-busy="loadingPageStats">
           <span v-if="hasLoadedPageStats"
-            >共 <strong>{{ pageStats.total }}</strong> 条</span
+            >项目共 <strong>{{ pageStats.total }}</strong> 条</span
           >
           <span v-else>项目总数暂不可用</span>
           <span
-            >校对完成 <strong>{{ hasLoadedPageStats ? pageStats.approved : '—' }}</strong
+            >项目校对完成 <strong>{{ hasLoadedPageStats ? pageStats.approved : '—' }}</strong
             ><template v-if="hasLoadedPageStats"> · {{ approvedPct }}%</template></span
           >
           <span
-            >待仲裁 <strong>{{ hasLoadedPageStats ? pageStats.arbitration : '—' }}</strong></span
+            >项目待仲裁
+            <strong>{{ hasLoadedPageStats ? pageStats.arbitration : '—' }}</strong></span
           >
           <span v-if="hasActiveListFilter && hasLoadedPages"
             >当前条件 {{ totalFilteredItems }} 条</span
@@ -30,6 +31,26 @@
         >刷新条目</AppButton
       >
     </header>
+    <div v-if="importJob" class="entry-batch-scope">
+      <strong>{{ validImportJob(importJob) ? '仅查看本批次' : '批次链接无效' }}</strong>
+      <div>
+        <RouterLink
+          v-if="validImportJob(importJob)"
+          :to="{ name: 'ProjectBatchReport', params: { id: projectId, batchId: importJob } }"
+          class="btn btn-quiet btn-sm"
+          >返回批次报告</RouterLink
+        >
+        <RouterLink
+          v-else
+          :to="projectWorkspaceTarget(projectId, 'materials', 'batches')"
+          class="btn btn-quiet btn-sm"
+          >返回批次台账</RouterLink
+        >
+        <AppButton variant="ghost" size="sm" @click="clearImportJobFilter"
+          >查看全项目条目</AppButton
+        >
+      </div>
+    </div>
     <p v-if="pageStatsError" class="entry-list-error" role="alert">
       {{ pageStatsError }}
       <AppButton variant="ghost" size="sm" @click="loadPageStats">重试统计</AppButton>
@@ -80,6 +101,7 @@
         >筛选<template v-if="advancedFilterCount"> · {{ advancedFilterCount }}</template></AppButton
       >
       <AppButton
+        v-if="!importJob"
         variant="ghost"
         size="sm"
         :aria-pressed="batchMode"
@@ -88,9 +110,9 @@
         >{{ batchMode ? '退出批量' : '批量选择' }}</AppButton
       >
       <AppButton
-        v-if="hasActiveListFilter"
+        v-if="hasRefinements"
         class="entry-filter-reset"
-        aria-label="清除筛选"
+        :aria-label="importJob ? '清除其他筛选' : '清除筛选'"
         variant="ghost"
         size="sm"
         @click="resetListFilters"
@@ -147,7 +169,7 @@
         /></AppField>
       </div>
     </div>
-    <div v-if="batchMode" class="entry-list-batch" aria-label="批量条目操作">
+    <div v-if="batchMode && !importJob" class="entry-list-batch" aria-label="批量条目操作">
       <div class="entry-batch-heading">
         <strong>{{
           selectedPendingIds.length ? `已选 ${selectedPendingIds.length} 条` : '选择待校对条目'
@@ -231,7 +253,9 @@
     >
       <div class="empty-state-mark" aria-hidden="true">筛</div>
       <div class="empty-state-text">没有符合当前条件的条目</div>
-      <AppButton variant="secondary" @click="resetListFilters">清除筛选</AppButton>
+      <AppButton v-if="hasRefinements" variant="secondary" @click="resetListFilters">
+        {{ importJob ? '清除其他筛选' : '清除筛选' }}
+      </AppButton>
     </div>
     <div v-else-if="hasLoadedPages" :class="{ 'admin-entry-results--updating': loadingPages }">
       <AppDataTable
@@ -241,7 +265,7 @@
       >
         <template #head
           ><tr>
-            <th v-if="batchMode" class="entry-select-cell">选择</th>
+            <th v-if="batchMode && !importJob" class="entry-select-cell">选择</th>
             <th>条目内容</th>
             <th class="entry-progress-cell">校对进度</th>
             <th class="entry-quality-cell">质量状态</th>
@@ -253,7 +277,7 @@
           :key="pg.id"
           :data-entry-id="pg.id"
         >
-          <td v-if="batchMode" class="entry-select-cell">
+          <td v-if="batchMode && !importJob" class="entry-select-cell">
             <label class="entry-checkbox-hit"
               ><input
                 type="checkbox"
@@ -373,7 +397,11 @@
           <td class="entry-actions-cell">
             <RouterLink
               v-if="pg.status === PAGE_STATUS.ARBITRATION"
-              :to="`/admin/projects/${projectId}/arbitration/${pg.id}`"
+              :to="{
+                name: 'Arbitration',
+                params: { projectId, pageId: pg.id },
+                query: importJob ? { importJob } : {}
+              }"
               class="entry-arbitration-link"
               >仲裁 <AppIcon name="arrow" :size="14"
             /></RouterLink>
@@ -478,6 +506,8 @@ import AppPagination from '@/components/AppPagination.vue'
 import AppField from '@/components/AppField.vue'
 import AppDataTable from '@/components/AppDataTable.vue'
 import { RouterLink } from 'vue-router'
+import { validImportJob } from '@/lib/adminPageList'
+import { projectWorkspaceTarget } from '@/lib/projectWorkspace'
 import { PAGE_STATUS, statusBadgeClass, statusLabel } from '@/constants/pageStatus'
 import { QUALITY_STATE_HINTS } from '@/constants/qualityState'
 import { qualityStateBadgeClass, qualityStateLabel } from '@/lib/qualityState'
@@ -506,6 +536,7 @@ const {
   contentEditTarget,
   contentEditBusy,
   closeContentEdit,
+  clearImportJobFilter,
   deleteSelectedRows,
   displayedPageOffset,
   displayedPages,
@@ -513,8 +544,10 @@ const {
   filteredPages,
   formatItemNo,
   hasActiveListFilter,
+  hasRefinements,
   hasLoadedPageStats,
   hasLoadedPages,
+  importJob,
   isPending,
   listPageSize,
   listPagination,
@@ -614,6 +647,9 @@ const fontTexts = computed(() =>
 
 const showAdvanced = ref(false)
 const batchMode = ref(false)
+watch(importJob, () => {
+  batchMode.value = false
+})
 const advancedFilterCount = computed(
   () => [selectedQualityState.value, minPdfPage.value, maxPdfPage.value].filter(Boolean).length
 )
@@ -639,17 +675,22 @@ function changePageSize(value) {
   queueListQuery()
 }
 function toggleBatchMode() {
-  if (mutatingRows.value) return
+  if (mutatingRows.value || importJob.value) return
   if (batchMode.value) clearSelection()
   batchMode.value = !batchMode.value
 }
 function rowActions(page) {
-  return [
+  const actions = [
     { label: '修正导入值', action: 'edit', disabled: mutatingRows.value },
-    { label: '设置质量状态', action: 'quality', disabled: mutatingRows.value },
-    { label: '上移', action: 'up', disabled: !canMoveUp(page.id) || mutatingRows.value },
-    { label: '下移', action: 'down', disabled: !canMoveDown(page.id) || mutatingRows.value }
+    { label: '设置质量状态', action: 'quality', disabled: mutatingRows.value }
   ]
+  if (!importJob.value) {
+    actions.push(
+      { label: '上移', action: 'up', disabled: !canMoveUp(page.id) || mutatingRows.value },
+      { label: '下移', action: 'down', disabled: !canMoveDown(page.id) || mutatingRows.value }
+    )
+  }
+  return actions
 }
 function handleRowAction(page, action) {
   if (mutatingRows.value) return
@@ -678,3 +719,21 @@ defineExpose({
   jumpToPdfPage
 })
 </script>
+
+<style scoped>
+.entry-batch-scope,
+.entry-batch-scope > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.entry-batch-scope {
+  justify-content: space-between;
+  background: var(--primary-glow-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: var(--space-2) var(--space-3);
+  margin-block: var(--space-3);
+}
+</style>

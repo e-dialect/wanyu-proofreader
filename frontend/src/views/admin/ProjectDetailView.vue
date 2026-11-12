@@ -65,6 +65,8 @@
         <ProjectPanels.ProjectCsvImport
           ref="csvImport"
           :project-id="projectId"
+          :job-link="csvJobLink"
+          @job-change="setCsvJobLink"
           :refresh-pages="loadPages"
           :refresh-stats="loadPageStats"
           :refresh-quality="loadQualitySummary"
@@ -77,7 +79,11 @@
         v-show="showImport('ocr')"
         class="card project-section mt-4"
       >
-        <ProjectPanels.ProjectOcrImport :project-id="projectId" @changed="refreshAfterImport" />
+        <ProjectPanels.ProjectOcrImport
+          :project-id="projectId"
+          :active="showImport('ocr')"
+          @changed="refreshAfterImport"
+        />
       </section>
       <section
         v-if="visited.has('bundle')"
@@ -180,6 +186,19 @@ const subviews = computed(() => projectWorkspaceSubviews(projectId, location.val
 const importMethod = ref(
   ['pdf', 'csv', 'ocr', 'bundle'].includes(route.query.method) ? route.query.method : 'pdf'
 )
+const csvJobLink = computed(() =>
+  route.query.csvJob === undefined
+    ? ''
+    : typeof route.query.csvJob === 'string' && route.query.csvJob
+      ? route.query.csvJob
+      : 'invalid'
+)
+function setCsvJobLink(id) {
+  const query = { ...route.query }
+  if (id) query.csvJob = id
+  else delete query.csvJob
+  void router.replace({ path: route.path, query, hash: route.hash })
+}
 const overviewPanel = ref(null)
 let disposed = false
 let projectLoadGeneration = 0

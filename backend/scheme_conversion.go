@@ -160,20 +160,23 @@ func loadSchemeRegistry() (*schemeRegistry, error) {
 // schemeOption 是管理端方案选择器的一行。rule_status 必须一起发出去：
 // 「这一套不能用来发起真实作业」要让界面在点按钮之前就能说，而不是等 400 回来才知道。
 type schemeOption struct {
-	SourceSchemeID    string `json:"source_scheme_id"`
-	CanonicalSchemeID string `json:"canonical_scheme_id"`
-	RuleVersion       string `json:"rule_version"`
-	RuleStatus        string `json:"rule_status"`
+	SourceSchemeID     string `json:"source_scheme_id"`
+	CanonicalSchemeID  string `json:"canonical_scheme_id"`
+	RuleVersion        string `json:"rule_version"`
+	RuleStatus         string `json:"rule_status"`
+	CanStartConversion bool   `json:"can_start_conversion"`
 }
 
 func (r *schemeRegistry) schemes() []schemeOption {
 	list := make([]schemeOption, 0, len(r.adapters))
 	for _, adapter := range r.adapters {
+		_, refused := r.jobAdapter(adapter.SourceScheme)
 		list = append(list, schemeOption{
-			SourceSchemeID:    adapter.SourceScheme,
-			CanonicalSchemeID: adapter.CanonicalScheme,
-			RuleVersion:       adapter.RuleVersion,
-			RuleStatus:        adapter.RuleStatus,
+			SourceSchemeID:     adapter.SourceScheme,
+			CanonicalSchemeID:  adapter.CanonicalScheme,
+			RuleVersion:        adapter.RuleVersion,
+			RuleStatus:         adapter.RuleStatus,
+			CanStartConversion: refused == "",
 		})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].SourceSchemeID < list[j].SourceSchemeID })
@@ -236,11 +239,11 @@ func projectReadingColumns(project *core.Record) ([]string, string) {
 func readingColumnsFrom(stored string) ([]string, string) {
 	raw := strings.TrimSpace(stored)
 	if raw == "" {
-		return nil, "本项目还没有标注列角色（#170），无法确定要转换哪一列。请先在项目设置里把记音列标成 reading。"
+		return nil, "本项目还没有标注列角色，无法确定要转换哪一列。请在项目设置的“列角色”中，将需要转换的一列设为“记音”，并保存列角色。"
 	}
 	roles := map[string]string{}
 	if err := json.Unmarshal([]byte(raw), &roles); err != nil {
-		return nil, "本项目的列角色记录无法解析，请重新标注后再试。"
+		return nil, "本项目的列角色记录无法解析，请在项目设置的“列角色”中重新设置并保存后再试。"
 	}
 	names := []string{}
 	for name, role := range roles {
@@ -251,11 +254,11 @@ func readingColumnsFrom(stored string) ([]string, string) {
 	sort.Strings(names) // map 迭代无序，这里要一个稳定的顺序
 	switch len(names) {
 	case 0:
-		return nil, "本项目没有把任何一列标成记音列（reading），无法确定要转换哪一列。请先标注后再试。"
+		return nil, "本项目尚未设置记音列，无法确定要转换哪一列。请在项目设置的“列角色”中，将需要转换的一列设为“记音”，并保存列角色。"
 	case 1:
 		return names, ""
 	default:
-		return nil, fmt.Sprintf("本项目标了 %d 个记音列（%s），本作业一次只转换一列。请只保留一个记音列后再试。",
+		return nil, fmt.Sprintf("本项目标了 %d 个记音列（%s），本作业一次只转换一列。请在项目设置的“列角色”中只保留一个“记音”列并保存后再试。",
 			len(names), strings.Join(names, "、"))
 	}
 }
@@ -495,11 +498,11 @@ func reviewBlockedReason(status string) string {
 	case "":
 		return "这一条还没有跑过转换，不能直接写成复核结论。请先对项目发起一次转换——只有机器判不出来的条目才会进入复核队列。"
 	case scheme.Exact:
-		return "这一条机器已经判定了（EXACT）。复核队列只收机器判不出来的条目；要推翻一个确定结论得先说明机器错在哪里，本入口没有这个字段。"
+		return "这一条机器已给出结果，不能在此直接覆盖。人工复核仅处理“需人工确认”或“暂未支持”的条目。"
 	case scheme.Reviewed:
 		return "这一条已经有人给过结论了。本入口不允许覆盖已复核的结论——覆盖会把判定人与判定时间刷成新的，而原来那条结论没有地方留痕。"
 	default:
-		return fmt.Sprintf("状态 %q 不在可复核的取值范围内，只有 AMBIGUOUS 与 UNSUPPORTED 可以给出人工结论。", status)
+		return "这一条当前状态不支持人工复核；仅“需人工确认”或“暂未支持”的条目可以填写人工结论。"
 	}
 }
 
@@ -686,7 +689,14 @@ func (s *importService) normalizationReviewView(page, project *core.Record, file
 	view["expected_basis"] = s.normalizationReviewBasis(page, project, files)
 	view["normalization_source_column"] = page.GetString("normalization_source_column")
 	view["current_source_pronunciation"] = pageReadingValue(page, page.GetString("normalization_source_column"))
-	view["source_changed"] = !normalizationSourceIsCurrent(page, project)
+	sourceChanged := !normalizationSourceIsCurrent(page, project)
+	view["source_changed"] = sourceChanged
+	_, blocked := s.normalizationReviewPrerequisite(page, project)
+	if blocked == "" && sourceChanged {
+		blocked = "来源读音或记音列已变化，请先重跑转换，再按当前来源重新复核。"
+	}
+	view["review_ready"] = blocked == ""
+	view["review_block_reason"] = blocked
 	if adapter := s.schemes.adapters[page.GetString("source_scheme_id")]; adapter != nil {
 		view["normalization_schema_version"] = adapter.SchemaVersion
 	}
@@ -764,19 +774,29 @@ func (s *importService) decideNormalization(c *core.RequestEvent) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func (s *importService) applyNormalizationDecision(tx core.App, page, project *core.Record, actor string, payload normalizationDecision) (*core.Record, error) {
+// Shared by queue readiness and save validation; draft text and expected basis
+// still receive their existing checks when the decision is submitted.
+func (s *importService) normalizationReviewPrerequisite(page, project *core.Record) (*scheme.Adapter, string) {
 	if _, problem := projectReadingColumns(project); problem != "" {
-		return nil, apis.NewBadRequestError(problem, nil)
+		return nil, problem
 	}
 	if problem := reviewBlockedReason(page.GetString("normalization_status")); problem != "" {
-		return nil, apis.NewBadRequestError(problem, nil)
+		return nil, problem
 	}
 	adapter, ok := s.schemes.adapters[page.GetString("source_scheme_id")]
 	if !ok {
-		return nil, apis.NewBadRequestError("这一条使用的方案不在规则目录，请恢复规则后重新加载复核队列。", nil)
+		return nil, "这一条使用的规则当前不可用，请联系部署维护者恢复后重新加载复核队列；原值、候选和已填草稿仍可查看。"
 	}
 	if page.GetString("normalization_rule_version") != adapter.RuleVersion || page.GetString("canonical_scheme_id") != adapter.CanonicalScheme {
-		return nil, apis.NewBadRequestError(fmt.Sprintf("这一条是规则版本「%s」跑出来的，当前是「%s」；请先用当前规则重跑一次转换再复核。", page.GetString("normalization_rule_version"), adapter.RuleVersion), nil)
+		return nil, fmt.Sprintf("这一条是规则版本「%s」跑出来的，当前是「%s」；请先用当前规则重跑一次转换再复核。", page.GetString("normalization_rule_version"), adapter.RuleVersion)
+	}
+	return adapter, ""
+}
+
+func (s *importService) applyNormalizationDecision(tx core.App, page, project *core.Record, actor string, payload normalizationDecision) (*core.Record, error) {
+	adapter, blocked := s.normalizationReviewPrerequisite(page, project)
+	if blocked != "" {
+		return nil, apis.NewBadRequestError(blocked, nil)
 	}
 	files, err := normalizationSourceFiles(tx, project.Id, []*core.Record{page})
 	if err != nil {

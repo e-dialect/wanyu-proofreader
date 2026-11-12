@@ -321,6 +321,7 @@ async function main() {
       .waitFor()
     const csvJob = (await ledger()).batches.find((item) => item.mode === 'skip_invalid')
     assert.ok(csvJob)
+    await page.getByRole('button', { name: '检查另一个 CSV', exact: true }).click()
     await chooseCsv()
     await picker.selectOption(alternate.logical_id)
     await page.getByRole('button', { name: '检查 CSV', exact: true }).click()

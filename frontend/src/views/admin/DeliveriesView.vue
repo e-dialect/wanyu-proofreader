@@ -301,9 +301,11 @@
         <div>
           <h2>交付记录</h2>
           <p v-if="metrics">
-            共 {{ metrics.package_count }} 包 · 未回执
-            {{ metrics.receipt_states.awaiting_receipt }} 包 · 已停用
-            {{ metrics.withdrawn_packages }} 包
+            共 {{ metrics.package_count }} 包
+            <template v-if="Number.isFinite(metrics.awaiting_receipt_packages)">
+              · 待回执 {{ metrics.awaiting_receipt_packages }} 包
+            </template>
+            · 已停用 {{ metrics.withdrawn_packages }} 包
           </p>
         </div>
         <button class="btn btn-secondary btn-sm" :disabled="busy || loading" @click="load">
@@ -337,15 +339,19 @@
             </p>
             <span
               class="text-sm"
-              :class="item.withdrawn || item.rights_blocked ? 'text-danger' : 'text-muted'"
-              >{{
-                item.withdrawn
-                  ? '已停用'
-                  : item.rights_blocked
-                    ? '当前用途许可阻断下载'
-                    : receiptLabel(item)
-              }}</span
+              :class="
+                item.withdrawn ||
+                item.rights_blocked ||
+                item.workflow_state === 'pending_resolution'
+                  ? 'text-danger'
+                  : 'text-muted'
+              "
             >
+              {{ receiptLabel(item) }}
+              <template v-if="!item.withdrawn && item.rights_blocked">
+                · 当前用途许可阻断下载</template
+              >
+            </span>
           </div>
           <button class="btn btn-secondary" :disabled="busy" @click="openDelivery(item)">
             查看交付详情
@@ -374,7 +380,12 @@
         <div class="section-heading">
           <div>
             <h2>{{ item.recipient }} · 第 {{ item.version }} 版</h2>
-            <p>{{ purposeLabel(item.purpose) }} · {{ receiptLabel(item) }}</p>
+            <p>
+              {{ purposeLabel(item.purpose) }} ·
+              <strong :class="{ 'text-danger': item.workflow_state === 'pending_resolution' }">
+                {{ receiptLabel(item) }}
+              </strong>
+            </p>
           </div>
           <button
             class="btn btn-primary"
@@ -394,12 +405,19 @@
         <p v-if="item.pending_actions.length" class="alert alert-warning" role="alert">
           上游待办 {{ item.pending_actions.length }} 项，处置完成后才能重发。
         </p>
-        <p v-if="item.receipt_state === 'awaiting_receipt'" class="text-muted">
+        <p
+          v-if="item.awaiting_receipt === true && Number.isFinite(item.waiting_seconds)"
+          class="text-muted"
+        >
           等待回执
-          {{ Math.floor(item.waiting_seconds / 3600) }}
-          小时。接收方实际核对后，再登记导入结果；下载交付包不会改变回执状态。
+          {{
+            item.waiting_seconds < 3600
+              ? '不足 1 小时'
+              : `${Math.floor(item.waiting_seconds / 3600)} 小时`
+          }}。接收方实际核对后，再登记导入结果；下载交付包不会改变回执状态。
         </p>
-        <dl class="delivery-counts">
+        <h3 class="text-sm text-muted mt-4">生成时范围</h3>
+        <dl class="delivery-counts delivery-saved-scope">
           <div>
             <dt>正文</dt>
             <dd>{{ item.reconciliation.payload_count }}</dd>
@@ -413,7 +431,7 @@
             <dd>{{ item.reconciliation.counts.excluded }}</dd>
           </div>
           <div>
-            <dt>待处理</dt>
+            <dt>包内待定</dt>
             <dd>{{ item.reconciliation.counts.pending }}</dd>
           </div>
         </dl>
@@ -448,8 +466,13 @@
           <article v-for="event in item.events" :key="event.id">
             <strong>{{ eventLabel(event.kind) }} · {{ event.created }}</strong>
             <p>{{ event.payload.reason }} · 核查者 {{ event.payload.reviewer }}</p>
-            <p v-if="event.payload.responsible">
-              上游 {{ event.payload.target }} · 责任人 {{ event.payload.responsible }}
+            <p v-if="event.payload.target || event.payload.responsible">
+              <template v-if="event.payload.target">
+                退回环节 {{ deliveryStageLabel(event.payload.target) }}
+              </template>
+              <template v-if="event.payload.responsible">
+                {{ event.payload.target ? ' · ' : '' }}责任人 {{ event.payload.responsible }}
+              </template>
             </p>
             <p v-if="event.kind === 'receipt'">{{ receiptEventNote(event) }}</p>
             <p v-if="event.payload.evidence">凭据：{{ event.payload.evidence }}</p>
@@ -539,8 +562,9 @@
             ><span class="form-label">退回位置</span
             ><select v-model="eventForm.target" class="form-control">
               <option value="">不涉及上游退回</option>
-              <option value="A">来源与权利</option>
-              <option value="D">批次编选</option>
+              <option v-for="target in returnTargets" :key="target" :value="target">
+                {{ deliveryStageLabels[target] }}
+              </option>
             </select></label
           >
           <label class="form-group"
@@ -640,6 +664,7 @@ import {
   checkAdoptionDelivery,
   createAdoptionDelivery
 } from '@/services/deliveryService'
+import { receiptLabel } from '@/lib/deliveryPresentation'
 import { USAGE_PURPOSE_LABELS } from '@/constants/sourceRegistry'
 import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
@@ -745,6 +770,16 @@ function openImpact(item) {
   return openDelivery(item)
 }
 
+const deliveryStageLabels = {
+  A: '来源与权利',
+  B: '条目校对与仲裁',
+  C: '拼音归一复核',
+  D: '批次编选',
+  E: '交付与回执'
+}
+const deliveryStageLabel = (target) =>
+  Object.hasOwn(deliveryStageLabels, target) ? deliveryStageLabels[target] : '未明确环节'
+const returnTargets = ['A', 'D']
 const eventLabels = {
   receipt: '人工导入回执',
   return: '退回上游',
@@ -834,26 +869,6 @@ function handleFailure(error, request, requestSource) {
     return true
   }
   return false
-}
-// receipt_state is append-only, so a conflict closed by a resolution keeps its
-// state while pending_actions empties. The card must not keep claiming
-// unfinished upstream work once a resend is allowed.
-const receiptLabel = (item) => {
-  const base =
-    {
-      awaiting_receipt: '对方尚未回执',
-      success: '全部成功',
-      partial_conflict: '部分冲突',
-      failed_rolled_back: '整体失败并回滚'
-    }[item.receipt_state] || item.receipt_state
-  const label =
-    item.receipt_state === 'partial_conflict'
-      ? item.pending_actions.length
-        ? `${base}，待上游处理`
-        : `${base}，已登记处置`
-      : base
-  if (item.receipt_channel === 'manual') return `${label}（人工回执，对方自动回传未接入）`
-  return label
 }
 const eventLabel = (value) => eventLabels[value] || value
 const receiptEventNote = (event) => {
@@ -1130,6 +1145,9 @@ watch([previous, changeReason, legacyMode], invalidatePreview)
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: var(--space-4) 0;
   gap: var(--space-3);
+}
+.delivery-saved-scope {
+  margin-top: var(--space-2);
 }
 .delivery-counts div {
   padding: var(--space-3);

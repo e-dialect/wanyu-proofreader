@@ -91,6 +91,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
   const searchQuery = ref(initialListQuery.q)
 
   const selectedStatus = ref(initialListQuery.status)
+  const importJob = ref(initialListQuery.importJob || '')
 
   const currentListPage = ref(initialListQuery.page)
 
@@ -148,7 +149,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
     () => (listPagination.value.page - 1) * listPagination.value.perPage
   )
 
-  const hasActiveListFilter = computed(() =>
+  const hasRefinements = computed(() =>
     Boolean(
       searchQuery.value.trim() ||
       selectedStatus.value ||
@@ -157,6 +158,8 @@ export function useProjectEntries(projectId, project, refreshLedger) {
       maxPdfPage.value
     )
   )
+
+  const hasActiveListFilter = computed(() => Boolean(importJob.value) || hasRefinements.value)
 
   const allPendingSelected = computed(() => {
     return (
@@ -168,6 +171,18 @@ export function useProjectEntries(projectId, project, refreshLedger) {
 
   function applyListQuery(query) {
     const normalized = normalizeAdminPageQuery(query, listQueryOptions)
+    const nextImportJob = normalized.importJob || ''
+    if (nextImportJob !== importJob.value) {
+      pagesResource.cancel()
+      pageLoadGeneration++
+      pages.value = []
+      displayedListQuery.value = null
+      hasLoadedPages.value = false
+      totalFilteredItems.value = 0
+      serverTotalPages.value = 1
+      selectedPendingIds.value = []
+      importJob.value = nextImportJob
+    }
     searchQuery.value = normalized.q
     selectedStatus.value = normalized.status
     selectedQualityState.value = normalized.qualityState
@@ -185,7 +200,8 @@ export function useProjectEntries(projectId, project, refreshLedger) {
       minPage: minPdfPage.value,
       maxPage: maxPdfPage.value,
       page: currentListPage.value,
-      perPage: listPageSize.value
+      perPage: listPageSize.value,
+      ...(importJob.value ? { importJob: importJob.value } : {})
     }
   }
 
@@ -198,7 +214,16 @@ export function useProjectEntries(projectId, project, refreshLedger) {
       return
     }
     const query = { ...route.query }
-    for (const key of ['q', 'status', 'qualityState', 'minPage', 'maxPage', 'page', 'perPage'])
+    for (const key of [
+      'q',
+      'status',
+      'qualityState',
+      'minPage',
+      'maxPage',
+      'page',
+      'perPage',
+      'importJob'
+    ])
       delete query[key]
     Object.assign(query, next)
     router[push ? 'push' : 'replace']({ query })
@@ -377,6 +402,13 @@ export function useProjectEntries(projectId, project, refreshLedger) {
     commitListQuery({ page: 1 })
   }
 
+  function clearImportJobFilter() {
+    const query = { ...route.query }
+    delete query.importJob
+    delete query.page
+    router.push({ query })
+  }
+
   function filterActivePages() {
     filterByStatus(ACTIVE_STATUS_FILTER)
   }
@@ -414,7 +446,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
   }
 
   async function toggleSelectAllPending() {
-    if (mutatingRows.value) return
+    if (mutatingRows.value || importJob.value) return
     if (allPendingSelected.value) {
       selectedPendingIds.value = []
       return
@@ -435,7 +467,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
   }
 
   async function movePendingRow(id, direction) {
-    if (mutatingRows.value) return
+    if (mutatingRows.value || importJob.value) return
     let pending
     try {
       pending = (await operationRows()).filter(isPending)
@@ -468,7 +500,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
   }
 
   async function selectByRange() {
-    if (mutatingRows.value) return
+    if (mutatingRows.value || importJob.value) return
     clearMutationFeedback()
     let rows
     try {
@@ -503,7 +535,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
   }
 
   async function moveSelectedRowsDown() {
-    if (mutatingRows.value || selectedPendingIds.value.length === 0) return
+    if (mutatingRows.value || importJob.value || selectedPendingIds.value.length === 0) return
     let pending
     try {
       pending = (await operationRows()).filter(isPending)
@@ -548,7 +580,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
   }
 
   async function deleteSelectedRows() {
-    if (mutatingRows.value || selectedPendingIds.value.length === 0) return
+    if (mutatingRows.value || importJob.value || selectedPendingIds.value.length === 0) return
     const ok = window.confirm(
       `确认删除已选择的 ${selectedPendingIds.value.length} 条待校对条目吗？此操作不可恢复。`
     )
@@ -612,6 +644,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
     contentEditTarget,
     contentEditBusy,
     closeContentEdit,
+    clearImportJobFilter,
     deleteSelectedRows,
     displayedPageOffset,
     displayedPages,
@@ -621,8 +654,10 @@ export function useProjectEntries(projectId, project, refreshLedger) {
     filteredPages,
     formatItemNo,
     hasActiveListFilter,
+    hasRefinements,
     hasLoadedPageStats,
     hasLoadedPages,
+    importJob,
     isPending,
     listPageSize,
     listPagination,
