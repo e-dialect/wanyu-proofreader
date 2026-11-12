@@ -1,5 +1,10 @@
 import { measureBusiness } from '../../lib/businessMetrics.js'
 import { readTaskHallContext, taskHallNavigationQuery } from '@/lib/taskHallContext'
+import {
+  readProblemFollowupContext,
+  problemFollowupNavigationQuery,
+  problemFollowupReturnTarget
+} from '@/lib/problemFollowupContext'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useFieldNavigation } from '@/composables/useFieldNavigation'
@@ -175,10 +180,18 @@ export function useProofreadEditor() {
       )
     return target
   })
-  const editorReturnTarget = computed(() =>
-    ownReview.value || route.query.mode === 'review'
+  const problemFollowupContext = computed(() =>
+    route.query.fromProblems === '1' ? readProblemFollowupContext(route.query) : null
+  )
+  const editorReturnTarget = computed(() => {
+    if (problemFollowupContext.value)
+      return router.resolve(problemFollowupReturnTarget(problemFollowupContext.value)).href
+    return ownReview.value || route.query.mode === 'review'
       ? router.resolve(ownSubmissionsTarget.value).href
       : toValue(workReturnTarget)
+  })
+  const editorReturnLabel = computed(() =>
+    problemFollowupContext.value ? '返回问题与草稿' : reviewMode.value ? '返回提交记录' : '返回大厅'
   )
   const availableTasksTarget = computed(() => taskHallTarget('available', 'claim'))
   function taskEditTarget(pageId) {
@@ -204,6 +217,9 @@ export function useProofreadEditor() {
               ...context,
               step: ownReview.value ? 'reviewed' : 'proofread'
             })
+          : {}),
+        ...(problemFollowupContext.value
+          ? problemFollowupNavigationQuery(problemFollowupContext.value)
           : {})
       }
     }
@@ -446,6 +462,7 @@ export function useProofreadEditor() {
     releaseCurrentTask,
     reclaimTask
   } = useProofreadLease({
+    autoAcquireLease: () => !(route.query.fromProblems === '1' && route.query.continueTask === '1'),
     page,
     currentUserId,
     leaseToken,
@@ -890,6 +907,7 @@ export function useProofreadEditor() {
     availableTasksTarget,
     practiceGuide,
     returnTarget: editorReturnTarget,
+    returnLabel: editorReturnLabel,
     canSwitchPrev,
     canSwitchNext,
     releasing,

@@ -10,6 +10,11 @@ import {
   ownSubmissionNavigationQuery,
   ownSubmissionReturnTarget
 } from '../src/lib/ownSubmissionContext.js'
+import {
+  readProblemFollowupContext,
+  problemFollowupNavigationQuery,
+  problemFollowupHallTarget
+} from '../src/lib/problemFollowupContext.js'
 const memory = () => {
   const data = new Map()
   return {
@@ -20,6 +25,34 @@ const memory = () => {
 }
 const task = { name: 'ProofreadEditor', params: { id: 'task1' } }
 const arbitration = { name: 'Arbitration', params: { projectId: 'project1', pageId: 'page1' } }
+
+test('problem follow-up returns to its filtered list and original task hall without storage', () => {
+  const context = readProblemFollowupContext({
+    view: 'reports',
+    project: 'b12345678901234',
+    taskView: 'available',
+    taskPage: '2',
+    taskProject: 'a12345678901234',
+    taskQ: '乡音 %_&',
+    returnTo: 'https://example.test/unrelated'
+  })
+  const query = { mode: 'review', ...problemFollowupNavigationQuery(context) }
+  const back = new URL(
+    queueReturnTarget(null, 'alice', { ...task, query }),
+    'https://queue.invalid'
+  )
+  assert.equal(back.pathname, '/tasks/problems')
+  assert.equal(back.searchParams.get('view'), 'reports')
+  assert.equal(back.searchParams.get('project'), 'b12345678901234')
+  assert.equal(back.searchParams.has('returnTo'), false)
+  assert.deepEqual(
+    problemFollowupHallTarget(readProblemFollowupContext(Object.fromEntries(back.searchParams))),
+    {
+      path: '/tasks',
+      query: { view: 'available', page: '2', project: 'a12345678901234', q: '乡音 %_&' }
+    }
+  )
+})
 
 test('task return keeps queue filters and restores its position exactly once after data is ready', () => {
   const storage = memory(),

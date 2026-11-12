@@ -31,7 +31,7 @@
         :aria-current="taskView === 'available' ? 'page' : undefined"
         >待领取</RouterLink
       >
-      <RouterLink to="/tasks/problems">问题与草稿</RouterLink>
+      <RouterLink :to="problemsTarget">问题与草稿</RouterLink>
       <RouterLink
         :to="taskViewRoute('reviewed')"
         :class="{ 'is-active': taskView === 'reviewed' }"
@@ -482,6 +482,21 @@ const displayQueues = computed(() =>
 const allProjectsTarget = computed(() => ({
   path: '/tasks',
   query: { view: taskView.value, ...(searchQuery.value ? { q: searchQuery.value } : {}) }
+}))
+const problemsTarget = computed(() => ({
+  path: '/tasks/problems',
+  query: {
+    ...(selectedProject.value ? { project: selectedProject.value } : {}),
+    ...taskHallNavigationQuery({
+      view: taskView.value,
+      page: currentPage.value,
+      project: selectedProject.value,
+      q: searchQuery.value
+    }),
+    ...(practiceReturn.value && practiceContext.value
+      ? practiceNavigationQuery(practiceContext.value)
+      : {})
+  }
 }))
 function taskViewRoute(view) {
   const query = { ...route.query, page: undefined, view }

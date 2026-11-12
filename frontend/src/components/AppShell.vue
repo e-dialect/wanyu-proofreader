@@ -19,9 +19,7 @@
             :to="returnTarget"
             class="shell-return"
             :class="{ 'shell-todo-return': todoReturn }"
-            ><AppIcon name="back" /><span>{{
-              todoReturn ? '返回统一待办' : '返回队列'
-            }}</span></RouterLink
+            ><AppIcon name="back" /><span>{{ returnLabel }}</span></RouterLink
           >
           <span v-if="immersive && !todoReturn" class="shell-header__brand">万语校坊</span>
           <div v-else-if="!todoReturn" class="shell-location-context" aria-label="当前位置">
@@ -189,6 +187,10 @@ const todoReturn = computed(() => todoReturnTarget(route))
 const returnTarget = computed(
   () => todoReturn.value || queueReturnTarget(browserSessionStorage(), auth.user?.id, route)
 )
+const returnLabel = computed(() => {
+  if (todoReturn.value) return '返回统一待办'
+  return returnTarget.value.startsWith('/tasks/problems') ? '返回问题与草稿' : '返回队列'
+})
 provide('workReturnTarget', returnTarget)
 
 function closeAccountMenu() {

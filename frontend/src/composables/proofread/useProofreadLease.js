@@ -24,6 +24,7 @@ export function useProofreadLease({
   flushDraft,
   glyphQueueFor,
   router,
+  autoAcquireLease = () => true,
   returnTarget,
   taskEditTarget,
   captureCase,
@@ -70,6 +71,12 @@ export function useProofreadLease({
       await renewCurrentLease({ force: true })
       if (!isCurrentCase(scope)) return
       if (!leaseLost.value) startLeaseRenewal()
+      return
+    }
+    if (!autoAcquireLease()) {
+      markLeaseLost(
+        '这条任务已在处理。可以回原校对页继续；若改在本页操作，请先保留原页面草稿，再重新领取。重新领取后原页面将不能提交。'
+      )
       return
     }
     await reclaimTask()
