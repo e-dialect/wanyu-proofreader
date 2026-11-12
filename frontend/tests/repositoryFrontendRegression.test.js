@@ -6,6 +6,7 @@ import { computed, reactive, ref, watch as vueWatch } from 'vue'
 import { createAccountViewScope } from '../src/lib/accountViewScope.js'
 import { createPdfPreviewCache } from '../src/lib/pdfPreviewCache.js'
 import { createPageImageCache } from '../src/lib/pageImageCache.js'
+import * as sourceRegion from '../src/lib/sourceRegion.js'
 import * as accountSecurity from '../src/lib/accountSecurity.js'
 import * as localAccountData from '../src/lib/localAccountData.js'
 import { adminRouteKey } from '../src/lib/adminRouteKey.js'
@@ -31,6 +32,7 @@ function evaluate(path, names, overrides = {}) {
     onBeforeUnmount: (callback) => cleanup.push(callback),
     getPbMessage: (error) => error.message,
     ...normalizationDraft,
+    ...sourceRegion,
     ...overrides
   }
   const environment = new Proxy(scope, {
@@ -646,6 +648,107 @@ regression('PDF fallback arms expiration to recheck the authorization window', a
   }
 })
 
+regression(
+  'same-page PDF tasks reauthorize regions without sharing their reading position',
+  async () => {
+    const descriptor = {
+      key: 'shared-pdf',
+      start: 5,
+      end: 6,
+      total: 10,
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    }
+    const region = (entryId) =>
+      entryId === 'legacy'
+        ? null
+        : {
+            entryId,
+            physicalPage: 5,
+            assetKey: descriptor.key,
+            rect: { x: 0.1, y: entryId === 'first' ? 0.2 : 0.4, width: 0.7, height: 0.1 }
+          }
+    let assetReads = 0
+    const fixture = evaluate('composables/useProjectPdf.js', ['useProjectPdf'], {
+      pb: {
+        authStore: { record: { id: 'u' }, token: 'token', onChange: () => () => {} },
+        buildURL: (path) => `https://example.test${path}`
+      },
+      fetch: async (url) => {
+        const entryId = new URL(url).pathname.split('/')[4]
+        if (url.endsWith('/descriptor'))
+          return Response.json({ ...descriptor, sourceRegion: region(entryId) })
+        assetReads++
+        return new Response('synthetic-pdf', {
+          headers: {
+            'X-PDF-Preview-Key': descriptor.key,
+            'X-PDF-Expires-At': descriptor.expiresAt,
+            'X-PDF-Start-Page': '5',
+            'X-PDF-End-Page': '6',
+            'X-PDF-Total-Pages': '10',
+            'X-PDF-Source-Region': JSON.stringify(region(entryId))
+          }
+        })
+      },
+      createPageImageCache: () => ({
+        clear() {},
+        load: async () => {
+          throw new Error('no image')
+        }
+      }),
+      createPdfPreviewCache: () =>
+        createPdfPreviewCache({
+          urls: { createObjectURL: () => 'blob:shared-pdf', revokeObjectURL: () => {} }
+        })
+    })
+    const page = ref({ id: 'first', pdf_page: 5 })
+    try {
+      const api = fixture.useProjectPdf(page)
+      await api.resolveProjectPdf()
+      assert.equal(api.assetRegion.value.rect.y, 0.2)
+      api.switchPdfPage(1)
+      await api.resolveProjectPdf(true)
+      assert.equal(api.currentPdfPage.value, 6, 'same task renewal preserves the page being read')
+      page.value = { ...page.value, id: 'second' }
+      await api.resolveProjectPdf()
+      assert.equal(api.currentPdfPage.value, 5, 'new trusted region returns to the entry page')
+      assert.equal(api.assetRegion.value.rect.y, 0.4)
+      api.switchPdfPage(1)
+      page.value = { ...page.value, id: 'legacy' }
+      await api.resolveProjectPdf()
+      assert.equal(api.currentPdfPage.value, 6, 'legacy tasks keep the current page')
+      assert.equal(api.assetRegion.value, null)
+      assert.equal(assetReads, 1, 'authorized identical PDF bytes remain shared')
+      const snapshot = JSON.stringify(page.value)
+      const retry = api.retryProjectPdf()
+      assert.equal(api.pdfLoading.value, true)
+      assert.equal(
+        api.pdfUrl.value,
+        null,
+        'discard the failed viewer while fresh authorization is pending'
+      )
+      assert.equal(api.retryProjectPdf(), undefined, 'do not overlap manual retries')
+      await retry
+      assert.equal(
+        assetReads,
+        2,
+        'manual retry must fetch fresh bytes even for the same authorized asset'
+      )
+      assert.equal(
+        api.currentPdfPage.value,
+        6,
+        'manual retry keeps the current physical page for the same source'
+      )
+      assert.equal(
+        JSON.stringify(page.value),
+        snapshot,
+        'reloading source does not modify the entry'
+      )
+    } finally {
+      fixture.dispose()
+    }
+  }
+)
+
 regression('image access denial forces a fresh PDF permission check', async () => {
   const expiresAt = new Date(Date.now() + 60_000).toISOString()
   let denied = false
@@ -695,6 +798,11 @@ regression('image access denial forces a fresh PDF permission check', async () =
     assert.equal(api.pdfUrl.value, null)
     assert.equal(api.pdfError.value, '原文权限已撤回')
     assert.deepEqual(revoked, ['blob:protected'])
+    denied = false
+    await api.retryProjectPdf()
+    assert.equal(pdfReads, 3)
+    assert.equal(api.pdfUrl.value, 'blob:protected')
+    assert.equal(api.pdfError.value, '')
   } finally {
     fixture.dispose()
   }

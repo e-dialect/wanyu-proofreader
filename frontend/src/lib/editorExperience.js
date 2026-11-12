@@ -26,6 +26,7 @@ export function matchingKeyboardKeys(sections, query) {
     .trim()
     .toLocaleLowerCase()
   if (!needle) return []
+  const normalizedNeedle = needle.normalize('NFC')
   const seen = new Set()
   return sections
     .flatMap((section) => section.keys.map((key) => ({ ...key, category: section.label })))
@@ -35,14 +36,11 @@ export function matchingKeyboardKeys(sections, query) {
         key.value,
         (character) => `U+${character.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`
       ).join(' ')
-      if (
-        ![key.value, key.label, key.hint, key.category, codepoints].some((value) =>
-          String(value || '')
-            .toLocaleLowerCase()
-            .includes(needle)
-        )
-      )
-        return false
+      const textMatches = [key.value, key.label, key.hint, key.category].some((value) => {
+        const text = String(value || '').toLocaleLowerCase()
+        return text.includes(needle) || text.normalize('NFC').includes(normalizedNeedle)
+      })
+      if (!textMatches && !codepoints.toLocaleLowerCase().includes(needle)) return false
       seen.add(key.value)
       return true
     })

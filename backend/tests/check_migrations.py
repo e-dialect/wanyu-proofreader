@@ -19,6 +19,9 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794442300_ocr_source_regions.js': {
+        'fields': ('pages', {'ocr_source_binding_json': {'max': 4096}}),
+    },
     '1794442500_project_purpose.js': {
         'fields': ('projects', {'purpose': {'required': False, 'values_contains': 'practice'}}),
     },

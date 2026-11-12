@@ -1061,13 +1061,14 @@ func (s *importService) openRecordFile(record *core.Record, field string) (io.Re
 }
 
 type csvPage struct {
-	ocrCellsJSON string
-	ocrAbstained bool
-	line         int
-	pdfPage      int
-	rowJSON      string
-	headersJSON  string
-	entryText    string
+	sourceBindingJSON string
+	ocrCellsJSON      string
+	ocrAbstained      bool
+	line              int
+	pdfPage           int
+	rowJSON           string
+	headersJSON       string
+	entryText         string
 }
 
 type csvCounters struct {
@@ -1965,6 +1966,9 @@ func savePage(dao core.App, jobID, projectID, projectFileID string, pageNumber i
 		record.Set("source_entry_id", strconv.Itoa(row.line))
 	}
 	record.Set("ocr_row_json", row.rowJSON)
+	if row.sourceBindingJSON != "" {
+		record.Set("ocr_source_binding_json", row.sourceBindingJSON)
+	}
 	if row.ocrCellsJSON != "" {
 		record.Set("ocr_cells_json", row.ocrCellsJSON)
 	}

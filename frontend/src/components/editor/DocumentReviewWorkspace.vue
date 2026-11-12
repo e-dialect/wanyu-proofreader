@@ -25,7 +25,13 @@
         {{ sourceCollapsed ? '查看原文' : '收起原文' }}
       </button>
     </div>
-    <section id="review-source" class="editor-panel source-panel" aria-label="来源原文">
+    <section
+      id="review-source"
+      ref="sourcePanel"
+      tabindex="-1"
+      class="editor-panel source-panel"
+      aria-label="来源原文"
+    >
       <h2 id="source-panel-title" class="sr-only">来源 PDF · 物理第 {{ currentPdfPage }} 页</h2>
       <div class="editor-panel-body editor-panel-body--pdf">
         <div
@@ -40,7 +46,15 @@
         </div>
         <div v-else-if="!page" class="alert alert-error" role="alert">页面不存在</div>
         <div v-else-if="pdfError" class="alert alert-error editor-inline-alert" role="alert">
-          {{ pdfError }}
+          <p>{{ pdfError }}</p>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="!canReloadSource"
+            @click="reloadSource"
+          >
+            重新读取原文
+          </button>
         </div>
         <div
           v-if="pdfPageWarning && !loading && !pdfLoading"
@@ -56,9 +70,13 @@
           :inert="loading || pdfLoading"
           :src="pdfUrl"
           :page-image="pageImage"
+          :source-region="visibleSourceRegion"
           :watermark-user-id="watermarkUserId"
           :watermark-project-id="page?.project || ''"
           @image-error="fallbackToPdf"
+          :retry-enabled="canReloadSource"
+          @retry="reloadSource"
+          @show-full-page="preferLocalSource = false"
           :page-number="localPdfPage"
           :source-page-number="currentPdfPage"
           :source-total-pages="totalPdfPages"
@@ -92,6 +110,29 @@
                 @click="switchPdfPage(1)"
               >
                 ›
+              </button>
+            </div>
+            <div
+              v-if="hasSourceRegion"
+              class="source-view-options"
+              role="group"
+              aria-label="原文显示范围"
+            >
+              <button
+                type="button"
+                class="pdf-tool"
+                :aria-pressed="Boolean(visibleSourceRegion)"
+                @click="showLocalSource"
+              >
+                本条局部
+              </button>
+              <button
+                type="button"
+                class="pdf-tool"
+                :aria-pressed="!visibleSourceRegion"
+                @click="preferLocalSource = false"
+              >
+                整页
               </button>
             </div>
             <details class="pdf-preview-help">
@@ -363,7 +404,10 @@ const {
   pdfUrl,
   pdfViewerKey,
   pageImage,
+  entryRegion,
+  assetRegion,
   fallbackToPdf,
+  retryProjectPdf,
   localPdfPage,
   totalPdfPages,
   resetPdf,
@@ -371,6 +415,43 @@ const {
   clampPdfPage,
   switchPdfPage
 } = useProjectPdf(pageRef)
+
+const sourcePanel = ref(null)
+const canReloadSource = computed(() =>
+  Boolean(props.page?.id && props.pdfEnabled && !props.loading && !pdfLoading.value)
+)
+function reloadSource() {
+  if (!canReloadSource.value) return
+  // The retry button disappears with the failed viewer; keep keyboard focus in
+  // the persistent source region without selecting or changing editor fields.
+  sourcePanel.value?.focus({ preventScroll: true })
+  return retryProjectPdf()
+}
+
+const preferLocalSource = ref(true)
+const hasSourceRegion = computed(() =>
+  Boolean(entryRegion.value && entryRegion.value.entryId === props.page?.id)
+)
+const visibleSourceRegion = computed(() =>
+  preferLocalSource.value &&
+  hasSourceRegion.value &&
+  assetRegion.value?.entryId === props.page?.id &&
+  assetRegion.value?.physicalPage === currentPdfPage.value
+    ? assetRegion.value
+    : null
+)
+watch(
+  () => props.page?.id,
+  () => {
+    preferLocalSource.value = true
+  }
+)
+
+function showLocalSource() {
+  if (!hasSourceRegion.value) return
+  preferLocalSource.value = true
+  currentPdfPage.value = clampPdfPage(entryRegion.value.physicalPage)
+}
 
 watch(currentPdfPage, (value) => {
   pdfPageInput.value = value
@@ -403,6 +484,30 @@ function applyPdfPageInput() {
 </script>
 
 <style scoped>
+.source-view-options {
+  display: inline-flex;
+  max-width: 100%;
+  gap: var(--space-1);
+}
+.source-view-options .pdf-tool {
+  min-height: var(--control-height-sm);
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--pdf-track-strong);
+  border-radius: var(--radius-nav);
+  background: var(--surface);
+  color: var(--pdf-ink);
+  cursor: pointer;
+}
+.source-view-options .pdf-tool[aria-pressed='true'] {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-glow-soft);
+}
+@media (max-width: 768px) {
+  .source-view-options .pdf-tool {
+    min-height: var(--control-height-touch);
+  }
+}
 .editor-panel-body--pdf {
   position: relative;
 }
