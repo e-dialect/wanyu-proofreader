@@ -180,7 +180,11 @@ async function main() {
     assert.equal(await importStep.getAttribute('aria-expanded'), 'true')
     await page.getByRole('link', { name: '返回项目材料' }).click()
     await page.waitForURL(
-      `**/admin/projects/${project.id}?section=materials&view=import&method=bundle`
+      (url) =>
+        url.pathname === `/admin/projects/${project.id}` &&
+        url.searchParams.get('section') === 'materials' &&
+        url.searchParams.get('view') === 'import' &&
+        url.searchParams.get('method') === 'bundle'
     )
     await panel.getByRole('heading', { name: '从资料包导入条目' }).waitFor()
     const upload = (buffer, name = 'synthetic-review-bundle.zip') =>
