@@ -47,7 +47,9 @@ func readSourceGeometry(ctx context.Context, path string, page int) (string, *Pa
 	if _, err = f.Seek(0, io.SeekStart); err != nil {
 		return hash, nil
 	}
-	conf := pdfmodel.NewDefaultConfiguration()
+	// The isolated OCR worker has a read-only home. Geometry parsing only needs
+	// built-in PDF defaults, not a user config, font store or certificate cache.
+	conf := pdfmodel.NewStatelessConfiguration()
 	conf.ValidationMode = pdfmodel.ValidationRelaxed
 	parsed, err := pdfapi.ReadContext(ctx, f, conf)
 	if err != nil {
