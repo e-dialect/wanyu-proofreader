@@ -304,11 +304,11 @@ async function dismissOnboarding (page) {
     await submit.click()
     // 回读串必须带 who/when/basis 三件，缺一件这条结论就不可复核
     await adminSession.getByText(/授权未决｜登记于 \d{4}-\d{2}-\d{2} \d{2}:\d{2}｜依据：浏览器验收[^｜]+｜登记者：\S/).waitFor({ timeout: 60000 })
-    const tierLine = adminSession.getByText(/登记后层级/)
+    const tierLine = adminSession.getByText(/重算后难度：/)
     await tierLine.waitFor({ timeout: 60000 })
     const tierText = await tierLine.innerText()
-    assert.match(tierText, /层级 C/, `登记 rights_gate 之后层级没落到 C：${tierText}`)
-    assert.match(tierText, /rights_gate_blocked/, `判据里没有人工桶：${tierText}`)
+    assert.match(tierText, /重算后难度：需要专业知识/, `登记 rights_gate 之后层级没落到 C：${tierText}`)
+    assert.match(tierText, /用途授权尚未解决/, `判据里没有人工桶：${tierText}`)
     assert.equal(await adminSession.getByRole('button', { name: '撤销结论' }).isDisabled(), false,
       '已经有结论却不能撤销')
     await panel.scrollIntoViewIfNeeded()
