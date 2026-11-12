@@ -1,6 +1,11 @@
 <template>
   <div ref="viewerRef" class="pdf-viewer">
-    <div class="pdf-toolbar" role="toolbar" aria-label="原文工具">
+    <div
+      v-show="!error || !retryEnabled || isFullscreen"
+      class="pdf-toolbar"
+      role="toolbar"
+      aria-label="原文工具"
+    >
       <slot name="navigation" />
       <div class="pdf-toolbar-group">
         <button
@@ -64,7 +69,18 @@
     <div v-if="fullscreenError" class="alert alert-warning pdf-fullscreen-notice" role="status">
       {{ fullscreenError }}
     </div>
-    <div v-if="error" class="alert alert-error pdf-error" role="alert">{{ error }}</div>
+    <div v-if="error" class="alert alert-error pdf-error" role="alert">
+      <p>{{ error }}</p>
+      <button
+        v-if="retryEnabled"
+        type="button"
+        class="btn btn-secondary btn-sm"
+        :disabled="loading"
+        @click="emit('retry')"
+      >
+        重新读取原文
+      </button>
+    </div>
     <div
       v-else
       ref="wrapRef"
@@ -84,6 +100,7 @@
       <div
         ref="stageRef"
         class="pdf-canvas-stage"
+        :class="{ 'pdf-canvas-stage--local': crop }"
         :style="{
           width: `${canvasCssWidth}px`,
           height: `${canvasCssHeight}px`,
@@ -97,7 +114,7 @@
           :width="pageImage.width"
           :height="pageImage.height"
           :style="imageStyle"
-          alt="原文页面"
+          :alt="crop ? '本条原文局部' : '原文页面'"
           @error="emit('image-error')"
           @load="reportSourceVisible"
         />
@@ -106,14 +123,19 @@
           ref="canvasRef"
           class="pdf-canvas"
           role="img"
-          aria-label="PDF 页面图像"
+          :aria-label="crop ? '本条原文局部' : 'PDF 页面图像'"
         ></canvas>
-        <div v-if="src && watermarkUserId" class="pdf-identity-watermark" aria-hidden="true">
+        <div
+          v-if="src && watermarkUserId"
+          class="pdf-identity-watermark"
+          :class="{ 'pdf-identity-watermark--compact': compactWatermark }"
+          aria-hidden="true"
+        >
           <span
             v-for="tile in watermarkTileCount"
             :key="tile"
             class="pdf-identity-watermark-tile"
-            >{{ identityStamp }}</span
+            >{{ compactWatermark ? `UID ${watermarkUserId}` : identityStamp }}</span
           >
         </div>
       </div>
@@ -127,6 +149,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { measureBusiness } from '@/lib/businessMetrics'
+import { sourceViewFit } from '@/lib/sourceRegion'
 
 let sourceStartedAt = performance.now()
 let sourceGeneration = 0
@@ -139,11 +162,13 @@ function reportSourceVisible() {
     measureBusiness('source_visible', performance.now() - sourceStartedAt)
   })
 }
-const emit = defineEmits(['image-error', 'document-loaded'])
+const emit = defineEmits(['image-error', 'show-full-page', 'retry', 'document-loaded'])
 
 const props = defineProps({
   src: { type: String, default: '' },
+  retryEnabled: { type: Boolean, default: false },
   pageImage: { type: Object, default: null },
+  sourceRegion: { type: Object, default: null },
   watermarkUserId: { type: String, default: '' },
   watermarkProjectId: { type: String, default: '' },
   pageNumber: { type: Number, default: 1 },
@@ -175,6 +200,13 @@ const zoom = ref(1)
 const zoomPercent = computed(() => Math.round(zoom.value * 100))
 const zoomDraft = ref(null)
 const rotation = ref(0)
+const crop = computed(() => (rotation.value === 0 ? props.sourceRegion?.rect : null))
+const regionIdentity = computed(() => {
+  const region = props.sourceRegion
+  return region
+    ? [region.entryId, region.physicalPage, ...Object.values(region.rect)].join(':')
+    : ''
+})
 const totalPages = ref(0)
 const canvasCssWidth = ref(1)
 const canvasCssHeight = ref(1)
@@ -207,6 +239,7 @@ const identityStamp = computed(
   () =>
     `万语校坊 · UID ${props.watermarkUserId}\n项目 ${props.watermarkProjectId}\n${accessedAt.value}`
 )
+const compactWatermark = computed(() => crop.value && canvasCssHeight.value < 95)
 const watermarkTileCount = computed(
   () =>
     Math.max(1, Math.floor(canvasCssWidth.value / 210)) *
@@ -214,6 +247,18 @@ const watermarkTileCount = computed(
 )
 const imageStyle = computed(() => {
   if (!props.pageImage) return {}
+  if (crop.value) {
+    const { x, y, width, height } = crop.value
+    const fullWidth = canvasCssWidth.value / width
+    const fullHeight = canvasCssHeight.value / height
+    return {
+      width: `${fullWidth}px`,
+      height: `${fullHeight}px`,
+      position: 'absolute',
+      left: `${-x * fullWidth}px`,
+      top: `${-y * fullHeight}px`
+    }
+  }
   const odd = rotation.value % 180 !== 0
   const width = odd ? canvasCssHeight.value : canvasCssWidth.value
   const height = odd ? canvasCssWidth.value : canvasCssHeight.value
@@ -240,13 +285,21 @@ watch(
   { immediate: true }
 )
 
-watch(
-  () => props.pageNumber,
-  async () => {
-    hasCanvasPage.value = false
-    await renderCurrentPage()
+watch([() => props.pageNumber, regionIdentity], async ([, currentRegion], [, previousRegion]) => {
+  hasCanvasPage.value = false
+  if (currentRegion !== previousRegion) {
+    zoom.value = 1
+    zoomDraft.value = null
+    if (currentRegion) rotation.value = 0
+    if (wrapRef.value) {
+      wrapRef.value.scrollTop = 0
+      wrapRef.value.scrollLeft = 0
+    }
+    await renderCurrentPage(null)
+    return
   }
-)
+  await renderCurrentPage()
+})
 
 onMounted(() => {
   document.addEventListener('fullscreenchange', syncFullscreenState)
@@ -338,10 +391,23 @@ async function loadPdf(src) {
   } catch (e) {
     if (generation !== loadGeneration) return
     pdfDoc = null
-    error.value = e?.message || 'PDF 加载失败'
+    error.value = pdfFailureMessage(e, 'PDF 加载失败')
   } finally {
     if (sourceReadController === readController) sourceReadController = null
     if (generation === loadGeneration) loading.value = false
+  }
+}
+
+function pdfFailureMessage(error, fallback) {
+  switch (error?.name) {
+    case 'InvalidPDFException':
+      return 'PDF 文件结构无效，无法预览。可重新读取；若仍失败，请联系项目管理员检查来源文件。'
+    case 'PasswordException':
+      return '此 PDF 受密码保护，当前无法预览。请联系项目管理员提供可预览的来源文件。'
+    case 'MissingPDFException':
+      return '未找到原文 PDF，请重新读取或联系项目管理员核对来源文件。'
+    default:
+      return error?.message || fallback
   }
 }
 
@@ -376,8 +442,13 @@ async function renderCurrentPage(anchor) {
     const odd = rotation.value % 180 !== 0
     const width = odd ? props.pageImage.height : props.pageImage.width
     const height = odd ? props.pageImage.width : props.pageImage.height
-    const scale = (Math.max(1, wrapRef.value.clientWidth - 16) / width) * zoom.value
-    resizeStage(width * scale, height * scale, anchor)
+    const fit = sourceViewFit(
+      width,
+      height,
+      Math.max(1, wrapRef.value.clientWidth - 16),
+      crop.value
+    )
+    resizeStage(fit.width * zoom.value, fit.height * zoom.value, anchor)
     return
   }
   if (!pdfDoc || !canvasRef.value || !wrapRef.value) return
@@ -403,17 +474,17 @@ async function renderCurrentPage(anchor) {
       rotation: (page.rotate + rotation.value) % 360
     })
     const availableWidth = Math.max(1, wrapRef.value.clientWidth - 16)
-    const fitScale = availableWidth / baseViewport.width
+    const fit = sourceViewFit(baseViewport.width, baseViewport.height, availableWidth, crop.value)
     const viewport = page.getViewport({
-      scale: fitScale * zoom.value,
+      scale: fit.scale * zoom.value,
       rotation: (page.rotate + rotation.value) % 360
     })
 
     const canvas = canvasRef.value
     // The displayed canvas keeps the previous bitmap while PDF.js draws the new one.
     nextCanvas = document.createElement('canvas')
-    const cssWidth = Math.max(1, Math.floor(viewport.width))
-    const cssHeight = Math.max(1, Math.floor(viewport.height))
+    const cssWidth = Math.max(1, Math.floor(fit.width * zoom.value))
+    const cssHeight = Math.max(1, Math.floor(fit.height * zoom.value))
     resizeStage(cssWidth, cssHeight, anchor)
     // A displayed bitmap and a pending one may coexist. Bound the backing
     // store separately from the reader's chosen CSS zoom, including on Retina.
@@ -428,7 +499,17 @@ async function renderCurrentPage(anchor) {
     renderTask = page.render({
       canvasContext: nextCanvas.getContext('2d'),
       viewport,
-      transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0]
+      transform:
+        outputScale === 1 && !crop.value
+          ? null
+          : [
+              outputScale,
+              0,
+              0,
+              outputScale,
+              -fit.x * zoom.value * outputScale,
+              -fit.y * zoom.value * outputScale
+            ]
     })
     await renderTask.promise
     if (generation === renderGeneration) {
@@ -441,7 +522,7 @@ async function renderCurrentPage(anchor) {
     }
   } catch (e) {
     if (generation === renderGeneration && e?.name !== 'RenderingCancelledException') {
-      error.value = e?.message || '渲染失败'
+      error.value = pdfFailureMessage(e, '渲染失败')
     }
   } finally {
     if (nextCanvas) {
@@ -578,6 +659,10 @@ async function resetView() {
 
 function rotateClockwise() {
   rotation.value = (rotation.value + 90) % 360
+  if (props.sourceRegion) {
+    emit('show-full-page')
+    return
+  }
   renderCurrentPage()
 }
 
@@ -753,6 +838,9 @@ onBeforeUnmount(async () => {
   box-shadow: 0 2px 8px var(--slate-shadow);
 }
 
+.pdf-canvas-stage--local {
+  overflow: hidden;
+}
 .pdf-canvas {
   display: block;
   width: 100%;
@@ -774,6 +862,14 @@ onBeforeUnmount(async () => {
   user-select: none;
   color: var(--pdf-grid);
   overflow: hidden;
+}
+.pdf-canvas-stage--local .pdf-identity-watermark {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  grid-auto-rows: min(100%, 100px);
+}
+.pdf-identity-watermark--compact .pdf-identity-watermark-tile {
+  transform: none;
+  line-height: 1;
 }
 .pdf-identity-watermark-tile {
   align-self: center;

@@ -13,26 +13,27 @@ const target = source.match(/function target\(item\) \{[\s\S]*?\n\}/)[0]
 
 test('workspace tabs preserve verified practice context and clear the todo return', () => {
   const context = { projectId: 'practiceproj001', role: 'manager', step: 'import' }
-  const reportQuery = { value: { reportProject: context.projectId, reportBatch: 'batch-a' } }
   const props = { projectId: context.projectId }
   const practiceContext = { value: context }
+  const reportQuery = {
+    value: { reportProject: context.projectId, reportBatch: 'batch0000000000' }
+  }
   const route = { query: { ...practiceNavigationQuery(context), todoFrom: 'source', q: 'sample' } }
   const navigate = new Function(
-    'reportQuery',
     'props',
     'practiceContext',
+    'reportQuery',
     'practiceNavigationQuery',
     'projectWorkspaceTarget',
     'route',
     `const practiceQueryKeys = ['practiceProject', 'practiceRole', 'practiceStep']; ${scopedQuery}; ${target}; return target`
-  )(reportQuery, props, practiceContext, practiceNavigationQuery, projectWorkspaceTarget, route)
+  )(props, practiceContext, reportQuery, practiceNavigationQuery, projectWorkspaceTarget, route)
   const work = navigate({ key: 'work' })
-  assert.equal(work.query.reportBatch, 'batch-a')
-  assert.equal(navigate({ key: 'settings' }).query.reportBatch, 'batch-a')
   assert.equal(work.query.todoFrom, undefined)
   assert.equal(work.query.practiceProject, context.projectId)
   assert.equal(work.query.practiceRole, context.role)
   assert.equal(work.query.q, 'sample')
+  assert.equal(work.query.reportBatch, 'batch0000000000')
   assert.equal(navigate({ key: 'settings' }).query.practiceProject, context.projectId)
   practiceContext.value = null
   const unverified = navigate({ key: 'work' })

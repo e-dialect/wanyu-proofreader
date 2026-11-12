@@ -73,7 +73,7 @@ function fixture(services = {}, onNavigate = () => {}) {
     resetProject, load, selectBatch, batches, currentId, exceptions, batchEvents, summary,
     historyPage, requestedHistoryPage, historyTotalPages, historyTotalItems,
     loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError,
-    exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage,
+    exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage, verifyReportScope, reportScopeReady,
     current, currentRecord, accessLost, projectUnavailable, pageScope, busy, message, confirmOpen, removeOpen, dirty, act,
     clearProtectedData, handleFailure, exportManifest
   }`
@@ -102,9 +102,9 @@ test('adoption detail reload preserves the list page independently of exception 
   const state = fixture()
   await state.load(4)
   await state.selectBatch('batch-four')
-  assert.equal(state.route.query.returnPage, 4)
+  assert.equal(state.route.query.listPage, '4')
   await state.navigate({ batch: 'batch-four', tab: 'exceptions', page: 2 })
-  assert.equal(state.route.query.returnPage, 4)
+  assert.equal(state.route.query.listPage, '4')
   const reloaded = fixture()
   reloaded.route.query = { ...state.route.query }
   await reloaded.reset()
@@ -114,6 +114,39 @@ test('adoption detail reload preserves the list page independently of exception 
   assert.equal(reloaded.historyPage.value, 4)
   assert.equal(reloaded.screen.value, 'list')
   assert.equal(Object.hasOwn(reloaded.route.query, 'returnPage'), false)
+})
+
+test('report-sourced creation uses only the verified import batch', async () => {
+  const project = 'project00000001'
+  const batch = 'import000000001'
+  let submitted
+  const state = fixture({
+    getBatchReport: async () => ({
+      schema: 'WanyuBatchReport/v1',
+      project_id: project,
+      batch: { id: batch, status: 'completed', filename: 'fixture.csv' },
+      metrics: { import: { retained: { value: 3 } } }
+    }),
+    createAdoptionBatch: async (_id, body) => {
+      submitted = body
+      return { id: 'created', project, counts: {}, reasons: [] }
+    },
+    previewAdoptionBatch: async () => ({})
+  })
+  state.route.params.id = project
+  state.route.query = {
+    view: 'create',
+    importJob: batch,
+    reportProject: project,
+    reportBatch: batch
+  }
+  state.screen.value = 'create'
+  state.createForm.recipient = '接收团队'
+  await state.verifyReportScope()
+  assert.equal(state.reportScopeReady.value, true)
+  await state.create()
+  assert.deepEqual(submitted.rule.importJobs, [batch])
+  assert.equal(state.route.query.reportBatch, batch)
 })
 
 test('a saved adoption batch navigates without an unsaved-create warning while a failed create stays dirty', async () => {

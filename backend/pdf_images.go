@@ -31,6 +31,7 @@ type pageImageMeta struct {
 }
 
 type pageImageDescriptor struct {
+	SourceRegion *sourceRegion `json:"sourceRegion"`
 	pageImageMeta
 	AssetID   string    `json:"assetId"`
 	URL       string    `json:"url"`
@@ -247,7 +248,8 @@ func (s *importService) taskPageImage(c *core.RequestEvent) error {
 	if c.Request.PathValue("kind") == "descriptor" {
 		pdfCacheMu.Unlock()
 		url := fmt.Sprintf("/api/fangji/pages/%s/images/%d/asset?key=%s&expires=%d", c.Request.PathValue("pageId"), n, key, expiry.Unix())
-		return c.JSON(http.StatusOK, pageImageDescriptor{meta, pdfCacheKey(imageSourceKey(file), strconv.Itoa(n)), url, expiry})
+		assetKey := pdfCacheKey(imageSourceKey(file), strconv.Itoa(n))
+		return c.JSON(http.StatusOK, pageImageDescriptor{SourceRegion: s.taskSourceRegion(c, file, n, assetKey), pageImageMeta: meta, AssetID: assetKey, URL: url, ExpiresAt: expiry})
 	}
 	if c.Request.PathValue("kind") != "asset" {
 		pdfCacheMu.Unlock()

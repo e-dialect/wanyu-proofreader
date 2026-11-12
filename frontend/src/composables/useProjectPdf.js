@@ -1,6 +1,7 @@
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { createPdfPreviewCache } from '@/lib/pdfPreviewCache'
 import { createPageImageCache } from '@/lib/pageImageCache'
+import { matchingSourceRegion, parseSourceRegion } from '@/lib/sourceRegion'
 import { missingPdfPageNotice } from '@/lib/proofreadNotices'
 import pb from '@/lib/pocketbase'
 
@@ -18,12 +19,15 @@ export function useProjectPdf(page) {
   const cache = createPdfPreviewCache()
   const imageCache = createPageImageCache()
   const pageImage = ref(null)
+  const entryRegion = ref(null)
+  const assetRegion = ref(null)
   const imageMode = ref(false)
   let imageGeneration = 0
   let displayedImagePage = 0
   let expiryTimer = null
   let displayedExpiry = 0
   let previewKey = ''
+  let displayedEntryId = ''
   let currentUser = pb.authStore.record?.id || pb.authStore.model?.id || ''
   const unsubscribe = pb.authStore.onChange((_token, record) => {
     if (!record || record.id !== currentUser) resetPdf()
@@ -50,6 +54,8 @@ export function useProjectPdf(page) {
     pdfViewerKey.value = ''
     imageMode.value = false
     displayedImagePage = 0
+    displayedEntryId = ''
+    entryRegion.value = assetRegion.value = null
     pageImage.value = null
     pdfUrl.value = null
   }
@@ -107,11 +113,30 @@ export function useProjectPdf(page) {
       let descriptor = assertValidDescriptor(await info.json())
       if (!isCurrent()) return
       if (previewKey && previewKey !== descriptor.key) discardPreview()
-      const shown = previewKey === descriptor.key ? currentPdfPage.value : descriptor.start
+      const descriptorRegion = matchingSourceRegion(
+        descriptor.sourceRegion,
+        pageId,
+        descriptor.start,
+        descriptor.key
+      )
+      const previousPage = previewKey === descriptor.key ? currentPdfPage.value : descriptor.start
+      const openEntryRegion = descriptorRegion && displayedEntryId !== pageId
+      let shown = openEntryRegion ? descriptor.start : previousPage
       if (!forcePdf) {
         try {
-          const entry = await imageCache.load(base.replace(/\/pdf$/, ''), shown, options)
+          const imagesBase = base.replace(/\/pdf$/, '')
+          let result = await imageCache.load(imagesBase, shown, options)
           if (!isCurrent()) return
+          const region =
+            shown === descriptor.start
+              ? matchingSourceRegion(result.sourceRegion, pageId, shown, result.image.assetId)
+              : null
+          if (openEntryRegion && !region && shown !== previousPage) {
+            shown = previousPage
+            result = await imageCache.load(imagesBase, shown, options)
+            if (!isCurrent()) return
+          }
+          const { image: entry } = result
           // A file can change between the PDF and image descriptor reads.
           // The image asset ID is stable for the same source and physical page.
           if (pageImage.value && pageImage.value.assetId !== entry.assetId) {
@@ -120,6 +145,9 @@ export function useProjectPdf(page) {
           applyDescriptor(descriptor, shown)
           cache.clear()
           displayedImagePage = shown
+          displayedEntryId = pageId
+          entryRegion.value = shown === descriptor.start ? region : descriptorRegion
+          assetRegion.value = region
           imageMode.value = true
           pageImage.value = entry
           pdfUrl.value = entry.url
@@ -150,11 +178,24 @@ export function useProjectPdf(page) {
           expiresAt: response.headers.get('X-PDF-Expires-At'),
           start: Number(response.headers.get('X-PDF-Start-Page')),
           end: Number(response.headers.get('X-PDF-End-Page')),
-          total: Number(response.headers.get('X-PDF-Total-Pages'))
+          total: Number(response.headers.get('X-PDF-Total-Pages')),
+          sourceRegion: parseSourceRegion(response.headers.get('X-PDF-Source-Region'))
         })
         entry = cache.put(userId, descriptor, blob)
       }
-      applyDescriptor(descriptor, previewKey === descriptor.key ? shown : descriptor.start)
+      const region = matchingSourceRegion(
+        descriptor.sourceRegion,
+        pageId,
+        descriptor.start,
+        descriptor.key
+      )
+      const targetPage =
+        previewKey !== descriptor.key || (region && displayedEntryId !== pageId)
+          ? descriptor.start
+          : previousPage
+      applyDescriptor(descriptor, targetPage)
+      displayedEntryId = pageId
+      entryRegion.value = assetRegion.value = region
       imageCache.clear()
       pageImage.value = null
       pdfUrl.value = entry.url
@@ -178,7 +219,7 @@ export function useProjectPdf(page) {
       total < end ||
       !(Date.parse(expiresAt) > Date.now())
     )
-      throw new Error('PDF 预览信息无效，请刷新后重试')
+      throw new Error('PDF 预览信息无效，请重新读取原文')
     return descriptor
   }
   function clampPdfPage(value) {
@@ -217,6 +258,7 @@ export function useProjectPdf(page) {
       request === generation && imageRequest === imageGeneration && page.value?.id === pageId
     pdfLoading.value = true
     displayedImagePage = 0
+    assetRegion.value = null
     pageImage.value = null
     pdfUrl.value = null
     const options = {
@@ -225,9 +267,13 @@ export function useProjectPdf(page) {
       cache: 'no-store'
     }
     try {
-      const entry = await imageCache.load(imageBase(), number, options)
+      const { image: entry, sourceRegion } = await imageCache.load(imageBase(), number, options)
       if (!isCurrent()) return
       displayedImagePage = number
+      if (number === firstPage.value) {
+        const region = matchingSourceRegion(sourceRegion, pageId, number, entry.assetId)
+        entryRegion.value = assetRegion.value = region
+      }
       pageImage.value = entry
       pdfUrl.value = entry.url
       armExpiry(entry)
@@ -238,6 +284,17 @@ export function useProjectPdf(page) {
       if (isCurrent()) pdfLoading.value = false
     }
   })
+  function retryProjectPdf() {
+    if (pdfLoading.value || !page.value?.id) return
+    // A manual retry must re-read bytes, including after PDF.js rejected a
+    // cached blob. Keep the descriptor identity/reading page so an unchanged
+    // source resumes in place; resolveProjectPdf rechecks authorization.
+    cache.clear()
+    imageCache.clear()
+    pageImage.value = null
+    pdfUrl.value = null
+    return resolveProjectPdf()
+  }
   function fallbackToPdf() {
     return resolveProjectPdf(true)
   }
@@ -253,7 +310,10 @@ export function useProjectPdf(page) {
     localPdfPage,
     totalPdfPages,
     pageImage,
+    entryRegion,
+    assetRegion,
     fallbackToPdf,
+    retryProjectPdf,
     resetPdf,
     resolveProjectPdf,
     clampPdfPage,

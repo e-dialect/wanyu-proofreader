@@ -1,318 +1,420 @@
 <template>
-  <section class="project-flow" aria-label="项目概览">
-    <header class="project-flow__heading">
+  <section class="project-progress" aria-labelledby="project-progress-title" :aria-busy="pending">
+    <header class="project-progress__heading">
       <div>
-        <h2>项目推进清单</h2>
-        <p>管理员准备材料与处理差异，校对者独立核对，最后按用途交付。</p>
+        <h2 id="project-progress-title">项目推进清单</h2>
+        <p v-if="workflow" class="text-sm text-muted">
+          <span v-if="error" class="project-progress__stale">未更新 · </span>
+          <span v-else-if="pending">正在更新 · </span>
+          <template v-if="generatedAt">
+            上次统计于 <time :datetime="workflow.generated_at">{{ generatedAt }}</time>
+          </template>
+          <span v-else>统计时间未记录</span>
+        </p>
       </div>
       <AppButton
+        v-if="!unavailable"
         variant="ghost"
         size="sm"
         :loading="pending"
-        loading-label="正在刷新…"
+        loading-label="正在更新"
         @click="loadOverview"
       >
-        <AppIcon name="refresh" />刷新统计
+        <AppIcon name="refresh" />刷新进度
       </AppButton>
     </header>
+
     <AppStatusPanel
       v-if="error"
       state="error"
+      :title="unavailable ? '无法查看项目进度' : '暂时无法更新进度'"
       :message="error"
-      retry-label="重试统计"
+      :retry-label="unavailable ? '' : '重新读取'"
       :busy="pending"
       @retry="loadOverview"
     />
-    <p v-if="pending && !overview" class="project-flow__read-status" role="status">
-      正在读取项目进度…
-    </p>
-    <dl class="project-flow__metrics" aria-label="全项目校对进度">
-      <div>
-        <dt>材料条目</dt>
-        <dd>
-          {{ count(overview?.total) ?? '未读取'
-          }}<span v-if="count(overview?.total) !== null"> 条</span>
-        </dd>
-      </div>
-      <div>
-        <dt>校对流程完成</dt>
-        <dd>
-          {{ count(overview?.approved) ?? '未读取'
-          }}<span v-if="count(overview?.approved) !== null"> 条</span>
-        </dd>
-      </div>
-      <div>
-        <dt>等待仲裁</dt>
-        <dd>
-          {{ count(overview?.arbitration) ?? '未读取'
-          }}<span v-if="count(overview?.arbitration) !== null"> 条</span>
-        </dd>
-      </div>
-    </dl>
-    <p v-if="error && overview" class="project-flow__read-status">以上为上次成功读取的统计。</p>
-    <div class="project-flow__next">
-      <div>
-        <span class="project-flow__eyebrow">建议下一步</span>
-        <h3>{{ next.title }}</h3>
-        <p>{{ next.detail }}</p>
-      </div>
-      <RouterLink :to="link(next.action)" class="btn btn-primary"
-        >{{ next.label }}<AppIcon name="arrow"
-      /></RouterLink>
-    </div>
-    <ol class="project-flow__steps" aria-label="项目流程与分工">
-      <li
-        v-for="(step, index) in steps"
-        :key="step.key"
-        :aria-current="next.step === step.key ? 'step' : undefined"
-      >
-        <span class="project-flow__number" aria-hidden="true">0{{ index + 1 }}</span>
-        <div class="project-flow__step-body">
-          <div class="project-flow__step-title">
-            <h3>{{ step.title }}</h3>
-            <span>{{ step.role }}</span>
-          </div>
-          <p>{{ step.detail }}</p>
+    <AppStatusPanel v-else-if="pending && !workflow" state="pending" message="正在读取项目进度…" />
+    <RouterLink v-if="unavailable" class="btn btn-secondary" to="/admin">返回项目列表</RouterLink>
+
+    <template v-if="workflow">
+      <dl v-if="workflow.summary" class="project-progress__totals" aria-label="全项目条目统计">
+        <div v-for="item in totals" :key="item.key">
+          <dt>{{ item.label }}</dt>
+          <dd>{{ formatCount(item.count, '条') }}</dd>
         </div>
-        <div class="project-flow__links">
-          <RouterLink v-for="action in step.actions" :key="action.key" :to="link(action.key)"
-            >{{ action.label }}<AppIcon name="arrow"
-          /></RouterLink>
+      </dl>
+
+      <section v-if="recommendation" class="project-progress__priority" aria-label="建议先处理">
+        <div>
+          <p class="project-progress__priority-label">建议先处理</p>
+          <h3>{{ recommendation.title }}</h3>
+          <p>{{ recommendation.detail }}</p>
+          <p v-if="recommendation.role" class="project-progress__role">
+            负责 · {{ recommendation.role }}
+          </p>
         </div>
-      </li>
-    </ol>
-    <p class="project-flow__note">完成校对不代表来源、用途或交付均已核验；各环节可随时返回检查。</p>
+        <RouterLink :to="recommendation.target" class="btn btn-primary">
+          {{ recommendation.action.label }}<AppIcon name="arrow" />
+        </RouterLink>
+      </section>
+
+      <p class="project-progress__scope text-sm text-muted">
+        各环节可同时推进。完成校对后，仍需分别核对来源、用途与接收记录。
+      </p>
+      <ul class="project-progress__stages" aria-label="项目环节与分工">
+        <li v-for="stage in workflow.stages" :key="stage.key" class="project-progress__stage">
+          <header class="project-progress__stage-heading">
+            <h3>{{ stage.title }}</h3>
+            <span class="project-progress__state" :data-stage-state="stage.state">
+              {{ stage.state_label }}
+            </span>
+          </header>
+          <p v-if="stage.role" class="project-progress__role">负责 · {{ stage.role }}</p>
+          <p v-if="stage.summary" class="project-progress__summary">{{ stage.summary }}</p>
+          <dl v-if="stage.metrics?.length" class="project-progress__facts">
+            <div v-for="metric in stage.metrics" :key="metric.key">
+              <dt>{{ metric.label }}</dt>
+              <dd>{{ formatCount(metric.count, metric.unit) }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="stage.blockers?.length"
+            class="project-progress__blockers"
+            aria-label="待处理事项"
+          >
+            <li v-for="blocker in stage.blockers" :key="blocker.code">{{ blocker.message }}</li>
+          </ul>
+          <footer v-if="stage.actions?.length || stage.note" class="project-progress__stage-footer">
+            <div v-if="stage.actions?.length" class="project-progress__links">
+              <template v-for="action in stage.actions" :key="action.key">
+                <RouterLink
+                  v-if="actionTarget(action)"
+                  :to="actionTarget(action)"
+                  :aria-label="`${stage.title} · ${action.label}`"
+                  class="back-link"
+                >
+                  {{ action.label }}<AppIcon name="arrow" />
+                </RouterLink>
+              </template>
+            </div>
+            <details v-if="stage.note" class="project-progress__explanation">
+              <summary>统计说明</summary>
+              <p class="project-progress__note">{{ stage.note }}</p>
+            </details>
+          </footer>
+        </li>
+      </ul>
+    </template>
   </section>
 </template>
+
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { getAdminProjectPageStats } from '@/services/pagesService'
-import { useAsyncResource } from '@/composables/useAsyncResource'
-import {
-  projectWorkflowNext,
-  projectWorkflowTarget,
-  workflowCount as count
-} from '@/lib/projectWorkflow'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getProjectWorkflow } from '@/services/projectsService'
+import { useProtectedPageScope } from '@/composables/useProtectedPageScope'
+import { getPbStatus } from '@/utils/pbErrors'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
+
 const props = defineProps({
   projectId: { type: String, required: true },
   query: { type: Object, default: () => ({}) }
 })
-const {
-  data: overview,
-  pending,
-  error,
-  reload: loadOverview
-} = useAsyncResource(({ signal }) => getAdminProjectPageStats(props.projectId, { signal }), {
-  formatError: (error) => getPbMessage(error, '项目统计暂不可用。')
+const data = ref(null)
+const pending = ref(false)
+const error = ref('')
+const projectMissing = ref(false)
+const scope = useProtectedPageScope((status) => {
+  data.value = null
+  pending.value = false
+  error.value =
+    status === 401
+      ? '登录状态已失效，请重新登录后查看。'
+      : '当前账号无权管理此项目，请返回项目列表。'
 })
-const next = computed(() => projectWorkflowNext(error.value ? null : overview.value))
-const link = (action) => projectWorkflowTarget(props.projectId, action, props.query)
-const steps = [
+const unavailable = computed(() => scope.accessLost.value || projectMissing.value)
+const workflow = computed(() =>
+  !unavailable.value && data.value?.project?.id === props.projectId ? data.value : null
+)
+const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' })
+const generatedAt = computed(() => {
+  const date = Date.parse(workflow.value?.generated_at)
+  return Number.isFinite(date) ? dateFormat.format(date) : ''
+})
+const totals = computed(() => [
+  { key: 'entries', label: '材料条目', count: workflow.value?.summary?.entries },
   {
-    key: 'materials',
-    title: '准备材料',
-    role: '管理员',
-    detail: '导入资料，检查条目与原文是否对应。',
-    actions: [{ key: 'materials', label: '准备材料' }]
+    key: 'proofreading',
+    label: '校对流程完成',
+    count: workflow.value?.summary?.proofreading_completed
   },
-  {
-    key: 'members',
-    title: '安排成员与规则',
-    role: '管理员',
-    detail: '确认谁来校对、需要几份独立结果，以及使用的输入工具。',
-    actions: [
-      { key: 'members', label: '安排成员' },
-      { key: 'rules', label: '校勘规则' }
-    ]
-  },
-  {
-    key: 'work',
-    title: '校对与处理差异',
-    role: '校对者 · 管理员',
-    detail: '校对者独立提交；管理员处理仲裁、来源与写法问题。',
-    actions: [
-      { key: 'entries', label: '打开条目' },
-      { key: 'queue', label: '待办队列' }
-    ]
-  },
-  {
-    key: 'delivery',
-    title: '核对范围与交付',
-    role: '管理员',
-    detail: '检查来源和用途，下载工作文件或准备交付包。',
-    actions: [{ key: 'delivery', label: '成果与交付' }]
+  { key: 'arbitration', label: '等待仲裁', count: workflow.value?.summary?.arbitration }
+])
+
+function actionTarget(action) {
+  const path = action?.target?.path
+  const base = `/admin/projects/${encodeURIComponent(props.projectId)}`
+  if (
+    typeof path !== 'string' ||
+    (path !== base && !path.startsWith(base + '/')) ||
+    !/^\/[a-z0-9/_-]+$/i.test(path)
+  )
+    return null
+  return { path, query: action.target.query || {} }
+}
+const recommendation = computed(() => {
+  if (error.value || pending.value) return null
+  const suggestion = workflow.value?.recommendation
+  const target = actionTarget(suggestion?.action)
+  return target ? { ...suggestion, target } : null
+})
+
+function formatCount(count, unit) {
+  return Number.isSafeInteger(count) && count >= 0
+    ? `${count.toLocaleString('zh-CN')}${unit ? ` ${unit}` : ''}`
+    : '未读取'
+}
+
+async function loadOverview() {
+  if (scope.accessLost.value) return
+  scope.cancel()
+  const request = scope.capture()
+  const projectId = props.projectId
+  pending.value = true
+  error.value = ''
+  projectMissing.value = false
+  try {
+    const result = await getProjectWorkflow(projectId, { signal: request.signal })
+    if (!request.isCurrent()) return
+    if (result?.project?.id !== projectId || !Array.isArray(result.stages) || !result.stages.length)
+      throw new Error('未读取到当前项目的进度。')
+    data.value = result
+  } catch (cause) {
+    if (!request.isCurrent() || scope.invalidate(cause, request)) return
+    if (getPbStatus(cause) === 404) {
+      projectMissing.value = true
+      data.value = null
+      error.value = '项目或进度入口不可用，请返回项目列表。'
+    } else {
+      error.value = workflow.value
+        ? '当前显示上次读取的结果，请重新读取。'
+        : '未读取到项目进度，请重试。'
+    }
+  } finally {
+    if (request.isCurrent()) pending.value = false
+    request.finish()
   }
-]
-onMounted(loadOverview)
+}
+watch(() => props.projectId, loadOverview, { immediate: true })
 defineExpose({ reload: loadOverview })
 </script>
+
 <style scoped>
-.project-flow {
+.project-progress {
   display: grid;
-  gap: var(--space-5);
-}
-.project-flow__heading,
-.project-flow__next {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
 }
-.project-flow__heading h2 {
+.project-progress__heading,
+.project-progress__priority,
+.project-progress__stage-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+.project-progress__heading {
+  flex-wrap: wrap;
+}
+.project-progress__heading h2 {
+  margin-block: 0 var(--space-1);
   font-size: var(--text-xl);
 }
-.project-flow p {
-  color: var(--ink-muted);
-  font-size: var(--text-sm);
-  line-height: 1.7;
-}
-.project-flow__heading p {
-  margin-top: var(--space-1);
-}
-.project-flow__heading > .app-button {
+.project-progress__heading .app-button,
+.project-progress__priority .btn {
   flex-shrink: 0;
 }
-.project-flow__metrics {
+.project-progress__stale {
+  color: var(--warn-ink);
+  font-weight: 600;
+}
+.project-progress__totals {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4) var(--space-6);
+  gap: var(--space-3) var(--space-5);
+  border-block: 1px solid var(--line);
+  margin: 0;
+  padding: var(--space-3) 0;
 }
-.project-flow__metrics > div {
-  min-width: 8em;
-}
-.project-flow__metrics dt {
-  color: var(--ink-muted);
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-1);
-}
-.project-flow__metrics dd {
-  color: var(--ink);
-  font-size: var(--text-xl);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.project-flow__metrics dd span {
-  font-size: var(--text-sm);
-  font-weight: 400;
-}
-.project-flow__next {
-  padding: var(--space-5);
-  background: var(--primary-glow-soft);
-  border: 1px solid var(--primary-line);
-  border-radius: var(--radius-card);
-}
-.project-flow__eyebrow {
-  color: var(--primary);
-  font-size: var(--text-xs);
-  font-weight: 600;
-}
-.project-flow__next h3 {
-  margin: var(--space-1) 0;
-  font-size: var(--text-lg);
-}
-.project-flow__next .btn {
-  flex-shrink: 0;
-}
-.project-flow__steps {
-  list-style: none;
-  border-top: 1px solid var(--line);
-}
-.project-flow__steps li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-5) 0;
-  border-bottom: 1px solid var(--line);
-}
-.project-flow__number {
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  align-self: flex-start;
-  padding-top: var(--space-1);
-}
-.project-flow__steps li[aria-current='step'] .project-flow__number {
-  color: var(--primary);
-  font-weight: 700;
-}
-.project-flow__step-body {
-  flex: 1;
-  min-width: 0;
-}
-.project-flow__step-title {
+.project-progress__totals > div {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
+  gap: var(--space-1) var(--space-2);
 }
-.project-flow__step-title h3 {
-  font-size: var(--text-md);
-}
-.project-flow__step-title span {
-  font-size: var(--text-xs);
+.project-progress__totals dt,
+.project-progress__facts dt,
+.project-progress__role,
+.project-progress__note {
   color: var(--ink-muted);
+  font-size: var(--text-sm);
 }
-.project-flow__step-body p {
-  margin-top: var(--space-1);
-  max-width: 52ch;
+.project-progress__totals dd,
+.project-progress__facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
-.project-flow__links {
+.project-progress__priority {
+  align-items: center;
+  border: 1px solid var(--primary-line);
+  border-radius: var(--radius-card);
+  background: var(--primary-glow-soft);
+  padding: var(--space-4);
+}
+.project-progress__priority-label {
+  color: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.project-progress__priority h3 {
+  margin: var(--space-1) 0;
+  font-size: var(--text-lg);
+}
+.project-progress__priority p,
+.project-progress__scope,
+.project-progress__stage p {
+  margin: 0;
+}
+.project-progress__priority .project-progress__role {
+  margin-top: var(--space-2);
+}
+.project-progress__stages {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.project-progress__stage {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--line-card);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.project-progress__stage-heading {
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.project-progress__stage-heading h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.project-progress__state {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2);
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.project-progress__state[data-stage-state='needs_action'] {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+.project-progress__state[data-stage-state='in_progress'],
+.project-progress__state[data-stage-state='recorded'] {
+  border-color: var(--primary-line);
+  background: var(--primary-glow-soft);
+  color: var(--primary);
+}
+.project-progress__summary {
+  color: var(--ink);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.project-progress__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
 }
-.project-flow__links a {
+.project-progress__facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+.project-progress__facts dd {
+  font-size: var(--text-sm);
+}
+.project-progress__blockers {
+  display: grid;
+  gap: var(--space-1);
+  padding-inline-start: var(--space-4);
+  margin: 0;
+  color: var(--warn-ink);
+  font-size: var(--text-sm);
+}
+.project-progress__stage-footer,
+.project-progress__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0 var(--space-4);
+}
+.project-progress__stage-footer {
+  margin-top: auto;
+}
+.project-progress__explanation[open] {
+  flex-basis: 100%;
+}
+.project-progress__explanation summary {
+  min-height: var(--control-height-sm);
+  line-height: var(--control-height-sm);
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.project-progress__explanation summary:hover {
+  color: var(--primary);
+}
+.project-progress__note {
+  padding-bottom: var(--space-2);
+}
+.project-progress__links a {
   display: inline-flex;
   gap: var(--space-2);
   align-items: center;
-  min-height: var(--control-height);
-  font-size: var(--text-sm);
-  white-space: nowrap;
+  min-height: var(--control-height-sm);
 }
-.project-flow__links .app-icon {
-  width: 16px;
-  height: 16px;
-}
-.project-flow__note {
-  max-width: 70ch;
-}
-@media (max-width: 640px) {
-  .project-flow__heading {
-    align-items: flex-start;
+@media (max-width: 720px) {
+  .project-progress__stages {
+    grid-template-columns: 1fr;
   }
-  .project-flow__next {
+  .project-progress__priority {
     align-items: stretch;
     flex-direction: column;
-    padding: var(--space-4);
   }
-  .project-flow__steps li {
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-3);
-    padding: var(--space-4) 0;
+  .project-progress__priority .btn {
+    white-space: normal;
   }
-  .project-flow__step-body {
-    flex-basis: calc(100% - 3em);
+  .project-progress__explanation summary {
+    line-height: var(--control-height-touch);
   }
-  .project-flow__links {
-    margin-left: calc(2ch + var(--space-3));
-  }
-  .project-flow__links a {
+  .project-progress__links a,
+  .project-progress__explanation summary,
+  .project-progress__priority .btn {
     min-height: var(--control-height-touch);
-  }
-  .project-flow__metrics {
-    gap: var(--space-4);
-  }
-  .project-flow__metrics > div {
-    min-width: 0;
-    flex: 1;
-  }
-  .project-flow__metrics dd {
-    font-size: var(--text-lg);
   }
 }
 </style>

@@ -572,11 +572,11 @@
             正常导入可不填写退回位置。涉及停用、失败或上游修复时，请按实际处置留下凭据。
           </p>
           <label class="form-group"
-            ><span class="form-label">退回位置</span
+            ><span class="form-label">退回环节</span
             ><select v-model="eventForm.target" class="form-control">
               <option value="">不涉及上游退回</option>
               <option v-for="target in returnTargets" :key="target" :value="target">
-                {{ deliveryStageLabels[target] }}
+                {{ deliveryStageLabel(target) }}
               </option>
             </select></label
           >
@@ -715,27 +715,19 @@ const requestId = ref('')
 const eventBaseline = ref('')
 function navigate(query) {
   const target = { ...query }
-  const savedListPage = String(
-    route.query.listPage || (view.value === 'records' ? queryPage.value : listPage.value || 1)
-  )
-  const returnPage = Math.max(
-    1,
-    Number.parseInt(route.query.returnPage, 10) || Number(listPage.value) || 1
-  )
+  delete target.returnPage
+  const savedListPage =
+    route.query.listPage ||
+    route.query.returnPage ||
+    String(view.value === 'records' ? queryPage.value : listPage.value || 1)
   if (target.view === 'records') {
-    if (view.value !== 'records' || target.page === undefined)
-      target.page = route.query.returnPage || savedListPage
-    delete target.package
-    delete target.tab
-    delete target.editor
-    delete target.listPage
-    delete target.returnPage
+    if (view.value !== 'records' || target.page === undefined) target.page = savedListPage
+    target.package = undefined
+    target.tab = undefined
+    target.editor = undefined
+    target.listPage = undefined
   } else if (target.package || target.view === 'prepare' || target.view === 'impacts') {
     target.listPage ||= savedListPage
-    if (!target.returnPage && returnPage > 1) target.returnPage = returnPage
-  } else if (!target.package) {
-    target.page ??= returnPage
-    delete target.returnPage
   }
   return router.push({
     query: { ...target, ...batchReportNavigationQuery(batchReportContext.value) }
@@ -965,7 +957,7 @@ async function load() {
         page:
           view.value === 'records'
             ? queryPage.value
-            : Math.max(1, Number.parseInt(route.query.listPage, 10) || 1),
+            : Math.max(1, Number.parseInt(route.query.listPage ?? route.query.returnPage, 10) || 1),
         signal: request.signal
       })
     )

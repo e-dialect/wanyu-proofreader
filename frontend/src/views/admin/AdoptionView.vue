@@ -182,8 +182,8 @@
               </AppDisclosure>
               <ImportBatchPicker
                 v-if="!reportScopeRequested || (verifiedReportBatch && customReportScope)"
-                v-model="createForm.importJobsText"
                 :require-selection="reportScopeRequested"
+                v-model="createForm.importJobsText"
                 :project-id="projectId"
                 :disabled="busy"
                 @access-error="pageScope.invalidate($event)"
@@ -765,6 +765,7 @@ function exceptionFromQuery(query) {
 const exceptionQuery = computed(() => exceptionFromQuery(route.query))
 function navigate(query) {
   const canonical = { ...query }
+  delete canonical.returnPage
   for (const key of [
     'reportProject',
     'reportBatch',
@@ -773,23 +774,18 @@ function navigate(query) {
     'reportSection'
   ])
     delete canonical[key]
-  const listPage = positivePage(canonical.listPage ?? routeListPage.value)
+  const listPage = positivePage(
+    canonical.listPage ??
+      route.query.listPage ??
+      route.query.returnPage ??
+      (screen.value === 'list' ? historyPage.value : routeListPage.value)
+  )
   if (listPage > 1) canonical.listPage = String(listPage)
   else delete canonical.listPage
   const selected = exceptionFromQuery(query)
   delete canonical.entry
   if (selected) canonical.exception = selected
   else delete canonical.exception
-  if (canonical.batch || canonical.view === 'create') {
-    const returnPage = Math.max(
-      1,
-      Number.parseInt(canonical.returnPage ?? route.query.returnPage, 10) || historyPage.value
-    )
-    if (returnPage > 1) canonical.returnPage = returnPage
-    else delete canonical.returnPage
-  } else {
-    delete canonical.returnPage
-  }
   return router.push({ query: { ...canonical, ...reportQuery.value } })
 }
 function changeTab(tab) {
@@ -1122,11 +1118,7 @@ function resetProject() {
   projectUnavailable.value = unavailable.value = false
   syncQuery()
   syncReportScope()
-  return load(
-    screen.value === 'list'
-      ? routeListPage.value
-      : Math.max(1, Number.parseInt(route.query.returnPage, 10) || routeListPage.value)
-  )
+  return load(routeListPage.value)
 }
 
 async function load(page = requestedHistoryPage.value) {
@@ -1303,7 +1295,6 @@ async function create() {
       currentRecord.value = batch
       if (createForm.note === submittedNote) createForm.note = ''
       savedCreateTransition.value = true
-      screen.value = 'detail'
       try {
         await nextTick()
         if (!isCurrent()) return
@@ -1311,7 +1302,6 @@ async function create() {
       } finally {
         savedCreateTransition.value = false
       }
-      requestedHistoryPage.value = routeListPage.value
       if (!isCurrent()) return
       screen.value = 'detail'
       detailTab.value = 'overview'

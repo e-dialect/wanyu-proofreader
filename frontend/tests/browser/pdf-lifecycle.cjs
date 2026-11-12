@@ -546,7 +546,12 @@ async function main() {
           contentType: 'application/pdf',
           body: 'Synthetic invalid PDF bytes'
         })
-        await page.locator('.pdf-error').filter({ hasText: 'Invalid PDF structure' }).waitFor()
+        const error = page.locator('.pdf-error').filter({
+          hasText:
+            'PDF 文件结构无效，无法预览。可重新读取；若仍失败，请联系项目管理员检查来源文件。'
+        })
+        await error.waitFor()
+        assert.equal(await error.getByRole('button', { name: '重新读取原文' }).isEnabled(), true)
         assert.equal(await page.locator('.proofread-textarea').first().inputValue(), '测试')
       },
       true

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { computed, effectScope, nextTick, reactive, ref, watch } from 'vue'
+import { sourceViewFit } from '../src/lib/sourceRegion.js'
 
 const source = readFileSync(
   new URL('../src/components/editor/PdfSinglePageViewer.vue', import.meta.url),
@@ -10,7 +11,7 @@ const source = readFileSync(
 const script = source
   .match(/<script setup>\n([\s\S]*?)\n<\/script>/)[1]
   .replace(/^import .* from 'vue'\n/m, '')
-  .replace(/^import .*businessMetrics'\n/m, '')
+  .replace(/^import .* from '@\/[^']+'\n/gm, '')
 
 // Run the actual component setup with Vue reactivity; the browser suite covers
 // DOM retention for both the image and canvas paths.
@@ -27,6 +28,7 @@ function fixture(t) {
   let unmount
   const bindings = {
     computed,
+    sourceViewFit,
     nextTick,
     ref,
     watch,

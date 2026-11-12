@@ -117,11 +117,13 @@ const items = [
   { key: 'settings', label: '设置' }
 ]
 function target(item) {
-  const practiceQuery = practiceContext.value ? practiceNavigationQuery(practiceContext.value) : {}
   if (item.key === 'settings')
     return {
       path: `/admin/projects/${encodeURIComponent(props.projectId)}/settings`,
-      query: { ...practiceQuery, ...reportQuery.value }
+      query: {
+        ...(practiceContext.value ? practiceNavigationQuery(practiceContext.value) : {}),
+        ...reportQuery.value
+      }
     }
   const query = scopedQuery(route.name === 'ProjectBatchReport' ? {} : route.query)
   delete query.todoFrom

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import * as pbErrors from '../src/utils/pbErrors.js'
 import { USAGE_PURPOSE_LABELS } from '../src/constants/sourceRegistry.js'
 import { receiptLabel } from '../src/lib/deliveryPresentation.js'
+import * as batchReportContext from '../src/lib/batchReportContext.js'
 import { protectedPageScopeFixture } from './helpers/protectedPageScopeFixture.js'
 
 // Execute the shipped SFC callbacks with mocked refs and network, so the
@@ -42,6 +43,7 @@ function fixture(services = {}) {
   let routeChanged
   const bindings = {
     ...helpers,
+    ...batchReportContext,
     USAGE_PURPOSE_LABELS,
     receiptLabel,
     useProtectedPageScope: protectedScope.useProtectedPageScope,
@@ -130,10 +132,10 @@ test('delivery details and event pagination return to the original record page, 
   await new Promise((resolve) => setImmediate(resolve))
   await state.openDelivery({ id: 'package-three' })
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(state.route.query.returnPage, 3)
+  assert.equal(String(state.route.query.listPage), '3')
   await state.navigate({ package: 'package-three', tab: 'events', page: 2 })
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(state.route.query.returnPage, 3)
+  assert.equal(String(state.route.query.listPage), '3')
   assert.equal(state.route.query.page, 2)
 
   const reloaded = fixture(service)
@@ -141,7 +143,7 @@ test('delivery details and event pagination return to the original record page, 
   await new Promise((resolve) => setImmediate(resolve))
   await reloaded.navigate({ view: 'records' })
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(reloaded.route.query.page, 3)
+  assert.equal(String(reloaded.route.query.page), '3')
   assert.equal(reloaded.listPage.value, 3)
   assert.equal(Object.hasOwn(reloaded.route.query, 'returnPage'), false)
 })

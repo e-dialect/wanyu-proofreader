@@ -1,0 +1,133 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R] /Count 7 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 256 >>
+stream
+BT
+/F1 12 Tf
+1 0 0 1 72 690 Tm (ENTRY-ALPHA) Tj
+1 0 0 1 72 670 Tm (alpha first line) Tj
+1 0 0 1 72 650 Tm (alpha second line marker^2) Tj
+1 0 0 1 72 590 Tm (ENTRY-BETA) Tj
+1 0 0 1 72 570 Tm (beta line water_H2O) Tj
+1 0 0 1 72 550 Tm (beta next line) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /CropBox [36 48 576 744] /Rotate 0 /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 103 >>
+stream
+BT
+/F1 12 Tf
+1 0 0 1 72 690 Tm (PAGE-TWO ENTRY-GAMMA) Tj
+1 0 0 1 72 670 Tm (gamma source phrase) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /CropBox [36 48 576 744] /Rotate 0 /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 193 >>
+stream
+BT
+/F1 12 Tf
+1 0 0 1 72 690 Tm (LEFT-COLUMN ENTRY-DELTA) Tj
+1 0 0 1 72 670 Tm (delta line two) Tj
+1 0 0 1 330 690 Tm (RIGHT-COLUMN ENTRY-EPSILON) Tj
+1 0 0 1 330 670 Tm (epsilon line two) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /CropBox [36 48 576 744] /Rotate 0 /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Length 109 >>
+stream
+BT
+/F1 12 Tf
+1 0 0 1 100 700 Tm (ROTATION-0-ENTRY-ZETA) Tj
+1 0 0 1 100 680 Tm (rotation 0 second line) Tj
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [60 90 572 762] /Rotate 0 /Resources << /Font << /F1 3 0 R >> >> /Contents 10 0 R >>
+endobj
+12 0 obj
+<< /Length 111 >>
+stream
+BT
+/F1 12 Tf
+1 0 0 1 100 700 Tm (ROTATION-90-ENTRY-ZETA) Tj
+1 0 0 1 100 680 Tm (rotation 90 second line) Tj
+ET
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [60 90 572 762] /Rotate 90 /Resources << /Font << /F1 3 0 R >> >> /Contents 12 0 R >>
+endobj
+14 0 obj
+<< /Length 113 >>
+stream
+BT
+/F1 12 Tf
+1 0 0 1 100 700 Tm (ROTATION-180-ENTRY-ZETA) Tj
+1 0 0 1 100 680 Tm (rotation 180 second line) Tj
+ET
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [60 90 572 762] /Rotate 180 /Resources << /Font << /F1 3 0 R >> >> /Contents 14 0 R >>
+endobj
+16 0 obj
+<< /Length 113 >>
+stream
+BT
+/F1 12 Tf
+1 0 0 1 100 700 Tm (ROTATION-270-ENTRY-ZETA) Tj
+1 0 0 1 100 680 Tm (rotation 270 second line) Tj
+ET
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [60 90 572 762] /Rotate 270 /Resources << /Font << /F1 3 0 R >> >> /Contents 16 0 R >>
+endobj
+xref
+0 18
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000161 00000 n 
+0000000231 00000 n 
+0000000537 00000 n 
+0000000698 00000 n 
+0000000851 00000 n 
+0000001012 00000 n 
+0000001255 00000 n 
+0000001416 00000 n 
+0000001576 00000 n 
+0000001741 00000 n 
+0000001903 00000 n 
+0000002069 00000 n 
+0000002233 00000 n 
+0000002400 00000 n 
+0000002564 00000 n 
+trailer
+<< /Size 18 /Root 1 0 R >>
+startxref
+2731
+%%EOF
