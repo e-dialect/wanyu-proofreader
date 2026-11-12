@@ -6,6 +6,12 @@
         <p>查看项目进展，优先处理需要判断的条目。</p>
       </div>
       <div class="page-heading-actions">
+        <RouterLink
+          v-if="auth.isPlatformAdmin || auth.hasManagedProjects"
+          to="/admin/todos"
+          class="btn btn-secondary"
+          >统一待办</RouterLink
+        >
         <AppButton
           variant="ghost"
           :loading="loading"
@@ -462,6 +468,11 @@ function formatDate(value) {
 @media (max-width: 640px) {
   .admin-catalog .page-heading {
     margin-bottom: var(--space-3);
+  }
+  .admin-catalog .page-heading-actions {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
   }
   .admin-catalog .project-hub-tabs {
     margin-bottom: var(--space-3);

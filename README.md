@@ -10,7 +10,7 @@
 
 第一次贡献可以从 Issues 中的小任务开始；如果还不熟悉 Git / GitHub，可以先使用 [E-Dialect Git / GitHub 协作练习场](https://github.com/e-dialect/code-contributing-practice)。
 
-产品定位与乡声集盒的协作边界见 [docs/PRODUCT_POSITIONING.md](docs/PRODUCT_POSITIONING.md)。
+产品定位、设计原则与乡声集盒的协作边界见 [docs/PRODUCT_POSITIONING.md](docs/PRODUCT_POSITIONING.md)，其中区分当前资料整理能力与多模态在地知识的长期方向。
 
 ## 目录
 

@@ -222,5 +222,9 @@
     "ci_matrix": true,
     "ci_runner": "run_account_security_integration.py",
     "note": "Includes offline stdin recovery and a restart to verify bootstrap never resets existing credentials or roles."
+  },
+  {
+    "suite": "batch_report_integration.mjs",
+    "ci_matrix": true
   }
 ]

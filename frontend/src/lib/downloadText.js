@@ -1,5 +1,9 @@
 export function downloadText(text, name, type = 'text/plain;charset=utf-8') {
-  const url = URL.createObjectURL(new Blob([text], { type }))
+  downloadBlob(new Blob([text], { type }), name)
+}
+
+export function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
   link.download = name.replace(/[\\/:*?"<>|]/g, '_')

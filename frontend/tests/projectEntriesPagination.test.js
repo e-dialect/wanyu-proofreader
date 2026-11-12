@@ -29,6 +29,7 @@ function context(loader) {
       serverTotalPages: 1,
       searchQuery: '',
       selectedStatus: '',
+      importJob: '',
       selectedQualityState: '',
       minPdfPage: '',
       maxPdfPage: ''
