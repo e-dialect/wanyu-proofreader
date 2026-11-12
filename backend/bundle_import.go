@@ -43,6 +43,12 @@ import (
 
 const bundleImportField = "bundle"
 
+// Recognize the published training manifest, never the uploaded filename.
+func isOfficialPracticeBundle(bundle reviewbundle.Bundle) bool {
+	return bundle.BundleID == "rb-wanyu-fictional-practice-v1" ||
+		(bundle.SourceSystem == "wanyu-practice" && bundle.SourceID == "fictional-training-only")
+}
+
 func (s *importService) registerBundleImports() {
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		e.Router.POST(
@@ -263,7 +269,7 @@ func (s *importService) uploadBundle(c *core.RequestEvent) error {
 	if c.Auth != nil && c.Auth.GetBool("must_change_password") {
 		return apis.NewForbiddenError("请先登录并完成初始密码修改。", nil)
 	}
-	auth, _, err := s.requireProjectManager(c, projectID)
+	auth, project, err := s.requireProjectManager(c, projectID)
 	if err != nil {
 		return err
 	}
@@ -292,6 +298,10 @@ func (s *importService) uploadBundle(c *core.RequestEvent) error {
 		// 422 而不是 400：包本身是合法上传，是内容不符合契约。响应体就是校验报告，
 		// 前端与 /bundles/validate 用同一套渲染。
 		return c.JSON(http.StatusUnprocessableEntity, report)
+	}
+
+	if isOfficialPracticeBundle(bundle) && project.GetString("purpose") != "practice" {
+		return apis.NewBadRequestError("这是官方虚构练习材料，只能导入练习项目。请从练习指引创建或选择独立练习项目。", nil)
 	}
 
 	// rights_ref 是契约要求的来源登记 logical_id（校验器只查格式，存在性留给我们）。

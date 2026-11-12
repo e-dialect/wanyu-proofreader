@@ -45,6 +45,7 @@
       />
       <ProjectImportChoice
         v-if="location.section === 'materials' && location.view === 'import'"
+        :project-id="projectId"
         :method="importMethod"
         @select="selectImport"
       />
@@ -54,7 +55,12 @@
         id="project-files"
         class="card project-section mt-4"
       >
-        <ProjectPanels.ProjectPdfUpload ref="pdfUpload" :project-id="projectId" />
+        <ProjectPanels.ProjectPdfUpload
+          ref="pdfUpload"
+          :project-id="projectId"
+          :active="showImport('pdf')"
+          @continue="selectImport"
+        />
       </section>
       <section
         v-if="visited.has('csv')"
@@ -64,6 +70,8 @@
         <ProjectPanels.ProjectCsvImport
           ref="csvImport"
           :project-id="projectId"
+          :job-link="csvJobLink"
+          @job-change="setCsvJobLink"
           :refresh-pages="loadPages"
           :refresh-stats="loadPageStats"
           :refresh-quality="loadQualitySummary"
@@ -76,7 +84,11 @@
         v-show="showImport('ocr')"
         class="card project-section mt-4"
       >
-        <ProjectPanels.ProjectOcrImport :project-id="projectId" @changed="refreshAfterImport" />
+        <ProjectPanels.ProjectOcrImport
+          :project-id="projectId"
+          :active="showImport('ocr')"
+          @changed="refreshAfterImport"
+        />
       </section>
       <section
         v-if="visited.has('bundle')"
@@ -133,7 +145,7 @@
       :dirty="
         !!pdfUpload?.uploadingPdf || !!csvImport?.hasPendingWork || !!bundleImport?.hasPendingWork
       "
-      message="材料仍在上传、检查或等待确认。离开会暂停 PDF 上传并保留已有分片，返回后重新选择同一文件可继续；已发送的导入作业可能继续，请返回核对批次。"
+      message="材料仍在上传、检查或等待确认。离开会暂停 PDF 上传并保留已有分片，返回后重新选择同一文件可继续；尚未提交的资料包需要重新选择和检查。若只是补登记来源，可在资料包区选择“新窗口打开来源登记”以保留文件；已发送的导入作业可能继续，请返回核对批次。"
     />
   </main>
 </template>
@@ -179,6 +191,19 @@ const subviews = computed(() => projectWorkspaceSubviews(projectId, location.val
 const importMethod = ref(
   ['pdf', 'csv', 'ocr', 'bundle'].includes(route.query.method) ? route.query.method : 'pdf'
 )
+const csvJobLink = computed(() =>
+  route.query.csvJob === undefined
+    ? ''
+    : typeof route.query.csvJob === 'string' && route.query.csvJob
+      ? route.query.csvJob
+      : 'invalid'
+)
+function setCsvJobLink(id) {
+  const query = { ...route.query }
+  if (id) query.csvJob = id
+  else delete query.csvJob
+  void router.replace({ path: route.path, query, hash: route.hash })
+}
 const overviewPanel = ref(null)
 let disposed = false
 let projectLoadGeneration = 0

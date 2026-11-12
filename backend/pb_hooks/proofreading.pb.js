@@ -188,7 +188,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/task`, (c) => {
     ocr_cells_json: page.getString("ocr_cells_json"),
     row_headers_json: page.getString("row_headers_json"),
     expand: {
-      project: { id: project.id, name: project.getString("name") }
+      project: { id: project.id, name: project.getString("name"), purpose: project.getString("purpose") || "work" }
     }
   }
   if (active) {
@@ -582,6 +582,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/arbitration`, (c) => {
       id: page.id,
       project: page.getString("project"),
       project_file: page.getString("project_file"),
+      import_job: page.getString("import_job"),
       page_number: page.getInt("page_number"),
       pdf_page: page.getInt("pdf_page"),
       status: page.getString("status"),

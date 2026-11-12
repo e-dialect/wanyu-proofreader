@@ -16,6 +16,7 @@ function storage() {
 }
 const request = {
   projectId: 'project-a',
+  projectFileId: 'selected-pdf',
   requestId: 'synthetic-request-0001',
   startPage: 1,
   endPage: 200,

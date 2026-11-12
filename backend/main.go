@@ -87,6 +87,7 @@ func main() {
 	importer.registerManagerTodos()
 	importer.registerProjectWorkflow()
 	importer.registerProjectExport()
+	importer.registerBatchReports()
 	importer.registerQualityState()
 	importer.registerImportLedger()
 	importer.registerAdoption()

@@ -97,13 +97,20 @@
           <li>核对预览、错误行和绑定来源后确认导入，安排独立校对并处理差异。</li>
           <li>分别检查来源保真、质量与授权条件，再从已编选批次准备交付。</li>
         </ol>
+      </section>
+      <section aria-labelledby="help-practice-title">
+        <h3 id="help-practice-title">虚构材料练习</h3>
         <p>
           <a href="/examples/review-bundle-practice-v1.zip" download>下载虚构完整练习包</a>
           ·
           <RouterLink
-            to="/admin/guide/project-files#review-bundle-practice"
+            :to="{
+              path: '/admin/guide/project-files',
+              query: { practiceRole: helpPracticeRole },
+              hash: '#review-bundle-practice'
+            }"
             @click="helpOpen = false"
-            >查看管理员练习步骤</RouterLink
+            >查看完整练习步骤</RouterLink
           >
         </p>
         <p class="text-sm text-muted">
@@ -147,6 +154,11 @@ import AppModal from '@/components/AppModal.vue'
 import AppButton from '@/components/AppButton.vue'
 import { useDraftLogout } from '@/composables/useDraftLogout'
 const auth = useAuthStore()
+const helpPracticeRole = computed(() => {
+  if (auth.hasManagedProjects) return 'manager'
+  if (auth.isPlatformAdmin) return 'platform'
+  return 'proofreader'
+})
 const route = useRoute()
 const router = useRouter()
 const {

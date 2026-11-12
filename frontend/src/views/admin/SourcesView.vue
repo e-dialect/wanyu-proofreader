@@ -2,7 +2,10 @@
   <main class="container page workspace-page">
     <header class="page-heading">
       <div>
-        <RouterLink to="/admin" class="back-link">← 返回项目管理</RouterLink>
+        <RouterLink v-if="practiceReturn" :to="practiceReturn" class="back-link"
+          >← 返回练习步骤</RouterLink
+        >
+        <RouterLink v-else to="/admin" class="back-link">← 返回项目管理</RouterLink>
         <div class="page-eyebrow">权利登记</div>
         <h1>来源登记</h1>
         <p>
@@ -10,6 +13,22 @@
         </p>
       </div>
     </header>
+    <section v-if="requestedSourceRef" class="card mb-6" aria-label="资料包来源登记提示">
+      <h2>登记资料包所需的来源</h2>
+      <p class="source-request-reference">
+        资料包要求的登记标识：<strong>{{ requestedSourceRef }}</strong>
+      </p>
+      <p>
+        {{
+          auth.isPlatformAdmin
+            ? '下方已预填登记标识，请按真实材料填写标题等信息。登记标识须与资料包完全一致。'
+            : '你可以查看来源清单；新增来源需要联系平台管理员，并提供此登记标识。'
+        }}
+      </p>
+      <p>
+        登记后请切回原来的项目页面，点击“重新检查来源登记”。请保留原页面，已选资料包会留在那里。
+      </p>
+    </section>
     <AppStatusPanel
       v-if="loadError"
       state="error"
@@ -35,7 +54,7 @@
       </div>
       <AppStatusPanel v-else-if="!items.length" state="empty" reason="none">
         <div class="empty-state-text">还没有登记来源</div>
-        <p>导入时可以不填来源。那样作业仍会成功，并标成 source:unknown，不会挡住现有校对。</p>
+        <p>CSV 导入可以暂不关联来源；资料包导入须先登记包内声明的来源，才能继续。</p>
       </AppStatusPanel>
       <AppDataTable v-else label="来源清单表">
         <template #head>
@@ -70,7 +89,9 @@
       <div class="section-heading">
         <div>
           <h2>登记一条来源</h2>
-          <p>逻辑 ID 可留空，系统会按标题和格式生成。证据只记仓外位置，不要把授权文件贴进来。</p>
+          <p>
+            登记标识可留空，系统会按标题和格式生成；从资料包进入时，请保留预填标识。证据只记仓外位置，不要把授权文件贴进来。
+          </p>
         </div>
       </div>
       <form class="settings-form" @submit.prevent="submitSource">
@@ -96,7 +117,7 @@
             placeholder="例如 csv"
         /></AppField>
         <AppField
-          ><template #label>逻辑 ID</template
+          ><template #label>登记标识</template
           ><input
             v-model.trim="form.logical_id"
             class="form-control"
@@ -132,8 +153,14 @@ import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppField from '@/components/AppField.vue'
-import { onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import {
+  canUsePracticeProject,
+  practiceGuideTarget,
+  readPracticeContext
+} from '@/lib/practiceContext'
+import { getProject } from '@/services/projectsService'
 import {
   SOURCE_ORIGIN_LABELS,
   SOURCE_STATUS_LABELS,
@@ -145,6 +172,46 @@ import { useAuthStore } from '@/stores/auth'
 import { getPbMessage } from '@/utils/pbErrors'
 
 const auth = useAuthStore()
+const route = useRoute()
+const practiceContext = computed(() => {
+  const context = readPracticeContext(route.query)
+  return auth.isPlatformAdmin && context?.role === 'platform' ? context : null
+})
+const {
+  data: practiceProject,
+  pending: practicePending,
+  error: practiceError,
+  reload: loadPracticeProject,
+  cancel: cancelPracticeProject
+} = useAsyncResource(async ({ signal }, id, userId) => {
+  const project = await getProject(id, { signal })
+  return { project, userId }
+})
+watch(
+  [() => practiceContext.value?.projectId, () => auth.user?.id],
+  ([id, userId]) => {
+    if (id && userId) void loadPracticeProject(id, userId)
+    else cancelPracticeProject()
+  },
+  { immediate: true }
+)
+const practiceReturn = computed(() => {
+  const context = practiceContext.value
+  const entry = practiceProject.value
+  return context &&
+    !practicePending.value &&
+    !practiceError.value &&
+    entry?.userId === auth.user?.id &&
+    entry?.project.id === context.projectId &&
+    canUsePracticeProject(entry.project, 'platform', auth.isPlatformAdmin)
+    ? practiceGuideTarget(context)
+    : null
+})
+const requestedSourceRef =
+  typeof route.query.sourceRef === 'string' &&
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/.test(route.query.sourceRef)
+    ? route.query.sourceRef
+    : ''
 const items = ref([])
 const {
   pending: loading,
@@ -163,7 +230,7 @@ const form = reactive({
   holder: '',
   scope: '',
   format: '',
-  logical_id: '',
+  logical_id: requestedSourceRef,
   original_vs_derived: 'original',
   status: 'unregistered'
 })
@@ -213,3 +280,9 @@ async function submitSource() {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.source-request-reference {
+  overflow-wrap: anywhere;
+}
+</style>

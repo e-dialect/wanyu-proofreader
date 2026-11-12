@@ -1,5 +1,9 @@
 [
   {
+    "suite": "practice_progress_integration.mjs",
+    "ci_matrix": true
+  },
+  {
     "suite": "core_logic_integration.mjs",
     "ci_matrix": false,
     "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
@@ -17,6 +21,10 @@
     "suite": "upload_jobs_integration.mjs",
     "ci_matrix": false,
     "note": "Runs in its dedicated required workflow or browser job; avoid duplicate default matrix execution."
+  },
+  {
+    "suite": "csv_page_column_integration.mjs",
+    "ci_matrix": true
   },
   {
     "suite": "proofreading_quorum_integration.mjs",
@@ -222,5 +230,9 @@
     "ci_matrix": true,
     "ci_runner": "run_account_security_integration.py",
     "note": "Includes offline stdin recovery and a restart to verify bootstrap never resets existing credentials or roles."
+  },
+  {
+    "suite": "batch_report_integration.mjs",
+    "ci_matrix": true
   }
 ]

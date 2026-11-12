@@ -1,0 +1,11 @@
+RUN frontend/tests/browser/job-observer.cjs
+PASS: shared observers, 12 CSV states, explicit confirmation, exact CSV20 and responsive layout
+PASS requested browser workflows
+
+RUN frontend/tests/browser/source-fidelity.cjs
+{"headingPrecedesListResponse":true,"emptyProblems":true,"emptyReview":true,"filteredEmptyReview":true,"cleanFormRefreshes":true,"sameVersionDraftPreserved":true,"changedServerBlocksDraft":true,"explicitLatestRecordRecovery":true,"savedBaselineRefreshes":true,"savedFormStaysClean":true,"editDuringSavePreserved":true,"todoHistoryAndDraftPreservation":true}
+PASS requested browser workflows
+
+RUN frontend/tests/browser/import-errors.cjs
+PASS: import errors current/history, 205-record pagination and complete report, failure/cancel no file, mobile geometry
+PASS requested browser workflows

@@ -10,6 +10,7 @@ const PAGE_TITLES = {
   NewProject: '新建项目',
   ProjectFilesGuide: '文件准备说明',
   ProjectDetail: '项目详情',
+  ProjectBatchReport: '质量与交付报告',
   ProjectSettings: '项目设置',
   ProjectDeliveries: '交付包与回执',
   ProjectAdoption: '用途编选',

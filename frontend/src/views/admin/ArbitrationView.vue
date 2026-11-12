@@ -13,7 +13,7 @@
         ? router.resolve(todoReturn).fullPath
         : verificationMode
           ? sourceReviewListTarget(projectId, sourceReviewScope)
-          : `/admin/projects/${projectId}?status=arbitration`
+          : arbitrationReturnTarget
     "
     :return-label="todoReturn ? '返回统一待办' : '返回列表'"
     content-labelled-by="arbitration-panel-title"
@@ -56,7 +56,9 @@
         </div>
       </header>
       <nav v-if="!verificationMode" class="arbitration-queue" aria-label="待仲裁队列">
-        <span class="task-position" role="status">{{ queuePositionLabel }}</span>
+        <span class="task-position" role="status"
+          >{{ validImportJob(importJob) ? '本批次 · ' : '' }}{{ queuePositionLabel }}</span
+        >
         <AppButton
           size="sm"
           class="arbitration-queue-step"
@@ -521,19 +523,27 @@ import {
 } from '@/lib/sourceReviewQueue'
 import { getPbMessage } from '@/utils/pbErrors'
 import { todoReturnTarget } from '@/lib/unifiedTodos'
+import { importJobScope, validImportJob } from '@/lib/adminPageList'
 
 const route = useRoute()
 const router = useRouter()
 const todoReturn = computed(() => todoReturnTarget(route))
 const projectId = computed(() => String(route.params.projectId || ''))
 const pageId = computed(() => String(route.params.pageId || ''))
+const importJob = computed(() => importJobScope(route.query.importJob))
+const arbitrationReturnTarget = computed(() => {
+  if (importJob.value && !validImportJob(importJob.value))
+    return `/admin/projects/${projectId.value}?section=materials&view=batches#project-ledger`
+  const base = `/admin/projects/${projectId.value}?section=work&status=arbitration`
+  return importJob.value ? `${base}&importJob=${importJob.value}` : base
+})
 const {
   state: queueState,
   error: queueError,
   data: queueData,
   refresh: refreshQueue,
   positionLabel: queuePositionLabel
-} = useArbitrationQueue(getArbitrationQueue)
+} = useArbitrationQueue((project, anchor) => getArbitrationQueue(project, anchor, importJob.value))
 const queueMessage = ref('')
 const sourceQueueError = ref('')
 const continuingSourceReview = ref(false)
@@ -624,13 +634,22 @@ onBeforeRouteLeave(confirmLeave)
 onBeforeRouteUpdate(confirmLeave)
 
 watch(
-  () => [projectId.value, pageId.value, route.query.mode],
+  () => [projectId.value, pageId.value, route.query.mode, importJob.value],
   () => {
     loadCase()
-    if (route.query.mode !== 'verification') loadQueue()
+    if (
+      route.query.mode !== 'verification' &&
+      (!importJob.value || validImportJob(importJob.value))
+    )
+      loadQueue()
   },
   { immediate: true }
 )
+
+function arbitrationTarget(project, page) {
+  const path = `/admin/projects/${project}/arbitration/${page}`
+  return importJob.value ? { path, query: { importJob: importJob.value } } : path
+}
 
 async function navigateQueue(item, forward = false) {
   if (!item || submitting.value || loading.value) return
@@ -638,18 +657,20 @@ async function navigateQueue(item, forward = false) {
     submitError.value = '请先逐字段确认差异，再进入下一条。'
     return
   }
-  await router.push(`/admin/projects/${projectId.value}/arbitration/${item.id}`)
+  await router.push(arbitrationTarget(projectId.value, item.id))
 }
 
 async function continueAfterSubmit() {
   const version = caseVersion
   const requestedPageId = pageId.value
   const requestedProjectId = projectId.value
+  const requestedImportJob = importJob.value
   const result = await refreshQueue(requestedProjectId, requestedPageId)
   if (
     version !== caseVersion ||
     requestedPageId !== pageId.value ||
-    requestedProjectId !== projectId.value
+    requestedProjectId !== projectId.value ||
+    requestedImportJob !== importJob.value
   )
     return
   if (!result) {
@@ -661,7 +682,7 @@ async function continueAfterSubmit() {
     return
   }
   const next = result.next || result.items[0]
-  await router.push(`/admin/projects/${requestedProjectId}/arbitration/${next.id}`)
+  await router.push(arbitrationTarget(requestedProjectId, next.id))
 }
 
 async function continueSourceReview() {
@@ -704,6 +725,7 @@ async function loadCase() {
   const version = ++caseVersion
   const requestedPageId = pageId.value
   const requestedProjectId = projectId.value
+  const requestedImportJob = importJob.value
   loading.value = true
   error.value = ''
   caseData.value = null
@@ -727,6 +749,8 @@ async function loadCase() {
   continuingSourceReview.value = false
   submitting.value = false
   try {
+    if (requestedImportJob && !validImportJob(requestedImportJob))
+      throw new Error('批次链接无效，请返回批次台账重新选择。')
     const results = await Promise.allSettled([
       getArbitrationCase(
         requestedPageId,
@@ -740,6 +764,9 @@ async function loadCase() {
     verificationData.value = verification
     if (result?.page?.project && requestedProjectId && result.page.project !== requestedProjectId) {
       throw new Error('仲裁条目与当前项目不匹配，请返回项目详情页后重新进入。')
+    }
+    if (requestedImportJob && result.page?.import_job !== requestedImportJob) {
+      throw new Error('仲裁条目不属于当前批次，请返回列表后重新选择。')
     }
     caseData.value = result
     Object.assign(

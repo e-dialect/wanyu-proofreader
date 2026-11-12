@@ -3,7 +3,10 @@ export function parseRangeInput(text, max) {
   const safeMax = Math.max(0, Number(max) || 0)
   if (!raw || !safeMax) return []
   const indices = new Set()
-  const parts = raw.split(/[,，]/).map((value) => value.trim()).filter(Boolean)
+  const parts = raw
+    .split(/[,，]/)
+    .map((value) => value.trim())
+    .filter(Boolean)
 
   for (const part of parts) {
     if (part.includes('-')) {
@@ -35,11 +38,21 @@ function positiveInteger(value, fallback = '') {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
+export function validImportJob(value) {
+  return typeof value === 'string' && /^[a-z0-9]{15}$/.test(value) ? value : ''
+}
+
+export function importJobScope(value) {
+  if (value === undefined || value === '') return ''
+  return validImportJob(value) || 'invalid'
+}
+
 export function normalizeAdminPageQuery(query, { statuses, qualityStates, pageSizes }) {
   const status = String(queryValue(query.status) || '')
   const qualityState = String(queryValue(query.qualityState) || '')
   const perPage = positiveInteger(query.perPage, 25)
   const text = queryValue(query.q)
+  const importJob = importJobScope(query.importJob)
   return {
     q: typeof text === 'string' ? text.trim() : '',
     status: statuses.includes(status) ? status : '',
@@ -47,12 +60,14 @@ export function normalizeAdminPageQuery(query, { statuses, qualityStates, pageSi
     minPage: positiveInteger(query.minPage),
     maxPage: positiveInteger(query.maxPage),
     page: positiveInteger(query.page, 1),
-    perPage: pageSizes.includes(perPage) ? perPage : 25
+    perPage: pageSizes.includes(perPage) ? perPage : 25,
+    ...(importJob ? { importJob } : {})
   }
 }
 
 export function adminPageRouteQuery(state) {
   const query = {}
+  if (state.importJob) query.importJob = state.importJob
   if (state.q) query.q = state.q
   if (state.status) query.status = state.status
   if (state.qualityState) query.qualityState = state.qualityState
