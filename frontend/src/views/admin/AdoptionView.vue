@@ -750,6 +750,7 @@ const queryPage = computed(() => positivePage(route.query.page))
 const routeListPage = computed(() =>
   positivePage(
     route.query.listPage ??
+      route.query.returnPage ??
       (!route.query.batch && route.query.view !== 'create' ? route.query.page : undefined)
   )
 )
@@ -1306,11 +1307,11 @@ async function create() {
       try {
         await nextTick()
         if (!isCurrent()) return
-        await navigate({ batch: batch.id, tab: 'overview', page: 1, returnPage: 1 })
+        await navigate({ batch: batch.id, tab: 'overview', page: 1 })
       } finally {
         savedCreateTransition.value = false
       }
-      requestedHistoryPage.value = 1
+      requestedHistoryPage.value = routeListPage.value
       if (!isCurrent()) return
       screen.value = 'detail'
       detailTab.value = 'overview'

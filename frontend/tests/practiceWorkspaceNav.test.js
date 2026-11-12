@@ -13,18 +13,22 @@ const target = source.match(/function target\(item\) \{[\s\S]*?\n\}/)[0]
 
 test('workspace tabs preserve verified practice context and clear the todo return', () => {
   const context = { projectId: 'practiceproj001', role: 'manager', step: 'import' }
+  const reportQuery = { value: { reportProject: context.projectId, reportBatch: 'batch-a' } }
   const props = { projectId: context.projectId }
   const practiceContext = { value: context }
   const route = { query: { ...practiceNavigationQuery(context), todoFrom: 'source', q: 'sample' } }
   const navigate = new Function(
+    'reportQuery',
     'props',
     'practiceContext',
     'practiceNavigationQuery',
     'projectWorkspaceTarget',
     'route',
     `const practiceQueryKeys = ['practiceProject', 'practiceRole', 'practiceStep']; ${scopedQuery}; ${target}; return target`
-  )(props, practiceContext, practiceNavigationQuery, projectWorkspaceTarget, route)
+  )(reportQuery, props, practiceContext, practiceNavigationQuery, projectWorkspaceTarget, route)
   const work = navigate({ key: 'work' })
+  assert.equal(work.query.reportBatch, 'batch-a')
+  assert.equal(navigate({ key: 'settings' }).query.reportBatch, 'batch-a')
   assert.equal(work.query.todoFrom, undefined)
   assert.equal(work.query.practiceProject, context.projectId)
   assert.equal(work.query.practiceRole, context.role)

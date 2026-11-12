@@ -759,3 +759,29 @@ test('legacy entry links still load and navigation emits only canonical exceptio
     'selected-target'
   ])
 })
+
+test('creation and legacy detail navigation preserve the original list page', async () => {
+  const state = fixture({
+    createAdoptionBatch: async () => ({
+      id: 'created',
+      project: 'project-a',
+      counts: {},
+      status: 'draft'
+    }),
+    previewAdoptionBatch: async () => ({})
+  })
+  state.route.query = { listPage: '4' }
+  await state.reset()
+  await state.navigate({ view: 'create' })
+  state.createForm.recipient = 'synthetic recipient'
+  await state.create()
+  assert.equal(state.currentId.value, 'created')
+  assert.equal(state.historyPage.value, 4)
+  await state.navigate({ listPage: state.historyPage.value })
+  assert.equal(state.route.query.listPage, '4')
+  state.route.query = { batch: 'created', returnPage: '4' }
+  await state.reset()
+  await state.navigate({ batch: 'created', tab: 'history', page: 1 })
+  assert.equal(state.route.query.listPage, '4')
+  assert.equal(state.historyPage.value, 4)
+})
