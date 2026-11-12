@@ -1,4 +1,6 @@
 import { createApp, h, ref } from 'vue'
+import { createPinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import pb from '../../src/lib/pocketbase.js'
 import { useJobObserver } from '../../src/composables/useJobObserver.js'
 import JobStatusPanel from '../../src/components/admin/project/JobStatusPanel.vue'
@@ -59,4 +61,12 @@ createApp({
       }),
       h(ProjectOcrImport, { projectId: 'project-a' })
     ])
-}).mount('#app')
+})
+  .use(createPinia())
+  .use(
+    createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }]
+    })
+  )
+  .mount('#app')

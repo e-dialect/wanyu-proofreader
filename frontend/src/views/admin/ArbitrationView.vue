@@ -9,11 +9,13 @@
     :loading="loading"
     :watermark-user-id="currentUserId"
     :return-to="
-      verificationMode
-        ? sourceReviewListTarget(projectId, sourceReviewScope)
-        : arbitrationReturnTarget
+      todoReturn
+        ? router.resolve(todoReturn).fullPath
+        : verificationMode
+          ? sourceReviewListTarget(projectId, sourceReviewScope)
+          : arbitrationReturnTarget
     "
-    return-label="返回列表"
+    :return-label="todoReturn ? '返回统一待办' : '返回列表'"
     content-labelled-by="arbitration-panel-title"
     empty-pdf-description="请保存进度并处理来源问题，待来源 PDF 可用后继续核验。"
   >
@@ -55,7 +57,7 @@
       </header>
       <nav v-if="!verificationMode" class="arbitration-queue" aria-label="待仲裁队列">
         <span class="task-position" role="status"
-          >{{ importJob ? '本批次 · ' : '' }}{{ queuePositionLabel }}</span
+          >{{ validImportJob(importJob) ? '本批次 · ' : '' }}{{ queuePositionLabel }}</span
         >
         <AppButton
           size="sm"
@@ -112,9 +114,9 @@
           重试继续来源复核
         </button>
         <RouterLink
-          :to="sourceReviewListTarget(projectId, sourceReviewScope)"
+          :to="todoReturn || sourceReviewListTarget(projectId, sourceReviewScope)"
           class="btn btn-quiet btn-sm"
-          >返回来源复核列表</RouterLink
+          >{{ todoReturn ? '返回统一待办' : '返回来源复核列表' }}</RouterLink
         >
       </div>
     </template>
@@ -520,11 +522,13 @@ import {
   sourceReviewTarget
 } from '@/lib/sourceReviewQueue'
 import { getPbMessage } from '@/utils/pbErrors'
+import { todoReturnTarget } from '@/lib/unifiedTodos'
 import { importJobScope, validImportJob } from '@/lib/adminPageList'
 import { batchReportNavigationQuery, readBatchReportContext } from '@/lib/batchReportContext'
 
 const route = useRoute()
 const router = useRouter()
+const todoReturn = computed(() => todoReturnTarget(route))
 const projectId = computed(() => String(route.params.projectId || ''))
 const pageId = computed(() => String(route.params.pageId || ''))
 const importJob = computed(() => importJobScope(route.query.importJob))
@@ -676,11 +680,13 @@ async function continueAfterSubmit() {
   const version = caseVersion
   const requestedPageId = pageId.value
   const requestedProjectId = projectId.value
+  const requestedImportJob = importJob.value
   const result = await refreshQueue(requestedProjectId, requestedPageId)
   if (
     version !== caseVersion ||
     requestedPageId !== pageId.value ||
-    requestedProjectId !== projectId.value
+    requestedProjectId !== projectId.value ||
+    requestedImportJob !== importJob.value
   )
     return
   if (!result) {

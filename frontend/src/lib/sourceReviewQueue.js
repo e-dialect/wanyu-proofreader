@@ -1,15 +1,31 @@
+export function canOpenSourceReview(item) {
+  return ['approved', 'proofread', 'arbitration'].includes(item.status)
+}
+
 export function sourceReviewItems(items, scope = 'todo') {
-  return items.filter(
-    (item) =>
-      scope === 'all' ||
-      (!item.business_complete && !item.source_empty) ||
-      item.needs_review ||
-      item.pending_review
+  return items.filter((item) => {
+    if (scope === 'all') return true
+    const needsWork =
+      (!item.business_complete && !item.source_empty) || item.needs_review || item.pending_review
+    return (
+      needsWork && (scope === 'waiting' ? !canOpenSourceReview(item) : canOpenSourceReview(item))
+    )
+  })
+}
+
+export function sourceReviewWaitingReason(item) {
+  if (
+    canOpenSourceReview(item) ||
+    (item.source_empty && !item.needs_review && !item.pending_review)
   )
+    return ''
+  if (item.status === 'rework') return '需重新校对，提交后可核验来源。'
+  return '等待校对者提交，已有首份提交后即可核验来源。'
 }
 
 export function sourceReviewListTarget(projectId, scope = 'todo') {
-  return `/admin/projects/${encodeURIComponent(projectId)}/verification?view=review${scope === 'all' ? '&reviewScope=all' : ''}`
+  const filter = ['all', 'waiting'].includes(scope) ? `&reviewScope=${scope}` : ''
+  return `/admin/projects/${encodeURIComponent(projectId)}/verification?view=review${filter}`
 }
 
 export function sourceReviewTarget(projectId, item, scope = 'todo') {

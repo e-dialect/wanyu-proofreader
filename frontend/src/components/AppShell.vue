@@ -14,11 +14,17 @@
           >
             <AppIcon name="menu" />
           </button>
-          <RouterLink v-if="immersive" :to="returnTarget" class="shell-return"
-            ><AppIcon name="back" /><span>返回队列</span></RouterLink
+          <RouterLink
+            v-if="todoReturn || immersive"
+            :to="returnTarget"
+            class="shell-return"
+            :class="{ 'shell-todo-return': todoReturn }"
+            ><AppIcon name="back" /><span>{{
+              todoReturn ? '返回统一待办' : '返回队列'
+            }}</span></RouterLink
           >
-          <span v-if="immersive" class="shell-header__brand">万语校坊</span>
-          <div v-else class="shell-location-context" aria-label="当前位置">
+          <span v-if="immersive && !todoReturn" class="shell-header__brand">万语校坊</span>
+          <div v-else-if="!todoReturn" class="shell-location-context" aria-label="当前位置">
             <span class="shell-area">{{ shellArea }}</span>
             <span class="shell-location-divider" aria-hidden="true">/</span>
             <span class="shell-location">{{ pageTitleFor(route.name) }}</span>
@@ -91,13 +97,20 @@
           <li>核对预览、错误行和绑定来源后确认导入，安排独立校对并处理差异。</li>
           <li>分别检查来源保真、质量与授权条件，再从已编选批次准备交付。</li>
         </ol>
+      </section>
+      <section aria-labelledby="help-practice-title">
+        <h3 id="help-practice-title">虚构材料练习</h3>
         <p>
           <a href="/examples/review-bundle-practice-v1.zip" download>下载虚构完整练习包</a>
           ·
           <RouterLink
-            to="/admin/guide/project-files#review-bundle-practice"
+            :to="{
+              path: '/admin/guide/project-files',
+              query: { practiceRole: helpPracticeRole },
+              hash: '#review-bundle-practice'
+            }"
             @click="helpOpen = false"
-            >查看管理员练习步骤</RouterLink
+            >查看完整练习步骤</RouterLink
           >
         </p>
         <p class="text-sm text-muted">
@@ -132,6 +145,7 @@ import { useAuthStore } from '@/stores/auth'
 import { pageTitleFor } from '@/lib/pageTitle'
 import { isImmersiveRoute, navigationArea, rememberWork } from '@/lib/workbenchNavigation'
 import { browserSessionStorage, queueReturnTarget } from '@/lib/queueReturn'
+import { todoReturnTarget } from '@/lib/unifiedTodos'
 import { browserLocalStorage } from '@/lib/onboarding'
 import AppNavigation from '@/components/AppNavigation.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -140,6 +154,11 @@ import AppModal from '@/components/AppModal.vue'
 import AppButton from '@/components/AppButton.vue'
 import { useDraftLogout } from '@/composables/useDraftLogout'
 const auth = useAuthStore()
+const helpPracticeRole = computed(() => {
+  if (auth.hasManagedProjects) return 'manager'
+  if (auth.isPlatformAdmin) return 'platform'
+  return 'proofreader'
+})
 const route = useRoute()
 const router = useRouter()
 const {
@@ -166,8 +185,9 @@ const shellArea = computed(() => {
     ] || '工作空间'
   )
 })
-const returnTarget = computed(() =>
-  queueReturnTarget(browserSessionStorage(), auth.user?.id, route)
+const todoReturn = computed(() => todoReturnTarget(route))
+const returnTarget = computed(
+  () => todoReturn.value || queueReturnTarget(browserSessionStorage(), auth.user?.id, route)
 )
 provide('workReturnTarget', returnTarget)
 

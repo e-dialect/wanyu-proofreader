@@ -41,6 +41,8 @@ test('OCR range rejects invalid, reversed and over-budget pages without silently
     ['20', '219']
   ])
     assert.equal(validateOcrRange(first, last), '')
+  assert.equal(validateOcrRange(2, 4, 4), '')
+  assert.match(validateOcrRange(2, 5, 4), /当前 PDF 共 4 页/)
 })
 test('OCR progress uses processed physical pages and never claims guessed progress', () => {
   assert.equal(ocrProgress({ total_count: 0, processed_count: 0 }), 0)

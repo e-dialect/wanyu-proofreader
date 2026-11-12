@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { practiceGuideTarget, practiceStep } from '../src/lib/practiceContext.js'
 
 const source = readFileSync(
   new URL('../src/views/admin/NewProjectView.vue', import.meta.url),
@@ -19,20 +20,23 @@ const deferred = () => {
   })
   return { promise, resolve, reject }
 }
-function mount({ create, refresh = async () => ({}), navigate = async () => {} } = {}) {
+function mount({ create, refresh = async () => ({}), navigate = async () => {}, query = {} } = {}) {
   const auth = {
     user: { id: 'owner' },
     token: 'session-a',
     canCreateProjects: true,
     loadAccessContext: refresh
   }
-  const route = { fullPath: '/admin/projects/new' },
+  const route = { fullPath: '/admin/projects/new', query },
     created = [],
     navigations = [],
     cleanup = [],
     mounted = []
   const bindings = {
+    computed,
     ref,
+    practiceGuideTarget,
+    practiceStep,
     useRoute: () => route,
     useRouter: () => ({
       replace: async (target) => {
@@ -89,6 +93,33 @@ test('successful creation enters materials immediately even while capability ref
   assert.equal(state.success.value, true)
   assert.equal(state.error.value, '')
   pending.resolve({})
+})
+
+test('creating a practice project returns to the selected guide step and keeps material return separate', async () => {
+  const state = mount({
+    query: {
+      purpose: 'practice',
+      practiceStep: 'import',
+      project: 'formalproject01',
+      method: 'csv'
+    },
+    create: async () => ({ id: 'practiceproj001', purpose: 'practice' })
+  })
+  await state.handleSubmit()
+  assert.equal(state.created[0].purpose, 'practice')
+  assert.deepEqual(state.navigations, [
+    {
+      path: '/admin/guide/project-files',
+      query: {
+        project: 'formalproject01',
+        method: 'csv',
+        practiceProject: 'practiceproj001',
+        practiceRole: 'manager',
+        practiceStep: 'import'
+      },
+      hash: '#review-bundle-practice'
+    }
+  ])
 })
 
 for (const interruption of ['unmount', 'account', 'token', 'route']) {

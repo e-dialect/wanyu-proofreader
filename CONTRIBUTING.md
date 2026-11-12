@@ -74,6 +74,14 @@ Windows 开发者模式，否则会表现为环境失败而不是代码失败。
 完整 Go race 套件包含真实 PocketBase/Goja 夹具及进程崩溃／重启，默认每包上限为 20 分钟。
 可通过 `RACE=1 make test-go GO_RACE_TIMEOUT=25m` 显式调整；普通 Go 单测仍使用原期限。
 
+CI 的普通 Go race 测试按 Go 实际发现的顶层测试分为四组独立 runner，
+完整保留子测试、Example 和 Fuzz seed；新增测试自动纳入，不维护手写名单。
+原有两项 `Concurrency under the race detector` 检查等待全部分组成功后再运行，
+`CI gate` 直接要求四组、容量探针与两项 race 集成都成功。权限与发布条件不变。
+单组可用 `python3 scripts/run_go_race_shard.py --index 0 --count 4 --output /tmp/go-race-0`
+复现（index 为 0–3）；输出目录保存发现清单、分组清单与含耗时的 Go JSON 结果。
+本地完整检查仍使用 `RACE=1 make test-go`，不因 CI 分片缩减覆盖。
+
 单个套件也可以照旧直接调用；它会构建后端、在新临时目录按数字顺序逐条执行迁移、
 启动测试服务，并在成功或失败后停止服务、删除数据：
 

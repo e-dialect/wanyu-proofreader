@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -115,11 +116,12 @@ func (s *importService) ownCurrentProofread(page *core.Record, userID string) bo
 }
 
 type pdfPreviewDescriptor struct {
-	Key       string    `json:"key"`
-	Start     int       `json:"start"`
-	End       int       `json:"end"`
-	Total     int       `json:"total"`
-	ExpiresAt time.Time `json:"expiresAt"`
+	SourceRegion *sourceRegion `json:"sourceRegion"`
+	Key          string        `json:"key"`
+	Start        int           `json:"start"`
+	End          int           `json:"end"`
+	Total        int           `json:"total"`
+	ExpiresAt    time.Time     `json:"expiresAt"`
 }
 
 // The asset identity is independent of the viewer and authorization window.
@@ -134,7 +136,9 @@ func (s *importService) taskPDFDescriptor(c *core.RequestEvent) error {
 		return err
 	}
 	c.Response.Header().Set("Cache-Control", "private, no-store")
-	return c.JSON(http.StatusOK, describePDF(file, start, end, time.Now()))
+	descriptor := describePDF(file, start, end, time.Now())
+	descriptor.SourceRegion = s.taskSourceRegion(c, file, start, descriptor.Key)
+	return c.JSON(http.StatusOK, descriptor)
 }
 func (s *importService) taskPDF(c *core.RequestEvent) error {
 	file, start, end, err := s.resolveTaskPDF(c)
@@ -143,6 +147,7 @@ func (s *importService) taskPDF(c *core.RequestEvent) error {
 	}
 	started := time.Now()
 	descriptor := describePDF(file, start, end, started)
+	descriptor.SourceRegion = s.taskSourceRegion(c, file, start, descriptor.Key)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 	output, err := s.cachedTaskPDFContext(ctx, file, descriptor)
@@ -154,7 +159,9 @@ func (s *importService) taskPDF(c *core.RequestEvent) error {
 	c.Response.Header().Set("X-Content-Type-Options", "nosniff")
 	c.Response.Header().Set("Content-Disposition", `inline; filename="task-preview.pdf"`)
 	// Metadata is also available across separately hosted frontend/backend deployments.
-	c.Response.Header().Set("Access-Control-Expose-Headers", "X-PDF-Start-Page, X-PDF-End-Page, X-PDF-Total-Pages, X-PDF-Preview-Key, X-PDF-Expires-At")
+	c.Response.Header().Set("Access-Control-Expose-Headers", "X-PDF-Start-Page, X-PDF-End-Page, X-PDF-Total-Pages, X-PDF-Preview-Key, X-PDF-Expires-At, X-PDF-Source-Region")
+	regionJSON, _ := json.Marshal(descriptor.SourceRegion)
+	c.Response.Header().Set("X-PDF-Source-Region", string(regionJSON))
 	c.Response.Header().Set("X-PDF-Start-Page", fmt.Sprint(start))
 	c.Response.Header().Set("X-PDF-End-Page", fmt.Sprint(end))
 	c.Response.Header().Set("X-PDF-Total-Pages", fmt.Sprint(descriptor.Total))

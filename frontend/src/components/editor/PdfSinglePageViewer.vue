@@ -1,30 +1,60 @@
 <template>
   <div ref="viewerRef" class="pdf-viewer">
-    <div class="pdf-toolbar" role="toolbar" aria-label="原文工具">
+    <div
+      v-show="!error || !retryEnabled || isFullscreen"
+      class="pdf-toolbar"
+      role="toolbar"
+      aria-label="原文工具"
+    >
       <slot name="navigation" />
       <div class="pdf-toolbar-group">
         <button
           type="button"
           class="pdf-tool"
-          :disabled="zoom <= 0.5"
+          :disabled="zoomPercent <= minZoom"
           aria-label="缩小"
-          @click="changeZoom(-0.25)"
+          @click="setZoom((zoomPercent - 25) / 100)"
         >
           －
         </button>
-        <span class="pdf-zoom-label">{{ Math.round(zoom * 100) }}%</span>
+        <label class="pdf-zoom-control">
+          <input
+            class="form-control pdf-zoom-input"
+            type="number"
+            inputmode="numeric"
+            :min="minZoom"
+            :max="maxZoom"
+            :value="zoomDraft ?? zoomPercent"
+            aria-label="原文缩放百分比"
+            @input="zoomDraft = $event.target.value"
+            @change="applyZoomInput"
+            @blur="zoomDraft !== null && applyZoomInput($event)"
+            @keydown.enter.prevent="applyZoomInput"
+          />
+          <span aria-hidden="true">%</span>
+        </label>
         <button
           type="button"
           class="pdf-tool"
-          :disabled="zoom >= 3"
+          :disabled="zoomPercent >= maxZoom"
           aria-label="放大"
-          @click="changeZoom(0.25)"
+          @click="setZoom((zoomPercent + 25) / 100)"
         >
           ＋
         </button>
-        <button type="button" class="pdf-tool" @click="resetView">适合宽度</button>
+        <input
+          class="pdf-zoom-range"
+          type="range"
+          :min="minZoom"
+          :max="maxZoom"
+          :value="zoomPercent"
+          aria-label="原文缩放滑块"
+          :aria-valuetext="`${zoomPercent}%`"
+          @input="setZoom($event.target.valueAsNumber / 100)"
+        />
       </div>
       <div class="pdf-toolbar-group">
+        <button type="button" class="pdf-tool" @click="resetView">适合宽度</button>
         <span class="pdf-page-label" aria-live="polite"
           >第 {{ sourcePageNumber || safePageLabel }} /
           {{ sourceTotalPages || totalPages || '—' }} 页</span
@@ -39,14 +69,42 @@
     <div v-if="fullscreenError" class="alert alert-warning pdf-fullscreen-notice" role="status">
       {{ fullscreenError }}
     </div>
-    <div v-if="error" class="alert alert-error pdf-error" role="alert">{{ error }}</div>
-    <div v-else ref="wrapRef" class="pdf-scroll" role="region" tabindex="0" aria-label="PDF 原文">
+    <div v-if="error" class="alert alert-error pdf-error" role="alert">
+      <p>{{ error }}</p>
+      <button
+        v-if="retryEnabled"
+        type="button"
+        class="btn btn-secondary btn-sm"
+        :disabled="loading"
+        @click="emit('retry')"
+      >
+        重新读取原文
+      </button>
+    </div>
+    <div
+      v-else
+      ref="wrapRef"
+      class="pdf-scroll"
+      role="region"
+      tabindex="0"
+      aria-label="PDF 原文"
+      @wheel="zoomWithWheel"
+      @gesturestart="startTrackpadGesture"
+      @gesturechange="updateTrackpadGesture"
+      @gestureend="endTrackpadGesture"
+      @touchstart="startTouchPinch"
+      @touchmove="updateTouchPinch"
+      @touchend="touchPinch = null"
+      @touchcancel="touchPinch = null"
+    >
       <div
+        ref="stageRef"
         class="pdf-canvas-stage"
+        :class="{ 'pdf-canvas-stage--local': crop }"
         :style="{
           width: `${canvasCssWidth}px`,
           height: `${canvasCssHeight}px`,
-          visibility: loading || rendering ? 'hidden' : 'visible'
+          visibility: loading || (rendering && !hasCanvasPage) ? 'hidden' : 'visible'
         }"
       >
         <img
@@ -56,7 +114,7 @@
           :width="pageImage.width"
           :height="pageImage.height"
           :style="imageStyle"
-          alt="原文页面"
+          :alt="crop ? '本条原文局部' : '原文页面'"
           @error="emit('image-error')"
           @load="reportSourceVisible"
         />
@@ -65,18 +123,25 @@
           ref="canvasRef"
           class="pdf-canvas"
           role="img"
-          aria-label="PDF 页面图像"
+          :aria-label="crop ? '本条原文局部' : 'PDF 页面图像'"
         ></canvas>
-        <div v-if="src && watermarkUserId" class="pdf-identity-watermark" aria-hidden="true">
+        <div
+          v-if="src && watermarkUserId"
+          class="pdf-identity-watermark"
+          :class="{ 'pdf-identity-watermark--compact': compactWatermark }"
+          aria-hidden="true"
+        >
           <span
             v-for="tile in watermarkTileCount"
             :key="tile"
             class="pdf-identity-watermark-tile"
-            >{{ identityStamp }}</span
+            >{{ compactWatermark ? `UID ${watermarkUserId}` : identityStamp }}</span
           >
         </div>
       </div>
-      <div v-if="loading || rendering" class="pdf-loading-mask" role="status">PDF 加载中...</div>
+      <div v-if="loading || (rendering && !hasCanvasPage)" class="pdf-loading-mask" role="status">
+        PDF 加载中...
+      </div>
     </div>
   </div>
 </template>
@@ -84,6 +149,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { measureBusiness } from '@/lib/businessMetrics'
+import { sourceViewFit } from '@/lib/sourceRegion'
 
 let sourceStartedAt = performance.now()
 let sourceGeneration = 0
@@ -96,11 +162,13 @@ function reportSourceVisible() {
     measureBusiness('source_visible', performance.now() - sourceStartedAt)
   })
 }
-const emit = defineEmits(['image-error'])
+const emit = defineEmits(['image-error', 'show-full-page', 'retry', 'document-loaded'])
 
 const props = defineProps({
   src: { type: String, default: '' },
+  retryEnabled: { type: Boolean, default: false },
   pageImage: { type: Object, default: null },
+  sourceRegion: { type: Object, default: null },
   watermarkUserId: { type: String, default: '' },
   watermarkProjectId: { type: String, default: '' },
   pageNumber: { type: Number, default: 1 },
@@ -119,13 +187,26 @@ watch(
 
 const viewerRef = ref(null)
 const wrapRef = ref(null)
+const stageRef = ref(null)
 const canvasRef = ref(null)
 const loading = ref(false)
 const rendering = ref(false)
+const hasCanvasPage = ref(false)
 const error = ref('')
 const fullscreenError = ref('')
+const minZoom = 50
+const maxZoom = 300
 const zoom = ref(1)
+const zoomPercent = computed(() => Math.round(zoom.value * 100))
+const zoomDraft = ref(null)
 const rotation = ref(0)
+const crop = computed(() => (rotation.value === 0 ? props.sourceRegion?.rect : null))
+const regionIdentity = computed(() => {
+  const region = props.sourceRegion
+  return region
+    ? [region.entryId, region.physicalPage, ...Object.values(region.rect)].join(':')
+    : ''
+})
 const totalPages = ref(0)
 const canvasCssWidth = ref(1)
 const canvasCssHeight = ref(1)
@@ -139,6 +220,11 @@ let pdfjsLib = null
 let loadGeneration = 0
 let renderGeneration = 0
 let sourceReadController = null
+let zoomRenderTimer = null
+let touchPinch = null
+let trackpadStartZoom = null
+let pendingAnchor = null
+let anchorQueued = false
 // Keep the access time stable while reading; renew it for a new viewer or
 // asset without changing the underlying shared image/PDF.
 const accessedAt = ref('')
@@ -153,6 +239,7 @@ const identityStamp = computed(
   () =>
     `万语校坊 · UID ${props.watermarkUserId}\n项目 ${props.watermarkProjectId}\n${accessedAt.value}`
 )
+const compactWatermark = computed(() => crop.value && canvasCssHeight.value < 95)
 const watermarkTileCount = computed(
   () =>
     Math.max(1, Math.floor(canvasCssWidth.value / 210)) *
@@ -160,6 +247,18 @@ const watermarkTileCount = computed(
 )
 const imageStyle = computed(() => {
   if (!props.pageImage) return {}
+  if (crop.value) {
+    const { x, y, width, height } = crop.value
+    const fullWidth = canvasCssWidth.value / width
+    const fullHeight = canvasCssHeight.value / height
+    return {
+      width: `${fullWidth}px`,
+      height: `${fullHeight}px`,
+      position: 'absolute',
+      left: `${-x * fullWidth}px`,
+      top: `${-y * fullHeight}px`
+    }
+  }
   const odd = rotation.value % 180 !== 0
   const width = odd ? canvasCssHeight.value : canvasCssWidth.value
   const height = odd ? canvasCssWidth.value : canvasCssHeight.value
@@ -186,7 +285,19 @@ watch(
   { immediate: true }
 )
 
-watch([() => props.pageNumber, zoom, rotation], async () => {
+watch([() => props.pageNumber, regionIdentity], async ([, currentRegion], [, previousRegion]) => {
+  hasCanvasPage.value = false
+  if (currentRegion !== previousRegion) {
+    zoom.value = 1
+    zoomDraft.value = null
+    if (currentRegion) rotation.value = 0
+    if (wrapRef.value) {
+      wrapRef.value.scrollTop = 0
+      wrapRef.value.scrollLeft = 0
+    }
+    await renderCurrentPage(null)
+    return
+  }
   await renderCurrentPage()
 })
 
@@ -199,6 +310,7 @@ async function loadPdf(src) {
   sourceReadController?.abort()
   sourceReadController = null
   cleanupRenderOnly()
+  pdfDoc = null
   error.value = ''
   fullscreenError.value = ''
   totalPages.value = 0
@@ -229,8 +341,6 @@ async function loadPdf(src) {
   }
 
   loading.value = true
-  zoom.value = 1
-  rotation.value = 0
   let readController = null
   try {
     const lib = await ensurePdfJsLib()
@@ -274,16 +384,30 @@ async function loadPdf(src) {
     }
     pdfDoc = document
     totalPages.value = pdfDoc.numPages || 0
+    emit('document-loaded', totalPages.value)
     await nextTick()
     await renderCurrentPage()
     attachResizeObserver()
   } catch (e) {
     if (generation !== loadGeneration) return
     pdfDoc = null
-    error.value = e?.message || 'PDF 加载失败'
+    error.value = pdfFailureMessage(e, 'PDF 加载失败')
   } finally {
     if (sourceReadController === readController) sourceReadController = null
     if (generation === loadGeneration) loading.value = false
+  }
+}
+
+function pdfFailureMessage(error, fallback) {
+  switch (error?.name) {
+    case 'InvalidPDFException':
+      return 'PDF 文件结构无效，无法预览。可重新读取；若仍失败，请联系项目管理员检查来源文件。'
+    case 'PasswordException':
+      return '此 PDF 受密码保护，当前无法预览。请联系项目管理员提供可预览的来源文件。'
+    case 'MissingPDFException':
+      return '未找到原文 PDF，请重新读取或联系项目管理员核对来源文件。'
+    default:
+      return error?.message || fallback
   }
 }
 
@@ -312,14 +436,19 @@ function loadScript(src, type = 'text/javascript') {
   })
 }
 
-async function renderCurrentPage() {
+async function renderCurrentPage(anchor) {
+  clearTimeout(zoomRenderTimer)
   if (props.pageImage && wrapRef.value) {
     const odd = rotation.value % 180 !== 0
     const width = odd ? props.pageImage.height : props.pageImage.width
     const height = odd ? props.pageImage.width : props.pageImage.height
-    const scale = (Math.max(1, wrapRef.value.clientWidth - 16) / width) * zoom.value
-    canvasCssWidth.value = width * scale
-    canvasCssHeight.value = height * scale
+    const fit = sourceViewFit(
+      width,
+      height,
+      Math.max(1, wrapRef.value.clientWidth - 16),
+      crop.value
+    )
+    resizeStage(fit.width * zoom.value, fit.height * zoom.value, anchor)
     return
   }
   if (!pdfDoc || !canvasRef.value || !wrapRef.value) return
@@ -336,6 +465,7 @@ async function renderCurrentPage() {
     renderTask = null
   }
 
+  let nextCanvas = null
   try {
     const page = await pdfDoc.getPage(safePage)
     if (generation !== renderGeneration) return
@@ -344,58 +474,196 @@ async function renderCurrentPage() {
       rotation: (page.rotate + rotation.value) % 360
     })
     const availableWidth = Math.max(1, wrapRef.value.clientWidth - 16)
-    const fitScale = availableWidth / baseViewport.width
+    const fit = sourceViewFit(baseViewport.width, baseViewport.height, availableWidth, crop.value)
     const viewport = page.getViewport({
-      scale: fitScale * zoom.value,
+      scale: fit.scale * zoom.value,
       rotation: (page.rotate + rotation.value) % 360
     })
 
     const canvas = canvasRef.value
-    const context = canvas.getContext('2d')
-    const dpr = window.devicePixelRatio || 1
-    const cssWidth = Math.max(1, Math.floor(viewport.width))
-    const cssHeight = Math.max(1, Math.floor(viewport.height))
-    canvasCssWidth.value = cssWidth
-    canvasCssHeight.value = cssHeight
-    canvas.width = Math.floor(cssWidth * dpr)
-    canvas.height = Math.floor(cssHeight * dpr)
-    canvas.style.width = `${cssWidth}px`
-    canvas.style.height = `${cssHeight}px`
+    // The displayed canvas keeps the previous bitmap while PDF.js draws the new one.
+    nextCanvas = document.createElement('canvas')
+    const cssWidth = Math.max(1, Math.floor(fit.width * zoom.value))
+    const cssHeight = Math.max(1, Math.floor(fit.height * zoom.value))
+    resizeStage(cssWidth, cssHeight, anchor)
+    // A displayed bitmap and a pending one may coexist. Bound the backing
+    // store separately from the reader's chosen CSS zoom, including on Retina.
+    const outputScale = Math.min(
+      window.devicePixelRatio || 1,
+      4096 / Math.max(cssWidth, cssHeight),
+      Math.sqrt(12_000_000 / (cssWidth * cssHeight))
+    )
+    nextCanvas.width = Math.max(1, Math.floor(cssWidth * outputScale))
+    nextCanvas.height = Math.max(1, Math.floor(cssHeight * outputScale))
 
     renderTask = page.render({
-      canvasContext: context,
+      canvasContext: nextCanvas.getContext('2d'),
       viewport,
-      transform: dpr === 1 ? null : [dpr, 0, 0, dpr, 0, 0]
+      transform:
+        outputScale === 1 && !crop.value
+          ? null
+          : [
+              outputScale,
+              0,
+              0,
+              outputScale,
+              -fit.x * zoom.value * outputScale,
+              -fit.y * zoom.value * outputScale
+            ]
     })
     await renderTask.promise
     if (generation === renderGeneration) {
       renderTask = null
+      canvas.width = nextCanvas.width
+      canvas.height = nextCanvas.height
+      canvas.getContext('2d').drawImage(nextCanvas, 0, 0)
+      hasCanvasPage.value = true
       reportSourceVisible()
     }
   } catch (e) {
     if (generation === renderGeneration && e?.name !== 'RenderingCancelledException') {
-      error.value = e?.message || '渲染失败'
+      error.value = pdfFailureMessage(e, '渲染失败')
     }
   } finally {
+    if (nextCanvas) {
+      nextCanvas.width = 0
+      nextCanvas.height = 0
+    }
     if (generation === renderGeneration) rendering.value = false
   }
 }
 
-function changeZoom(delta) {
-  zoom.value = Math.max(0.5, Math.min(3, Math.round((zoom.value + delta) * 100) / 100))
+function readAnchor(clientX, clientY) {
+  if (!stageRef.value || !wrapRef.value || canvasCssWidth.value <= 1) return null
+  const stage = stageRef.value.getBoundingClientRect()
+  if (!stage.width || !stage.height) return null
+  const wrap = wrapRef.value.getBoundingClientRect()
+  const x = clientX ?? wrap.left + wrap.width / 2
+  const y = clientY ?? wrap.top + wrap.height / 2
+  return {
+    x: Math.max(0, Math.min(1, (x - stage.left) / stage.width)),
+    y: Math.max(0, Math.min(1, (y - stage.top) / stage.height)),
+    clientX: x,
+    clientY: y
+  }
 }
 
-function resetView() {
+function resizeStage(width, height, anchor) {
+  if (anchor === null) pendingAnchor = null
+  if (width === canvasCssWidth.value && height === canvasCssHeight.value) return
+  pendingAnchor = anchor === undefined ? pendingAnchor || readAnchor() : anchor
+  canvasCssWidth.value = width
+  canvasCssHeight.value = height
+  if (!pendingAnchor || anchorQueued) return
+  anchorQueued = true
+  nextTick(() => {
+    const target = pendingAnchor
+    pendingAnchor = null
+    anchorQueued = false
+    if (!target || !wrapRef.value || !stageRef.value) return
+    const stage = stageRef.value.getBoundingClientRect()
+    wrapRef.value.scrollLeft += stage.left + stage.width * target.x - target.clientX
+    wrapRef.value.scrollTop += stage.top + stage.height * target.y - target.clientY
+  })
+}
+
+function setZoom(factor, clientX, clientY) {
+  if (!Number.isFinite(factor)) return
+  const nextZoom = Math.max(minZoom / 100, Math.min(maxZoom / 100, factor))
+  if (nextZoom === zoom.value) return
+  const ratio = nextZoom / zoom.value
+  zoom.value = nextZoom
+  resizeStage(
+    canvasCssWidth.value * ratio,
+    canvasCssHeight.value * ratio,
+    readAnchor(clientX, clientY)
+  )
+  if (props.pageImage) return
+  clearTimeout(zoomRenderTimer)
+  zoomRenderTimer = setTimeout(renderCurrentPage, 120)
+}
+
+function applyZoomInput(event) {
+  const input = event.target
+  setZoom(Math.round(input.valueAsNumber) / 100)
+  zoomDraft.value = null
+  input.value = zoomPercent.value
+}
+
+function zoomWithWheel(event) {
+  if (!event.ctrlKey || !event.deltaY || !event.cancelable || canvasCssWidth.value <= 1) return
+  event.preventDefault()
+  if (trackpadStartZoom !== null || touchPinch) return
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? wrapRef.value.clientHeight : 1
+  setZoom(zoom.value * Math.exp((-event.deltaY * unit) / 180), event.clientX, event.clientY)
+}
+
+function startTrackpadGesture(event) {
+  if (canvasCssWidth.value <= 1 || !event.cancelable) return
+  event.preventDefault()
+  if (!touchPinch) trackpadStartZoom = zoom.value
+}
+
+function updateTrackpadGesture(event) {
+  if (trackpadStartZoom === null && !touchPinch) return
+  if (event.cancelable) event.preventDefault()
+  if (trackpadStartZoom !== null) {
+    setZoom(trackpadStartZoom * event.scale, event.clientX, event.clientY)
+  }
+}
+
+function endTrackpadGesture(event) {
+  if (trackpadStartZoom === null && !touchPinch) return
+  if (event.cancelable) event.preventDefault()
+  trackpadStartZoom = null
+}
+
+function touchGeometry(event) {
+  if (event.touches.length !== 2 || canvasCssWidth.value <= 1) return null
+  const a = event.touches[0]
+  const b = event.touches[1]
+  if (!wrapRef.value.contains(a.target) || !wrapRef.value.contains(b.target)) return null
+  return {
+    distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+    x: (a.clientX + b.clientX) / 2,
+    y: (a.clientY + b.clientY) / 2
+  }
+}
+
+function startTouchPinch(event) {
+  const geometry = touchGeometry(event)
+  if (!geometry?.distance || !event.cancelable) return
+  event.preventDefault()
+  if (trackpadStartZoom === null) {
+    touchPinch = { distance: geometry.distance, zoom: zoom.value }
+  }
+}
+
+function updateTouchPinch(event) {
+  if (!touchPinch) return
+  const geometry = touchGeometry(event)
+  if (!geometry) return
+  if (event.cancelable) event.preventDefault()
+  setZoom((touchPinch.zoom * geometry.distance) / touchPinch.distance, geometry.x, geometry.y)
+}
+
+async function resetView() {
   zoom.value = 1
   rotation.value = 0
   if (wrapRef.value) {
     wrapRef.value.scrollTop = 0
     wrapRef.value.scrollLeft = 0
   }
+  await renderCurrentPage(null)
 }
 
 function rotateClockwise() {
   rotation.value = (rotation.value + 90) % 360
+  if (props.sourceRegion) {
+    emit('show-full-page')
+    return
+  }
+  renderCurrentPage()
 }
 
 async function toggleFullscreen() {
@@ -433,6 +701,9 @@ function attachResizeObserver() {
 }
 
 function cleanupRenderOnly() {
+  clearTimeout(zoomRenderTimer)
+  touchPinch = null
+  trackpadStartZoom = null
   renderGeneration++
   rendering.value = false
   if (renderTask) {
@@ -496,8 +767,8 @@ onBeforeUnmount(async () => {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--pdf-track-strong);
   background: var(--pdf-toolbar);
@@ -506,6 +777,8 @@ onBeforeUnmount(async () => {
 .pdf-toolbar-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 0.4rem;
 }
 
@@ -523,7 +796,6 @@ onBeforeUnmount(async () => {
   cursor: not-allowed;
 }
 
-.pdf-zoom-label,
 .pdf-page-label {
   min-width: 48px;
   color: var(--ink-muted);
@@ -531,12 +803,32 @@ onBeforeUnmount(async () => {
   text-align: center;
 }
 
+.pdf-zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.pdf-zoom-input {
+  width: 4.2rem;
+  padding: 0.25rem 0.4rem;
+}
+
+.pdf-zoom-range {
+  width: clamp(4.5rem, 9vw, 7rem);
+  accent-color: var(--primary);
+}
+
 .pdf-scroll {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
   padding: 8px;
+  touch-action: pan-x pan-y;
 }
 
 .pdf-canvas-stage {
@@ -546,8 +838,13 @@ onBeforeUnmount(async () => {
   box-shadow: 0 2px 8px var(--slate-shadow);
 }
 
+.pdf-canvas-stage--local {
+  overflow: hidden;
+}
 .pdf-canvas {
   display: block;
+  width: 100%;
+  height: 100%;
   background: var(--surface);
 }
 
@@ -565,6 +862,14 @@ onBeforeUnmount(async () => {
   user-select: none;
   color: var(--pdf-grid);
   overflow: hidden;
+}
+.pdf-canvas-stage--local .pdf-identity-watermark {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  grid-auto-rows: min(100%, 100px);
+}
+.pdf-identity-watermark--compact .pdf-identity-watermark-tile {
+  transform: none;
+  line-height: 1;
 }
 .pdf-identity-watermark-tile {
   align-self: center;
@@ -590,12 +895,7 @@ onBeforeUnmount(async () => {
 @media (max-width: 700px) {
   .pdf-toolbar {
     align-items: flex-start;
-    flex-direction: row;
-    overflow-x: auto;
     padding: 0.25rem;
-  }
-  .pdf-toolbar-group {
-    flex: 0 0 auto;
   }
   .pdf-tool {
     white-space: nowrap;

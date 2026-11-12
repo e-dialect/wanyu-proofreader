@@ -5,6 +5,8 @@ on:
     branches:
       - main
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -49,8 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # The whitespace gate diffs against the PR base, which the default
-          # shallow checkout does not contain.
+          # Diff checks need the PR or merge group base from git history.
           fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
@@ -88,9 +89,14 @@ jobs:
         # A bare `git diff --check` compares the working tree to the index, which
         # is always clean right after checkout, so it can never fail in CI.
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -eu
+          if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            test -n "$BASE"
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            git merge-base --is-ancestor "$BASE" HEAD
+          fi
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             git diff --check "$BASE" HEAD
           else
@@ -140,16 +146,14 @@ jobs:
         if: matrix.suite == 'account_security'
         run: python3 backend/tests/run_account_security_integration.py
 
-  race-integration:
-    name: Concurrency under the race detector (${{ matrix.suite }})
+  race-unit:
+    name: Go race tests (${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        # The durable import worker and the claim/lease transactions are the two
-        # paths that touch shared maps and rows concurrently.
-        suite: [upload_jobs, task_leases]
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -159,11 +163,52 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - name: Go unit tests with the race detector
-        if: matrix.suite == 'upload_jobs'
+      - name: Discover and run every assigned Go race test
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: python3 scripts/run_go_race_shard.py --index "$SHARD" --count 4 --output "$RUNNER_TEMP/race-results"
+      - name: Keep the test inventory and timing evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: go-race-${{ matrix.shard }}
+          path: ${{ runner.temp }}/race-results
+          if-no-files-found: error
+
+  race-integration:
+    name: Concurrency under the race detector (${{ matrix.suite }})
+    # Preserve the old contexts' guarantee: they cannot pass unless every Go
+    # race test passed. CI gate also lists the shards directly and rejects skips.
+    needs: [race-unit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # The durable import worker and the claim/lease transactions are the two
+        # paths that touch shared maps and rows concurrently.
+        suite: [upload_jobs, task_leases]
+    steps:
+      - name: Require every Go race shard to pass
+        env:
+          RACE_RESULT: ${{ needs.race-unit.result }}
         run: |
-          RACE=1 make test-go
-          go test -C backend -race -tags capacityprobe -run '^TestCapacityProbe' ./...
+          if [ "$RACE_RESULT" != success ]; then
+            printf 'Go race shards did not all pass: %s\n' "$RACE_RESULT"
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Capacity probe tests with the race detector
+        if: matrix.suite == 'upload_jobs'
+        run: go test -C backend -race -tags capacityprobe -run '^TestCapacityProbe' ./...
       - name: Integration suite with a race-detected server
         env:
           SUITE: ${{ matrix.suite }}
@@ -212,9 +257,10 @@ jobs:
       - name: Run against a freshly migrated disposable database
         run: python3 backend/tests/run_integration.py ${{ matrix.suite }}
 
+  # Pin jobs installing browser or PDF packages during the ubuntu-latest migration.
   chunk-upload-browser:
     name: Chunk upload browser regression
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -226,6 +272,20 @@ jobs:
         with:
           node-version: "24"
       - run: npm --prefix frontend ci && npm --prefix frontend run build
+      - &ubuntu-archive-fallback
+        name: Select an available Ubuntu archive
+        run: |
+          if timeout 5s getent ahostsv4 azure.archive.ubuntu.com >/dev/null &&
+             timeout 5s getent ahostsv4 archive.ubuntu.com >/dev/null &&
+             timeout 5s getent ahostsv4 security.ubuntu.com >/dev/null; then
+            exit 0
+          fi
+          mirror=https://mirrors.edge.kernel.org/ubuntu
+          curl --fail --silent --show-error --retry 2 --connect-timeout 5 --max-time 15 \
+            "$mirror/dists/noble-security/InRelease" --output /dev/null
+          # Keep the Ubuntu archive keyring and all enabled pockets, including security.
+          sudo sed -i "s|^URIs:.*|URIs: $mirror/|" /etc/apt/sources.list.d/ubuntu.sources
+          printf 'Using Ubuntu archive mirror %s\n' "$mirror"
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/upload-browser" playwright@1.62.1
@@ -264,7 +324,7 @@ jobs:
 
   assist-browser:
     name: Assist admin, hall and editor screenshots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -282,6 +342,7 @@ jobs:
           # 而生产 CSP 的 connect-src 不含 http://127.0.0.1:8090，指向它会被拦成
           # "页面暂时无法显示"，于是整条作业只会截到错误边界。
           VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - *ubuntu-archive-fallback
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/assist-browser" playwright@1.62.1
@@ -325,7 +386,7 @@ jobs:
 
   source-fidelity-browser:
     name: Source verification progress and excluded-task browser regression
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -336,6 +397,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - *ubuntu-archive-fallback
       - name: Install page image renderers
         run: sudo apt-get update && sudo apt-get install -y poppler-utils webp
       - name: Build the SPA for same-origin API calls
@@ -368,7 +430,7 @@ jobs:
 
   quality-state-browser:
     name: Quality state admin screenshots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -385,6 +447,7 @@ jobs:
           # 与 assist-browser 同一理由：构建期把后端指到同源，否则生产 CSP 的
           # connect-src 不含 http://127.0.0.1:8090，截图只会截到错误边界。
           VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - *ubuntu-archive-fallback
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/quality-browser" playwright@1.62.1
@@ -431,7 +494,7 @@ jobs:
 
   scheme-conversion-browser:
     name: Scheme conversion admin screenshots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -446,6 +509,7 @@ jobs:
         run: |
           npm --prefix frontend ci
           VITE_PB_URL=http://localhost npm --prefix frontend run build
+      - *ubuntu-archive-fallback
       - name: Install browser
         run: |
           npm install --prefix "$RUNNER_TEMP/scheme-browser" playwright@1.62.1
@@ -522,7 +586,7 @@ jobs:
       - name: Check formatting of touched frontend sources
         working-directory: .
         env:
-          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORMAT_BASE: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}
         run: python3 scripts/check_prettier.py --base "${FORMAT_BASE:-origin/main}"
 
       - name: Scan repository history for secrets
@@ -560,7 +624,7 @@ jobs:
 
   backend-unicode:
     name: Backend Unicode workflow
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -588,6 +652,7 @@ jobs:
         run: python3 backend/tests/run_bundle_import_integration.py
       - name: Verify OCR worker failures and restart recovery without external data
         run: python3 backend/tests/run_ocr_runtime_integration.py
+      - *ubuntu-archive-fallback
       - name: Install frontend and mounted component browser
         run: |
           npm --prefix frontend ci
@@ -656,7 +721,7 @@ jobs:
 
   containers:
     name: Containers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out repository
@@ -824,6 +889,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - *ubuntu-archive-fallback
       - name: Extract the actual frontend image for OCR browser verification
         run: |
           container=$(docker create fangji-frontend:ci)
@@ -893,7 +959,7 @@ jobs:
 
   pdf-access:
     name: pdf-access integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -904,6 +970,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - *ubuntu-archive-fallback
       - name: Install page image renderers
         run: sudo apt-get update && sudo apt-get install -y poppler-utils webp
       - run: python3 backend/tests/run_integration.py pdf_access_integration.mjs --env REQUIRE_PAGE_IMAGES=1
@@ -946,6 +1013,7 @@ jobs:
       - prepare-matrix
       - static-analysis
       - pocketbase-compatibility
+      - race-unit
       - race-integration
       - seed-demo
       - core-workflows

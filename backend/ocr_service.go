@@ -32,11 +32,12 @@ const ocrEngineEnv = "OCR_ENGINE_ENABLED"
 var ocrRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{16,80}$`)
 
 type ocrOptions struct {
-	RequestID string `json:"requestId,omitempty"`
-	StartPage int    `json:"startPage"`
-	EndPage   int    `json:"endPage"`
-	Language  string `json:"language"`
-	Layout    string `json:"layout"`
+	ProjectFileID string `json:"projectFileId,omitempty"`
+	RequestID     string `json:"requestId,omitempty"`
+	StartPage     int    `json:"startPage"`
+	EndPage       int    `json:"endPage"`
+	Language      string `json:"language"`
+	Layout        string `json:"layout"`
 }
 
 func normalizeOCROptions(options ocrOptions, pageLimit int) (ocrOptions, error) {
@@ -170,6 +171,19 @@ func (s *importService) startOCR(c *core.RequestEvent) error {
 	if projectFileID == "" {
 		return apis.NewBadRequestError("请先上传项目的 PDF 文件，再发起识别。", nil)
 	}
+	if requested.ProjectFileID != "" && requested.ProjectFileID != projectFileID {
+		return apis.NewBadRequestError("主 PDF 已更换，请刷新当前原文并重新核对提取页段。", nil)
+	}
+	sourceFile, err := s.app.FindRecordById("project_files", projectFileID)
+	if err != nil {
+		return apis.NewBadRequestError("原 PDF 不可用，请重新加载。", err)
+	}
+	sourceBinding := newOCRSourceBinding(sourceFile)
+	sourceBindingJSON := ""
+	if len(sourceBinding.SHA256) == 64 {
+		sourceBindingJSON = encodeSourceBinding(sourceBinding)
+	}
+
 	options, err := normalizeOCROptions(requested, pdfPageLimit)
 	if err != nil {
 		return apis.NewBadRequestError(err.Error(), nil)
@@ -200,6 +214,8 @@ func (s *importService) startOCR(c *core.RequestEvent) error {
 		"file_hash":      hash,
 		"ocr_request_id": requested.RequestID,
 	})
+	// Hidden evidence is server-owned; RecordUpsert.Load intentionally ignores it.
+	record.Set("ocr_source_binding_json", sourceBindingJSON)
 	if err := form.Submit(); err != nil {
 		// The nonempty request index remains unique in all terminal states.
 		// A concurrent winner may have committed after the initial lookup.
@@ -274,6 +290,13 @@ func (s *importService) processOCR(work importWork) {
 		fail("OCR_SOURCE_MISSING", "原 PDF 不存在，请重新上传。", err)
 		return
 	}
+	var binding ocrSourceBinding
+	hasBinding := job.GetString("ocr_source_binding_json") != ""
+	if hasBinding && (json.Unmarshal([]byte(job.GetString("ocr_source_binding_json")), &binding) != nil || !sourceBindingMatches(binding, file)) {
+		fail("OCR_SOURCE_CHANGED", "原 PDF 版本已变化，请重新发起提取。", nil)
+		return
+	}
+
 	if err := s.clearJobPages(job.Id); err != nil {
 		fail("OCR_RECOVERY_FAILED", "清理上次暂存结果失败。", err)
 		return
@@ -344,7 +367,19 @@ func (s *importService) processOCR(work importWork) {
 			failPage("OCR_SCANNED_UNSUPPORTED", "扫描页难字安全未达标，当前仅支持可映射文字层 PDF；请手工转录或导入 CSV。", ocrengine.ErrScannedUnsupported)
 			return
 		}
-		artifact, err := s.saveOCREvidence(job, result)
+		var pageBinding *ocrSourceBinding
+		if result.SourceSHA256 != "" && len(file.GetString("file_hash")) == 64 && result.SourceSHA256 != file.GetString("file_hash") {
+			failPage("OCR_SOURCE_CHANGED", "提取结果与原 PDF 版本不一致，暂存条目未发布。", nil)
+			return
+		}
+		if hasBinding && result.SourceSHA256 == binding.SHA256 && result.Geometry != nil {
+			snapshot := binding
+			snapshot.PhysicalPage = page
+			snapshot.Geometry = result.Geometry
+			pageBinding = &snapshot
+		}
+
+		artifact, err := s.saveOCREvidence(job, result, pageBinding)
 		if err != nil {
 			failPage("OCR_EVIDENCE_FAILED", "保存识别中间态失败，条目未发布。", err)
 			return
@@ -367,6 +402,12 @@ func (s *importService) processOCR(work importWork) {
 				rowJSON, _ := json.Marshal(map[string]string{"原文": c.Text})
 				cells, _ := json.Marshal(row.Cells)
 				imported := csvPage{rowJSON: string(rowJSON), headersJSON: `["原文"]`, entryText: c.Text, pdfPage: page, ocrCellsJSON: string(cells), ocrAbstained: c.Status == "abstained"}
+				if pageBinding != nil {
+					rowBinding := *pageBinding
+					rowBinding.CellsSHA256 = sourceDigest(string(cells))
+					imported.sourceBindingJSON = encodeSourceBinding(rowBinding)
+				}
+
 				if err := savePage(tx, job.Id, job.GetString("project"), file.Id, next+index, imported, "", "", ""); err != nil {
 					return err
 				}
@@ -461,8 +502,15 @@ func (s *importService) recognizeOCRPage(client *http.Client, file *core.Record,
 	return result, err
 }
 
-func (s *importService) saveOCREvidence(job *core.Record, result ocrengine.Result) (*core.Record, error) {
-	data, err := json.Marshal(result)
+func (s *importService) saveOCREvidence(job *core.Record, result ocrengine.Result, bindings ...*ocrSourceBinding) (*core.Record, error) {
+	var binding *ocrSourceBinding
+	if len(bindings) > 0 {
+		binding = bindings[0]
+	}
+	data, err := json.Marshal(struct {
+		ocrengine.Result
+		SourceBinding *ocrSourceBinding `json:"source_binding,omitempty"`
+	}{result, binding})
 	if err != nil {
 		return nil, err
 	}

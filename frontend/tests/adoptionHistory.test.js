@@ -14,7 +14,7 @@ const script = view
   .match(/<script setup>([\s\S]*?)<\/script>/)[1]
   .replace(/^import[\s\S]*? from ['"][^'"]+['"]\r?$/gm, '')
 
-function fixture(services = {}) {
+function fixture(services = {}, onNavigate = () => {}) {
   const route = { params: { id: 'project-a' }, query: {} }
   let routeChanged
   let watchCount = 0
@@ -37,6 +37,7 @@ function fixture(services = {}) {
     useRoute: () => route,
     useRouter: () => ({
       push: async ({ query }) => {
+        onNavigate(query)
         route.query = query
         await routeChanged()
       }
@@ -72,7 +73,7 @@ function fixture(services = {}) {
     resetProject, load, selectBatch, batches, currentId, exceptions, batchEvents, summary,
     historyPage, requestedHistoryPage, historyTotalPages, historyTotalItems,
     loaded, loading, loadError, decisionDrafts, createForm, screen, createStep, detailTab, draftFor, create, preview, operationError,
-    exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage,
+    exceptionQuery, activeExceptionId, visibleExceptions, navigate, changePage, verifyReportScope, reportScopeReady,
     current, currentRecord, accessLost, projectUnavailable, pageScope, busy, message, confirmOpen, removeOpen, dirty, act,
     clearProtectedData, handleFailure, exportManifest
   }`
@@ -96,6 +97,96 @@ function deferred() {
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve))
+
+test('adoption detail reload preserves the list page independently of exception pagination', async () => {
+  const state = fixture()
+  await state.load(4)
+  await state.selectBatch('batch-four')
+  assert.equal(state.route.query.listPage, '4')
+  await state.navigate({ batch: 'batch-four', tab: 'exceptions', page: 2 })
+  assert.equal(state.route.query.listPage, '4')
+  const reloaded = fixture()
+  reloaded.route.query = { ...state.route.query }
+  await reloaded.reset()
+  assert.equal(reloaded.historyPage.value, 4)
+  assert.equal(reloaded.route.query.page, 2)
+  await reloaded.navigate({ page: reloaded.historyPage.value })
+  assert.equal(reloaded.historyPage.value, 4)
+  assert.equal(reloaded.screen.value, 'list')
+  assert.equal(Object.hasOwn(reloaded.route.query, 'returnPage'), false)
+})
+
+test('report-sourced creation uses only the verified import batch', async () => {
+  const project = 'project00000001'
+  const batch = 'import000000001'
+  let submitted
+  const state = fixture({
+    getBatchReport: async () => ({
+      schema: 'WanyuBatchReport/v1',
+      project_id: project,
+      batch: { id: batch, status: 'completed', filename: 'fixture.csv' },
+      metrics: { import: { retained: { value: 3 } } }
+    }),
+    createAdoptionBatch: async (_id, body) => {
+      submitted = body
+      return { id: 'created', project, counts: {}, reasons: [] }
+    },
+    previewAdoptionBatch: async () => ({})
+  })
+  state.route.params.id = project
+  state.route.query = {
+    view: 'create',
+    importJob: batch,
+    reportProject: project,
+    reportBatch: batch
+  }
+  state.screen.value = 'create'
+  state.createForm.recipient = '接收团队'
+  await state.verifyReportScope()
+  assert.equal(state.reportScopeReady.value, true)
+  await state.create()
+  assert.deepEqual(submitted.rule.importJobs, [batch])
+  assert.equal(state.route.query.reportBatch, batch)
+})
+
+test('a saved adoption batch navigates without an unsaved-create warning while a failed create stays dirty', async () => {
+  let state
+  let navigations = 0
+  state = fixture(
+    {
+      createAdoptionBatch: async () => ({
+        id: 'created',
+        project: 'project-a',
+        counts: {},
+        reasons: []
+      }),
+      previewAdoptionBatch: async () => ({})
+    },
+    () => {
+      navigations += 1
+      assert.equal(state.dirty.value, false)
+    }
+  )
+  state.screen.value = 'create'
+  state.createForm.recipient = '接收团队'
+  assert.equal(state.dirty.value, true)
+  await state.create()
+  assert.equal(navigations, 1)
+  assert.equal(state.currentId.value, 'created')
+  assert.equal(state.screen.value, 'detail')
+
+  const failed = fixture({
+    createAdoptionBatch: async () => {
+      throw new Error('暂时不可用')
+    }
+  })
+  failed.screen.value = 'create'
+  failed.createForm.recipient = '接收团队'
+  await failed.create()
+  assert.equal(failed.screen.value, 'create')
+  assert.equal(failed.dirty.value, true)
+  assert.equal(failed.createForm.recipient, '接收团队')
+})
 
 function assertProtectedDataCleared(state, accessLost = true) {
   assert.equal(state.accessLost.value, accessLost)

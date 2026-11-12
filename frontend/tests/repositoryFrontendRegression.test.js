@@ -4,6 +4,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { computed, reactive, ref, watch as vueWatch } from 'vue'
 import { createAccountViewScope } from '../src/lib/accountViewScope.js'
+import { createPdfPreviewCache } from '../src/lib/pdfPreviewCache.js'
+import { createPageImageCache } from '../src/lib/pageImageCache.js'
+import * as sourceRegion from '../src/lib/sourceRegion.js'
 import * as accountSecurity from '../src/lib/accountSecurity.js'
 import * as localAccountData from '../src/lib/localAccountData.js'
 import { adminRouteKey } from '../src/lib/adminRouteKey.js'
@@ -29,6 +32,7 @@ function evaluate(path, names, overrides = {}) {
     onBeforeUnmount: (callback) => cleanup.push(callback),
     getPbMessage: (error) => error.message,
     ...normalizationDraft,
+    ...sourceRegion,
     ...overrides
   }
   const environment = new Proxy(scope, {
@@ -506,6 +510,8 @@ regression(
         {
           loadTaskLease: () => ({ token: 'token', expiresAt: 'future' }),
           saveTaskLease: () => {},
+          unref: (value) =>
+            value && typeof value === 'object' && 'value' in value ? value.value : value,
           renewTaskLease: () => {
             started.resolve()
             return waiting.promise
@@ -530,6 +536,8 @@ regression(
       )
       Object.assign(context, {
         page: ref({ id: 'a' }),
+        returnTarget: ref('/tasks?view=active&project=project-a'),
+        taskEditTarget: (pageId) => ({ path: `/tasks/${pageId}/edit`, query: {} }),
         captureCase: () => version,
         isCurrentCase: (scope) => scope === version
       })
@@ -637,6 +645,166 @@ regression('PDF fallback arms expiration to recheck the authorization window', a
   } finally {
     globalThis.fetch = originalFetch
     globalThis.setTimeout = originalTimer
+  }
+})
+
+regression(
+  'same-page PDF tasks reauthorize regions without sharing their reading position',
+  async () => {
+    const descriptor = {
+      key: 'shared-pdf',
+      start: 5,
+      end: 6,
+      total: 10,
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    }
+    const region = (entryId) =>
+      entryId === 'legacy'
+        ? null
+        : {
+            entryId,
+            physicalPage: 5,
+            assetKey: descriptor.key,
+            rect: { x: 0.1, y: entryId === 'first' ? 0.2 : 0.4, width: 0.7, height: 0.1 }
+          }
+    let assetReads = 0
+    const fixture = evaluate('composables/useProjectPdf.js', ['useProjectPdf'], {
+      pb: {
+        authStore: { record: { id: 'u' }, token: 'token', onChange: () => () => {} },
+        buildURL: (path) => `https://example.test${path}`
+      },
+      fetch: async (url) => {
+        const entryId = new URL(url).pathname.split('/')[4]
+        if (url.endsWith('/descriptor'))
+          return Response.json({ ...descriptor, sourceRegion: region(entryId) })
+        assetReads++
+        return new Response('synthetic-pdf', {
+          headers: {
+            'X-PDF-Preview-Key': descriptor.key,
+            'X-PDF-Expires-At': descriptor.expiresAt,
+            'X-PDF-Start-Page': '5',
+            'X-PDF-End-Page': '6',
+            'X-PDF-Total-Pages': '10',
+            'X-PDF-Source-Region': JSON.stringify(region(entryId))
+          }
+        })
+      },
+      createPageImageCache: () => ({
+        clear() {},
+        load: async () => {
+          throw new Error('no image')
+        }
+      }),
+      createPdfPreviewCache: () =>
+        createPdfPreviewCache({
+          urls: { createObjectURL: () => 'blob:shared-pdf', revokeObjectURL: () => {} }
+        })
+    })
+    const page = ref({ id: 'first', pdf_page: 5 })
+    try {
+      const api = fixture.useProjectPdf(page)
+      await api.resolveProjectPdf()
+      assert.equal(api.assetRegion.value.rect.y, 0.2)
+      api.switchPdfPage(1)
+      await api.resolveProjectPdf(true)
+      assert.equal(api.currentPdfPage.value, 6, 'same task renewal preserves the page being read')
+      page.value = { ...page.value, id: 'second' }
+      await api.resolveProjectPdf()
+      assert.equal(api.currentPdfPage.value, 5, 'new trusted region returns to the entry page')
+      assert.equal(api.assetRegion.value.rect.y, 0.4)
+      api.switchPdfPage(1)
+      page.value = { ...page.value, id: 'legacy' }
+      await api.resolveProjectPdf()
+      assert.equal(api.currentPdfPage.value, 6, 'legacy tasks keep the current page')
+      assert.equal(api.assetRegion.value, null)
+      assert.equal(assetReads, 1, 'authorized identical PDF bytes remain shared')
+      const snapshot = JSON.stringify(page.value)
+      const retry = api.retryProjectPdf()
+      assert.equal(api.pdfLoading.value, true)
+      assert.equal(
+        api.pdfUrl.value,
+        null,
+        'discard the failed viewer while fresh authorization is pending'
+      )
+      assert.equal(api.retryProjectPdf(), undefined, 'do not overlap manual retries')
+      await retry
+      assert.equal(
+        assetReads,
+        2,
+        'manual retry must fetch fresh bytes even for the same authorized asset'
+      )
+      assert.equal(
+        api.currentPdfPage.value,
+        6,
+        'manual retry keeps the current physical page for the same source'
+      )
+      assert.equal(
+        JSON.stringify(page.value),
+        snapshot,
+        'reloading source does not modify the entry'
+      )
+    } finally {
+      fixture.dispose()
+    }
+  }
+)
+
+regression('image access denial forces a fresh PDF permission check', async () => {
+  const expiresAt = new Date(Date.now() + 60_000).toISOString()
+  let denied = false
+  let pdfReads = 0
+  const revoked = []
+  const fetcher = async (url) => {
+    if (url.includes('/images/')) return new Response(null, { status: denied ? 403 : 404 })
+    if (url.endsWith('/descriptor')) {
+      return Response.json({ key: 'pdf', start: 1, end: 1, total: 1, expiresAt })
+    }
+    pdfReads++
+    if (denied) return Response.json({ message: '原文权限已撤回' }, { status: 403 })
+    return new Response('synthetic-pdf', {
+      headers: {
+        'X-PDF-Preview-Key': 'pdf',
+        'X-PDF-Expires-At': expiresAt,
+        'X-PDF-Start-Page': '1',
+        'X-PDF-End-Page': '1',
+        'X-PDF-Total-Pages': '1'
+      }
+    })
+  }
+  const fixture = evaluate('composables/useProjectPdf.js', ['useProjectPdf'], {
+    pb: {
+      authStore: { record: { id: 'u' }, token: 'token', onChange: () => () => {} },
+      buildURL: (value) => `https://example.test${value}`
+    },
+    fetch: fetcher,
+    setTimeout: () => 1,
+    clearTimeout: () => {},
+    createPdfPreviewCache: () =>
+      createPdfPreviewCache({
+        urls: {
+          createObjectURL: () => 'blob:protected',
+          revokeObjectURL: (url) => revoked.push(url)
+        }
+      }),
+    createPageImageCache: () => createPageImageCache({ fetcher })
+  })
+  try {
+    const api = fixture.useProjectPdf(ref({ id: 'page', pdf_page: 1 }))
+    await api.resolveProjectPdf()
+    assert.equal(api.pdfUrl.value, 'blob:protected')
+    denied = true
+    await api.resolveProjectPdf()
+    assert.equal(pdfReads, 2)
+    assert.equal(api.pdfUrl.value, null)
+    assert.equal(api.pdfError.value, '原文权限已撤回')
+    assert.deepEqual(revoked, ['blob:protected'])
+    denied = false
+    await api.retryProjectPdf()
+    assert.equal(pdfReads, 3)
+    assert.equal(api.pdfUrl.value, 'blob:protected')
+    assert.equal(api.pdfError.value, '')
+  } finally {
+    fixture.dispose()
   }
 })
 

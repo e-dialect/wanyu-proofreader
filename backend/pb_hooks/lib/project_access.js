@@ -248,6 +248,7 @@ function projectJson(dao, projectRecord, authRecord, precomputedPermissions) {
   const result = {
     id: projectRecord.id,
     name: projectRecord.getString("name"),
+    purpose: projectRecord.getString("purpose") || "work",
     description: projectRecord.getString("description"),
     owner: projectRecord.getString("admin"),
     admin: projectRecord.getString("admin"),

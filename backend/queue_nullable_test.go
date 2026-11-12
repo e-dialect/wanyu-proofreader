@@ -20,13 +20,13 @@ func TestQueueAggregationNullableClassificationOracle(t *testing.T) {
 	}
 	defer tx.Rollback()
 	for _, query := range []string{
-		`CREATE TEMP TABLE projects(id TEXT,name TEXT,description TEXT,admin TEXT,required_proofreads INTEGER)`,
+		`CREATE TEMP TABLE projects(id TEXT,name TEXT,description TEXT,admin TEXT,required_proofreads INTEGER,purpose TEXT)`,
 		`CREATE TEMP TABLE project_memberships(project TEXT,user TEXT,role TEXT)`,
 		`CREATE TEMP TABLE pages(id TEXT,project TEXT,page_number INTEGER,pdf_page INTEGER,status TEXT,difficulty_tier TEXT,missing_glyph INTEGER,proofreader TEXT,proofread_round INTEGER)`,
 		`CREATE TEMP TABLE task_leases(id TEXT,page TEXT,expires_at TEXT)`,
 		`CREATE TEMP TABLE proofreading_attempts(page TEXT,project TEXT,round INTEGER,kind TEXT,proofreader TEXT)`,
 		`CREATE INDEX temp.idx_nullable_attempts ON proofreading_attempts(page,round,kind,proofreader)`,
-		`INSERT INTO projects VALUES('filled','Same name','nullable legacy metadata','owner',2),('nullquorum','Same name','null quorum','owner',NULL),('empty','Same name','no pages','owner',2),('foreign','Foreign','not authorized','owner',2)`,
+		`INSERT INTO projects(id,name,description,admin,required_proofreads) VALUES('filled','Same name','nullable legacy metadata','owner',2),('nullquorum','Same name','null quorum','owner',NULL),('empty','Same name','no pages','owner',2),('foreign','Foreign','not authorized','owner',2)`,
 		`INSERT INTO project_memberships VALUES('filled','reader','proofreader'),('nullquorum','reader','proofreader'),('empty','reader','proofreader')`,
 	} {
 		if _, err := tx.NewQuery(query).Execute(); err != nil {

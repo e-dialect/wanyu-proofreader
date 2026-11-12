@@ -6,6 +6,12 @@
         <p>查看项目进展，优先处理需要判断的条目。</p>
       </div>
       <div class="page-heading-actions">
+        <RouterLink
+          v-if="auth.isPlatformAdmin || auth.hasManagedProjects"
+          to="/admin/todos"
+          class="btn btn-secondary"
+          >统一待办</RouterLink
+        >
         <AppButton
           variant="ghost"
           :loading="loading"
@@ -154,6 +160,7 @@
               <RouterLink :to="`/admin/projects/${item.project.id}`" class="project-name-link">
                 {{ item.project.name }}
               </RouterLink>
+              <ProjectPurposeBadge :purpose="item.project.purpose" />
             </div>
             <p v-if="item.project.description">{{ item.project.description }}</p>
             <AppDisclosure class="project-status-details" label="状态与创建信息">
@@ -239,6 +246,7 @@
 </template>
 
 <script setup>
+import ProjectPurposeBadge from '@/components/ProjectPurposeBadge.vue'
 import ProjectHubTabs from '@/components/ProjectHubTabs.vue'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
@@ -462,6 +470,11 @@ function formatDate(value) {
 @media (max-width: 640px) {
   .admin-catalog .page-heading {
     margin-bottom: var(--space-3);
+  }
+  .admin-catalog .page-heading-actions {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
   }
   .admin-catalog .project-hub-tabs {
     margin-bottom: var(--space-3);

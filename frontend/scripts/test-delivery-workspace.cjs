@@ -52,6 +52,9 @@ const { chromium } = require('playwright')
     await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).waitFor()
     await page.getByRole('button', { name: '继续处理', exact: true }).click()
     assert.equal(await reviewer.inputValue(), 'Synthetic browser reviewer')
+    await page
+      .getByRole('button', { name: '这是重发版本（首次交付无需填写）', exact: true })
+      .click()
     await page.getByLabel('前一版本包标识（首次留空）', { exact: true }).fill(delivery.id)
     await page
       .getByLabel('重发变更说明', { exact: true })
@@ -77,6 +80,22 @@ const { chromium } = require('playwright')
     )
     await page.getByRole('button', { name: '登记回执或处置', exact: true }).click()
     await page.getByLabel('原因／处置说明', { exact: true }).fill('unsaved synthetic receipt')
+    await page.getByRole('button', { name: '登记回执或处置', exact: true }).click()
+    assert.equal(
+      await page.getByLabel('原因／处置说明', { exact: true }).inputValue(),
+      'unsaved synthetic receipt'
+    )
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 })
+      await page.getByRole('heading', { name: /^登记：/ }).focus()
+      await page.evaluate(() => window.scrollTo(0, 0))
+      assert.ok(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        `receipt editor must fit ${width}px without page overflow`
+      )
+      await page.screenshot({ path: path.join(out, `receipt-${width}.png`), fullPage: true })
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 })
     await page.getByRole('button', { name: '范围与凭据', exact: true }).click()
     await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).waitFor()
     await page.getByRole('button', { name: '继续处理', exact: true }).click()
@@ -95,9 +114,30 @@ const { chromium } = require('playwright')
         !searchParams.has('package')
     )
     await page.getByRole('heading', { name: '交付记录', exact: true }).waitFor()
+    // A successful create is already saved. It must continue to its detail
+    // without asking users to discard the form they have just submitted.
+    await page.goto(`${projectPath}/adoption?view=create`)
+    await page.getByLabel('接收方', { exact: true }).fill('Synthetic usability recipient')
+    await page.getByRole('button', { name: '下一步：选择范围', exact: true }).click()
+    await page.getByRole('button', { name: '创建并预览数量', exact: true }).click()
+    await page
+      .getByRole('heading', { name: 'Synthetic usability recipient', exact: true })
+      .waitFor()
+    assert.equal(
+      await page.getByRole('heading', { name: '离开当前工作区？', exact: true }).count(),
+      0
+    )
+    await page.screenshot({ path: path.join(out, 'adoption-created.png'), fullPage: true })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    assert.ok(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      'adoption summary must fit the mobile viewport'
+    )
+    await page.screenshot({ path: path.join(out, 'adoption-created-mobile.png'), fullPage: true })
     assert.deepEqual(errors, [])
     console.log(
-      'PASS browser: adoption deep link/reload/back, native preparation and generation, delivery deep link/reload, dirty preparation and receipt query guards; synthetic only'
+      'PASS browser: adoption deep link/reload/back and saved-create transition, native preparation and generation, delivery deep link/reload, dirty preparation and receipt query guards, receipt reopen preservation; synthetic only'
     )
   } finally {
     await browser.close()
