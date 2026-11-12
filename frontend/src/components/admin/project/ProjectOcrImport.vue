@@ -2,16 +2,37 @@
   <section ref="panelElement" aria-labelledby="project-ocr-title">
     <h4 id="project-ocr-title" class="font-semibold mb-2">提取 PDF 文字层</h4>
     <p class="text-sm text-muted mb-3">
-      读取主 PDF
-      中不含图像、可映射的单栏纯文字层页面；含扫描图或装饰图的页当前不生成识别条目。按单栏逐行生成「原文」字段，不推测词头、记音或释义。请对照
-      PDF 修正后再校对。
+      按单栏逐行生成“原文”字段，再对照 PDF
+      修正。仅支持不含图像的单栏文字层页面，扫描页、含装饰图的页和多列表格请先整理为 CSV。
     </p>
-    <div class="grid-2">
+    <div class="ocr-source-card">
+      <div class="ocr-source-heading">
+        <strong>当前原文</strong>
+        <AppButton size="sm" variant="ghost" :disabled="pdfLoading || starting" @click="loadSource">
+          刷新原文
+        </AppButton>
+      </div>
+      <p v-if="pdfLoading" class="text-sm text-muted" role="status">正在读取主 PDF…</p>
+      <p v-else-if="pdfError" class="text-sm" role="alert">{{ pdfError }}</p>
+      <template v-else-if="primaryPdf">
+        <p class="ocr-source-name">{{ primaryPdf.original_filename || primaryPdf.file }}</p>
+        <p class="text-sm text-muted">共 {{ primaryPdf.page_count }} 个 PDF 物理页</p>
+        <p v-if="pdfChanged" class="text-sm mt-2" role="status">
+          主 PDF 已更换，请按当前文件重新核对页段。
+        </p>
+      </template>
+      <p v-else class="text-sm">
+        请先上传供提取的来源 PDF。
+        <RouterLink :to="uploadTarget">前往上传来源 PDF</RouterLink>
+      </p>
+    </div>
+    <div v-if="sourceReady" class="grid-2">
       <AppField label="提取起始页"
         ><input
           v-model="startPage"
           type="number"
           min="1"
+          :max="primaryPdf.page_count"
           class="form-control"
           :disabled="running || startUnknown"
       /></AppField>
@@ -20,17 +41,22 @@
           v-model="endPage"
           type="number"
           min="1"
+          :max="primaryPdf.page_count"
           class="form-control"
           :disabled="running || startUnknown"
       /></AppField>
     </div>
-    <p class="text-sm text-muted mb-2">
-      页码为 PDF 物理页码，单次最多 200
-      页。扫描引擎的难字安全评测尚未通过；文字层中的记音、上标和缺字也需对照原文核对。再次识别会创建新批次，不覆盖已有条目。
+    <p v-if="sourceReady" class="text-sm text-muted mb-2">
+      使用 PDF 阅读器显示的物理页码，可能与书中印刷页码不同。每次最多 200 页。
+      <span v-if="!rangeError">本次选择 {{ Number(endPage) - Number(startPage) + 1 }} 页。</span>
+    </p>
+    <p v-if="sourceReady && rangeError" class="text-sm mb-2" role="alert">{{ rangeError }}</p>
+    <p v-if="sourceReady" class="text-sm text-muted mb-2">
+      建议先提取少量页面核对排版。再次提取会创建新批次，不覆盖已有条目。
     </p>
     <AppButton
       variant="secondary"
-      :disabled="running || loadingLatest || startUnknown"
+      :disabled="running || loadingLatest || startUnknown || !sourceReady || Boolean(rangeError)"
       @click="startRecognition"
       :loading="starting"
       loading-label="正在提交"
@@ -55,7 +81,9 @@
     />
     <div v-if="job" class="import-job-card mt-3">
       <strong>{{ statusLabel }}</strong>
-      <p class="text-sm text-muted">作业 {{ job.id }}</p>
+      <p v-if="jobPdf" class="text-sm text-muted">
+        本次作业原文：{{ jobPdf.original_filename || jobPdf.file }}
+      </p>
       <p v-if="position" class="text-sm">
         本次作业页段：PDF 物理第 {{ position.startPage
         }}{{ position.endPage === position.startPage ? '' : `–${position.endPage}` }} 页。
@@ -73,8 +101,13 @@
         {{ result.certain || 0 }} 格、待确认 {{ result.needs_review || 0 }} 格、弃权
         {{ result.abstained || 0 }} 格。状态描述识别输出，不代表来源核验通过。
       </p>
-      <p v-if="job.status === 'failed'" class="text-sm">本批识别失败，暂存条目未发布为任务。</p>
-      <a v-if="published && result.rows" href="#project-entries">查看条目预览并修正</a>
+      <p v-if="job.status === 'failed'" class="text-sm">
+        本批提取失败，暂存条目未发布为任务。提取会在遇到问题后停止，上方不是完整的问题页清单；可缩小页段重试，或将内容整理为
+        CSV。
+      </p>
+      <RouterLink v-if="published && result.rows" :to="entriesTarget"
+        >查看本批条目并修正</RouterLink
+      >
       <div v-if="result.artifacts?.length" class="mt-2">
         <p class="text-sm">原始文字、坐标和识别状态保存在受权限保护的中间产物中：</p>
         <AppButton
@@ -93,6 +126,7 @@
 </template>
 <script setup>
 import AppButton from '@/components/AppButton.vue'
+import { RouterLink } from 'vue-router'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppField from '@/components/AppField.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
@@ -114,7 +148,11 @@ import {
   clearPendingOcrStart
 } from '@/lib/ocrStartRequest'
 import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
-const props = defineProps({ projectId: { type: String, required: true } })
+import { findLatestProjectPdf, getProjectFile } from '@/services/projectFilesService'
+const props = defineProps({
+  projectId: { type: String, required: true },
+  active: { type: Boolean, default: true }
+})
 const emit = defineEmits(['changed'])
 const userId = currentUserId()
 const pendingStart = ref(null)
@@ -122,6 +160,31 @@ const startUnknown = ref(false)
 const startPage = ref(1),
   endPage = ref(1)
 const panelElement = ref(null)
+const primaryPdf = ref(null),
+  pdfLoading = ref(false),
+  pdfError = ref(''),
+  pdfChanged = ref(false)
+const jobPdf = ref(null)
+let sourceGeneration = 0,
+  jobSourceGeneration = 0
+const sourceReady = computed(
+  () =>
+    !pdfLoading.value &&
+    !pdfError.value &&
+    Number.isSafeInteger(primaryPdf.value?.page_count) &&
+    primaryPdf.value.page_count > 0
+)
+const rangeError = computed(() =>
+  validateOcrRange(startPage.value, endPage.value, primaryPdf.value?.page_count)
+)
+const uploadTarget = computed(() => ({
+  path: `/admin/projects/${props.projectId}`,
+  query: { section: 'materials', view: 'import', method: 'pdf' }
+}))
+const entriesTarget = computed(() => ({
+  path: `/admin/projects/${props.projectId}`,
+  query: { section: 'work', view: 'entries', importJob: job.value?.id }
+}))
 const jobTarget = ref(null)
 const {
   snapshot: job,
@@ -148,15 +211,61 @@ const result = computed(() => parseOcrObject(job.value?.ocr_result_json))
 const statusLabel = computed(
   () =>
     ({
-      queued: '等待识别',
-      processing: '识别进行中',
-      completed: '识别完成',
-      completed_with_errors: '识别完成，部分页面失败',
-      failed: '识别失败'
+      queued: '等待提取',
+      processing: '提取进行中',
+      completed: '提取完成',
+      completed_with_errors: '提取完成，部分页面失败',
+      failed: '提取失败'
     })[job.value?.status] || '未开始'
 )
 let disposed = false
 const controller = new AbortController()
+async function loadSource() {
+  const generation = ++sourceGeneration
+  pdfLoading.value = true
+  pdfError.value = ''
+  try {
+    const next = await findLatestProjectPdf(props.projectId)
+    if (disposed || generation !== sourceGeneration) return
+    const changed = Boolean(primaryPdf.value && primaryPdf.value.id !== next?.id)
+    primaryPdf.value = next
+    pdfChanged.value = changed
+    if (changed && !running.value && !startUnknown.value) {
+      startPage.value = 1
+      endPage.value = 1
+    }
+    if (next && (!Number.isSafeInteger(next.page_count) || next.page_count < 1))
+      pdfError.value = '当前 PDF 尚无可用页数，请检查来源 PDF 的上传状态。'
+  } catch (failure) {
+    if (!disposed && generation === sourceGeneration) {
+      primaryPdf.value = null
+      pdfError.value = getPbMessage(failure, '暂时无法读取主 PDF，请刷新原文。')
+    }
+  } finally {
+    if (!disposed && generation === sourceGeneration) pdfLoading.value = false
+  }
+}
+watch(
+  () => props.active,
+  (active) => {
+    if (active) void loadSource()
+  },
+  { immediate: true }
+)
+watch(
+  () => job.value?.project_file,
+  async (fileId) => {
+    const generation = ++jobSourceGeneration
+    jobPdf.value = null
+    if (!fileId) return
+    try {
+      const file = await getProjectFile(fileId, { signal: controller.signal })
+      if (!disposed && generation === jobSourceGeneration) jobPdf.value = file
+    } catch {
+      /* The immutable page range remains available on the job. */
+    }
+  }
+)
 onBeforeUnmount(() => {
   disposed = true
   controller.abort()
@@ -183,11 +292,12 @@ onMounted(async () => {
   }
 })
 async function startRecognition() {
-  if (running.value || startUnknown.value) return
-  error.value = validateOcrRange(startPage.value, endPage.value)
+  if (running.value || startUnknown.value || !sourceReady.value) return
+  error.value = validateOcrRange(startPage.value, endPage.value, primaryPdf.value.page_count)
   if (error.value) return
   const request = {
     projectId: props.projectId,
+    projectFileId: primaryPdf.value.id,
     requestId: crypto.randomUUID(),
     startPage: Number(startPage.value),
     endPage: Number(endPage.value),
@@ -231,6 +341,7 @@ async function confirmStart() {
         /* No request was accepted. */
       }
       error.value = getPbMessage(failure, '识别参数无效，请修正后重试。')
+      void loadSource()
     } else {
       startUnknown.value = true
       error.value = `本次请求结果未知；请确认本次请求状态，将复用原请求避免重复入册。${getPbMessage(failure, '')}`
@@ -269,3 +380,22 @@ async function downloadArtifact(artifact) {
   }
 }
 </script>
+<style scoped>
+.ocr-source-card {
+  margin-block: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.ocr-source-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ocr-source-name {
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
+}
+</style>

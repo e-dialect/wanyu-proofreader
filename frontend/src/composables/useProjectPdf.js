@@ -4,6 +4,8 @@ import { createPageImageCache } from '@/lib/pageImageCache'
 import { missingPdfPageNotice } from '@/lib/proofreadNotices'
 import pb from '@/lib/pocketbase'
 
+const MAX_TIMER_DELAY = 2 ** 31 - 1
+
 export function useProjectPdf(page) {
   const pdfError = ref('')
   const pdfLoading = ref(false)
@@ -12,12 +14,15 @@ export function useProjectPdf(page) {
   const lastPage = ref(1)
   const totalPdfPages = ref(0)
   const pdfUrl = ref(null)
+  const pdfViewerKey = ref('')
   const cache = createPdfPreviewCache()
   const imageCache = createPageImageCache()
   const pageImage = ref(null)
   const imageMode = ref(false)
   let imageGeneration = 0
+  let displayedImagePage = 0
   let expiryTimer = null
+  let displayedExpiry = 0
   let previewKey = ''
   let currentUser = pb.authStore.record?.id || pb.authStore.model?.id || ''
   const unsubscribe = pb.authStore.onChange((_token, record) => {
@@ -37,25 +42,45 @@ export function useProjectPdf(page) {
   const allowedPdfPages = computed(() => [firstPage.value, lastPage.value])
   const localPdfPage = computed(() => currentPdfPage.value - firstPage.value + 1)
 
+  function discardPreview() {
+    cache.clear()
+    imageCache.clear()
+    displayedExpiry = 0
+    previewKey = ''
+    pdfViewerKey.value = ''
+    imageMode.value = false
+    displayedImagePage = 0
+    pageImage.value = null
+    pdfUrl.value = null
+  }
   function resetPdf() {
     generation++
     controller?.abort()
-    cache.clear()
-    imageCache.clear()
     imageGeneration++
     clearTimeout(expiryTimer)
-    previewKey = ''
-    imageMode.value = false
-    pageImage.value = null
-    pdfUrl.value = null
+    discardPreview()
     pdfError.value = ''
     pdfLoading.value = false
     firstPage.value = lastPage.value = basePdfPage.value
     totalPdfPages.value = 0
     currentPdfPage.value = basePdfPage.value
   }
-  async function resolveProjectPdf(forcePdf = false, preservePage = false) {
+  function applyDescriptor(descriptor, number) {
+    if (previewKey !== descriptor.key) pdfViewerKey.value = descriptor.key
+    previewKey = descriptor.key
+    firstPage.value = descriptor.start
+    lastPage.value = descriptor.end
+    totalPdfPages.value = descriptor.total
+    currentPdfPage.value = clampPdfPage(number)
+  }
+  async function resolveProjectPdf(forcePdf = false) {
+    const pageId = page.value?.id
+    if (!pageId) {
+      resetPdf()
+      return
+    }
     const request = ++generation
+    const isCurrent = () => request === generation && page.value?.id === pageId
     controller?.abort()
     controller = new AbortController()
     const signal = controller.signal
@@ -65,35 +90,36 @@ export function useProjectPdf(page) {
     imageMode.value = false
     imageGeneration++
     clearTimeout(expiryTimer)
+    if (displayedExpiry && displayedExpiry <= Date.now()) {
+      // Keep the hidden viewer mounted for its reading position. Expired
+      // URLs must not be reusable while the new authorization is in flight.
+      cache.clear()
+      imageCache.clear()
+    }
     try {
-      const base = pb.buildURL(`/api/fangji/pages/${encodeURIComponent(page.value.id)}/pdf`)
+      const base = pb.buildURL(`/api/fangji/pages/${encodeURIComponent(pageId)}/pdf`)
       const options = { headers: { Authorization: pb.authStore.token }, signal, cache: 'no-store' }
       const info = await fetch(`${base}/descriptor`, options)
       if (!info.ok) {
         const body = await info.json().catch(() => ({}))
         throw new Error(body.message || '加载任务 PDF 失败')
       }
-      let descriptor = await info.json()
-      if (request !== generation) return
-      const samePreview = previewKey === descriptor.key
-      if (!samePreview || forcePdf) {
-        imageCache.clear()
-        pageImage.value = null
-      }
-      previewKey = descriptor.key
-      firstPage.value = descriptor.start
-      lastPage.value = descriptor.end
-      totalPdfPages.value = descriptor.total
-      currentPdfPage.value =
-        samePreview || forcePdf || preservePage
-          ? clampPdfPage(currentPdfPage.value)
-          : descriptor.start
+      let descriptor = assertValidDescriptor(await info.json())
+      if (!isCurrent()) return
+      if (previewKey && previewKey !== descriptor.key) discardPreview()
+      const shown = previewKey === descriptor.key ? currentPdfPage.value : descriptor.start
       if (!forcePdf) {
-        const shown = currentPdfPage.value
         try {
           const entry = await imageCache.load(base.replace(/\/pdf$/, ''), shown, options)
-          if (request !== generation) return
+          if (!isCurrent()) return
+          // A file can change between the PDF and image descriptor reads.
+          // The image asset ID is stable for the same source and physical page.
+          if (pageImage.value && pageImage.value.assetId !== entry.assetId) {
+            pdfViewerKey.value = `${descriptor.key}:${entry.assetId}`
+          }
+          applyDescriptor(descriptor, shown)
           cache.clear()
+          displayedImagePage = shown
           imageMode.value = true
           pageImage.value = entry
           pdfUrl.value = entry.url
@@ -102,52 +128,58 @@ export function useProjectPdf(page) {
           return
         } catch (error) {
           if (error.name === 'AbortError') throw error
+          if (!isCurrent()) return
+          // Image URLs can expire at a bucket boundary. Recheck the protected
+          // PDF endpoint before displaying fallback bytes after a denial.
+          if (error.status === 401 || error.status === 403) cache.clear()
           // Image absence, expiry or rendering failure uses the existing PDF.
         }
       }
-      pageImage.value = null
       let entry = cache.get(userId, descriptor)
       if (!entry) {
-        // A different range/version must not keep showing the previous task PDF.
-        cache.clear()
-        pdfUrl.value = null
         const response = await fetch(base, options)
         if (!response.ok) {
           const body = await response.json().catch(() => ({}))
           throw new Error(body.message || '加载任务 PDF 失败')
         }
         const blob = await response.blob()
-        if (request !== generation) return
+        if (!isCurrent()) return
         // The five-minute window or primary source can change between requests.
-        descriptor = {
+        descriptor = assertValidDescriptor({
           key: response.headers.get('X-PDF-Preview-Key'),
           expiresAt: response.headers.get('X-PDF-Expires-At'),
           start: Number(response.headers.get('X-PDF-Start-Page')),
           end: Number(response.headers.get('X-PDF-End-Page')),
           total: Number(response.headers.get('X-PDF-Total-Pages'))
-        }
-        if (!descriptor.key || !Number.isFinite(Date.parse(descriptor.expiresAt)))
-          throw new Error('PDF 预览信息无效，请刷新后重试')
+        })
         entry = cache.put(userId, descriptor, blob)
-        currentPdfPage.value = clampPdfPage(currentPdfPage.value)
       }
-      firstPage.value = descriptor.start
-      lastPage.value = descriptor.end
-      totalPdfPages.value = descriptor.total
+      applyDescriptor(descriptor, previewKey === descriptor.key ? shown : descriptor.start)
+      imageCache.clear()
+      pageImage.value = null
       pdfUrl.value = entry.url
       armExpiry(entry)
-      currentPdfPage.value = clampPdfPage(currentPdfPage.value)
     } catch (error) {
-      if (request === generation && error.name !== 'AbortError') {
-        cache.clear()
-        pdfUrl.value = null
-        imageCache.clear()
-        pageImage.value = null
+      if (isCurrent() && error.name !== 'AbortError') {
+        discardPreview()
         pdfError.value = error.message || '加载任务 PDF 失败'
       }
     } finally {
-      if (request === generation) pdfLoading.value = false
+      if (isCurrent()) pdfLoading.value = false
     }
+  }
+  function assertValidDescriptor(descriptor) {
+    const { key, start, end, total, expiresAt } = descriptor || {}
+    if (
+      !key ||
+      ![start, end, total].every(Number.isInteger) ||
+      start < 1 ||
+      end < start ||
+      total < end ||
+      !(Date.parse(expiresAt) > Date.now())
+    )
+      throw new Error('PDF 预览信息无效，请刷新后重试')
+    return descriptor
   }
   function clampPdfPage(value) {
     return Math.max(firstPage.value, Math.min(lastPage.value, Number(value) || firstPage.value))
@@ -160,11 +192,13 @@ export function useProjectPdf(page) {
   }
   function armExpiry(entry) {
     clearTimeout(expiryTimer)
+    displayedExpiry = entry.expires
     expiryTimer = setTimeout(
       () => {
-        resolveProjectPdf(false, true)
+        if (entry.expires > Date.now()) armExpiry(entry)
+        else resolveProjectPdf(!imageMode.value)
       },
-      Math.max(0, entry.expires - Date.now())
+      Math.min(MAX_TIMER_DELAY, Math.max(0, entry.expires - Date.now()))
     )
   }
   function preloadNeighbors(number, options) {
@@ -175,10 +209,14 @@ export function useProjectPdf(page) {
     }
   }
   watch(currentPdfPage, async (number) => {
-    if (!imageMode.value) return
+    if (!imageMode.value || number === displayedImagePage) return
     const request = generation
+    const pageId = page.value?.id
     const imageRequest = ++imageGeneration
+    const isCurrent = () =>
+      request === generation && imageRequest === imageGeneration && page.value?.id === pageId
     pdfLoading.value = true
+    displayedImagePage = 0
     pageImage.value = null
     pdfUrl.value = null
     const options = {
@@ -188,16 +226,16 @@ export function useProjectPdf(page) {
     }
     try {
       const entry = await imageCache.load(imageBase(), number, options)
-      if (request !== generation || imageRequest !== imageGeneration) return
+      if (!isCurrent()) return
+      displayedImagePage = number
       pageImage.value = entry
       pdfUrl.value = entry.url
       armExpiry(entry)
       preloadNeighbors(number, options)
     } catch (error) {
-      if (request === generation && imageRequest === imageGeneration && error.name !== 'AbortError')
-        await resolveProjectPdf(true)
+      if (isCurrent() && error.name !== 'AbortError') await resolveProjectPdf(true)
     } finally {
-      if (request === generation && imageRequest === imageGeneration) pdfLoading.value = false
+      if (isCurrent()) pdfLoading.value = false
     }
   })
   function fallbackToPdf() {
@@ -211,6 +249,7 @@ export function useProjectPdf(page) {
     pdfPageWarning,
     allowedPdfPages,
     pdfUrl,
+    pdfViewerKey,
     localPdfPage,
     totalPdfPages,
     pageImage,

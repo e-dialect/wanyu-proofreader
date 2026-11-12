@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,23 @@ func pageArgument(raw string, fallback, maximum int) int {
 		return maximum
 	}
 	return value
+}
+
+// A selected import batch narrows the existing manager scope. An invalid or
+// removed selection must never silently turn into the whole project's queue.
+func projectImportJobFilter(app core.App, projectID string, query url.Values) (string, error) {
+	values, present := query["importJob"]
+	if !present {
+		return "", nil
+	}
+	if len(values) != 1 || !looksLikeRecordID(values[0]) {
+		return "", apis.NewBadRequestError("导入批次标识须为15位小写字母或数字。", nil)
+	}
+	job, err := app.FindRecordById("import_jobs", values[0])
+	if err != nil || job.GetString("project") != projectID {
+		return "", apis.NewNotFoundError("所选导入批次不存在或不属于当前项目。", nil)
+	}
+	return job.Id, nil
 }
 
 func (s *importService) registerPagination() {
@@ -198,9 +216,17 @@ func (s *importService) projectPages(e *core.RequestEvent) error {
 		return err
 	}
 	query := e.Request.URL.Query()
+	importJob, err := projectImportJobFilter(s.app, id, query)
+	if err != nil {
+		return err
+	}
 	page, size := pageArgument(query.Get("page"), 1, 1000000), pageArgument(query.Get("perPage"), 25, 100)
 	filter := "project = {:project}"
 	params := dbx.Params{"project": id}
+	if importJob != "" {
+		filter += " && import_job = {:importJob}"
+		params["importJob"] = importJob
+	}
 	if status := query.Get("status"); status != "" {
 		if status == "active" {
 			filter += ` && (status = "claimed" || status = "proofreading")`

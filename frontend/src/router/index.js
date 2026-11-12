@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import pb from '@/lib/pocketbase'
 import { authState, homePath, resolveNavigation } from '../lib/access.js'
 import { browserSessionStorage, rememberQueueTransition } from '@/lib/queueReturn'
+import { carryTodoReturn } from '@/lib/unifiedTodos'
 
 function getAuthState() {
   return authState({ isValid: pb.authStore.isValid, model: pb.authStore.model })
@@ -64,6 +65,11 @@ const routes = [
         component: () => import('@/views/admin/DashboardView.vue')
       },
       {
+        path: 'todos',
+        name: 'AdminTodos',
+        component: () => import('@/views/admin/UnifiedTodosView.vue')
+      },
+      {
         path: 'projects/new',
         name: 'NewProject',
         component: () => import('@/views/admin/NewProjectView.vue')
@@ -77,6 +83,11 @@ const routes = [
         path: 'projects/:id',
         name: 'ProjectDetail',
         component: () => import('@/views/admin/ProjectDetailView.vue')
+      },
+      {
+        path: 'projects/:id/batch-reports/:batchId',
+        name: 'ProjectBatchReport',
+        component: () => import('@/views/admin/BatchReportView.vue')
       },
       {
         path: 'projects/:id/deliveries',
@@ -178,6 +189,8 @@ const router = createRouter({
 router.beforeEach((to, from) => {
   const destination = resolveNavigation(to, getAuthState())
   if (destination) return destination
+  const withReturn = carryTodoReturn(to, from)
+  if (withReturn) return withReturn
   rememberQueueTransition(browserSessionStorage(), pb.authStore.model?.id, to, from, {
     left: window.scrollX,
     top: window.scrollY

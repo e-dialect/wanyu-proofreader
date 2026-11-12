@@ -68,3 +68,47 @@ test('storage errors and external destinations do not interrupt navigation', () 
   assert.doesNotThrow(() => rememberQueueTransition(denied, 'alice', task, { fullPath: '/tasks' }))
   assert.equal(queueReturnTarget(denied, 'alice', task), '/tasks')
 })
+
+test('own submission review returns to its filtered practice list regardless of stored queue', () => {
+  const storage = memory()
+  rememberQueueTransition(storage, 'alice', task, { fullPath: '/tasks?view=active' })
+  const projectId = 'practiceproj001'
+  const target = queueReturnTarget(storage, 'alice', {
+    ...task,
+    query: {
+      mode: 'review',
+      reviewProject: projectId,
+      reviewPage: '3',
+      reviewNumber: '25',
+      reviewSort: 'number',
+      practiceProject: projectId,
+      practiceRole: 'proofreader',
+      practiceStep: 'reviewed'
+    }
+  })
+  const url = new URL(target, 'https://queue.invalid')
+  assert.equal(url.pathname, `/tasks/projects/${projectId}/submissions`)
+  assert.equal(url.searchParams.get('page'), '3')
+  assert.equal(url.searchParams.get('number'), '25')
+  assert.equal(url.searchParams.get('practiceProject'), projectId)
+  assert.equal(url.searchParams.get('practiceStep'), 'reviewed')
+})
+
+test('arbitration return keeps only the current batch and rejects invalid batch links', () => {
+  const storage = memory()
+  const importJob = 'batch0000000000'
+  const batchRoute = { ...arbitration, query: { importJob } }
+  const batchQueue = {
+    fullPath: `/admin/projects/project1?section=work&status=arbitration&importJob=${importJob}&page=2`
+  }
+  rememberQueueTransition(storage, 'alice', batchRoute, batchQueue)
+  assert.equal(queueReturnTarget(storage, 'alice', batchRoute), batchQueue.fullPath)
+  assert.equal(
+    queueReturnTarget(storage, 'alice', { ...arbitration, query: { importJob: 'bad' } }),
+    '/admin/projects/project1?section=materials&view=batches#project-ledger'
+  )
+  assert.equal(
+    queueReturnTarget(storage, 'alice', arbitration),
+    '/admin/projects/project1?section=work&status=arbitration'
+  )
+})

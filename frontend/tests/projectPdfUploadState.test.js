@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { protectedPageScopeFixture } from './helpers/protectedPageScopeFixture.js'
 import { jobObserverScope } from './helpers/jobObserverScope.js'
 import { projectDetailSource } from './helpers/projectDetailSource.js'
 import test from 'node:test'
@@ -21,6 +22,8 @@ function setup(createProjectPdf) {
   const cleanup = []
   const scope = {
     ...jobObserverScope(cleanup),
+    ...protectedPageScopeFixture((fn) => cleanup.push(fn)),
+    defineEmits: () => () => {},
     defineProps: () => ({ projectId: 'project-1' }),
     defineExpose: () => {},
     validatePdfFile,
@@ -58,7 +61,7 @@ test('backend validation failure clears the file and input; cancel keeps the err
   let attempts = 0
   const ui = setup(async () => {
     attempts++
-    return { id: 'pdf-1', status: 'failed', error_message: 'PDF 结构损坏' }
+    return { id: 'pdf-1', status: 'error', error_message: 'PDF 结构损坏' }
   })
   const first = event()
   await ui.onPdfSelected(first)

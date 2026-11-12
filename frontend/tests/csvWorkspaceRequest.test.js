@@ -2,6 +2,8 @@ import { jobObserverScope } from './helpers/jobObserverScope.js'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { reactive } from 'vue'
+import { projectWorkspaceTarget } from '../src/lib/projectWorkspace.js'
 import * as inspection from '../src/lib/csvInspection.js'
 
 const source = readFileSync(
@@ -11,27 +13,62 @@ const source = readFileSync(
 const script = source
   .match(/<script setup>([\s\S]*?)<\/script>/)[1]
   .replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"]\s*\n/g, '')
-function component(overrides = {}) {
+const columnInspection = (pdfPageField = 'PDF页码') => ({
+  headers: ['PDF页码', '物理页', '词条'],
+  pdf_page_field: pdfPageField
+})
+
+function component(overrides = {}, jobLink = '') {
   const cleanup = []
   let refreshes = 0
+  const props = reactive({
+    projectId: 'project-a',
+    jobLink,
+    ...Object.fromEntries(
+      ['refreshPages', 'refreshStats', 'refreshQuality', 'refreshLedger', 'clearSelection'].map(
+        (name) => [
+          name,
+          () => {
+            refreshes++
+          }
+        ]
+      )
+    )
+  })
+  const jobEvents = []
   const scope = {
     ...inspection,
     ...jobObserverScope(cleanup),
     defineExpose: () => {},
-    defineProps: () =>
-      Object.fromEntries(
-        ['refreshPages', 'refreshStats', 'refreshQuality', 'refreshLedger', 'clearSelection']
-          .map((name) => [
-            name,
-            () => {
-              refreshes++
-            }
-          ])
-          .concat([['projectId', 'project-a']])
-      ),
-    createCsvInspection: async () => ({ project: 'project-a', id: 'job-a', status: 'validated' }),
-    commitCsvImport: async () => ({ project: 'project-a', id: 'job-a', status: 'completed' }),
-    getImportJob: async () => ({ project: 'project-a', id: 'job-a', status: 'completed' }),
+    defineEmits: () => (name, value) => jobEvents.push([name, value]),
+    defineProps: () => props,
+    projectWorkspaceTarget,
+    readCsvColumns: async () => ({
+      headers: ['PDF页码', '物理页', '词条'],
+      suggested_page_column: 'PDF页码'
+    }),
+    createCsvInspection: async () => ({
+      project: 'project-a',
+      mode: 'skip_invalid',
+      pdf_snapshot_captured: true,
+      id: 'job-a',
+      status: 'validated',
+      inspection_json: columnInspection()
+    }),
+    commitCsvImport: async () => ({
+      project: 'project-a',
+      mode: 'skip_invalid',
+      pdf_snapshot_captured: true,
+      id: 'job-a',
+      status: 'completed'
+    }),
+    getImportJob: async () => ({
+      project: 'project-a',
+      mode: 'skip_invalid',
+      pdf_snapshot_captured: true,
+      id: 'job-a',
+      status: 'completed'
+    }),
     listImportJobErrors: async () => ({ items: [] }),
     listSources: async () => ({ items: [] }),
     getPbMessage: (cause) => cause.message,
@@ -46,10 +83,18 @@ function component(overrides = {}) {
   }
   const instance = new Function(
     ...Object.keys(scope),
-    `${script}\nreturn { uploadCsv, confirmCsvImport, refreshCsvJob, onCsvSelected, sourceId, csvFile, csvJob, csvJobTarget, csvObservation, csvError, csvSuccess, csvActualSource, csvSourceMismatch, csvSourceReady, csvSourceError, requestedSourceId }`
+    `${script}\nreturn { uploadCsv, confirmCsvImport, refreshCsvJob, onCsvSelected, editPageColumn, pdfPageColumn, csvColumns, sourceId, csvFile, csvJob, csvJobTarget, csvObservation, csvError, csvSuccess, csvActualSource, csvSourceMismatch, csvSourceReady, csvSourceError, requestedSourceId }`
   )(...Object.values(scope))
-  instance.csvFile.value = { name: 'original.csv' }
-  return { ...instance, unmount: () => cleanup.forEach((fn) => fn()), refreshes: () => refreshes }
+  instance.csvFile.value = jobLink ? null : { name: 'original.csv' }
+  instance.csvColumns.value = columnInspection()
+  instance.pdfPageColumn.value = 'PDF页码'
+  return {
+    ...instance,
+    props,
+    jobEvents,
+    unmount: () => cleanup.forEach((fn) => fn()),
+    refreshes: () => refreshes
+  }
 }
 
 test('CSV inspection responses cannot publish or clear the selected file after leaving the project', async () => {
@@ -63,7 +108,13 @@ test('CSV inspection responses cannot publish or clear the selected file after l
   const file = instance.csvFile.value
   const request = instance.uploadCsv()
   instance.unmount()
-  resolve({ project: 'project-a', id: 'old-job', status: 'validated' })
+  resolve({
+    project: 'project-a',
+    mode: 'skip_invalid',
+    pdf_snapshot_captured: true,
+    id: 'old-job',
+    status: 'validated'
+  })
   await request
   assert.equal(instance.csvJob.value, null)
   assert.equal(instance.csvFile.value, file)
@@ -75,6 +126,8 @@ test('CSV poll responses are checked again after the network await', async () =>
   const instance = component({
     createCsvInspection: async () => ({
       project: 'project-a',
+      mode: 'skip_invalid',
+      pdf_snapshot_captured: true,
       id: 'old-job',
       status: 'processing'
     }),
@@ -88,7 +141,13 @@ test('CSV poll responses are checked again after the network await', async () =>
   const reading = instance.refreshCsvJob()
   while (!resolve) await new Promise(setImmediate)
   instance.unmount()
-  resolve({ project: 'project-a', id: 'old-job', status: 'completed' })
+  resolve({
+    project: 'project-a',
+    mode: 'skip_invalid',
+    pdf_snapshot_captured: true,
+    id: 'old-job',
+    status: 'completed'
+  })
   await reading
   assert.equal(instance.csvJob.value.status, 'processing')
   assert.equal(instance.csvSuccess.value, '')
@@ -103,7 +162,14 @@ test('a late CSV commit failure cannot replace the next workspace error', async 
         reject = fail
       })
   })
-  instance.csvJobTarget.value = { project: 'project-a', id: 'job-a', status: 'validated' }
+  instance.csvJobTarget.value = {
+    project: 'project-a',
+    mode: 'skip_invalid',
+    pdf_snapshot_captured: true,
+    id: 'job-a',
+    status: 'validated',
+    inspection_json: columnInspection()
+  }
   const request = instance.confirmCsvImport()
   instance.unmount()
   instance.csvError.value = 'new workspace'
@@ -125,11 +191,26 @@ test('replayed CSV uses the existing job source A when B was selected, and confi
     listSources: async () => ({ items: sources }),
     createCsvInspection: async (body) => {
       requests.push(body)
-      return { project: 'project-a', id: 'existing-job', status: 'validated', source: 'source-a' }
+      return {
+        project: 'project-a',
+        mode: 'skip_invalid',
+        pdf_snapshot_captured: true,
+        id: 'existing-job',
+        status: 'validated',
+        source: 'source-a',
+        inspection_json: columnInspection()
+      }
     },
     commitCsvImport: async (id) => {
       commits.push(id)
-      return { project: 'project-a', id, status: 'completed', source: 'source-a' }
+      return {
+        project: 'project-a',
+        mode: 'skip_invalid',
+        pdf_snapshot_captured: true,
+        id,
+        status: 'completed',
+        source: 'source-a'
+      }
     }
   })
   instance.sourceId.value = 'src-b'
@@ -155,19 +236,38 @@ test('poll failure retries the known job in place without reuploading or forgett
     listSources: async () => ({ items: sources }),
     createCsvInspection: async () => {
       uploads++
-      return { project: 'project-a', id: 'existing-job', status: 'processing', source: 'source-a' }
+      return {
+        project: 'project-a',
+        mode: 'skip_invalid',
+        pdf_snapshot_captured: true,
+        id: 'existing-job',
+        status: 'processing',
+        source: 'source-a'
+      }
     },
     getImportJob: async (id) => {
       assert.equal(id, 'existing-job')
       if (++reads === 1) throw new Error('temporary offline')
-      return { project: 'project-a', id, status: 'validated', source: 'source-a' }
+      return {
+        project: 'project-a',
+        mode: 'skip_invalid',
+        pdf_snapshot_captured: true,
+        id,
+        status: 'validated',
+        source: 'source-a',
+        inspection_json: columnInspection()
+      }
     }
   })
   instance.sourceId.value = 'src-b'
   await instance.uploadCsv()
   await instance.refreshCsvJob()
   assert.equal(instance.csvObservation.value.state, 'stale')
-  assert.equal(instance.csvFile.value, null)
+  assert.equal(
+    instance.csvFile.value.name,
+    'original.csv',
+    'file stays available to change mapping'
+  )
   assert.equal(instance.csvJob.value.id, 'existing-job')
   await instance.refreshCsvJob()
   assert.equal(uploads, 1)
@@ -185,6 +285,8 @@ test('source lookup failure blocks confirmation and a late lookup cannot cross a
   const instance = component({
     createCsvInspection: async () => ({
       project: 'project-a',
+      mode: 'skip_invalid',
+      pdf_snapshot_captured: true,
       id: 'existing-job',
       status: 'validated',
       source: 'source-a'
@@ -203,6 +305,8 @@ test('source lookup failure blocks confirmation and a late lookup cannot cross a
   const other = component({
     createCsvInspection: async () => ({
       project: 'project-a',
+      mode: 'skip_invalid',
+      pdf_snapshot_captured: true,
       id: 'old-job',
       status: 'validated',
       source: 'source-a'
@@ -220,4 +324,116 @@ test('source lookup failure blocks confirmation and a late lookup cannot cross a
   assert.equal(other.csvActualSource.value, null)
   assert.equal(other.csvJob.value, null)
   assert.equal(other.csvFile.value.name, 'new.csv')
+})
+
+test('changing the checked page column removes the old confirmation and checks the retained file again', async () => {
+  const columns = []
+  const commits = []
+  const instance = component({
+    createCsvInspection: async ({ pdfPageColumn }) => {
+      columns.push(pdfPageColumn)
+      return {
+        project: 'project-a',
+        mode: 'skip_invalid',
+        pdf_snapshot_captured: true,
+        id: `checked-${columns.length}`,
+        status: 'validated',
+        inspection_json: columnInspection(pdfPageColumn)
+      }
+    },
+    commitCsvImport: async (id) => {
+      commits.push(id)
+      return {
+        project: 'project-a',
+        mode: 'skip_invalid',
+        pdf_snapshot_captured: true,
+        id,
+        status: 'completed'
+      }
+    }
+  })
+  const originalFile = instance.csvFile.value
+  await instance.uploadCsv()
+  instance.editPageColumn()
+  assert.equal(instance.csvJob.value, null)
+  assert.equal(instance.csvFile.value, originalFile)
+  instance.pdfPageColumn.value = '物理页'
+  await instance.confirmCsvImport()
+  assert.deepEqual(commits, [])
+  await instance.uploadCsv()
+  await instance.confirmCsvImport()
+  assert.deepEqual(columns, ['PDF页码', '物理页'])
+  assert.deepEqual(commits, ['checked-2'])
+})
+
+test('reopens the saved server mapping without reuploading, then confirms the same job', async () => {
+  const id = 'csv000000000001'
+  const commits = []
+  const saved = {
+    id,
+    project: 'project-a',
+    mode: 'skip_invalid',
+    status: 'validated',
+    original_filename: 'saved.csv',
+    pdf_snapshot_captured: true,
+    source: 'source-a',
+    csv_pdf_page_column: '物理页',
+    inspection_json: columnInspection('物理页')
+  }
+  const instance = component(
+    {
+      getImportJob: async (requested) => {
+        assert.equal(requested, id)
+        return saved
+      },
+      createCsvInspection: async () => assert.fail('opening an inspection must not upload'),
+      listSources: async () => ({ items: sources }),
+      commitCsvImport: async (requested) => {
+        commits.push(requested)
+        return { ...saved, status: 'processing' }
+      }
+    },
+    id
+  )
+  try {
+    await new Promise(setImmediate)
+    assert.equal(instance.csvFile.value, null)
+    assert.equal(instance.csvJob.value.original_filename, 'saved.csv')
+    assert.equal(instance.csvActualSource.value.title, '来源 A')
+    assert.equal(instance.csvSourceMismatch.value, false)
+    await instance.confirmCsvImport()
+    assert.deepEqual(commits, [id])
+    assert.equal(instance.csvJob.value.status, 'processing')
+  } finally {
+    instance.unmount()
+  }
+})
+
+test('a CSV link cannot present or confirm an import from another project or mode', async () => {
+  const id = 'csv000000000002'
+  for (const wrong of [{ project: 'different-project' }, { mode: 'ocr' }]) {
+    const instance = component(
+      {
+        getImportJob: async () => ({
+          id,
+          project: 'project-a',
+          mode: 'skip_invalid',
+          status: 'validated',
+          pdf_snapshot_captured: true,
+          inspection_json: columnInspection(),
+          ...wrong
+        }),
+        commitCsvImport: async () => assert.fail('invalid link cannot confirm')
+      },
+      id
+    )
+    try {
+      await new Promise(setImmediate)
+      assert.equal(instance.csvJob.value, null)
+      assert.equal(instance.csvObservation.value.state, 'unavailable')
+      await instance.confirmCsvImport()
+    } finally {
+      instance.unmount()
+    }
+  }
 })
