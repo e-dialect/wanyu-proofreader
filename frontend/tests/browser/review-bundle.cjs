@@ -107,14 +107,15 @@ async function main() {
     // No source rights, source-check box or import confirmation is filled for it.
     await page.goto(`${origin}/admin/guide/project-files#review-bundle-practice`)
     const practiceSection = page.locator('#review-bundle-practice')
-    await practiceSection.getByRole('heading', { name: '管理员：完整资料包练习' }).waitFor()
+    await practiceSection.getByRole('heading', { name: '完整资料包练习' }).waitFor()
     await page.waitForFunction(
       () =>
         document.querySelector('#review-bundle-practice')?.getBoundingClientRect().top <
         window.innerHeight / 2
     )
+    await practiceSection.getByText('下载虚构练习材料', { exact: true }).click()
     const practiceDownload = page.waitForEvent('download')
-    await practiceSection.getByRole('link', { name: '下载虚构 Review Bundle（3 条）' }).click()
+    await practiceSection.getByRole('link', { name: '完整练习包（3 条）' }).click()
     const practicePath = path.join(out, 'downloaded-fictional-practice.zip')
     await (await practiceDownload).saveAs(practicePath)
     const practiceBytes = fs.readFileSync(practicePath)
@@ -134,17 +135,57 @@ async function main() {
       window.scrollTo({ top: window.scrollY + element.getBoundingClientRect().top - 110 })
     })
     await page.screenshot({ path: path.join(out, '06-practice-guide-mobile.png') })
+    const mobileProofreader = practiceSection.getByRole('button', { name: '校对者', exact: true })
+    assert.ok((await mobileProofreader.boundingBox()).height >= 44)
+    await mobileProofreader.click()
+    await practiceSection.getByRole('heading', { name: '校对者练习步骤' }).waitFor()
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.getByLabel('账户与帮助', { exact: true }).click()
     await page.getByRole('button', { name: '使用帮助', exact: true }).click()
     const help = page.getByRole('dialog')
     await help.getByRole('link', { name: '下载虚构完整练习包', exact: true }).waitFor()
-    await help.getByRole('link', { name: '查看管理员练习步骤', exact: true }).click()
+    await help.getByRole('link', { name: '查看完整练习步骤', exact: true }).click()
     await help.waitFor({ state: 'hidden' })
     await page.goto(
       `${origin}/admin/projects/${project.id}?section=materials&view=import&method=bundle`
     )
     const panel = page.getByRole('region', { name: '资料包导入', exact: true })
+    await panel.getByRole('heading', { name: '从资料包导入条目' }).waitFor()
+    await page.getByRole('link', { name: '查看材料格式与准备说明' }).click()
+    await page.getByRole('link', { name: '跳到完整资料包练习' }).click()
+    const prepare = practiceSection.getByRole('button', { name: /准备独立项目和原文/ })
+    await prepare.waitFor()
+    assert.equal(await practiceSection.getByRole('link', { name: '上传练习原文' }).count(), 0)
+    await page.goto(
+      `${origin}/admin/guide/project-files?project=${project.id}&method=bundle&practiceProject=${project.id}&practiceRole=manager&practiceStep=import#review-bundle-practice`
+    )
+    await practiceSection.getByRole('alert').filter({ hasText: '练习项目' }).waitFor()
+    assert.equal(await practiceSection.getByRole('link', { name: '打开项目资料包导入' }).count(), 0)
+    const create = practiceSection.getByRole('link', { name: '创建练习项目', exact: true })
+    await create.click()
+    await page.getByRole('heading', { name: '创建练习项目', exact: true }).waitFor()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('隔离的虚构资料练习')
+    await page.getByRole('button', { name: '创建练习项目', exact: true }).click()
+    await practiceSection.getByRole('heading', { name: '隔离的虚构资料练习' }).waitFor()
+    const importStep = practiceSection.getByRole('button', { name: /预检资料包，再确认导入/ })
+    assert.equal(await importStep.getAttribute('aria-expanded'), 'true')
+    const practiceImport = practiceSection.getByRole('link', { name: '打开项目资料包导入' })
+    const practiceId = new URL(page.url()).searchParams.get('practiceProject')
+    assert.notEqual(practiceId, project.id)
+    assert.ok(
+      (await practiceImport.getAttribute('href')).includes(`/admin/projects/${practiceId}?`)
+    )
+    await page.reload()
+    await practiceImport.waitFor()
+    assert.equal(await importStep.getAttribute('aria-expanded'), 'true')
+    await page.getByRole('link', { name: '返回项目材料' }).click()
+    await page.waitForURL(
+      (url) =>
+        url.pathname === `/admin/projects/${project.id}` &&
+        url.searchParams.get('section') === 'materials' &&
+        url.searchParams.get('view') === 'import' &&
+        url.searchParams.get('method') === 'bundle'
+    )
     await panel.getByRole('heading', { name: '从资料包导入条目' }).waitFor()
     const upload = (buffer, name = 'synthetic-review-bundle.zip') =>
       panel
@@ -152,7 +193,7 @@ async function main() {
         .setInputFiles({ name, mimeType: 'application/zip', buffer })
     await upload(practiceBytes, 'review-bundle-practice-v1.zip')
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
     await panel.getByText('资料包包含 3 条条目。', { exact: true }).waitFor()
     await panel.getByText('practice-wanyu-reviewbundle-v1', { exact: true }).waitFor()
     assert.equal(
@@ -179,12 +220,16 @@ async function main() {
 
     await upload(makeZip({ ...args, rightsRef: 'src-not-registered-ui' }))
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
-    await panel
-      .getByLabel('我已核对来源声明，确认将这些条目导入当前项目。', { exact: true })
-      .check()
-    await panel.getByRole('button', { name: '确认导入资料包', exact: true }).click()
-    await panel.getByRole('alert').filter({ hasText: '不在来源登记里' }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
+    await panel.getByRole('alert').filter({ hasText: '此来源尚未登记' }).waitFor()
+    assert.equal(
+      await panel.getByRole('button', { name: '确认导入资料包', exact: true }).isDisabled(),
+      true
+    )
+    assert.equal(
+      await panel.getByRole('link', { name: '新窗口打开来源登记' }).getAttribute('target'),
+      '_blank'
+    )
     assert.equal(
       (await ledger()).batches.length,
       0,
@@ -198,7 +243,7 @@ async function main() {
 
     await upload(valid)
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
     assert.equal(
       await panel.getByRole('button', { name: '确认导入资料包', exact: true }).isDisabled(),
       true
@@ -227,7 +272,7 @@ async function main() {
 
     await upload(valid)
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
     await panel
       .getByLabel('我已核对来源声明，确认将这些条目导入当前项目。', { exact: true })
       .check()
@@ -273,16 +318,14 @@ async function main() {
     await picker.selectOption(source.logical_id)
     await chooseCsv()
     await page.getByRole('button', { name: '检查 CSV', exact: true }).click()
-    await page
-      .getByRole('region', { name: 'CSV 导入状态', exact: true })
-      .getByText('检查完成，待确认', { exact: true })
-      .waitFor()
+    await page.getByRole('heading', { name: '检查完成，待确认', exact: true }).waitFor()
     await page
       .getByText('本次实际来源：', { exact: false })
       .filter({ hasText: source.title })
       .waitFor()
     const csvJob = (await ledger()).batches.find((item) => item.mode === 'skip_invalid')
     assert.ok(csvJob)
+    await page.getByRole('button', { name: '检查另一个 CSV', exact: true }).click()
     await chooseCsv()
     await picker.selectOption(alternate.logical_id)
     await page.getByRole('button', { name: '检查 CSV', exact: true }).click()
@@ -296,7 +339,8 @@ async function main() {
       (route) => route.abort('failed'),
       { times: 1 }
     )
-    const refresh = page.getByRole('button', { name: '刷新检查与导入进度', exact: true })
+    await page.getByRole('button', { name: '查看检查与导入详情', exact: true }).click()
+    const refresh = page.getByRole('button', { name: '重新读取状态', exact: true })
     await refresh.click()
     await page
       .getByRole('region', { name: 'CSV 导入状态', exact: true })
@@ -321,10 +365,7 @@ async function main() {
     )
     await confirmCsv.click()
     assert.ok((await commit).ok())
-    await page
-      .getByRole('region', { name: 'CSV 导入状态', exact: true })
-      .getByText('处理完成', { exact: true })
-      .waitFor()
+    await page.getByText('成功导入 1 条待校对任务。', { exact: true }).waitFor()
     const savedCsv = await api(`/api/collections/import_jobs/records/${csvJob.id}`, {
       token: auth.token
     })
@@ -340,6 +381,9 @@ async function main() {
           practiceReadOnlyValidation: true,
           practiceHumanConfirmationRemainsUnchecked: true,
           practiceHelpDeepLink: true,
+          practiceRoleAndProjectNavigation: true,
+          practiceManualProgressRestored: true,
+          practiceMobileRoleSwitch: true,
           readOnlyValidation: true,
           invalidBundleBlocked: true,
           unknownRightsBlocked: true,

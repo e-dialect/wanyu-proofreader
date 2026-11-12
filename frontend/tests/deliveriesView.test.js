@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as pbErrors from '../src/utils/pbErrors.js'
 import { USAGE_PURPOSE_LABELS } from '../src/constants/sourceRegistry.js'
+import { receiptLabel } from '../src/lib/deliveryPresentation.js'
 import { protectedPageScopeFixture } from './helpers/protectedPageScopeFixture.js'
 
 // Execute the shipped SFC callbacks with mocked refs and network, so the
@@ -18,10 +19,6 @@ function extract(pattern, label) {
   return match[1]
 }
 
-const receiptLabelSource = extract(
-  /\nconst receiptLabel = (\(item\) => \{[\s\S]*?\n\})\n/,
-  'receiptLabel'
-)
 const receiptEventNoteSource = extract(
   /\nconst receiptEventNote = (\(event\) => \{[\s\S]*?\n\})\n/,
   'receiptEventNote'
@@ -32,7 +29,6 @@ const helpers = Object.fromEntries(
   errorImports[1].split(',').map((name) => [name.trim(), pbErrors[name.trim()]])
 )
 
-const receiptLabel = new Function(`return (${receiptLabelSource})`)()
 const receiptEventNote = new Function(`return (${receiptEventNoteSource})`)()
 
 function fixture(services = {}) {
@@ -47,6 +43,7 @@ function fixture(services = {}) {
   const bindings = {
     ...helpers,
     USAGE_PURPOSE_LABELS,
+    receiptLabel,
     useProtectedPageScope: protectedScope.useProtectedPageScope,
     ref: (value) => ({ value }),
     reactive: (value) => value,
@@ -92,7 +89,8 @@ function fixture(services = {}) {
       adoptionPage, adoptionPages, loading, busy, loadError, operationError, success,
       items, metrics, handoff, handoffFilename, handoffInput, reviewer, previous,
       changeReason, preview, confirmed, requestId, selected, eventForm, eventBaseline,
-      impacts, sourceRef, visibleDeliveries, dirty, clearProtectedData, handleFailure
+      impacts, sourceRef, visibleDeliveries, dirty, clearProtectedData, handleFailure,
+      listPage, openDelivery, selectEvent
     }`
   )(...Object.values(bindings))
   return {
@@ -120,6 +118,45 @@ function deferred() {
   })
   return { promise, resolve, reject }
 }
+
+test('delivery details and event pagination return to the original record page, including reload', async () => {
+  const service = {
+    listDeliveries: async (_id, { page }) => ({ items: [], metrics: {}, page, totalPages: 5 })
+  }
+  const state = fixture(service)
+  await state.navigate({ view: 'records', page: 3 })
+  await new Promise((resolve) => setImmediate(resolve))
+  await state.openDelivery({ id: 'package-three' })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(state.route.query.returnPage, 3)
+  await state.navigate({ package: 'package-three', tab: 'events', page: 2 })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(state.route.query.returnPage, 3)
+  assert.equal(state.route.query.page, 2)
+
+  const reloaded = fixture(service)
+  await reloaded.navigate({ ...state.route.query })
+  await new Promise((resolve) => setImmediate(resolve))
+  await reloaded.navigate({ view: 'records' })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(reloaded.route.query.page, 3)
+  assert.equal(reloaded.listPage.value, 3)
+  assert.equal(Object.hasOwn(reloaded.route.query, 'returnPage'), false)
+})
+
+test('reopening the same delivery event editor preserves the unsaved receipt', () => {
+  const state = fixture()
+  const item = { id: 'package-one', reconciliation: { payload_count: 7 } }
+  state.selectEvent(item)
+  state.eventForm.status = 'partial_conflict'
+  state.eventForm.affected = 2
+  state.eventForm.reason = '接收方报告两条冲突'
+  state.selectEvent(item)
+  assert.equal(state.eventForm.status, 'partial_conflict')
+  assert.equal(state.eventForm.affected, 2)
+  assert.equal(state.eventForm.reason, '接收方报告两条冲突')
+  assert.equal(state.dirty.value, true)
+})
 
 function seedPrivateDrafts(state) {
   state.selected.value = { id: 'package-one' }
@@ -501,6 +538,18 @@ test('其余回执状态不受待办数量影响', () => {
   ]) {
     assert.equal(receiptLabel({ receipt_state: state, pending_actions: [] }), label)
     assert.equal(receiptLabel({ receipt_state: state, pending_actions: ['event-1'] }), label)
+  }
+})
+
+test('当前退回和停用状态优先于历史回执字段', () => {
+  const record = { receipt_state: 'awaiting_receipt', pending_actions: [] }
+  for (const [workflow_state, label] of [
+    ['pending_resolution', '退回待处置'],
+    ['returned_resolved', '退回已处置'],
+    ['withdrawn', '已停用'],
+    ['awaiting_receipt', '对方尚未回执']
+  ]) {
+    assert.equal(receiptLabel({ ...record, workflow_state }), label)
   }
 })
 

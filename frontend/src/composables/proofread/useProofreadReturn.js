@@ -1,4 +1,4 @@
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, unref } from 'vue'
 import { claimNextProjectPage, returnToSource } from '../../services/pagesService.js'
 import {
   flushReturnQueue,
@@ -24,6 +24,8 @@ export function useProofreadReturn({
   glyphQueueFor,
   clearGlyphQueue,
   router,
+  returnTarget,
+  taskEditTarget,
   captureCase,
   isCurrentCase,
   leaseNavigationAllowed
@@ -136,15 +138,15 @@ export function useProofreadReturn({
       leaseNavigationAllowed.value = true
       if (next?.id) {
         saveClaimedLease(next)
-        await router.push(`/tasks/${next.id}/edit`)
+        await router.push(taskEditTarget(next.id))
         return
       }
       clearGlyphQueue(projectId)
-      await router.push('/tasks')
+      await router.push(unref(returnTarget) || '/tasks')
     } catch {
       if (!isCurrentCase(scope)) return
       leaseNavigationAllowed.value = true
-      await router.push('/tasks')
+      await router.push(unref(returnTarget) || '/tasks')
     }
   }
 

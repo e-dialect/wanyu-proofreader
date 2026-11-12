@@ -49,7 +49,7 @@ routerAdd("POST", `${FANGJI_API}/projects/{projectId}/claim`, (c) => {
   const previousTaskId = String(claimBody.previousTaskId || "")
   // #162：层级是白名单值，不是自由文本——它会参与筛选，也不该被拿来拼过滤表达式。
   const tier = String(claimBody.tier || "").trim()
-  if (tier && !["A", "B", "C"].includes(tier)) throw new BadRequestError("难度层级只能是 A、B 或 C")
+  if (tier && !["A", "B", "C"].includes(tier)) throw new BadRequestError("难度层级无效，请选择页面提供的难度选项")
   // 缺字待登记是布尔筛选：只领 missing_glyph=true 的条目，与 tier 正交（两者可同时给）。
   const glyph = Boolean(claimBody.glyph)
 
@@ -188,7 +188,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/task`, (c) => {
     ocr_cells_json: page.getString("ocr_cells_json"),
     row_headers_json: page.getString("row_headers_json"),
     expand: {
-      project: { id: project.id, name: project.getString("name") }
+      project: { id: project.id, name: project.getString("name"), purpose: project.getString("purpose") || "work" }
     }
   }
   if (active) {
@@ -582,6 +582,7 @@ routerAdd("GET", `${FANGJI_API}/pages/{pageId}/arbitration`, (c) => {
       id: page.id,
       project: page.getString("project"),
       project_file: page.getString("project_file"),
+      import_job: page.getString("import_job"),
       page_number: page.getInt("page_number"),
       pdf_page: page.getInt("pdf_page"),
       status: page.getString("status"),

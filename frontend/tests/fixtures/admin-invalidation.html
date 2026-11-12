@@ -2,6 +2,7 @@
 // Mounted production components with entirely synthetic responses. This fixture
 // deliberately supports transports that ignore AbortSignal to exercise epochs.
 import { createApp, h, ref, nextTick } from 'vue'
+import { createPinia } from 'pinia'
 import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
 import Adoption from '../../src/views/admin/AdoptionView.vue'
 import Deliveries from '../../src/views/admin/DeliveriesView.vue'
@@ -66,6 +67,6 @@ const api={scenario,router,call:(name,...args)=>view.value.$.setupState[name](..
  snapshot:()=>{const s=api.state();return Object.fromEntries(['batches','currentRecord','exceptions','decisionDrafts','createForm','currentDelivery','items','nativeBatch','adoptionChoices','handoff','handoffFilename','reviewer','preview','confirmed','requestId','eventForm','eventBaseline','selected','impacts','sourceRef','accessLost','unavailable','projectUnavailable','summary','metrics'].filter(k=>k in s).map(k=>[k,s[k]]))}}
 window.__adminFixture=api
 await router.push(params.get('route')||'/projects/project-synthetic/adoption?batch=batch-synthetic&tab=exceptions')
-createApp({render:()=>h(RouterView,null,{default:({Component})=>h(Component,{ref:view})})}).use(router).mount('#app')
+createApp({render:()=>h(RouterView,null,{default:({Component})=>h(Component,{ref:view})})}).use(createPinia()).use(router).mount('#app')
 await nextTick()
 </script></html>

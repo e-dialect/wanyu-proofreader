@@ -133,6 +133,7 @@ func (s *importService) register() {
 		return e.Next()
 	})
 	s.app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		e.Router.POST("/api/fangji/projects/{projectId}/imports/csv/columns", s.csvColumns).Bind(apis.BodyLimit(51*1024*1024), apis.RequireAuth("users"))
 		e.Router.POST(
 			"/api/fangji/projects/{projectId}/imports/csv",
 			s.uploadCSV).Bind(apis.BodyLimit(51*1024*1024),
@@ -245,12 +246,34 @@ func (s *importService) uploadCSV(c *core.RequestEvent) error {
 		return apis.NewBadRequestError("无法读取上传的 CSV 文件。", err)
 	}
 
+	selectedColumn := strings.TrimSpace(c.Request.FormValue("pdf_page_column"))
+	if selectedColumn != "" {
+		if _, err := uploaded.Seek(0, io.SeekStart); err != nil {
+			return apis.NewBadRequestError("无法读取 CSV 表头。", err)
+		}
+		decoded, _, err := decodedCSVReader(uploaded)
+		if err != nil {
+			return apis.NewBadRequestError("CSV 编码无法识别，请使用 UTF-8 或 GB18030。", err)
+		}
+		reader := csv.NewReader(decoded)
+		reader.FieldsPerRecord = -1
+		headers, err := reader.Read()
+		if err != nil {
+			return apis.NewBadRequestError(csvReadErrorMessage(err), err)
+		}
+		selectedColumn, err = canonicalCSVPageColumn(headers, selectedColumn)
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+	}
+
 	projectFileID, pdfPageLimit := s.primaryPDFSnapshot(projectID)
 	filter := fmt.Sprintf(
-		`project = %q && file_hash = %q && mode = "skip_invalid" && project_file = %q && status != "failed"`,
+		`project = %q && file_hash = %q && mode = "skip_invalid" && project_file = %q && csv_pdf_page_column = %q && status != "failed"`,
 		projectID,
 		hash,
 		projectFileID,
+		selectedColumn,
 	)
 	existing, findErr := s.app.FindRecordsByFilter("import_jobs", filter, "-created", 1, 0)
 	if findErr != nil {
@@ -307,6 +330,7 @@ func (s *importService) uploadCSV(c *core.RequestEvent) error {
 		"project_file":          projectFileID,
 		"pdf_page_limit":        pdfPageLimit,
 		"pdf_snapshot_captured": true,
+		"csv_pdf_page_column":   selectedColumn,
 		"source_link":           sourceLink,
 	}
 	if sourceID != "" {
@@ -614,12 +638,13 @@ var workRoutes map[string]workRoute
 
 func init() {
 	workRoutes = map[string]workRoute{
-		"csv_inspect": {(*importService).processCSVInspection, "import_jobs"},
-		"csv":         {(*importService).processCSV, "import_jobs"},
-		"pdf":         {(*importService).processPDF, "project_files"},
-		"ocr":         {(*importService).processOCR, "import_jobs"},
-		"bundle":      {(*importService).processBundle, "import_jobs"},
-		"conversion":  {(*importService).processConversion, ""},
+		"csv_inspect":  {(*importService).processCSVInspection, "import_jobs"},
+		"csv":          {(*importService).processCSV, "import_jobs"},
+		"pdf":          {(*importService).processPDF, "project_files"},
+		"ocr":          {(*importService).processOCR, "import_jobs"},
+		"bundle":       {(*importService).processBundle, "import_jobs"},
+		"conversion":   {(*importService).processConversion, ""},
+		"batch_report": {(*importService).processBatchReport, "batch_report_exports"},
 	}
 }
 
@@ -757,6 +782,7 @@ func (s *importService) recoverPendingWork() {
 		{"import_jobs", `(status="queued" || status="processing" || status="inspecting") && mode="ocr"`, "ocr"},
 		{"conversion_jobs", `status="queued" || status="processing"`, "conversion"},
 		{"project_files", `status="processing"`, "pdf"},
+		{"batch_report_exports", `status="queued" || status="processing"`, "batch_report"},
 	}
 	counts := make([]int, len(scans))
 	runScan := func(index int) {
@@ -784,12 +810,12 @@ func (s *importService) recoverPendingWork() {
 	// Preserve the original shared-worker recovery order. A conversion scans
 	// only published pages, so admitting it ahead of an older queued import
 	// could complete the conversion before that import publishes its rows.
-	for _, index := range []int{0, 2, 3} {
+	for _, index := range []int{0, 2, 3, 4} {
 		runScan(index)
 	}
 	pending.Wait()
 	logUpload("info", "recovery_scan_completed", map[string]any{
-		"csv_jobs": counts[0], "ocr_jobs": counts[1], "conversions": counts[2], "pdf_files": counts[3],
+		"csv_jobs": counts[0], "ocr_jobs": counts[1], "conversions": counts[2], "pdf_files": counts[3], "batch_reports": counts[4],
 	})
 }
 
@@ -1173,7 +1199,7 @@ func (s *importService) processCSVInspection(work importWork) {
 		s.markFatal(work, "CSV_HEADER_INVALID", csvReadErrorMessage(err), err)
 		return
 	}
-	headers, pdfIndex, pdfPageField, err := resolveCSVHeaders(rawHeaders)
+	headers, pdfIndex, pdfPageField, err := resolveCSVHeadersWithColumn(rawHeaders, job.GetString("csv_pdf_page_column"))
 	if err != nil {
 		s.markFatal(work, "CSV_HEADER_INVALID", err.Error(), err)
 		return
@@ -1328,7 +1354,7 @@ func (s *importService) processCSV(work importWork) {
 		s.markFatal(work, "CSV_HEADER_INVALID", csvReadErrorMessage(err), err)
 		return
 	}
-	headers, pdfIndex, headerErr := validateCSVHeaders(headers)
+	headers, pdfIndex, _, headerErr := resolveCSVHeadersWithColumn(headers, job.GetString("csv_pdf_page_column"))
 	if headerErr != nil {
 		s.markFatal(work, "CSV_HEADER_INVALID", headerErr.Error(), headerErr)
 		return
@@ -1637,9 +1663,9 @@ func validateCSVHeaders(raw []string) ([]string, int, error) {
 
 var pdfPageHeaderAliases = []string{"PDF页码", "page", "pdf_page", "页码"}
 
-func resolveCSVHeaders(raw []string) ([]string, int, string, error) {
+func csvHeaderColumns(raw []string) ([]string, []int, error) {
 	if len(raw) == 0 {
-		return nil, -1, "", errors.New("CSV 缺少表头。")
+		return nil, nil, errors.New("CSV 缺少表头。")
 	}
 	headers := make([]string, len(raw))
 	seen := map[string]struct{}{}
@@ -1647,10 +1673,10 @@ func resolveCSVHeaders(raw []string) ([]string, int, string, error) {
 	for i, value := range raw {
 		header := strings.TrimSpace(strings.TrimPrefix(value, "\ufeff"))
 		if header == "" {
-			return nil, -1, "", fmt.Errorf("第 %d 列表头为空。", i+1)
+			return nil, nil, fmt.Errorf("第 %d 列表头为空。", i+1)
 		}
 		if _, exists := seen[header]; exists {
-			return nil, -1, "", fmt.Errorf("表头 %q 重复。", header)
+			return nil, nil, fmt.Errorf("表头 %q 重复。", header)
 		}
 		seen[header] = struct{}{}
 		headers[i] = header
@@ -1660,6 +1686,26 @@ func resolveCSVHeaders(raw []string) ([]string, int, string, error) {
 				break
 			}
 		}
+	}
+	return headers, aliasIndexes, nil
+}
+
+func resolveCSVHeaders(raw []string) ([]string, int, string, error) {
+	return resolveCSVHeadersWithColumn(raw, "")
+}
+
+func resolveCSVHeadersWithColumn(raw []string, selected string) ([]string, int, string, error) {
+	headers, aliasIndexes, err := csvHeaderColumns(raw)
+	if err != nil {
+		return nil, -1, "", err
+	}
+	if selected != "" {
+		for index, header := range headers {
+			if header == selected {
+				return headers, index, header, nil
+			}
+		}
+		return nil, -1, "", fmt.Errorf("所选页码列 %q 不在该 CSV 的表头中，请重新选择。", selected)
 	}
 	if len(aliasIndexes) == 0 {
 		return nil, -1, "", fmt.Errorf(
@@ -1700,7 +1746,7 @@ func buildCSVPage(headers, values []string, pdfIndex, line int) (csvPage, *rowVa
 	if err != nil || pdfPage <= 0 {
 		return csvPage{}, &rowValidationError{
 			line:     line,
-			column:   "PDF页码",
+			column:   headers[pdfIndex],
 			code:     "INVALID_PDF_PAGE",
 			message:  "PDF页码必须是正整数。",
 			rawValue: truncateText(rawPDFPage, 200),

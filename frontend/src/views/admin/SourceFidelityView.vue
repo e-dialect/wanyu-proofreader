@@ -2,8 +2,11 @@
   <main class="container page workspace-page project-workspace-page">
     <header class="page-heading project-detail-heading">
       <div>
-        <RouterLink :to="`/admin/projects/${projectId}?section=work&view=queue`" class="back-link"
-          >← 待办队列</RouterLink
+        <RouterLink
+          :to="todoReturn || `/admin/projects/${projectId}?section=work&view=queue`"
+          class="back-link"
+          ><span aria-hidden="true">← </span
+          >{{ todoReturn ? '返回统一待办' : '项目待办队列' }}</RouterLink
         >
         <h1>
           {{
@@ -61,11 +64,28 @@
       <p v-if="operationError" class="alert alert-error" role="alert">{{ operationError }}</p>
       <p v-if="message" class="alert alert-success" role="status">{{ message }}</p>
       <template v-if="loaded && view === 'problems'">
+        <p v-if="linkedIssueMissing" class="alert alert-warning" role="alert">
+          链接指向的问题已不在当前列表中。可以返回统一待办刷新，或在下方另选事项。
+        </p>
+        <div class="project-entry-filterbar">
+          <AppField label="显示范围"
+            ><select v-model="problemScope" class="form-control" :disabled="busy">
+              <option value="todo">未处理完成</option>
+              <option value="all">全部事项（含已处理）</option>
+            </select></AppField
+          ><button class="btn btn-secondary" :disabled="loading || busy" @click="load">
+            刷新事项
+          </button>
+        </div>
         <AppStatusPanel
           v-if="!activeIssues.length"
           state="empty"
           reason="none"
-          message="暂无成员报告。"
+          :message="
+            problemScope === 'todo'
+              ? '暂无未处理事项，可切换范围查看已处理历史。'
+              : '暂无成员报告。'
+          "
         />
         <template v-else>
           <section v-if="selection.length" class="card mb-4" aria-label="报告批量处理">
@@ -149,15 +169,20 @@
               </div>
               <form @submit.prevent="saveIssue(selectedIssue.id)">
                 <AppField label="状态"
-                  ><select v-model="issueEdits[selectedIssue.id].status" class="form-control">
+                  ><select
+                    v-model="issueEdits[selectedIssue.id].status"
+                    class="form-control"
+                    aria-label="问题状态"
+                  >
                     <option v-for="(label, key) in PROBLEM_STATES" :key="key" :value="key">
                       {{ label }}
                     </option>
                   </select></AppField
                 >
-                <AppField label="具体共同原因"
+                <AppField :label="resolvingIssue ? '具体共同原因（必填）' : '具体共同原因'"
                   ><input
                     v-model="issueEdits[selectedIssue.id].cause"
+                    :required="resolvingIssue"
                     class="form-control"
                     maxlength="2000"
                 /></AppField>
@@ -176,9 +201,10 @@
                     placeholder="记录实际处理，或说明无需修改的原因"
                   ></textarea>
                 </AppField>
-                <AppField label="影响范围"
+                <AppField :label="resolvingIssue ? '影响范围（必填）' : '影响范围'"
                   ><input
                     v-model="issueEdits[selectedIssue.id].impact"
+                    :required="resolvingIssue"
                     class="form-control"
                     maxlength="2000"
                 /></AppField>
@@ -213,7 +239,8 @@
         <div class="project-entry-filterbar">
           <AppField label="显示范围"
             ><select v-model="reviewScope" class="form-control">
-              <option value="todo">待完成或需复核</option>
+              <option value="todo">可核验或仲裁</option>
+              <option value="waiting">等待校对（{{ waitingReviewItems.length }}）</option>
               <option value="all">全部条目</option>
             </select></AppField
           ><button class="btn btn-secondary" :disabled="loading" @click="load">刷新队列</button>
@@ -221,11 +248,29 @@
         <p class="text-sm text-muted mb-4">
           已有提交或一致通过的条目可直接补录来源判断；只核验部分字段时，其余保留未核实。
         </p>
+        <p
+          v-if="waitingReviewItems.length && reviewScope !== 'waiting'"
+          class="source-waiting-note"
+        >
+          另有 {{ waitingReviewItems.length }} 条等待校对，尚未计入可核验待办。
+          <RouterLink :to="{ query: { ...route.query, reviewScope: 'waiting' } }"
+            >查看等待条目</RouterLink
+          >
+        </p>
+        <p
+          v-if="reviewScope === 'waiting' && waitingReviewItems.length"
+          class="source-waiting-note"
+        >
+          请校对者先提交校对结果；需要重新校对的条目，请管理员在项目条目中查看进度。
+          <RouterLink :to="`/admin/projects/${projectId}?section=work&view=entries`"
+            >查看项目条目</RouterLink
+          >
+        </p>
         <AppStatusPanel
           v-if="!reviewItems.length"
           state="empty"
           reason="none"
-          :message="summary.length ? '当前范围没有待复核条目，可切换查看全部。' : '暂无条目。'"
+          :message="reviewEmptyMessage"
         />
         <ul v-else class="project-review-list">
           <li v-for="item in reviewItems" :key="item.id">
@@ -242,9 +287,12 @@
                 · 来源判断 {{ item.field_denominator }}/{{ item.required_fields }} 字段</span
               ><span v-if="item.needs_review">依据变更需复核</span
               ><span v-if="item.pending_review">判断暂缓</span>
+              <span v-if="sourceReviewWaitingReason(item)">{{
+                sourceReviewWaitingReason(item)
+              }}</span>
             </div>
             <RouterLink
-              v-if="['approved', 'proofread', 'arbitration'].includes(item.status)"
+              v-if="canOpenSourceReview(item)"
               class="btn btn-secondary btn-sm"
               :to="sourceReviewTarget(projectId, item, reviewScope)"
               >{{ item.status === 'arbitration' ? '仲裁' : '来源核验' }}</RouterLink
@@ -309,9 +357,17 @@ import {
 } from '@/services/verificationService'
 import { getPbMessage } from '@/utils/pbErrors'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
-import { sourceReviewItems, sourceReviewTarget } from '@/lib/sourceReviewQueue'
+import {
+  canOpenSourceReview,
+  sourceReviewItems,
+  sourceReviewTarget,
+  sourceReviewWaitingReason
+} from '@/lib/sourceReviewQueue'
+import { todoReturnTarget } from '@/lib/unifiedTodos'
+import { projectProblemItems } from '@/lib/projectWorkflow'
 const route = useRoute()
 const router = useRouter()
+const todoReturn = computed(() => todoReturnTarget(route))
 const projectId = String(route.params.id)
 const view = computed(() =>
   ['problems', 'review', 'policy', 'export'].includes(route.query.view)
@@ -332,18 +388,60 @@ const summary = ref([])
 const selection = ref([])
 const groupReason = ref('')
 const selectedIssueId = ref('')
+const linkedIssueMissing = ref(false)
+const linkedIssue = computed(() => (typeof route.query.issue === 'string' ? route.query.issue : ''))
+function selectLinkedIssue() {
+  if (view.value !== 'problems') return
+  linkedIssueMissing.value = false
+  if (!linkedIssue.value) {
+    if (!activeIssues.value.some((issue) => issue.id === selectedIssueId.value))
+      selectedIssueId.value = activeIssues.value[0]?.id || ''
+    return
+  }
+  const found = activeIssues.value.some((issue) => issue.id === linkedIssue.value)
+  linkedIssueMissing.value = !found
+  selectedIssueId.value = found ? linkedIssue.value : ''
+}
+watch(linkedIssue, () => {
+  if (loaded.value) selectLinkedIssue()
+})
 const reviewScope = computed({
-  get: () => (route.query.reviewScope === 'all' ? 'all' : 'todo'),
+  get: () =>
+    ['all', 'waiting'].includes(route.query.reviewScope) ? route.query.reviewScope : 'todo',
   set: (value) =>
-    router.replace({ query: { ...route.query, reviewScope: value === 'all' ? 'all' : undefined } })
+    router.replace({ query: { ...route.query, reviewScope: value === 'todo' ? undefined : value } })
+})
+const problemScope = computed({
+  get: () => (route.query.problemScope === 'todo' ? 'todo' : 'all'),
+  set: (value) =>
+    router.replace({ query: { ...route.query, problemScope: value === 'todo' ? 'todo' : 'all' } })
 })
 const emptyTarget = ref(null)
 const emptyReason = ref('')
-const activeIssues = computed(() => problems.value.issues.filter((issue) => issue.report_count > 0))
+const activeIssues = computed(() => projectProblemItems(problems.value.issues, problemScope.value))
 const selectedIssue = computed(() =>
   activeIssues.value.find((issue) => issue.id === selectedIssueId.value)
 )
+const resolvingIssue = computed(() => issueEdits[selectedIssueId.value]?.status === 'resolved')
+watch(activeIssues, (issues) => {
+  const visible = new Set(issues.map((issue) => issue.id))
+  if (linkedIssueMissing.value && linkedIssue.value && visible.has(linkedIssue.value)) {
+    linkedIssueMissing.value = false
+    selectedIssueId.value = linkedIssue.value
+  } else if (!visible.has(selectedIssueId.value) && !linkedIssueMissing.value) {
+    selectedIssueId.value = issues[0]?.id || ''
+  }
+  selection.value = selection.value.filter((id) =>
+    problems.value.items.some((report) => report.id === id && visible.has(report.issue.id))
+  )
+})
 const reviewItems = computed(() => sourceReviewItems(summary.value, reviewScope.value))
+const waitingReviewItems = computed(() => sourceReviewItems(summary.value, 'waiting'))
+const reviewEmptyMessage = computed(() => {
+  if (!summary.value.length) return '暂无条目。'
+  if (reviewScope.value === 'waiting') return '当前没有等待校对的来源核验条目。'
+  return '当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。'
+})
 const reportsFor = (id) => problems.value.items.filter((report) => report.issue.id === id)
 const issueSignature = (item) =>
   JSON.stringify(
@@ -411,7 +509,11 @@ async function load() {
     if (requested === 'problems') {
       problems.value = result
       for (const issue of result.issues) syncIssue(issue)
-      if (!activeIssues.value.some((issue) => issue.id === selectedIssueId.value))
+      if (!loaded.value) selectLinkedIssue()
+      if (
+        !linkedIssueMissing.value &&
+        !activeIssues.value.some((issue) => issue.id === selectedIssueId.value)
+      )
         selectedIssueId.value = activeIssues.value[0]?.id || ''
     } else summary.value = result.items
     loaded.value = true
@@ -483,6 +585,15 @@ async function markEmpty() {
 }
 </script>
 <style scoped>
+.source-waiting-note {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  background: var(--surface);
+  border-left: 2px solid var(--line);
+  color: var(--gray-600);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
 .fidelity-actions {
   display: flex;
   flex-wrap: wrap;

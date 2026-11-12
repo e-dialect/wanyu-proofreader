@@ -38,8 +38,20 @@ assert.ok(mine.items.some(e => e.eventType === 'account.password_changed' && e.o
 assert.ok(mine.items.every(e => Object.keys(e).sort().join(',') === 'created,eventType,id,outcome,projectId'))
 await request(`/api/collections/users/records/${user.id}`, { method: 'PATCH', token: login.token, body: { oldPassword: password, password: 'UpdatedSecurityPassword123!', passwordConfirm: 'UpdatedSecurityPassword123!' } })
 await request('/api/collections/users/auth-refresh', { method: 'POST', token: login.token, expected: 401 })
-// Shared exit: 30 distinct volunteers can attempt login without a low IP cap.
-for (let i = 0; i < 30; i++) await request('/api/collections/users/auth-with-password', { method: 'POST', body: { identity: `shared-${suffix}-${i}`, password }, expected: 400 })
+// Shared exit: 30 distinct registered volunteers can log in and refresh.
+const sharedAccounts = []
+for (let i = 0; i < 30; i++) {
+  const name = `同出口-${suffix}-${i}`
+  const identity = `shared-${suffix}-${i}@example.test`
+  const record = await request('/api/collections/users/records', { method: 'POST', body: { email: identity, name, password, passwordConfirm: password } })
+  sharedAccounts.push({ identity, id: record.id })
+}
+for (const { identity, id } of sharedAccounts) {
+  const account = await request('/api/collections/users/auth-with-password', { method: 'POST', body: { identity, password } })
+  assert.equal(account.record.id, id)
+  const refreshed = await request('/api/collections/users/auth-refresh', { method: 'POST', token: account.token })
+  assert.equal(refreshed.record.id, id)
+}
 const collection = await request('/api/collections/users', { token: su.token })
 assert.ok(collection.verificationTemplate.body.includes('/account/verify-email#token={TOKEN}'))
 assert.equal(collection.verificationToken.duration, 604800)

@@ -12,14 +12,22 @@
         ><span>{{ item.description }}</span>
       </button>
     </div>
-    <RouterLink to="/admin/guide/project-files" class="back-link"
+    <RouterLink
+      :to="{
+        path: '/admin/guide/project-files',
+        query: projectId ? { project: projectId, method } : {}
+      }"
+      class="back-link"
       >查看材料格式与准备说明 →</RouterLink
     >
   </section>
 </template>
 <script setup>
 import { RouterLink } from 'vue-router'
-defineProps({ method: { type: String, default: 'pdf' } })
+defineProps({
+  projectId: { type: String, default: '' },
+  method: { type: String, default: 'pdf' }
+})
 defineEmits(['select'])
 const importMethods = [
   { key: 'pdf', label: '来源 PDF', description: '上传原始材料，供校对时逐页对照。' },

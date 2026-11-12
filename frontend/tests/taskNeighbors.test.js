@@ -148,7 +148,7 @@ test('list failures expose PocketBase details and localize generic errors', asyn
 test('editor loader reports a lost identity as an error and recovers after login', async () => {
   const source = proofreadSource()
   const loaderBody = source.match(
-    /useTaskNeighbors\(page, async \(currentPage\) => \{([\s\S]*?)\n\s*\}\)/
+    /useTaskNeighbors\(page, async \(currentPage\) => \{([\s\S]*?)\n\}\)/
   )?.[1]
   assert.ok(loaderBody, 'exercise the actual editor loader')
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor

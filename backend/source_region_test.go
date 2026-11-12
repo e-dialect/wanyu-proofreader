@@ -141,11 +141,19 @@ func TestSourceRegionStartOCRPersistsServerOwnedBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, _ := owner.NewAuthToken()
-	request := httptest.NewRequest("POST", "/api/fangji/projects/"+page.GetString("project")+"/imports/ocr", bytes.NewBufferString(`{"requestId":"source-region-real-form-001"}`))
-	request.Header.Set("Authorization", token)
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-	mux.ServeHTTP(response, request)
+	post := func(body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest("POST", "/api/fangji/projects/"+page.GetString("project")+"/imports/ocr", bytes.NewBufferString(body))
+		request.Header.Set("Authorization", token)
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		return response
+	}
+	stale := post(`{"requestId":"source-region-stale-form-001","projectFileId":"outdated-pdf"}`)
+	if stale.Code != 400 {
+		t.Fatalf("stale PDF should be rejected: %d %s", stale.Code, stale.Body)
+	}
+	response := post(`{"requestId":"source-region-real-form-001","projectFileId":"` + file.Id + `"}`)
 	if response.Code != 202 {
 		t.Fatalf("start failed: %d %s", response.Code, response.Body)
 	}

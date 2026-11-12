@@ -162,7 +162,7 @@ function reportSourceVisible() {
     measureBusiness('source_visible', performance.now() - sourceStartedAt)
   })
 }
-const emit = defineEmits(['image-error', 'show-full-page', 'retry'])
+const emit = defineEmits(['image-error', 'show-full-page', 'retry', 'document-loaded'])
 
 const props = defineProps({
   src: { type: String, default: '' },
@@ -384,6 +384,7 @@ async function loadPdf(src) {
     }
     pdfDoc = document
     totalPages.value = pdfDoc.numPages || 0
+    emit('document-loaded', totalPages.value)
     await nextTick()
     await renderCurrentPage()
     attachResizeObserver()
