@@ -539,9 +539,7 @@ const {
   data: queueData,
   refresh: refreshQueue,
   positionLabel: queuePositionLabel
-} = useArbitrationQueue((project, anchor) =>
-  getArbitrationQueue(project, anchor, importJob.value)
-)
+} = useArbitrationQueue((project, anchor) => getArbitrationQueue(project, anchor, importJob.value))
 const queueMessage = ref('')
 const sourceQueueError = ref('')
 const continuingSourceReview = ref(false)
