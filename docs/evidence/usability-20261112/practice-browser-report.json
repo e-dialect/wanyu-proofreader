@@ -1,0 +1,19 @@
+{
+  "practiceDownloadMatchesPublicArtifact": true,
+  "practiceReadOnlyValidation": true,
+  "practiceHumanConfirmationRemainsUnchecked": true,
+  "practiceHelpDeepLink": true,
+  "practiceRoleAndProjectNavigation": true,
+  "practiceManualProgressRestored": true,
+  "practiceMobileRoleSwitch": true,
+  "readOnlyValidation": true,
+  "invalidBundleBlocked": true,
+  "unknownRightsBlocked": true,
+  "imported": 2,
+  "originalUnicodePreserved": true,
+  "replayReturnedSameJob": true,
+  "mobileWidth": 390,
+  "csvReplayUsesActualSource": true,
+  "csvKnownJobRetriesInPlace": true,
+  "csvConfirmsOriginalJob": true
+}

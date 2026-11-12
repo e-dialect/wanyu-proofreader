@@ -120,12 +120,16 @@ const originalIssue = {
       }
     ]
     await page.getByRole('button', { name: '刷新队列', exact: true }).click()
-    await page.getByText('当前范围没有待复核条目，可切换查看全部。', { exact: true }).waitFor()
+    await page
+      .getByText('当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。', { exact: true })
+      .waitFor()
     await scope.selectOption('all')
     await page.locator('.project-review-list > li').waitFor()
     assert.equal(await page.locator('.project-review-list > li').count(), 1)
     await scope.selectOption('todo')
-    await page.getByText('当前范围没有待复核条目，可切换查看全部。', { exact: true }).waitFor()
+    await page
+      .getByText('当前没有可核验或仲裁的条目，已处理记录可在全部条目中查看。', { exact: true })
+      .waitFor()
     checks.filteredEmptyReview = true
     state.issue = clone(originalIssue)
     await problems()
@@ -239,6 +243,23 @@ const originalIssue = {
     assert.equal(state.puts.length, 2)
     assert.equal(state.puts[1].feedback, '本次提交的反馈')
     checks.editDuringSavePreserved = true
+    // A queue opens only unresolved issues; switching to history must retain
+    // local edits, while saving a resolved issue removes it from the todo list.
+    await scope.selectOption('todo')
+    await expectValue(feedback, '保存请求期间继续输入的反馈')
+    await status.selectOption('resolved')
+    await save.click()
+    await page.getByText('暂无未处理事项，可切换范围查看已处理历史。', { exact: true }).waitFor()
+    await scope.selectOption('all')
+    await expectValue(feedback, '保存请求期间继续输入的反馈')
+    assert.equal(await status.inputValue(), 'resolved')
+    await feedback.fill('查看历史时保留的合成草稿')
+    await scope.selectOption('todo')
+    await page.getByText('暂无未处理事项，可切换范围查看已处理历史。', { exact: true }).waitFor()
+    await scope.selectOption('all')
+    await expectValue(feedback, '查看历史时保留的合成草稿')
+    checks.todoHistoryAndDraftPreservation = true
+    await page.screenshot({ path: path.join(output, 'problem-history-mobile.png'), fullPage: true })
     assert.equal(
       await page.getByRole('heading', { name: '页面暂时无法显示', exact: true }).count(),
       0
