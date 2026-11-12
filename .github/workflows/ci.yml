@@ -140,16 +140,14 @@ jobs:
         if: matrix.suite == 'account_security'
         run: python3 backend/tests/run_account_security_integration.py
 
-  race-integration:
-    name: Concurrency under the race detector (${{ matrix.suite }})
+  race-unit:
+    name: Go race tests (${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        # The durable import worker and the claim/lease transactions are the two
-        # paths that touch shared maps and rows concurrently.
-        suite: [upload_jobs, task_leases]
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -159,11 +157,52 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - name: Go unit tests with the race detector
-        if: matrix.suite == 'upload_jobs'
+      - name: Discover and run every assigned Go race test
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: python3 scripts/run_go_race_shard.py --index "$SHARD" --count 4 --output "$RUNNER_TEMP/race-results"
+      - name: Keep the test inventory and timing evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: go-race-${{ matrix.shard }}
+          path: ${{ runner.temp }}/race-results
+          if-no-files-found: error
+
+  race-integration:
+    name: Concurrency under the race detector (${{ matrix.suite }})
+    # Preserve the old contexts' guarantee: they cannot pass unless every Go
+    # race test passed. CI gate also lists the shards directly and rejects skips.
+    needs: [race-unit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # The durable import worker and the claim/lease transactions are the two
+        # paths that touch shared maps and rows concurrently.
+        suite: [upload_jobs, task_leases]
+    steps:
+      - name: Require every Go race shard to pass
+        env:
+          RACE_RESULT: ${{ needs.race-unit.result }}
         run: |
-          RACE=1 make test-go
-          go test -C backend -race -tags capacityprobe -run '^TestCapacityProbe' ./...
+          if [ "$RACE_RESULT" != success ]; then
+            printf 'Go race shards did not all pass: %s\n' "$RACE_RESULT"
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Capacity probe tests with the race detector
+        if: matrix.suite == 'upload_jobs'
+        run: go test -C backend -race -tags capacityprobe -run '^TestCapacityProbe' ./...
       - name: Integration suite with a race-detected server
         env:
           SUITE: ${{ matrix.suite }}
@@ -968,6 +1007,7 @@ jobs:
       - prepare-matrix
       - static-analysis
       - pocketbase-compatibility
+      - race-unit
       - race-integration
       - seed-demo
       - core-workflows
