@@ -76,6 +76,8 @@ function fixture(services = {}) {
       reconciliation: { payload_count: 1 }
     }),
     listDeliveryEvents: async () => ({ events: [], page: 1, totalPages: 1 }),
+    batchReportNavigationQuery: () => ({}),
+    readBatchReportContext: () => null,
     listAdoptionBatches: async () => ({ batches: [], page: 1, totalPages: 1 }),
     getAdoptionBatch: async (id) => ({ id, project: route.params.id, status: 'confirmed' }),
     ...services
