@@ -29,7 +29,7 @@
       检查资料包
     </AppButton>
     <div v-if="report && !job" class="bundle-report">
-      <h4>{{ report.ok ? '检查通过，等待确认' : '资料包未通过检查' }}</h4>
+      <h4>{{ report.ok ? '资料包格式检查通过' : '资料包未通过检查' }}</h4>
       <p>资料包包含 {{ report.entry_count }} 条条目。</p>
       <ul v-if="report.errors?.length" class="bundle-errors">
         <li v-for="(item, index) in report.errors" :key="index">{{ item.message }}</li>
@@ -50,10 +50,6 @@
             <dd>{{ declaration.source_version }}</dd>
           </div>
           <div>
-            <dt>来源登记</dt>
-            <dd>{{ declaration.rights_ref }}</dd>
-          </div>
-          <div>
             <dt>待校字段</dt>
             <dd>{{ declaration.requested_fields?.join('、') }}</dd>
           </div>
@@ -62,9 +58,56 @@
       <p v-else-if="report.ok" class="text-sm text-muted">
         本地未能展开来源声明。完整检查结果以上方服务端报告为准。
       </p>
-      <p class="text-sm text-muted">
-        来源登记必须已存在；系统会按包内声明关联来源，不会替换为未知来源。用途许可仍由来源库分别管理。
-      </p>
+      <div v-if="report.ok" class="bundle-source" aria-label="资料包来源登记">
+        <h4>来源登记</h4>
+        <p v-if="rightsReference" class="bundle-filename">
+          登记标识：<strong>{{ rightsReference }}</strong>
+        </p>
+        <p v-if="sourceState === 'loading'" role="status">正在检查来源是否已登记…</p>
+        <p v-else-if="sourceState === 'ready'" role="status">
+          已登记：{{ registeredSource.title }}。导入时将关联这条来源。
+        </p>
+        <p v-else-if="sourceState === 'missing'" class="alert alert-warning" role="alert">
+          此来源尚未登记，暂不能导入。
+          {{
+            auth.isPlatformAdmin
+              ? '请在新窗口按此标识登记来源，再回到本页重新检查。'
+              : '请联系平台管理员按此标识登记来源，再回到本页重新检查。'
+          }}
+        </p>
+        <p v-else-if="sourceState === 'error'" class="alert alert-warning" role="alert">
+          暂时无法读取来源登记，不能据此判断来源是否存在。请重新检查；确认导入时服务端仍会核对来源。
+        </p>
+        <p v-else class="text-sm text-muted">暂未读取到来源登记标识，确认导入时将由服务端核对。</p>
+        <p class="text-sm text-muted">
+          已登记不代表用途获准。用途许可仍按来源登记中的结论分别判断。
+        </p>
+        <div v-if="rightsReference" class="bundle-source-actions">
+          <AppButton v-if="sourceState !== 'ready'" variant="secondary" @click="copySourceReference"
+            >复制登记标识</AppButton
+          >
+          <RouterLink
+            v-if="sourceState !== 'ready'"
+            :to="sourceRegistryTarget"
+            target="_blank"
+            rel="noopener"
+            class="btn btn-secondary"
+          >
+            新窗口打开来源登记
+          </RouterLink>
+          <AppButton
+            variant="ghost"
+            :disabled="busy || sourceState === 'loading'"
+            @click="checkSource()"
+          >
+            重新检查来源登记
+          </AppButton>
+        </div>
+        <p v-if="copyMessage" class="text-sm" role="status">{{ copyMessage }}</p>
+        <p v-if="sourceState !== 'ready' && rightsReference" class="text-sm text-muted">
+          请保留当前页面；登记后切回此页，已选资料包仍在，无需重新选择。
+        </p>
+      </div>
       <details class="bundle-technical">
         <summary>查看检查详情</summary>
         <p>
@@ -76,13 +119,17 @@
         </p>
       </details>
       <AppField v-if="report.ok" class="bundle-acknowledgment" layout="plain">
-        <input v-model="acknowledged" type="checkbox" :disabled="busy || uncertain" />
+        <input
+          v-model="acknowledged"
+          type="checkbox"
+          :disabled="busy || uncertain || sourceState === 'missing' || sourceState === 'loading'"
+        />
         我已核对来源声明，确认将这些条目导入当前项目。
       </AppField>
       <AppButton
         v-if="report.ok"
         variant="primary"
-        :disabled="busy || !acknowledged"
+        :disabled="busy || !acknowledged || sourceState === 'missing' || sourceState === 'loading'"
         @click="submit"
         :loading="busy"
         loading-label="正在提交"
@@ -107,6 +154,15 @@
       </p>
       <p>{{ csvJobProgressText(job) }}</p>
       <p v-if="job.source_link === 'linked'" class="text-sm">已按包内声明关联来源。</p>
+      <div
+        v-if="['completed', 'completed_with_errors'].includes(job.status)"
+        class="bundle-source-actions"
+      >
+        <RouterLink v-if="job.success_count > 0" :to="entriesTarget" class="btn btn-primary"
+          >查看本批条目</RouterLink
+        >
+        <RouterLink :to="ledgerTarget" class="btn btn-secondary">查看导入批次</RouterLink>
+      </div>
       <p v-if="job.error_message" class="alert alert-warning" role="alert">
         {{ job.error_message }}
       </p>
@@ -139,6 +195,9 @@
 
 <script setup>
 import AppButton from '@/components/AppButton.vue'
+import { RouterLink } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { getSource } from '@/services/sourcesService'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import AppField from '@/components/AppField.vue'
 import ImportErrorsPanel from '@/components/admin/project/ImportErrorsPanel.vue'
@@ -151,10 +210,23 @@ import {
 } from '@/services/importJobsService'
 import { bundleTerminal, MAX_BUNDLE_BYTES, readBundleDeclaration } from '@/lib/reviewBundle'
 import { csvJobProgressText } from '@/lib/csvInspection'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 const props = defineProps({ projectId: { type: String, required: true } })
 const emit = defineEmits(['changed'])
+const auth = useAuthStore()
+const sourceState = ref('idle')
+const registeredSource = ref(null)
+const copyMessage = ref('')
+let sourceCheckVersion = 0
+const rightsReference = computed(() => {
+  const value = report.value?.rights_ref || declaration.value?.rights_ref
+  return typeof value === 'string' ? value : ''
+})
+const sourceRegistryTarget = computed(() => ({
+  name: 'SourceRegistry',
+  query: { sourceRef: rightsReference.value }
+}))
 const bundleInput = ref(null)
 const panelElement = ref(null)
 const file = ref(null),
@@ -173,6 +245,14 @@ const {
   panel: panelElement,
   read: getImportJob
 })
+const entriesTarget = computed(() => ({
+  path: `/admin/projects/${props.projectId}`,
+  query: { section: 'work', view: 'entries', importJob: job.value?.id }
+}))
+const ledgerTarget = computed(() => ({
+  path: `/admin/projects/${props.projectId}`,
+  query: { section: 'materials', view: 'batches' }
+}))
 const busy = ref(false),
   error = ref(''),
   acknowledged = ref(false),
@@ -200,6 +280,10 @@ function reset() {
   file.value = report.value = declaration.value = jobTarget.value = null
   busy.value = acknowledged.value = uncertain.value = alreadyImported.value = false
   error.value = ''
+  sourceCheckVersion++
+  sourceState.value = 'idle'
+  registeredSource.value = null
+  copyMessage.value = ''
 }
 function chooseFile(event) {
   reset()
@@ -225,15 +309,58 @@ async function inspect() {
   if (results[0].status === 'fulfilled') report.value = results[0].value
   else error.value = getPbMessage(results[0].reason, '资料包检查失败，文件已保留，可以重试。')
   declaration.value = results[1].status === 'fulfilled' ? results[1].value : null
-  busy.value = false
+  if (report.value?.ok) await checkSource()
+  if (current(version)) busy.value = false
 }
+
+async function checkSource() {
+  const version = generation
+  const request = ++sourceCheckVersion
+  const reference = rightsReference.value
+  registeredSource.value = null
+  if (!reference) {
+    sourceState.value = 'idle'
+    return
+  }
+  sourceState.value = 'loading'
+  try {
+    const result = await getSource(reference)
+    if (!current(version) || request !== sourceCheckVersion) return
+    if (!result?.id || (result.logical_id !== reference && result.id !== reference))
+      throw new Error('来源不匹配')
+    registeredSource.value = result
+    sourceState.value = 'ready'
+  } catch (cause) {
+    if (!current(version) || request !== sourceCheckVersion) return
+    sourceState.value = getPbStatus(cause) === 404 ? 'missing' : 'error'
+    if (sourceState.value === 'missing' && !uncertain.value) acknowledged.value = false
+  }
+}
+
+async function copySourceReference() {
+  const version = generation
+  try {
+    await navigator.clipboard.writeText(rightsReference.value)
+    if (current(version)) copyMessage.value = '登记标识已复制。'
+  } catch {
+    if (current(version)) copyMessage.value = '未能复制，请选中上方登记标识后手动复制。'
+  }
+}
+
 async function publishJob(value, version) {
   if (!current(version)) return
   jobTarget.value = value
   seedJob(value)
 }
 async function submit() {
-  if (!file.value || !report.value?.ok || !acknowledged.value || busy.value) return
+  if (
+    !file.value ||
+    !report.value?.ok ||
+    !acknowledged.value ||
+    busy.value ||
+    ['missing', 'loading'].includes(sourceState.value)
+  )
+    return
   const version = ++generation
   busy.value = true
   error.value = ''
@@ -287,6 +414,15 @@ defineExpose({ hasPendingWork })
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--gray-200);
+}
+.bundle-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.bundle-source {
+  margin-block: var(--space-4);
 }
 .bundle-declaration {
   display: grid;

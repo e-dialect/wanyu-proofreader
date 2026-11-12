@@ -15,9 +15,10 @@ export async function createProjectPdf(options) {
   })
 }
 
-export async function listProjectPdfUploads(projectId) {
+export async function listProjectPdfUploads(projectId, { signal } = {}) {
   return pb.send(`/api/fangji/projects/${encodeURIComponent(projectId)}/pdf-uploads`, {
     method: 'GET',
+    signal,
     requestKey: null
   })
 }
@@ -39,11 +40,38 @@ export async function getProjectFile(recordId, { signal } = {}) {
   })
 }
 
-export async function findLatestProjectPdf(projectId) {
-  const list = await pb.collection('project_files').getFullList({
-    filter: `project="${projectId}" && status="ready" && is_primary=true`,
-    sort: '-created',
+async function findProjectPdf(projectId, filter, signal) {
+  const result = await pb.collection('project_files').getList(1, 1, {
+    filter: pb.filter(`project = {:projectId} && ${filter}`, { projectId }),
+    sort: '-created,-id',
+    signal,
     requestKey: null
   })
-  return list.find((record) => typeof record.file === 'string' && record.file.length > 0) || null
+  return result.items.find((record) => record.project === projectId) || null
+}
+
+export function findLatestProjectPdf(projectId, { signal } = {}) {
+  return findProjectPdf(projectId, 'status = "ready" && is_primary = true && file != ""', signal)
+}
+
+export function findLatestPdfValidation(projectId, { signal } = {}) {
+  return findProjectPdf(
+    projectId,
+    '(status = "processing" || status = "error" || status = "ready")',
+    signal
+  )
+}
+
+export async function fetchProjectPdfPreview(record, { signal } = {}) {
+  const token = await pb.files.getToken({ signal, requestKey: null })
+  signal?.throwIfAborted()
+  const url = pb.files.getURL(record, record.file, { token })
+  const response = await fetch(url, {
+    signal,
+    cache: 'no-store',
+    redirect: 'error',
+    referrerPolicy: 'no-referrer'
+  })
+  if (!response.ok) throw Object.assign(new Error('PDF 预览读取失败'), { status: response.status })
+  return response.blob()
 }
