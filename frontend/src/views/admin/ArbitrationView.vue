@@ -57,7 +57,7 @@
       </header>
       <nav v-if="!verificationMode" class="arbitration-queue" aria-label="待仲裁队列">
         <span class="task-position" role="status"
-          >{{ importJob ? '本批次 · ' : '' }}{{ queuePositionLabel }}</span
+          >{{ validImportJob(importJob) ? '本批次 · ' : '' }}{{ queuePositionLabel }}</span
         >
         <AppButton
           size="sm"
@@ -664,11 +664,13 @@ async function continueAfterSubmit() {
   const version = caseVersion
   const requestedPageId = pageId.value
   const requestedProjectId = projectId.value
+  const requestedImportJob = importJob.value
   const result = await refreshQueue(requestedProjectId, requestedPageId)
   if (
     version !== caseVersion ||
     requestedPageId !== pageId.value ||
-    requestedProjectId !== projectId.value
+    requestedProjectId !== projectId.value ||
+    requestedImportJob !== importJob.value
   )
     return
   if (!result) {

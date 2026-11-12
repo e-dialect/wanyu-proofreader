@@ -19,6 +19,11 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794442200_csv_page_column.js': {
+        'fields': ('import_jobs', {'csv_pdf_page_column': {'max': 524288}}),
+        'indexes': ['idx_import_jobs_mapping_dedup'],
+        'unique_indexes': [('import_jobs', 'idx_import_jobs_mapping_dedup', ('project', 'file_hash', 'mode', None, 'csv_pdf_page_column'))],
+    },
     '1794204800_native_account_rate_limits.js': {'native_account_limits': True},
     '1794204600_import_inspection_budget.js': {
         'fields': ('import_jobs', {'inspection_json': {'max': 524288}}),

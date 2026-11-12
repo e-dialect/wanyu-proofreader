@@ -26,7 +26,8 @@ const inspection = {
 const makeCsvJob = (id, overrides = {}) => ({
   id,
   project: 'project-a',
-  mode: 'csv',
+  mode: 'skip_invalid',
+  pdf_snapshot_captured: true,
   original_filename: 'synthetic.csv',
   status: 'validated',
   total_count: 25,
@@ -67,7 +68,14 @@ const makeCsvJob = (id, overrides = {}) => ({
               : { message: 'synthetic' }
         })
       }
-      if (url.pathname.endsWith('/imports/csv')) {
+      if (url.pathname.endsWith('/imports/csv/columns')) {
+        body = {
+          headers: ['PDF页码', '词条'],
+          page_column_candidates: ['PDF页码'],
+          suggested_page_column: 'PDF页码',
+          preview: [{ line: 2, values: ['1', '虚构'] }]
+        }
+      } else if (url.pathname.endsWith('/imports/csv')) {
         posts++
         body = csvJob
       } else if (url.pathname.endsWith('/commit')) {
@@ -244,6 +252,8 @@ const makeCsvJob = (id, overrides = {}) => ({
     }
     const inspectAs = async (job, source = '') => {
       csvJob = job
+      const newCheck = page.getByRole('button', { name: '检查另一个 CSV', exact: true })
+      if (await newCheck.isVisible()) await newCheck.click()
       await csvInput.setInputFiles({
         name: 'synthetic.csv',
         mimeType: 'text/csv',
