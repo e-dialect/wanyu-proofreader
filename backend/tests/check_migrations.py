@@ -19,6 +19,9 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794442500_project_purpose.js': {
+        'fields': ('projects', {'purpose': {'required': False, 'values_contains': 'practice'}}),
+    },
     '1794442200_csv_page_column.js': {
         'fields': ('import_jobs', {'csv_pdf_page_column': {'max': 524288}}),
         'indexes': ['idx_import_jobs_mapping_dedup'],

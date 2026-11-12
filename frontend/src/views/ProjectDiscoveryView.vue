@@ -75,6 +75,7 @@
                 : accessLabel(project)
             }}</span>
             <h2>{{ project.name }}</h2>
+            <ProjectPurposeBadge :purpose="project.purpose" />
           </div>
         </header>
         <p v-if="project.description" class="project-description">{{ project.description }}</p>
@@ -131,6 +132,7 @@
   </main>
 </template>
 <script setup>
+import ProjectPurposeBadge from '@/components/ProjectPurposeBadge.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import ProjectHubTabs from '@/components/ProjectHubTabs.vue'

@@ -1,3 +1,4 @@
+import { unref } from 'vue'
 import { clearTaskLease, loadTaskLease, saveTaskLease } from '../../lib/taskLease.js'
 import {
   claimNextProjectPage,
@@ -23,6 +24,8 @@ export function useProofreadLease({
   flushDraft,
   glyphQueueFor,
   router,
+  returnTarget,
+  taskEditTarget,
   captureCase,
   isCurrentCase
 }) {
@@ -146,7 +149,7 @@ export function useProofreadLease({
           '原任务已被重新领取；本地草稿仍保留，已为你打开另一条任务。'
         )
         leaseNavigationAllowed.value = true
-        await router.push(`/tasks/${claimedPage.id}/edit`)
+        await router.push(taskEditTarget(claimedPage.id))
       }
     } catch (e) {
       if (!isCurrentCase(scope)) return
@@ -169,7 +172,7 @@ export function useProofreadLease({
       if (!isCurrentCase(scope)) return
       clearStoredLease()
       leaseNavigationAllowed.value = true
-      await router.push('/tasks')
+      await router.push(unref(returnTarget) || '/tasks')
     } catch (e) {
       if (!isCurrentCase(scope)) return
       const message = getPbMessage(e, '释放任务失败，请稍后重试。')

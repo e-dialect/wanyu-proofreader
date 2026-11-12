@@ -25,7 +25,7 @@ const legacyQueueCTE = `WITH accessible AS (
  FROM accessible pr JOIN pages p ON p.project=pr.id AND p.status!='importing'
  LEFT JOIN task_leases l ON l.page=p.id
 ), queues AS (
- SELECT pr.id,pr.name,pr.description,COUNT(c.id) AS total,
+ SELECT pr.id,pr.name,pr.description,COALESCE(NULLIF(pr.purpose,''),'work') AS purpose,COUNT(c.id) AS total,
  COALESCE(SUM(c.status='approved'),0) AS completed,COALESCE(SUM(c.active_mine),0) AS active_mine,
  COALESCE(SUM(c.claimable),0) AS claimable,
  COALESCE(SUM(c.claimable AND c.tier='A'),0) AS tier_a,
@@ -98,6 +98,7 @@ func (s *importService) legacyProofreadingQueues(e *core.RequestEvent) error {
 			ID           string `db:"id"`
 			Name         string `db:"name"`
 			Description  string `db:"description"`
+			Purpose      string `db:"purpose"`
 			Total        int    `db:"total"`
 			Completed    int    `db:"completed"`
 			Active       int    `db:"active_mine"`
@@ -118,7 +119,7 @@ func (s *importService) legacyProofreadingQueues(e *core.RequestEvent) error {
 		items := []map[string]any{}
 		for _, row := range rows {
 			items = append(items, map[string]any{
-				"project":    map[string]any{"id": row.ID, "name": row.Name, "description": row.Description},
+				"project":    map[string]any{"id": row.ID, "name": row.Name, "description": row.Description, "purpose": row.Purpose},
 				"total":      row.Total,
 				"completed":  row.Completed,
 				"activeMine": row.Active,

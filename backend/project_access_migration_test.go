@@ -49,6 +49,14 @@ func newInitialSchemaTestApp(t testing.TB) *pocketbase.PocketBase {
 func newSchemaTestApp(t testing.TB) *pocketbase.PocketBase {
 	t.Helper()
 	app := newInitialSchemaTestApp(t)
+	projects, err := app.FindCollectionByNameOrId("projects")
+	if err != nil {
+		t.Fatal(err)
+	}
+	projects.Fields.Add(&core.SelectField{Name: "purpose", Values: []string{"work", "practice"}, MaxSelect: 1})
+	if err := app.Save(projects); err != nil {
+		t.Fatal(err)
+	}
 	// Only this _test.go fixture lowers bcrypt cost, on its own temporary
 	// database. Password hashing/verification still use real bcrypt. Production
 	// startup, migration files and HTTP full-migration suites never call this

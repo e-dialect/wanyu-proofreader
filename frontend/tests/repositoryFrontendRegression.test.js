@@ -508,6 +508,8 @@ regression(
         {
           loadTaskLease: () => ({ token: 'token', expiresAt: 'future' }),
           saveTaskLease: () => {},
+          unref: (value) =>
+            value && typeof value === 'object' && 'value' in value ? value.value : value,
           renewTaskLease: () => {
             started.resolve()
             return waiting.promise
@@ -532,6 +534,8 @@ regression(
       )
       Object.assign(context, {
         page: ref({ id: 'a' }),
+        returnTarget: ref('/tasks?view=active&project=project-a'),
+        taskEditTarget: (pageId) => ({ path: `/tasks/${pageId}/edit`, query: {} }),
         captureCase: () => version,
         isCurrentCase: (scope) => scope === version
       })

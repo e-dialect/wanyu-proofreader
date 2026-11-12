@@ -2,7 +2,10 @@
   <main class="container page workspace-page">
     <header class="page-heading">
       <div>
-        <RouterLink to="/admin" class="back-link">← 返回项目管理</RouterLink>
+        <RouterLink v-if="practiceReturn" :to="practiceReturn" class="back-link"
+          >← 返回练习步骤</RouterLink
+        >
+        <RouterLink v-else to="/admin" class="back-link">← 返回项目管理</RouterLink>
         <div class="page-eyebrow">权利登记</div>
         <h1>来源登记</h1>
         <p>
@@ -150,8 +153,14 @@ import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppField from '@/components/AppField.vue'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import {
+  canUsePracticeProject,
+  practiceGuideTarget,
+  readPracticeContext
+} from '@/lib/practiceContext'
+import { getProject } from '@/services/projectsService'
 import {
   SOURCE_ORIGIN_LABELS,
   SOURCE_STATUS_LABELS,
@@ -164,6 +173,40 @@ import { getPbMessage } from '@/utils/pbErrors'
 
 const auth = useAuthStore()
 const route = useRoute()
+const practiceContext = computed(() => {
+  const context = readPracticeContext(route.query)
+  return auth.isPlatformAdmin && context?.role === 'platform' ? context : null
+})
+const {
+  data: practiceProject,
+  pending: practicePending,
+  error: practiceError,
+  reload: loadPracticeProject,
+  cancel: cancelPracticeProject
+} = useAsyncResource(async ({ signal }, id, userId) => {
+  const project = await getProject(id, { signal })
+  return { project, userId }
+})
+watch(
+  [() => practiceContext.value?.projectId, () => auth.user?.id],
+  ([id, userId]) => {
+    if (id && userId) void loadPracticeProject(id, userId)
+    else cancelPracticeProject()
+  },
+  { immediate: true }
+)
+const practiceReturn = computed(() => {
+  const context = practiceContext.value
+  const entry = practiceProject.value
+  return context &&
+    !practicePending.value &&
+    !practiceError.value &&
+    entry?.userId === auth.user?.id &&
+    entry?.project.id === context.projectId &&
+    canUsePracticeProject(entry.project, 'platform', auth.isPlatformAdmin)
+    ? practiceGuideTarget(context)
+    : null
+})
 const requestedSourceRef =
   typeof route.query.sourceRef === 'string' &&
   /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/.test(route.query.sourceRef)

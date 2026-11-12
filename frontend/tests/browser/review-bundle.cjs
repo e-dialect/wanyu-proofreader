@@ -113,8 +113,9 @@ async function main() {
         document.querySelector('#review-bundle-practice')?.getBoundingClientRect().top <
         window.innerHeight / 2
     )
+    await practiceSection.getByText('下载虚构练习材料', { exact: true }).click()
     const practiceDownload = page.waitForEvent('download')
-    await practiceSection.getByRole('link', { name: '下载虚构 Review Bundle（3 条）' }).click()
+    await practiceSection.getByRole('link', { name: '完整练习包（3 条）' }).click()
     const practicePath = path.join(out, 'downloaded-fictional-practice.zip')
     await (await practiceDownload).saveAs(practicePath)
     const practiceBytes = fs.readFileSync(practicePath)
@@ -137,7 +138,7 @@ async function main() {
     const mobileProofreader = practiceSection.getByRole('button', { name: '校对者', exact: true })
     assert.ok((await mobileProofreader.boundingBox()).height >= 44)
     await mobileProofreader.click()
-    await practiceSection.getByRole('heading', { name: '校对者练习清单' }).waitFor()
+    await practiceSection.getByRole('heading', { name: '校对者练习步骤' }).waitFor()
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.getByLabel('账户与帮助', { exact: true }).click()
     await page.getByRole('button', { name: '使用帮助', exact: true }).click()
@@ -152,32 +153,38 @@ async function main() {
     await panel.getByRole('heading', { name: '从资料包导入条目' }).waitFor()
     await page.getByRole('link', { name: '查看材料格式与准备说明' }).click()
     await page.getByRole('link', { name: '跳到完整资料包练习' }).click()
-    const prepare = practiceSection.getByRole('checkbox', { name: /准备独立项目和原文/ })
-    assert.equal(await prepare.isChecked(), false)
-    await prepare.check()
-    await practiceSection.getByRole('status').getByText('1 / 6 项已勾选').waitFor()
-    assert.match(await practiceSection.locator('[aria-current="step"]').innerText(), /预检资料包/)
-    const proofreader = practiceSection.getByRole('button', { name: '校对者', exact: true })
-    await proofreader.click()
-    const claim = practiceSection.getByRole('checkbox', { name: /确认练习项目，领取任务/ })
-    assert.equal(await claim.isChecked(), false)
-    await claim.check()
-    await practiceSection.getByRole('link', { name: '查看可领取任务' }).click()
-    await page.waitForURL(`**/tasks?project=${project.id}&view=available`)
-    await page.goBack()
-    await claim.waitFor()
-    assert.equal(await claim.isChecked(), true)
-    await page.reload()
-    await claim.waitFor()
-    assert.equal(await claim.isChecked(), true)
-    await practiceSection.getByRole('button', { name: '项目管理员', exact: true }).click()
+    const prepare = practiceSection.getByRole('button', { name: /准备独立项目和原文/ })
     await prepare.waitFor()
-    assert.equal(await prepare.isChecked(), true)
-    await prepare.uncheck()
-    assert.match(await practiceSection.locator('[aria-current="step"]').innerText(), /准备独立项目/)
+    assert.equal(await practiceSection.getByRole('link', { name: '上传练习原文' }).count(), 0)
+    await page.goto(
+      `${origin}/admin/guide/project-files?project=${project.id}&method=bundle&practiceProject=${project.id}&practiceRole=manager&practiceStep=import#review-bundle-practice`
+    )
+    await practiceSection.getByRole('alert').filter({ hasText: '练习项目' }).waitFor()
+    assert.equal(await practiceSection.getByRole('link', { name: '打开项目资料包导入' }).count(), 0)
+    const create = practiceSection.getByRole('link', { name: '创建练习项目', exact: true })
+    await create.click()
+    await page.getByRole('heading', { name: '创建练习项目', exact: true }).waitFor()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('隔离的虚构资料练习')
+    await page.getByRole('button', { name: '创建练习项目', exact: true }).click()
+    await practiceSection.getByRole('heading', { name: '隔离的虚构资料练习' }).waitFor()
+    const importStep = practiceSection.getByRole('button', { name: /预检资料包，再确认导入/ })
+    assert.equal(await importStep.getAttribute('aria-expanded'), 'true')
+    const practiceImport = practiceSection.getByRole('link', { name: '打开项目资料包导入' })
+    const practiceId = new URL(page.url()).searchParams.get('practiceProject')
+    assert.notEqual(practiceId, project.id)
+    assert.ok(
+      (await practiceImport.getAttribute('href')).includes(`/admin/projects/${practiceId}?`)
+    )
+    await page.reload()
+    await practiceImport.waitFor()
+    assert.equal(await importStep.getAttribute('aria-expanded'), 'true')
     await page.getByRole('link', { name: '返回项目材料' }).click()
     await page.waitForURL(
-      `**/admin/projects/${project.id}?section=materials&view=import&method=bundle`
+      (url) =>
+        url.pathname === `/admin/projects/${project.id}` &&
+        url.searchParams.get('section') === 'materials' &&
+        url.searchParams.get('view') === 'import' &&
+        url.searchParams.get('method') === 'bundle'
     )
     await panel.getByRole('heading', { name: '从资料包导入条目' }).waitFor()
     const upload = (buffer, name = 'synthetic-review-bundle.zip') =>
