@@ -5,15 +5,20 @@
         <h1>工作台</h1>
         <p class="workbench-introduction">你的校勘工作与项目进展</p>
       </div>
-      <AppButton
-        variant="ghost"
-        :loading="loading"
-        :disabled="loading"
-        @click="refresh"
-        aria-label="刷新工作台"
-      >
-        <AppIcon name="refresh" /><span class="workbench-refresh-label">刷新</span>
-      </AppButton>
+      <div class="page-heading-actions">
+        <RouterLink v-if="accessReady && canManage" to="/admin/todos" class="btn btn-secondary">
+          全部项目待办
+        </RouterLink>
+        <AppButton
+          variant="ghost"
+          :loading="loading"
+          :disabled="loading"
+          @click="refresh"
+          aria-label="刷新工作台"
+        >
+          <AppIcon name="refresh" /><span class="workbench-refresh-label">刷新</span>
+        </AppButton>
+      </div>
     </header>
     <AppStatusPanel
       v-if="accessError"
@@ -197,9 +202,6 @@
       <div class="workbench-shortcuts">
         <RouterLink v-if="auth.hasProofreadingProjects || !canManage" to="/tasks/problems"
           >问题与草稿<AppIcon name="arrow"
-        /></RouterLink>
-        <RouterLink v-if="canManage" to="/admin?filter=attention"
-          >全部项目待办<AppIcon name="arrow"
         /></RouterLink>
         <RouterLink v-if="auth.hasProofreadingProjects || !canManage" to="/tasks"
           >我的任务<AppIcon name="arrow"

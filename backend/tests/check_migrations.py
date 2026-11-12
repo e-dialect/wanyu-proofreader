@@ -24,6 +24,7 @@ SPECS = {
         'indexes': ['idx_import_jobs_mapping_dedup'],
         'unique_indexes': [('import_jobs', 'idx_import_jobs_mapping_dedup', ('project', 'file_hash', 'mode', None, 'csv_pdf_page_column'))],
     },
+    '1794204800_native_account_rate_limits.js': {'native_account_limits': True},
     '1794204600_import_inspection_budget.js': {
         'fields': ('import_jobs', {'inspection_json': {'max': 524288}}),
     },
@@ -42,6 +43,16 @@ SPECS = {
         }),
         'plans': [('_assist_finding_retirements', 'SELECT publication FROM _assist_finding_retirements WHERE finding=?', ('f',), 'PRIMARY KEY'),
                   ('_assist_page_derivations', 'SELECT difficulty_tier FROM _assist_page_derivations WHERE publication=? AND page=?', ('p','e'), 'PRIMARY KEY')],
+    },
+    '1794204900_verification_read_epochs.js': {
+        'objects': [('table', '_verification_read_epochs')] + [
+            ('trigger', f'_verification_read_epoch_{table}_{action}')
+            for table in ('pages', 'projects', 'project_files', 'verification_policies', 'project_keyboards',
+                          'finding_dismissals', 'keyboards', 'assist_rule_gates', 'sources', 'source_usages',
+                          'proofreading_attempts', 'proofreading_drafts', 'problem_reports', 'problem_issues',
+                          'review_findings', 'verification_events', 'assist_publications', '_assist_finding_retirements')
+            for action in ('insert', 'update', 'delete')
+        ],
     },
     '1794204500_bootstrap_bindings.js': {
         'objects': [('table', 'bootstrap_bindings')],
@@ -433,6 +444,37 @@ SPECS = {
             'scope_digest': {'required': False},
         }),
     },
+    # #433 的报告产物是按项目与入站作业保留的快照；并发生成约束和历史查询
+    # 都必须留在迁移里，JSON/CSV artifact kind 则由同一迁移追加并在回滚时移除。
+    '1794441600_batch_report_exports.js': {
+        'objects': [('table', 'batch_report_exports')],
+        'indexes': ['idx_batch_report_history', 'idx_batch_report_active'],
+        'collection_indexes': ('batch_report_exports', 'idx_batch_report_active'),
+        'unique_indexes': [
+            ('batch_report_exports', 'idx_batch_report_active', ('project', 'import_job', 'created_by')),
+        ],
+        'plans': [
+            ('batch_report_exports',
+             'SELECT id FROM batch_report_exports WHERE project=? AND import_job=? ORDER BY created DESC,id DESC',
+             ('p', 'j'), 'idx_batch_report_history'),
+        ],
+        'fields': [
+            ('batch_report_exports', {
+                'import_job': {'required': True, 'max': 15},
+                'status': {'required': True, 'values_contains': 'completed'},
+                'error_code': {'required': False, 'max': 2000},
+                'error_message': {'required': False, 'max': 2000},
+                'json_artifact': {'required': False},
+                'json_sha256': {'required': False, 'max': 64},
+                'csv_artifact': {'required': False},
+                'csv_sha256': {'required': False, 'max': 64},
+                'generated_at': {'required': False},
+            }),
+            ('project_artifacts', {
+                'kind': {'values_contains': ['batch_report_json', 'batch_report_csv']},
+            }),
+        ],
+    },
 }
 FIRST = '1788940000_initial_schema.js'
 
@@ -527,6 +569,8 @@ def assert_applied(data, migration, problems):
             problems.append(f'{migration}: {table} query plan does not use {name}: {plan}')
     if spec.get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=True)
+    if spec.get('native_account_limits'):
+        _assert_native_account_limits(data, migration, problems, expect=True)
     field_spec = spec.get('fields')
     if field_spec:
         _assert_fields(data, migration, field_spec, problems, expect=True)
@@ -555,6 +599,8 @@ def assert_absent(data, migration, problems, context):
     assert_index_replacements(data, migration, problems, up=False)
     if SPECS.get(migration, {}).get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=False)
+    if SPECS.get(migration, {}).get('native_account_limits'):
+        _assert_native_account_limits(data, migration, problems, expect=False)
     present = index_names(data)
     with closing(sqlite3.connect(data / 'data.db')) as db:
         objects = {(row[0], row[1]) for row in db.execute('SELECT type,name FROM sqlite_master')}
@@ -585,6 +631,56 @@ def _assert_mail_links(data, migration, problems, expect):
             problems.append(f'{migration}: {key} link mismatch after {"up" if expect else "down"}')
 
 
+def _account_limit_settings(data):
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        value = db.execute("SELECT value FROM _params WHERE id='settings'").fetchone()[0]
+    settings = json.loads(value)
+    return settings['rateLimits'], settings['trustedProxy']
+
+
+def _assert_native_account_limits(data, migration, problems, expect):
+    limits, proxy = _account_limit_settings(data)
+    rules = [(rule['label'], rule['maxRequests'], rule['duration'], rule['audience']) for rule in limits['rules']]
+    expected_rules = [
+        ('*:authWithPassword', 240, 60, ''), ('*:authRefresh', 120, 60, ''),
+        ('*:authWithOAuth2', 120, 60, ''), ('*:authWithOTP', 120, 60, ''), ('*:requestOTP', 120, 60, ''),
+    ] if expect else [
+        ('*:auth', 2, 3, ''), ('*:create', 20, 5, ''), ('/api/batch', 3, 1, ''), ('/api/', 300, 10, ''),
+    ]
+    if limits['enabled'] != expect or limits['excludedIPs'] or rules != expected_rules:
+        problems.append(f'{migration}: native rules differ after migration (enabled expected: {expect})')
+    if proxy['useLeftmostIP'] or (proxy['headers'] or []) != (['X-Fangji-Client-IP'] if expect else []):
+        problems.append(f'{migration}: trusted proxy selection differs after migration (enabled expected: {expect})')
+
+
+def _assert_operator_account_limits_preserved(binary, data, problems):
+    def down_to_account_limits(expect_success=True):
+        target = '1794204800_native_account_rate_limits.js'
+        count = sum(name >= target for name in applied(data))
+        return migrate(binary, data, 'down', count, expect_success=expect_success)
+
+    # Keep a modified managed policy intact until its proxy header is reviewed.
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 300) WHERE id='settings'")
+    modified = _account_limit_settings(data)
+    output = down_to_account_limits(expect_success=False)
+    if 'X-Fangji-Client-IP' not in output or _account_limit_settings(data) != modified:
+        problems.append('native account rate limit rollback did not preserve modified proxy policy')
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 240) WHERE id='settings'")
+    # Deliberate operator changes must survive reapplying this migration.
+    down_to_account_limits()
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 60) WHERE id='settings'")
+    before = _account_limit_settings(data)
+    migrate(binary, data, 'up')
+    if _account_limit_settings(data) != before:
+        problems.append('native account rate limit migration overwrote operator settings on up')
+    down_to_account_limits()
+    if _account_limit_settings(data) != before:
+        problems.append('native account rate limit migration overwrote operator settings on down')
+
+
 def _assert_fields(data, migration, field_spec, problems, expect):
     """验证 _collections 里字段元数据（required / values / max），供只改字段的迁移使用。
 
@@ -596,49 +692,50 @@ def _assert_fields(data, migration, field_spec, problems, expect):
     （assist_rule_gates 就同时被 1789113600 的 down 删除）。把它判成缺失报错，等于要求
     「加字段」类迁移永远不能声明 fields 断言——而那正是这类迁移唯一能写的断言。
     """
-    collection, fields = field_spec
-    with closing(sqlite3.connect(data / 'data.db')) as db:
-        row = db.execute('SELECT fields FROM _collections WHERE name=?', (collection,)).fetchone()
-    if row is None:
-        if expect:
-            problems.append(f'{migration}: collection {collection} missing')
-        return
-    declared = json.loads(row[0])
-    for field_name, conditions in fields.items():
-        target = next((f for f in declared if f.get('name') == field_name), None)
-        if target is None:
-            if not expect:
-                continue
-            problems.append(f'{migration}: field {collection}.{field_name} missing')
+    field_specs = [field_spec] if isinstance(field_spec[0], str) else field_spec
+    for collection, fields in field_specs:
+        with closing(sqlite3.connect(data / 'data.db')) as db:
+            row = db.execute('SELECT fields FROM _collections WHERE name=?', (collection,)).fetchone()
+        if row is None:
+            if expect:
+                problems.append(f'{migration}: collection {collection} missing')
             continue
-        if 'required' in conditions:
-            actual = target.get('required')
-            want = conditions['required']
-            ok = (actual == want) if expect else (actual != want)
-            if not ok:
-                state = 'applied' if expect else 'rolled back'
-                problems.append(
-                    f'{migration}: {collection}.{field_name}.required should be {want} when {state}, got {actual}')
-        if 'max' in conditions:
-            # 长度上限也是契约的一部分：#190 的 canonical_pronunciation 上限在迁移与
-            # handler 里各写了一份，对不上就是「界面拦得住、直接调接口存不进」。
-            # 没写 max 的文本字段在 PocketBase 里存的不是 0 而是缺省，所以这里用 get。
-            actual = target.get('max')
-            want = conditions['max']
-            ok = (actual == want) if expect else (actual != want)
-            if not ok:
-                state = 'applied' if expect else 'rolled back'
-                problems.append(
-                    f'{migration}: {collection}.{field_name}.max should be {want} when {state}, got {actual}')
-        if 'values_contains' in conditions:
-            actual_values = target.get('values', [])
-            want = conditions['values_contains']
-            contains = want in actual_values
-            ok = contains if expect else (not contains)
-            if not ok:
-                state = 'applied' if expect else 'rolled back'
-                problems.append(
-                    f'{migration}: {collection}.{field_name}.values should {"contain" if expect else "exclude"} {want!r} when {state}')
+        declared = json.loads(row[0])
+        for field_name, conditions in fields.items():
+            target = next((f for f in declared if f.get('name') == field_name), None)
+            if target is None:
+                if not expect:
+                    continue
+                problems.append(f'{migration}: field {collection}.{field_name} missing')
+                continue
+            if 'required' in conditions:
+                actual = target.get('required')
+                want = conditions['required']
+                ok = (actual == want) if expect else (actual != want)
+                if not ok:
+                    state = 'applied' if expect else 'rolled back'
+                    problems.append(
+                        f'{migration}: {collection}.{field_name}.required should be {want} when {state}, got {actual}')
+            if 'max' in conditions:
+                # 长度上限也是契约的一部分：#190 的 canonical_pronunciation 上限在迁移与
+                # handler 里各写了一份，对不上就是「界面拦得住、直接调接口存不进」。
+                # 没写 max 的文本字段在 PocketBase 里存的不是 0 而是缺省，所以这里用 get。
+                actual = target.get('max')
+                want = conditions['max']
+                ok = (actual == want) if expect else (actual != want)
+                if not ok:
+                    state = 'applied' if expect else 'rolled back'
+                    problems.append(
+                        f'{migration}: {collection}.{field_name}.max should be {want} when {state}, got {actual}')
+            if 'values_contains' in conditions:
+                actual_values = target.get('values', [])
+                want = conditions['values_contains']
+                wanted_values = want if isinstance(want, list) else [want]
+                contains = all(value in actual_values for value in wanted_values)
+                ok = contains if expect else all(value not in actual_values for value in wanted_values)
+                if not ok:
+                    problems.append(
+                        f'{migration}: {collection}.{field_name}.values should {"contain" if expect else "exclude"} {wanted_values!r} when {"applied" if expect else "rolled back"}')
 
 
 def assert_state(data, expected, through, problems, context):
@@ -689,6 +786,7 @@ def main():
         if applied(data) != expected:
             problems.append(f'reapply left {applied(data)} != {expected}')
         assert_state(data, expected, expected[-1], problems, 'final up')
+        _assert_operator_account_limits_preserved(binary, data, problems)
 
     if problems:
         print('migration verification failed:', file=sys.stderr)

@@ -638,12 +638,13 @@ var workRoutes map[string]workRoute
 
 func init() {
 	workRoutes = map[string]workRoute{
-		"csv_inspect": {(*importService).processCSVInspection, "import_jobs"},
-		"csv":         {(*importService).processCSV, "import_jobs"},
-		"pdf":         {(*importService).processPDF, "project_files"},
-		"ocr":         {(*importService).processOCR, "import_jobs"},
-		"bundle":      {(*importService).processBundle, "import_jobs"},
-		"conversion":  {(*importService).processConversion, ""},
+		"csv_inspect":  {(*importService).processCSVInspection, "import_jobs"},
+		"csv":          {(*importService).processCSV, "import_jobs"},
+		"pdf":          {(*importService).processPDF, "project_files"},
+		"ocr":          {(*importService).processOCR, "import_jobs"},
+		"bundle":       {(*importService).processBundle, "import_jobs"},
+		"conversion":   {(*importService).processConversion, ""},
+		"batch_report": {(*importService).processBatchReport, "batch_report_exports"},
 	}
 }
 
@@ -781,6 +782,7 @@ func (s *importService) recoverPendingWork() {
 		{"import_jobs", `(status="queued" || status="processing" || status="inspecting") && mode="ocr"`, "ocr"},
 		{"conversion_jobs", `status="queued" || status="processing"`, "conversion"},
 		{"project_files", `status="processing"`, "pdf"},
+		{"batch_report_exports", `status="queued" || status="processing"`, "batch_report"},
 	}
 	counts := make([]int, len(scans))
 	runScan := func(index int) {
@@ -808,12 +810,12 @@ func (s *importService) recoverPendingWork() {
 	// Preserve the original shared-worker recovery order. A conversion scans
 	// only published pages, so admitting it ahead of an older queued import
 	// could complete the conversion before that import publishes its rows.
-	for _, index := range []int{0, 2, 3} {
+	for _, index := range []int{0, 2, 3, 4} {
 		runScan(index)
 	}
 	pending.Wait()
 	logUpload("info", "recovery_scan_completed", map[string]any{
-		"csv_jobs": counts[0], "ocr_jobs": counts[1], "conversions": counts[2], "pdf_files": counts[3],
+		"csv_jobs": counts[0], "ocr_jobs": counts[1], "conversions": counts[2], "pdf_files": counts[3], "batch_reports": counts[4],
 	})
 }
 

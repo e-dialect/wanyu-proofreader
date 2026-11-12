@@ -621,6 +621,12 @@ func TestMarkFatalRoutesConversionJobsToTheirOwnCollection(t *testing.T) {
 func TestEveryWorkKindHasAFinalizeTarget(t *testing.T) {
 	app := newSchemaTestApp(t)
 	conversionJobs := addConversionJobsCollection(t, app)
+	for _, path := range []string{"pb_migrations/1789200300_project_artifacts.js", "pb_migrations/1794441600_batch_report_exports.js"} {
+		up, _ := deliveryMigration(t, path)
+		if err := app.RunInTransaction(up); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	for kind, route := range workRoutes {
 		t.Run(kind, func(t *testing.T) {
@@ -652,7 +658,7 @@ func TestEveryWorkKindHasAFinalizeTarget(t *testing.T) {
 func TestEveryEnqueueableWorkKindIsInTheTable(t *testing.T) {
 	// 六个来源：import_service.go 的 workKind（csv / csv_inspect）、三处字面量
 	// （csv / pdf / conversion），以及 recoverPendingWork 按 mode 分流的 ocr 与 bundle。
-	enqueueable := []string{"csv_inspect", "csv", "pdf", "ocr", "bundle", "conversion"}
+	enqueueable := []string{"csv_inspect", "csv", "pdf", "ocr", "bundle", "conversion", "batch_report"}
 	for _, kind := range enqueueable {
 		if _, known := workRoutes[kind]; !known {
 			t.Fatalf("入队侧会产生 %q 这种作业，但 workRoutes 里没有它："+

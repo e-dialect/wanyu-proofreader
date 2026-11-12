@@ -51,26 +51,23 @@ const view = readFileSync(
 )
 function callback(name, bindings) {
   const source = view.match(
-    new RegExp(`async function ${name}\\(([^)]*)\\) \\{([\\s\\S]*?)\\n\\}\\n`)
+    new RegExp(`(async )?function ${name}\\(([^)]*)\\) \\{([\\s\\S]*?)\\n\\}\\n`)
   )
   assert.ok(source, name)
-  const batch = bindings.importJob?.value || ''
+  const env = {
+    importJob: ref(''),
+    validImportJob: (value) => /^[a-z0-9]{15}$/.test(value),
+    ...bindings
+  }
+  if (!env.arbitrationTarget)
+    env.arbitrationTarget = (project, page) => {
+      const path = `/admin/projects/${project}/arbitration/${page}`
+      return env.importJob.value ? { path, query: { importJob: env.importJob.value } } : path
+    }
   return new Function(
-    ...Object.keys(bindings),
-    'importJob',
-    'validImportJob',
-    'arbitrationTarget',
-    `return async function(${source[1]}) {${source[2]}\n}`
-  )(
-    ...Object.values(bindings),
-    bindings.importJob || ref(''),
-    bindings.validImportJob || ((value) => /^[a-z0-9]{15}$/.test(value)),
-    bindings.arbitrationTarget ||
-      ((project, page) => {
-        const path = `/admin/projects/${project}/arbitration/${page}`
-        return batch ? { path, query: { importJob: batch } } : path
-      })
-  )
+    ...Object.keys(env),
+    `return ${source[1] || ''}function(${source[2]}) {${source[3]}\n}`
+  )(...Object.values(env))
 }
 const ref = (value) => ({ value })
 
@@ -104,6 +101,8 @@ test('saved arbitration continues to the new next item without returning to the 
     queueMessage: ref(''),
     router: { push: async (path) => paths.push(path) }
   }
+  const importJob = ref('')
+  bindings.arbitrationTarget = callback('arbitrationTarget', { importJob })
   await callback('continueAfterSubmit', bindings)()
   assert.deepEqual(paths, ['/admin/projects/project/arbitration/next'])
   bindings.refreshQueue = async () => ({
@@ -111,8 +110,12 @@ test('saved arbitration continues to the new next item without returning to the 
     next: null,
     items: [{ id: 'remaining-earlier' }]
   })
+  importJob.value = 'fixturebatch001'
   await callback('continueAfterSubmit', bindings)()
-  assert.equal(paths[1], '/admin/projects/project/arbitration/remaining-earlier')
+  assert.deepEqual(paths[1], {
+    path: '/admin/projects/project/arbitration/remaining-earlier',
+    query: { importJob: importJob.value }
+  })
 })
 
 test('batch arbitration keeps its batch on next item and return navigation', async () => {

@@ -56,6 +56,15 @@
         <tr v-for="batch in ledger.batches" :key="batch.id">
           <td>
             <strong class="batch-file">{{ batch.original_filename || '文件名未记录' }}</strong>
+            <RouterLink
+              :to="{
+                name: 'ProjectBatchReport',
+                params: { id: props.projectId, batchId: batch.id }
+              }"
+              :aria-label="`质量与交付报告 · ${batch.original_filename || batch.id}`"
+              class="batch-report-link"
+              >质量与交付报告</RouterLink
+            >
             <div v-if="csvJobAction(batch)">
               <RouterLink
                 :to="csvJobTarget(batch.id)"
@@ -222,6 +231,18 @@ defineExpose({ loadLedger })
 }
 :deep(.ledger-table td:last-child) {
   min-width: 7rem;
+}
+.batch-report-link {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  min-height: var(--control-height);
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .batch-report-link {
+    min-height: var(--control-height-touch);
+  }
 }
 .batch-file {
   display: block;
