@@ -193,7 +193,7 @@ async function main() {
         .setInputFiles({ name, mimeType: 'application/zip', buffer })
     await upload(practiceBytes, 'review-bundle-practice-v1.zip')
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
     await panel.getByText('资料包包含 3 条条目。', { exact: true }).waitFor()
     await panel.getByText('practice-wanyu-reviewbundle-v1', { exact: true }).waitFor()
     assert.equal(
@@ -220,12 +220,16 @@ async function main() {
 
     await upload(makeZip({ ...args, rightsRef: 'src-not-registered-ui' }))
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
-    await panel
-      .getByLabel('我已核对来源声明，确认将这些条目导入当前项目。', { exact: true })
-      .check()
-    await panel.getByRole('button', { name: '确认导入资料包', exact: true }).click()
-    await panel.getByRole('alert').filter({ hasText: '不在来源登记里' }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
+    await panel.getByRole('alert').filter({ hasText: '此来源尚未登记' }).waitFor()
+    assert.equal(
+      await panel.getByRole('button', { name: '确认导入资料包', exact: true }).isDisabled(),
+      true
+    )
+    assert.equal(
+      await panel.getByRole('link', { name: '新窗口打开来源登记' }).getAttribute('target'),
+      '_blank'
+    )
     assert.equal(
       (await ledger()).batches.length,
       0,
@@ -239,7 +243,7 @@ async function main() {
 
     await upload(valid)
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
     assert.equal(
       await panel.getByRole('button', { name: '确认导入资料包', exact: true }).isDisabled(),
       true
@@ -268,7 +272,7 @@ async function main() {
 
     await upload(valid)
     await panel.getByRole('button', { name: '检查资料包', exact: true }).click()
-    await panel.getByRole('heading', { name: '检查通过，等待确认', exact: true }).waitFor()
+    await panel.getByRole('heading', { name: '资料包格式检查通过', exact: true }).waitFor()
     await panel
       .getByLabel('我已核对来源声明，确认将这些条目导入当前项目。', { exact: true })
       .check()

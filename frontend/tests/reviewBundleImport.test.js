@@ -29,7 +29,7 @@ test('stored and deflated ZIP declarations display the exact original source and
   const declaration = {
     source_system: '资料系统',
     source_project: 'project-a',
-    id: ' ɕʰ ã ',
+    source_id: ' ɕʰ ã ',
     source_version: 'v2',
     rights_ref: 'src-test',
     requested_fields: ['词', '音标']
@@ -56,9 +56,12 @@ function component(overrides = {}) {
     defineEmits: () => (value) => events.push(value),
     defineExpose: () => {},
     MAX_BUNDLE_BYTES,
+    useAuthStore: () => ({ isPlatformAdmin: true }),
+    getSource: async (reference) => ({ id: 'source-a', logical_id: reference, title: '合成来源' }),
+    getPbStatus: (cause) => cause.status || 0,
     bundleTerminal,
     readBundleDeclaration: async () => ({ rights_ref: 'src-test' }),
-    validateReviewBundle: async () => ({ ok: true, entry_count: 2 }),
+    validateReviewBundle: async () => ({ ok: true, entry_count: 2, rights_ref: 'src-test' }),
     createBundleImport: async () => ({
       project: 'project-a',
       id: 'job-a',
@@ -74,7 +77,7 @@ function component(overrides = {}) {
   }
   const instance = new Function(
     ...Object.keys(scope),
-    `${script}\nreturn { chooseFile, inspect, submit, refreshJob, reset, file, report, declaration, job, jobTarget, busy, error, acknowledged, uncertain, alreadyImported, hasPendingWork }`
+    `${script}\nreturn { checkSource, sourceState, rightsReference, chooseFile, inspect, submit, refreshJob, reset, file, report, declaration, job, jobTarget, busy, error, acknowledged, uncertain, alreadyImported, hasPendingWork }`
   )(...Object.values(scope))
   return { ...instance, events, unmount: () => cleanup.forEach((fn) => fn()) }
 }
@@ -185,4 +188,53 @@ test('late validation and polling responses cannot replace another project or an
   await read
   assert.equal(other.job.value.status, 'processing')
   assert.deepEqual(other.events, [])
+})
+
+test('a missing registry entry blocks import, then rechecking keeps the exact file and enables confirmation', async () => {
+  let exists = false
+  let writes = 0
+  const instance = component({
+    readBundleDeclaration: async () => {
+      throw new Error('浏览器无法展开')
+    },
+    getSource: async (reference) => {
+      assert.equal(
+        reference,
+        'src-test',
+        'use the server-parsed declaration even without browser decompression'
+      )
+      if (!exists) throw { status: 404 }
+      return { id: 'source-a', logical_id: reference, title: '合成来源' }
+    },
+    createBundleImport: async () => {
+      writes++
+      return { id: 'job-a', project: 'project-a', status: 'queued' }
+    }
+  })
+  const file = pick(instance)
+  await instance.inspect()
+  assert.equal(instance.sourceState.value, 'missing')
+  instance.acknowledged.value = true
+  await instance.submit()
+  assert.equal(writes, 0)
+  exists = true
+  await instance.checkSource()
+  assert.equal(instance.sourceState.value, 'ready')
+  assert.deepEqual(instance.file.value, file)
+  await instance.submit()
+  assert.equal(writes, 1)
+})
+
+test('forbidden and unavailable registry reads remain unknown instead of declaring a source missing', async () => {
+  for (const status of [403, 500, 0]) {
+    const instance = component({
+      getSource: async () => {
+        throw { status }
+      }
+    })
+    pick(instance)
+    await instance.inspect()
+    assert.equal(instance.sourceState.value, 'error')
+    assert.equal(instance.job.value, null)
+  }
 })

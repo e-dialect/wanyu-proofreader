@@ -55,7 +55,12 @@
         id="project-files"
         class="card project-section mt-4"
       >
-        <ProjectPanels.ProjectPdfUpload ref="pdfUpload" :project-id="projectId" />
+        <ProjectPanels.ProjectPdfUpload
+          ref="pdfUpload"
+          :project-id="projectId"
+          :active="showImport('pdf')"
+          @continue="selectImport"
+        />
       </section>
       <section
         v-if="visited.has('csv')"
@@ -140,7 +145,7 @@
       :dirty="
         !!pdfUpload?.uploadingPdf || !!csvImport?.hasPendingWork || !!bundleImport?.hasPendingWork
       "
-      message="材料仍在上传、检查或等待确认。离开会暂停 PDF 上传并保留已有分片，返回后重新选择同一文件可继续；已发送的导入作业可能继续，请返回核对批次。"
+      message="材料仍在上传、检查或等待确认。离开会暂停 PDF 上传并保留已有分片，返回后重新选择同一文件可继续；尚未提交的资料包需要重新选择和检查。若只是补登记来源，可在资料包区选择“新窗口打开来源登记”以保留文件；已发送的导入作业可能继续，请返回核对批次。"
     />
   </main>
 </template>
