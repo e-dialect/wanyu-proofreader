@@ -52,7 +52,7 @@ function mountActions(view, resourceResults = []) {
           return resourceResults[index] || { ok: false }
         },
         cancel: () => {
-          if (index === 1) reviewCancels++
+          if (index === 2) reviewCancels++
         }
       }
     },
@@ -116,7 +116,7 @@ test('a current task claim keeps the one-click path and saves its exact lease', 
   const result = mounted.enterProject(queue)
   mounted.request.resolve(claim)
   await result
-  assert.deepEqual(mounted.pushes, ['/tasks/task1/edit'])
+  assert.deepEqual(mounted.pushes, [{ path: '/tasks/task1/edit', query: {} }])
   assert.equal(mounted.writes[0][1].token, claim.leaseToken)
 })
 
@@ -131,7 +131,10 @@ test('a delayed own-review result cannot override navigation to another task tab
 
 test('leaving the reviewed tab cancels its reader without blocking active tasks', () => {
   const mounted = mountActions('proofreader/TaskHallView')
-  const viewWatch = mounted.watchers.find((watcher) => watcher.read() === 'available')
+  const viewWatch = mounted.watchers.find(
+    (watcher) =>
+      typeof watcher.read === 'function' && watcher.read.toString() === '() => route.query.view'
+  )
   viewWatch.callback()
   assert.equal(mounted.reviewCancels(), 1)
 })
