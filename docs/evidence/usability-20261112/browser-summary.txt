@@ -1,0 +1,4 @@
+PASS: mounted shared observers, stale/offline/auth recovery, CSV20 and responsive layout
+PASS full App + real API workbench: start/resume, queue return query/hash, own-review no writes, project join, manager home, mobile drawer, account replacement and editor fit
+PASS: real Review Bundle UI validation/refusal/rights/human confirmation/import/idempotency/Unicode/mobile
+PASS: import errors current/history, 205-record pagination and complete report, failure/cancel no file, mobile geometry

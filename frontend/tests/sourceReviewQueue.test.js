@@ -17,11 +17,16 @@ const items = [
   { id: 'excluded', status: 'approved', source_empty: true, needs_review: true },
   { id: 'later', status: 'proofread', business_complete: false, pending_review: true }
 ]
-test('source review keeps its existing scope and only advances to authorized source-reviewable records', () => {
+test('source review separates waiting entries from the actionable queue and keeps them available', () => {
   assert.deepEqual(
     sourceReviewItems(items).map((item) => item.id),
-    ['earlier', 'pending-reader', 'separate-arbitration', 'excluded', 'later']
+    ['earlier', 'separate-arbitration', 'excluded', 'later']
   )
+  assert.deepEqual(
+    sourceReviewItems(items, 'waiting').map((item) => item.id),
+    ['pending-reader']
+  )
+  assert.equal(sourceReviewItems(items, 'all').length, items.length)
   assert.equal(nextSourceReviewItem(items, 'anchor').id, 'later')
   assert.equal(nextSourceReviewItem(items, 'later').id, 'earlier')
   assert.equal(nextSourceReviewItem(items.slice(1, -1), 'anchor'), null)

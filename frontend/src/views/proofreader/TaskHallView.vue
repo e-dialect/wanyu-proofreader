@@ -332,7 +332,7 @@ import {
   listReviewedProofreads
 } from '@/services/pagesService'
 import { getProofreaderQueueAction, summarizeProofreaderQueues } from '@/lib/workspaceInsights'
-import { tierBreakdown } from '@/lib/taskTiers'
+import { taskTierLabel, tierBreakdown } from '@/lib/taskTiers'
 import { formatClaimConflict, formatPbError, getPbMessage } from '@/utils/pbErrors'
 import { saveTaskLease, saveGlyphQueue } from '@/lib/taskLease'
 
@@ -509,7 +509,7 @@ async function enterProject(queue, tier = '', glyph = false) {
       actionError.value = glyph
         ? '缺字待登记队列暂时没有可领取的条目。'
         : tier
-          ? `${tier} 类暂时没有可领取的条目，换个层级或按默认顺序领一条。`
+          ? `暂无可领取的「${taskTierLabel(tier, '所选难度')}」任务，可选择其他难度或按默认顺序领取。`
           : '该项目暂无你可处理的条目。'
       await loadProjects({ keepActionError: true })
       return

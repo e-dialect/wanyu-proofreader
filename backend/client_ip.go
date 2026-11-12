@@ -7,8 +7,12 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/hook"
 )
+
+const trustedClientIPHeader = "X-Fangji-Client-IP"
 
 // registerTrustedClientIP configures a single, application-wide source of
 // client addresses before any route handles traffic. Forwarding headers are
@@ -21,9 +25,16 @@ func registerTrustedClientIP(app core.App) {
 		if err != nil {
 			return fmt.Errorf("configure trusted proxy IP extraction: %w", err)
 		}
-		event.Router.BindFunc(func(e *core.RequestEvent) error {
-			e.Set("fangjiClientIP", extractor(e.Request))
-			return e.Next()
+		event.Router.Bind(&hook.Handler[*core.RequestEvent]{
+			Priority: apis.DefaultLoadAuthTokenMiddlewarePriority - 1,
+			Func: func(e *core.RequestEvent) error {
+				ip := extractor(e.Request)
+				e.Set("fangjiClientIP", ip)
+				// PocketBase's native limiter reads its configured proxy header.
+				// Replace all incoming values before any native middleware sees it.
+				e.Request.Header.Set(trustedClientIPHeader, ip)
+				return e.Next()
+			},
 		})
 		return event.Next()
 	})

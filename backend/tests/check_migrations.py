@@ -19,6 +19,7 @@ import harness
 
 # Assertions a migration must satisfy while it is applied.
 SPECS = {
+    '1794204800_native_account_rate_limits.js': {'native_account_limits': True},
     '1794204600_import_inspection_budget.js': {
         'fields': ('import_jobs', {'inspection_json': {'max': 524288}}),
     },
@@ -37,6 +38,16 @@ SPECS = {
         }),
         'plans': [('_assist_finding_retirements', 'SELECT publication FROM _assist_finding_retirements WHERE finding=?', ('f',), 'PRIMARY KEY'),
                   ('_assist_page_derivations', 'SELECT difficulty_tier FROM _assist_page_derivations WHERE publication=? AND page=?', ('p','e'), 'PRIMARY KEY')],
+    },
+    '1794204900_verification_read_epochs.js': {
+        'objects': [('table', '_verification_read_epochs')] + [
+            ('trigger', f'_verification_read_epoch_{table}_{action}')
+            for table in ('pages', 'projects', 'project_files', 'verification_policies', 'project_keyboards',
+                          'finding_dismissals', 'keyboards', 'assist_rule_gates', 'sources', 'source_usages',
+                          'proofreading_attempts', 'proofreading_drafts', 'problem_reports', 'problem_issues',
+                          'review_findings', 'verification_events', 'assist_publications', '_assist_finding_retirements')
+            for action in ('insert', 'update', 'delete')
+        ],
     },
     '1794204500_bootstrap_bindings.js': {
         'objects': [('table', 'bootstrap_bindings')],
@@ -553,6 +564,8 @@ def assert_applied(data, migration, problems):
             problems.append(f'{migration}: {table} query plan does not use {name}: {plan}')
     if spec.get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=True)
+    if spec.get('native_account_limits'):
+        _assert_native_account_limits(data, migration, problems, expect=True)
     field_spec = spec.get('fields')
     if field_spec:
         _assert_fields(data, migration, field_spec, problems, expect=True)
@@ -581,6 +594,8 @@ def assert_absent(data, migration, problems, context):
     assert_index_replacements(data, migration, problems, up=False)
     if SPECS.get(migration, {}).get('mail_links'):
         _assert_mail_links(data, migration, problems, expect=False)
+    if SPECS.get(migration, {}).get('native_account_limits'):
+        _assert_native_account_limits(data, migration, problems, expect=False)
     present = index_names(data)
     with closing(sqlite3.connect(data / 'data.db')) as db:
         objects = {(row[0], row[1]) for row in db.execute('SELECT type,name FROM sqlite_master')}
@@ -609,6 +624,56 @@ def _assert_mail_links(data, migration, problems, expect):
         contains = path in options.get(key, {}).get('body', '')
         if contains != expect:
             problems.append(f'{migration}: {key} link mismatch after {"up" if expect else "down"}')
+
+
+def _account_limit_settings(data):
+    with closing(sqlite3.connect(data / 'data.db')) as db:
+        value = db.execute("SELECT value FROM _params WHERE id='settings'").fetchone()[0]
+    settings = json.loads(value)
+    return settings['rateLimits'], settings['trustedProxy']
+
+
+def _assert_native_account_limits(data, migration, problems, expect):
+    limits, proxy = _account_limit_settings(data)
+    rules = [(rule['label'], rule['maxRequests'], rule['duration'], rule['audience']) for rule in limits['rules']]
+    expected_rules = [
+        ('*:authWithPassword', 240, 60, ''), ('*:authRefresh', 120, 60, ''),
+        ('*:authWithOAuth2', 120, 60, ''), ('*:authWithOTP', 120, 60, ''), ('*:requestOTP', 120, 60, ''),
+    ] if expect else [
+        ('*:auth', 2, 3, ''), ('*:create', 20, 5, ''), ('/api/batch', 3, 1, ''), ('/api/', 300, 10, ''),
+    ]
+    if limits['enabled'] != expect or limits['excludedIPs'] or rules != expected_rules:
+        problems.append(f'{migration}: native rules differ after migration (enabled expected: {expect})')
+    if proxy['useLeftmostIP'] or (proxy['headers'] or []) != (['X-Fangji-Client-IP'] if expect else []):
+        problems.append(f'{migration}: trusted proxy selection differs after migration (enabled expected: {expect})')
+
+
+def _assert_operator_account_limits_preserved(binary, data, problems):
+    def down_to_account_limits(expect_success=True):
+        target = '1794204800_native_account_rate_limits.js'
+        count = sum(name >= target for name in applied(data))
+        return migrate(binary, data, 'down', count, expect_success=expect_success)
+
+    # Keep a modified managed policy intact until its proxy header is reviewed.
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 300) WHERE id='settings'")
+    modified = _account_limit_settings(data)
+    output = down_to_account_limits(expect_success=False)
+    if 'X-Fangji-Client-IP' not in output or _account_limit_settings(data) != modified:
+        problems.append('native account rate limit rollback did not preserve modified proxy policy')
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 240) WHERE id='settings'")
+    # Deliberate operator changes must survive reapplying this migration.
+    down_to_account_limits()
+    with closing(sqlite3.connect(data / 'data.db')) as db, db:
+        db.execute("UPDATE _params SET value=json_set(value, '$.rateLimits.rules[0].maxRequests', 60) WHERE id='settings'")
+    before = _account_limit_settings(data)
+    migrate(binary, data, 'up')
+    if _account_limit_settings(data) != before:
+        problems.append('native account rate limit migration overwrote operator settings on up')
+    down_to_account_limits()
+    if _account_limit_settings(data) != before:
+        problems.append('native account rate limit migration overwrote operator settings on down')
 
 
 def _assert_fields(data, migration, field_spec, problems, expect):
@@ -716,6 +781,7 @@ def main():
         if applied(data) != expected:
             problems.append(f'reapply left {applied(data)} != {expected}')
         assert_state(data, expected, expected[-1], problems, 'final up')
+        _assert_operator_account_limits_preserved(binary, data, problems)
 
     if problems:
         print('migration verification failed:', file=sys.stderr)

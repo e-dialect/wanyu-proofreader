@@ -22,7 +22,7 @@ export function kindBreakdown(items) {
   }
   return [...counts.entries()]
     .map(([kind, count]) => ({ kind, label: hintKindLabel(kind), count }))
-    .sort((a, b) => (b.count - a.count) || (a.kind < b.kind ? -1 : 1))
+    .sort((a, b) => b.count - a.count || (a.kind < b.kind ? -1 : 1))
 }
 
 // `off` 档的两种成因必须分开数（#254）。它们都写"尚未放行"，但动作完全不同：
@@ -44,15 +44,25 @@ export function gatedOffSplit(items) {
 export function gatedOffNotice(split) {
   if (!split?.total) return ''
   const parts = []
-  if (split.waiting) parts.push(`${split.waiting} 条所在规则有打分通道、这轮证据未达档（n/p̂ 不够），补够样本并人工批准后可放行`)
-  if (split.noChannel) parts.push(`${split.noChannel} 条所属判据没有弱标注打分通道，按现有流程拿不到档位——不是"再等等"`)
-  if (split.unknown) parts.push(`${split.unknown} 条所属判据未登记在通道表里，界面无法判断它能否拿到档位，需要补 rule_coverage.js`)
+  if (split.waiting)
+    parts.push(
+      `${split.waiting} 条所在规则有打分通道、这轮证据未达档（n/p̂ 不够），补够样本并人工批准后可放行`
+    )
+  if (split.noChannel)
+    parts.push(
+      `${split.noChannel} 条所属判据没有弱标注打分通道，按现有流程拿不到档位——不是"再等等"`
+    )
+  if (split.unknown)
+    parts.push(
+      `${split.unknown} 条所属判据未登记在通道表里，界面无法判断它能否拿到档位，需要补 rule_coverage.js`
+    )
   return parts.join('；')
 }
 
 export function truncatedNotice(listResponse) {
   const bits = []
-  if (listResponse?.gate_rows_truncated) bits.push('门控登记表读取被截断，超出部分的规则一律按 off 处理')
+  if (listResponse?.gate_rows_truncated)
+    bits.push('门控登记表读取被截断，超出部分的规则一律按 off 处理')
   if (listResponse?.hasMore) bits.push('疑点列表还有下一页')
   return bits.join('；')
 }
@@ -75,11 +85,13 @@ export function emptyReason({ items, runs, pagesScanned }) {
 
 export const EMPTY_MESSAGES = {
   'has-findings': '',
-  'never-run': '这个项目还没跑过项目级重算。列级与页级疑点（编码形式、标点混用、分页异常）必须看到整批数据才判得出来，所以它们现在一定是空的——这不表示资料干净。',
+  'never-run':
+    '这个项目还没跑过项目级重算。列级与页级疑点（编码形式、标点混用、分页异常）必须看到整批数据才判得出来，所以它们现在一定是空的——这不表示资料干净。',
   'no-entries': '项目里还没有可扫描的条目，重算跑不出东西。',
   clean: '跑过了，当前批次没有疑点。',
   // 只跑过跨行重算时的说法：不得宣称"没有疑点"，那等于把没算过的判据说成算了且干净。
-  'identity-only': '这个项目只跑过跨行身份重算：列级与页级判据（编码形式、标点混用、分页异常）还没看到整批数据，因此这里为空不表示资料干净。请再点一次「按项目重算疑点」。'
+  'identity-only':
+    '这个项目只跑过跨行身份重算：列级与页级判据（编码形式、标点混用、分页异常）还没看到整批数据，因此这里为空不表示资料干净。请再点一次「按项目重算疑点」。'
 }
 
 // 重算摘要 → 一句人话。字段名不猜：缺什么就不说什么，绝不编一个数出来。
@@ -94,10 +106,12 @@ export function recomputeNotice(summary, { identity = false } = {}) {
     bits.push(`有 ${summary.unanchored} 条找不到挂靠条目，没写进去（要看日志）`)
   }
   if (identity && Number.isFinite(summary.unattributed_groups) && summary.unattributed_groups > 0) {
-    bits.push(`${summary.unattributed_groups} 组有分歧但登记来源不足以判成跨来源冲突，只报了同身份分歧`)
+    bits.push(
+      `${summary.unattributed_groups} 组有分歧但登记来源不足以判成跨来源冲突，只报了同身份分歧`
+    )
   }
   if (identity && summary.difficulty_stale) {
-    bits.push('跨行检出不刷任务难度：这批疑点会影响 tier，需要再点一次「按项目重算疑点」才会更新分层')
+    bits.push('跨行检查未更新任务难度。请再点一次「按项目重算疑点」，将这批疑点计入难度评估。')
   }
   return bits.join('；')
 }
@@ -144,9 +158,10 @@ export function findingLocator(row) {
   const anchor = String(row?.evidence?.anchor ?? '')
   const prefix = ANCHOR_PREFIX[anchor] ?? ''
   const pageNumber = Number(row?.page_number)
-  const entryText = Number.isInteger(pageNumber) && pageNumber > 0
-    ? `${prefix}第 ${pageNumber} 条`
-    : `${prefix}条目号未知`
+  const entryText =
+    Number.isInteger(pageNumber) && pageNumber > 0
+      ? `${prefix}第 ${pageNumber} 条`
+      : `${prefix}条目号未知`
   const pdfPage = Number(row?.pdf_page)
   const hasPdf = Number.isInteger(pdfPage) && pdfPage > 0
   // 条目列表的 PDF 页范围是后端精确数值过滤（q 是子串匹配，拿来跳某一条会误命中），
