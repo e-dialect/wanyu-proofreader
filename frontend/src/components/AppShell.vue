@@ -15,7 +15,7 @@
             <AppIcon name="menu" />
           </button>
           <RouterLink v-if="immersive" :to="returnTarget" class="shell-return"
-            ><AppIcon name="back" /><span>返回队列</span></RouterLink
+            ><AppIcon name="back" /><span>{{ returnLabel }}</span></RouterLink
           >
           <span v-if="immersive" class="shell-header__brand">万语校坊</span>
           <div v-else class="shell-location-context" aria-label="当前位置">
@@ -180,6 +180,9 @@ const shellArea = computed(() => {
 })
 const returnTarget = computed(() =>
   queueReturnTarget(browserSessionStorage(), auth.user?.id, route)
+)
+const returnLabel = computed(() =>
+  returnTarget.value.startsWith('/tasks/problems') ? '返回问题与草稿' : '返回队列'
 )
 provide('workReturnTarget', returnTarget)
 

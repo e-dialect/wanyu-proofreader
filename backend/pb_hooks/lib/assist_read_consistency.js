@@ -58,6 +58,7 @@ function pageResponse(dao, pageId, snapshot, build, authorizePage) {
 function myProblems(dao, snapshot) {
   const access = require(`${__hooks}/lib/project_access.js`)
   const fidelity = require(`${__hooks}/lib/source_fidelity.js`)
+  const { problemTask } = require(`${__hooks}/lib/problem_task.js`)
   const initialActor = access.currentAuth(dao, snapshot)
   const reports = () => fidelity.list(dao, "problem_reports", `reporter = "${initialActor.id}"`, "-created,id")
   const drafts = () => fidelity.list(dao, "proofreading_drafts", `user = "${initialActor.id}"`)
@@ -86,12 +87,22 @@ function myProblems(dao, snapshot) {
       if (page.getString("project") !== record.getString("project")) throw changed()
       return page
     }
+    const tasks = new Map()
+    const projectNames = new Map()
+    const followup = page => {
+      const project = page.getString("project")
+      if (!projectNames.has(project)) projectNames.set(project, access.project(dao, project).getString("name"))
+      if (!tasks.has(page.id)) tasks.set(page.id, problemTask(dao, page, actor.id))
+      return { project_name: projectNames.get(project), task: tasks.get(page.id) }
+    }
     return {
-      items: reports().filter(permitted).map(report =>
-        fidelity.reportView(dao, report, fidelity.contextFor(dao, pageFor(report)))),
+      items: reports().filter(permitted).map(report => {
+        const page = pageFor(report)
+        return { ...fidelity.reportView(dao, report, fidelity.contextFor(dao, page)), ...followup(page) }
+      }),
       drafts: drafts().filter(permitted).map(draft => {
         const page = pageFor(draft)
-        return { id: draft.id, page: page.id, project: draft.getString("project"), page_number: page.getInt("page_number"), stale: fidelity.parse(draft.getString("context_json")).basis !== fidelity.contextFor(dao, page, false).basis, at: String(draft.get("updated")) }
+        return { id: draft.id, page: page.id, project: draft.getString("project"), page_number: page.getInt("page_number"), stale: fidelity.parse(draft.getString("context_json")).basis !== fidelity.contextFor(dao, page, false).basis, at: String(draft.get("updated")), ...followup(page) }
       })
     }
   })

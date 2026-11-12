@@ -1,6 +1,10 @@
 import { readOwnSubmissionContext, ownSubmissionReturnTarget } from './ownSubmissionContext.js'
 import { readPracticeContext, practiceNavigationQuery } from './practiceContext.js'
 import { readTaskHallContext, taskHallReturnTarget } from './taskHallContext.js'
+import {
+  readProblemFollowupContext,
+  problemFollowupReturnTarget
+} from './problemFollowupContext.js'
 
 const prefix = 'wanyu:queue-return:v1'
 const key = (userId, kind) => `${prefix}:${encodeURIComponent(userId || '')}:${kind}`
@@ -22,7 +26,7 @@ export function browserSessionStorage() {
 function safeQueuePath(path, kind) {
   if (typeof path !== 'string' || path.length > 2048 || /[\\\r\n]/.test(path)) return false
   return kind === 'proofread'
-    ? /^\/tasks(?:\/projects\/[a-z0-9]{15}\/submissions)?(?:[?#].*)?$/.test(path)
+    ? /^\/tasks(?:\/problems|\/projects\/[a-z0-9]{15}\/submissions)?(?:[?#].*)?$/.test(path)
     : /^\/admin(?:\/projects\/[a-z0-9]+(?:\/verification)?)?(?:[?#].*)?$/.test(path)
 }
 
@@ -38,6 +42,11 @@ function read(storage, userId, kind) {
 
 export function queueReturnTarget(storage, userId, route) {
   const kind = kindOf(route)
+  if (kind === 'proofread' && route.query?.fromProblems === '1') {
+    const target = problemFollowupReturnTarget(readProblemFollowupContext(route.query))
+    const query = new URLSearchParams(target.query).toString()
+    return `${target.path}${query ? `?${query}` : ''}`
+  }
   if (kind === 'proofread' && route.query?.mode === 'review') {
     const review = readOwnSubmissionContext(route.query, route.query.reviewProject)
     if (review) {
