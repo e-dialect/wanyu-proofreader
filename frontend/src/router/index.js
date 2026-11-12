@@ -142,6 +142,11 @@ const routes = [
         component: () => import('@/views/proofreader/TaskHallView.vue')
       },
       {
+        path: 'projects/:projectId/submissions',
+        name: 'OwnSubmissions',
+        component: () => import('@/views/proofreader/OwnSubmissionsView.vue')
+      },
+      {
         path: 'problems',
         name: 'MyProblems',
         component: () => import('@/views/proofreader/MyProblemsView.vue')

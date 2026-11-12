@@ -1,10 +1,14 @@
 import { measureBusiness } from '../../lib/businessMetrics.js'
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useFieldNavigation } from '@/composables/useFieldNavigation'
 import { useStructuredRow } from '@/composables/useStructuredRow'
 import { useTaskNeighbors } from '@/composables/useTaskNeighbors'
-import { mergeOwnTasks } from '@/lib/ownTaskList'
+import {
+  readOwnSubmissionContext,
+  ownSubmissionNavigationQuery,
+  ownSubmissionReturnTarget
+} from '@/lib/ownSubmissionContext'
 import { shouldIgnoreEditorShortcut } from '@/lib/onboarding'
 import { getChangedFields } from '@/lib/workspaceInsights'
 import { prepareFieldHints, gatedNotice } from '@/lib/fieldHints'
@@ -101,6 +105,7 @@ export function useProofreadEditor() {
   const leaseNavigationAllowed = ref(false)
   const submittedHere = ref(false)
   const ownReview = ref(false)
+  const reviewMode = computed(() => ownReview.value || route.query.mode === 'review')
   const claimNextFailure = ref(false)
   const retryingClaim = ref(false)
   const connectionOnline = ref(globalThis.navigator?.onLine !== false)
@@ -141,15 +146,56 @@ export function useProofreadEditor() {
       Object.assign(query, practiceNavigationQuery({ ...currentPracticeContext.value, step }))
     return { path: '/tasks', query }
   }
-  const ownSubmissionsTarget = computed(() => taskHallTarget('reviewed', 'reviewed'))
+  const ownSubmissionContext = computed(() =>
+    readOwnSubmissionContext(route.query, page.value?.project || route.query.reviewProject)
+  )
+  const ownSubmissionsTarget = computed(() => {
+    const context = ownSubmissionContext.value || {
+      projectId: page.value?.project,
+      page: 1,
+      sort: 'recent',
+      taskView: 'reviewed'
+    }
+    const target = ownSubmissionReturnTarget(context)
+    if (!target) return taskHallTarget('reviewed', 'reviewed')
+    if (currentPracticeContext.value)
+      Object.assign(
+        target.query,
+        practiceNavigationQuery({ ...currentPracticeContext.value, step: 'reviewed' })
+      )
+    return target
+  })
+  const editorReturnTarget = computed(() =>
+    ownReview.value || route.query.mode === 'review'
+      ? router.resolve(ownSubmissionsTarget.value).href
+      : toValue(workReturnTarget)
+  )
   const availableTasksTarget = computed(() => taskHallTarget('available', 'claim'))
   function taskEditTarget(pageId) {
     const context = currentPracticeContext.value
     return {
       path: `/tasks/${encodeURIComponent(pageId)}/edit`,
-      query: context
-        ? practiceNavigationQuery({ ...context, step: ownReview.value ? 'reviewed' : 'proofread' })
-        : {}
+      query: {
+        ...(ownReview.value
+          ? {
+              mode: 'review',
+              ...ownSubmissionNavigationQuery(
+                ownSubmissionContext.value || {
+                  projectId: page.value?.project,
+                  page: 1,
+                  sort: 'number',
+                  taskView: 'reviewed'
+                }
+              )
+            }
+          : {}),
+        ...(context
+          ? practiceNavigationQuery({
+              ...context,
+              step: ownReview.value ? 'reviewed' : 'proofread'
+            })
+          : {})
+      }
     }
   }
   const changedFields = computed(() =>
@@ -187,9 +233,11 @@ export function useProofreadEditor() {
       if (taskCount.value === 0) return '当前没有可回看的已提交条目。'
       if (taskPosition.value === 0) return '这条已提交结果不在当前列表里。'
       if (taskCount.value === 1) return '当前只有这一条已提交结果。'
-      if (!canNavigatePrev.value) return '已是最早一条。'
-      if (!canNavigateNext.value) return '已是最后一条。'
-      return ''
+      if (!canNavigatePrev.value) return '已是此范围的第一条已提交记录。'
+      if (!canNavigateNext.value) return '已是此范围的最后一条已提交记录。'
+      return ownSubmissionContext.value?.sort === 'recent'
+        ? '按最近提交顺序回看，只在本人的已提交记录之间切换。'
+        : '按条目号顺序回看，只在本人的已提交记录之间切换。'
     }
     if (submittedHere.value) return '本条已提交，不再计入进行中的任务。'
     if (loadingPage.value || neighborsState.value === 'loading') return ''
@@ -229,7 +277,8 @@ export function useProofreadEditor() {
   )
   const taskHeaderProps = computed(() => ({
     projectName: projectName.value,
-    ownReview: ownReview.value,
+    ownReview: reviewMode.value,
+    submissionsTarget: ownSubmissionsTarget.value,
     mobile: mobile.value,
     navigationLabel: navigationLabel.value,
     navigationHint: navigationHint.value,
@@ -291,16 +340,15 @@ export function useProofreadEditor() {
     const userId = currentUserId.value
     if (!userId) throw new Error('登录状态已失效，请重新登录后重试。')
     if (!currentPage?.project) return []
-    const settled = await Promise.allSettled([
-      listProofreaderNeighborTasks(currentPage.project, userId),
-      listReviewedProofreads(currentPage.project)
-    ])
-    const active = settled[0].status === 'fulfilled' ? settled[0].value : []
-    const reviewed = settled[1].status === 'fulfilled' ? settled[1].value.items : []
-    if (settled[0].status === 'rejected' && (!ownReview.value || settled[1].status === 'rejected'))
-      throw settled[0].reason
-    if (settled[1].status === 'rejected' && ownReview.value) throw settled[1].reason
-    return mergeOwnTasks(active, reviewed)
+    if (ownReview.value) {
+      const context = ownSubmissionContext.value
+      const reviewed = await listReviewedProofreads(currentPage.project, {
+        sort: context?.sort || 'number',
+        ...(context?.number ? { number: context.number } : {})
+      })
+      return reviewed.items
+    }
+    return listProofreaderNeighborTasks(currentPage.project, userId)
   })
 
   const keyboardAvailable = ref(false)
@@ -525,7 +573,12 @@ export function useProofreadEditor() {
   })
 
   watch(
-    () => route.params.id,
+    () => [
+      route.params.id,
+      route.query.mode,
+      route.query.mode === 'review' ? route.query.reviewSort : null,
+      route.query.mode === 'review' ? route.query.reviewNumber : null
+    ],
     async () => {
       await loadPage()
     },
@@ -541,7 +594,11 @@ export function useProofreadEditor() {
   onBeforeRouteUpdate((to, from) => {
     if (getCurrentUserId() !== editorUserId) return true
     if (leaseNavigationAllowed.value) return true
-    if (to.params.id !== from.params.id && !confirmDiscardChanges()) return false
+    if (
+      (to.params.id !== from.params.id || to.query.mode !== from.query.mode) &&
+      !confirmDiscardChanges()
+    )
+      return false
   })
 
   onMounted(() => {
@@ -601,6 +658,7 @@ export function useProofreadEditor() {
     leaseLost.value = false
     leaseNavigationAllowed.value = false
     submittedHere.value = false
+    ownReview.value = false
     noNextTask.value = false
     claimNextFailure.value = false
     retryingClaim.value = false
@@ -635,7 +693,7 @@ export function useProofreadEditor() {
       if (flash) saved.value = flash
       await nextTick()
       if (version !== caseVersion) return
-      onboardingRef.value?.startIfUnseen()
+      if (!ownReview.value) onboardingRef.value?.startIfUnseen()
     } catch (e) {
       if (version !== caseVersion) return
       saveError.value = formatClaimConflict(e, '加载任务失败，请返回项目大厅刷新后重试')
@@ -655,6 +713,7 @@ export function useProofreadEditor() {
   }
 
   async function loadAssignedOrOwnReview(pageId) {
+    if (route.query.mode === 'review') return getProofreaderTask(pageId, { review: true })
     try {
       return await getProofreaderTask(pageId)
     } catch (error) {
@@ -806,6 +865,7 @@ export function useProofreadEditor() {
     reviewingSubmission,
     loadingPage,
     ownReview,
+    reviewMode,
     leaseLost,
     leaseToken,
     saving,
@@ -819,7 +879,7 @@ export function useProofreadEditor() {
     ownSubmissionsTarget,
     availableTasksTarget,
     practiceGuide,
-    returnTarget: workReturnTarget,
+    returnTarget: editorReturnTarget,
     canSwitchPrev,
     canSwitchNext,
     releasing,

@@ -90,17 +90,26 @@ export async function getProofreaderTask(pageId, { review = false } = {}) {
   })
 }
 
-export async function listReviewedProofreads(projectId, { signal } = {}) {
+export async function listReviewedProofreads(
+  projectId,
+  { signal, page, perPage, number, sort, pageId } = {}
+) {
   if (!projectId) return { items: [], position: 0, total: 0 }
   const result = await pb.send(
     `/api/fangji/projects/${encodeURIComponent(projectId)}/tasks/reviewed`,
     {
       signal,
-      requestKey: null
+      requestKey: null,
+      query: Object.fromEntries(
+        Object.entries({ page, perPage, number, sort, pageId }).filter(
+          ([, value]) => value !== undefined
+        )
+      )
     }
   )
   const items = Array.isArray(result?.items) ? result.items : []
   return {
+    ...result,
     items,
     position: Number(result?.position) || 0,
     total: Number.isFinite(Number(result?.total)) ? Number(result.total) : items.length

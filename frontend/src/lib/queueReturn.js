@@ -1,3 +1,6 @@
+import { readOwnSubmissionContext, ownSubmissionReturnTarget } from './ownSubmissionContext.js'
+import { readPracticeContext, practiceNavigationQuery } from './practiceContext.js'
+
 import { importJobScope, validImportJob } from './adminPageList.js'
 
 const prefix = 'wanyu:queue-return:v1'
@@ -20,7 +23,7 @@ export function browserSessionStorage() {
 function safeQueuePath(path, kind) {
   if (typeof path !== 'string' || path.length > 2048 || /[\\\r\n]/.test(path)) return false
   return kind === 'proofread'
-    ? /^\/tasks(?:[?#].*)?$/.test(path)
+    ? /^\/tasks(?:\/projects\/[a-z0-9]{15}\/submissions)?(?:[?#].*)?$/.test(path)
     : /^\/admin(?:\/projects\/[a-z0-9]+(?:\/verification)?)?(?:[?#].*)?$/.test(path)
 }
 
@@ -36,6 +39,18 @@ function read(storage, userId, kind) {
 
 export function queueReturnTarget(storage, userId, route) {
   const kind = kindOf(route)
+  if (kind === 'proofread' && route.query?.mode === 'review') {
+    const review = readOwnSubmissionContext(route.query, route.query.reviewProject)
+    if (review) {
+      const target = ownSubmissionReturnTarget(review)
+      const practice = readPracticeContext(route.query, review.projectId)
+      const query = {
+        ...target.query,
+        ...(practice?.role === 'proofreader' ? practiceNavigationQuery(practice) : {})
+      }
+      return `/tasks/projects/${review.projectId}/submissions?${new URLSearchParams(query)}`
+    }
+  }
   const context = read(storage, userId, kind)
   const importJob = importJobScope(route.query?.importJob)
   if (kind === 'arbitration' && importJob && !validImportJob(importJob))

@@ -67,7 +67,13 @@ test('the editor opts into read-only review without drafting, leasing, or submit
   assert.match(editor, /readonly === true/)
   assert.equal(editor.includes('page.status'), false)
   assert.match(hall, /回看已提交/)
-  assert.match(hall, /listReviewedProofreads/)
+  assert.match(hall, /name: 'OwnSubmissions'/)
+  assert.doesNotMatch(hall, /listReviewedProofreads/)
+  const submissions = readFileSync(
+    new URL('../src/views/proofreader/OwnSubmissionsView.vue', import.meta.url),
+    'utf8'
+  )
+  assert.match(submissions, /mode: 'review'/)
   const start = editor.indexOf('hydrateForReview(page.value)')
   const reviewBranch = editor.slice(start, editor.indexOf('} else {', start))
   assert.notEqual(start, -1)

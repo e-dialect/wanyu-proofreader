@@ -6,11 +6,11 @@
     :suspended="(mobile && overview) || reviewingSubmission"
     :loading="loadingPage"
     :pdf-enabled="
-      ownReview || submittedHere || (!leaseLost && (!!leaseToken || saving || loadingPage))
+      reviewMode || submittedHere || (!leaseLost && (!!leaseToken || saving || loadingPage))
     "
     :watermark-user-id="currentUserId"
     :return-to="returnTarget"
-    return-label="返回大厅"
+    :return-label="reviewMode ? '返回提交记录' : '返回大厅'"
     content-labelled-by="task-panel-title"
     empty-pdf-description="请保存草稿并提交来源问题，待来源 PDF 可用后继续核对。"
   >
@@ -37,11 +37,13 @@
           v-if="saveError"
           state="error"
           :message="saveError"
-          retry-label="重试加载任务"
+          :retry-label="reviewMode ? '重新读取提交记录' : '重试加载任务'"
           @retry="loadPage"
         />
         <div v-else class="empty-state-text">页面不存在</div>
-        <RouterLink :to="returnTarget" class="btn btn-secondary mt-3">返回任务列表</RouterLink>
+        <RouterLink :to="returnTarget" class="btn btn-secondary mt-3">{{
+          reviewMode ? '返回提交记录' : '返回任务列表'
+        }}</RouterLink>
       </div>
       <template v-else>
         <ProofreadTaskFeedback
@@ -228,6 +230,7 @@ const {
   reviewingSubmission,
   loadingPage,
   ownReview,
+  reviewMode,
   leaseLost,
   leaseToken,
   saving,

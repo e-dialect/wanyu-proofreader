@@ -29,8 +29,7 @@ function mountActions(view, resourceResults = []) {
     loadAccessContext: async () => ({})
   }
   const route = { path: '/tasks', fullPath: '/tasks?view=available', query: { view: 'available' } }
-  let reviewCancels = 0,
-    resources = 0
+  let resources = 0
   const environment = {
     ref,
     computed,
@@ -51,16 +50,13 @@ function mountActions(view, resourceResults = []) {
           reloadCalls.push(index)
           return resourceResults[index] || { ok: false }
         },
-        cancel: () => {
-          if (index === 2) reviewCancels++
-        }
+        cancel: () => {}
       }
     },
     summarizeProofreaderQueues: () => ({}),
     currentUserId: () => auth.user.id,
     getProofreaderQueueAction: () => ({ canEnter: true }),
     claimNextProjectPage: () => request.promise,
-    listReviewedProofreads: () => request.promise,
     loadRecentWork: () => [],
     browserLocalStorage: () => null,
     saveTaskLease: (_storage, value) => writes.push(['lease', value]),
@@ -76,7 +72,7 @@ function mountActions(view, resourceResults = []) {
       key === Symbol.unscopables ? undefined : key in target ? target[key] : globalThis[key]
   })
   const names = view.endsWith('TaskHallView')
-    ? 'enterProject,openOwnReview,claimingProject,reviewingProject,actionError,taskView,hasLoadedProjects'
+    ? 'enterProject,openOwnSubmissions,claimingProject,actionError,taskView,hasLoadedProjects'
     : 'startProject,opening,actionError,refresh'
   const api = new Function('environment', `with(environment) { ${script}; return { ${names} } }`)(
     proxy
@@ -90,7 +86,6 @@ function mountActions(view, resourceResults = []) {
     writes,
     watchers,
     reloadCalls,
-    reviewCancels: () => reviewCancels,
     dispose: () => cleanup.forEach((callback) => callback())
   }
 }
@@ -120,23 +115,19 @@ test('a current task claim keeps the one-click path and saves its exact lease', 
   assert.equal(mounted.writes[0][1].token, claim.leaseToken)
 })
 
-test('a delayed own-review result cannot override navigation to another task tab', async () => {
+test('opening own submissions keeps the original queue location without reading or claiming a task', async () => {
   const mounted = mountActions('proofreader/TaskHallView')
-  const result = mounted.openOwnReview(queue)
-  mounted.route.fullPath = '/tasks?view=active'
-  mounted.request.resolve({ items: [{ id: 'reviewed1' }] })
-  await result
-  assert.deepEqual(mounted.pushes, [])
-})
-
-test('leaving the reviewed tab cancels its reader without blocking active tasks', () => {
-  const mounted = mountActions('proofreader/TaskHallView')
-  const viewWatch = mounted.watchers.find(
-    (watcher) =>
-      typeof watcher.read === 'function' && watcher.read.toString() === '() => route.query.view'
-  )
-  viewWatch.callback()
-  assert.equal(mounted.reviewCancels(), 1)
+  mounted.route.query.project = 'project1'
+  await mounted.openOwnSubmissions(queue)
+  assert.deepEqual(mounted.pushes, [
+    {
+      name: 'OwnSubmissions',
+      params: { projectId: 'project1' },
+      query: { taskView: 'available', taskPage: '1', taskProject: 'project1' }
+    }
+  ])
+  assert.deepEqual(mounted.writes, [])
+  assert.deepEqual(mounted.reloadCalls, [])
 })
 
 test('a delayed home claim cannot redirect after the workbench unmounts', async () => {

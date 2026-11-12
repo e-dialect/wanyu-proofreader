@@ -90,7 +90,7 @@ async function createProject(name, users) {
   return project
 }
 
-async function createPage(projectId, pageNumber, value) {
+async function createPage(projectId, pageNumber, value, round = 1) {
   return request('/api/collections/pages/records', {
     method: 'POST',
     token: superAuth.token,
@@ -100,7 +100,7 @@ async function createPage(projectId, pageNumber, value) {
       pdf_page: pageNumber,
       ocr_row_json: JSON.stringify({ 词条: value }),
       ocr_text: value,
-      proofread_round: 1,
+      proofread_round: round,
       mismatch_count: 0,
       status: 'pending'
     }
@@ -322,7 +322,7 @@ try {
   // gate rather than the duplicate-attempt check.
   assert.match(String(resubmit?.message || ''), /该条目当前不属于你/)
 
-  const stalePage = await createPage(project.id, 9, '旧轮')
+  const stalePage = await createPage(project.id, 9, '旧轮', 3)
   await request('/api/collections/proofreading_attempts/records', {
     method: 'POST',
     token: superAuth.token,
@@ -369,6 +369,51 @@ try {
   assert.equal(completeHistory.items[107].submitted_at, '2026-01-01 00:00:00.000Z')
   assert.equal(JSON.stringify(completeHistory).includes('PRIVATE_HISTORY_BODY'), false)
   assertBlindCursor(completeHistory, 'complete own history')
+
+  // The new list and the existing full cursor share the same own/current-round metadata.
+  const reviewedPath = `/api/fangji/projects/${project.id}/tasks/reviewed`
+  const recent = await request(`${reviewedPath}?sort=recent&pageId=${page1.id}`, { token: first.token })
+  assert.deepEqual(recent.items.slice(0, 3).map(item => item.id), [page2.id, page3.id, page1.id])
+  const firstPage = await request(`${reviewedPath}?page=1&perPage=2&pageId=${page1.id}`, { token: first.token })
+  assert.deepEqual(firstPage.items, recent.items.slice(0, 2))
+  assert.equal(firstPage.position, 3, 'cursor position remains global even outside this list page')
+  assert.equal(firstPage.total, 108)
+  assert.equal(firstPage.totalPages, 54)
+  assert.deepEqual(firstPage.project, { id: project.id, name: project.name, purpose: 'work' })
+  const defaults = await request(`${reviewedPath}?page=1`, { token: first.token })
+  assert.equal(defaults.perPage, 20)
+  assert.equal(defaults.items.length, 20)
+  const finalPage = await request(`${reviewedPath}?page=999&perPage=999&sort=number`, { token: first.token })
+  assert.equal(finalPage.page, 2)
+  assert.equal(finalPage.perPage, 100)
+  assert.deepEqual(finalPage.items, completeHistory.items.slice(100))
+  const exact = await request(`${reviewedPath}?page=1&number=3&sort=number&pageId=${page3.id}`, { token: first.token })
+  const exactCursor = await request(`${reviewedPath}?number=3&sort=number&pageId=${page3.id}`, { token: first.token })
+  assert.deepEqual(exact.items, exactCursor.items)
+  assert.equal(exact.total, 1)
+  assert.equal(exact.position, 1)
+  const staleOnly = await request(`${reviewedPath}?page=1&number=9&pageId=${stalePage.id}`, { token: first.token })
+  assert.equal(staleOnly.total, 0)
+  assert.equal(staleOnly.position, 0)
+  assert.equal(staleOnly.totalPages, 1)
+  const otherReader = await request(`${reviewedPath}?page=1`, { token: second.token })
+  assert.deepEqual(otherReader.items.map(item => item.id), [page1.id])
+  await request(`${reviewedPath}?page=1`, { token: outsider.token, expected: 403 })
+  for (const query of ['page=0', 'page=', 'page=1&perPage=-1', 'number=1.5', 'number=1e2', 'sort=invalid']) {
+    await request(`${reviewedPath}?${query}`, { token: first.token, expected: 400 })
+  }
+  assert.equal(JSON.stringify(firstPage).includes('PRIVATE_HISTORY_BODY'), false)
+  assertBlindCursor(firstPage, 'paginated own history')
+
+  // An old review link must never become an editor after a new round is assigned.
+  const reassigned = await request(`/api/fangji/projects/${project.id}/claim`, {
+    method: 'POST', token: first.token
+  })
+  assert.equal(reassigned.id, stalePage.id)
+  const editable = await request(`/api/fangji/pages/${stalePage.id}/task`, { token: first.token })
+  assert.equal(editable.proofreader, first.id)
+  assert.notEqual(editable.readonly, true)
+  await request(`/api/fangji/pages/${stalePage.id}/task?mode=review`, { token: first.token, expected: 403 })
 
   console.log('Reviewed tasks cursor integration test passed.')
 } finally {
