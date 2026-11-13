@@ -20,6 +20,16 @@
       <div class="proofread-field__actions">
         <span v-if="changed" class="field-change-label">已修改</span>
         <button
+          v-if="!readOnly && /[0-5]/.test(value)"
+          type="button"
+          class="btn btn-quiet btn-sm"
+          :aria-label="`${header} 调值转上标`"
+          @mousedown.prevent
+          @click="superscriptSelection"
+        >
+          调值转上标
+        </button>
+        <button
           v-if="!ownReview && changed"
           type="button"
           class="btn btn-quiet btn-sm"
@@ -48,6 +58,9 @@
       @click="emit('remember', $event)"
       @input="onInput"
     ></textarea>
+    <p v-if="toneSelectionHint && !readOnly" class="text-sm text-muted" role="status">
+      请选中一个完整的调值数字，例如 53，再点「调值转上标」。
+    </p>
     <div class="source-value source-value--compact">
       <span>导入文本</span>
       <AppFieldValue
@@ -80,6 +93,8 @@ const props = defineProps({
 })
 const value = defineModel({ type: String, default: '' })
 const input = ref(null)
+const toneSelectionHint = ref(false)
+const superscriptDigits = '⁰¹²³⁴⁵'
 const wide = computed(
   () =>
     /\n/.test(value.value) || Math.max(value.value.length, props.originalValue?.length || 0) > 100
@@ -112,7 +127,48 @@ function onInput(event) {
   // model value, which would not trigger the value watcher.
   if (preedit || composing) fit()
   composing = Boolean(preedit)
+  toneSelectionHint.value = false
   emit('change')
+}
+
+async function superscriptSelection() {
+  const element = input.value
+  if (!element || props.readOnly || composing || element.composing) return
+  const { selectionStart: start, selectionEnd: end } = element
+  const text = value.value
+  // A textarea exposes CRLF as one character. Keep the original line endings in the model.
+  let modelStart = start
+  let modelEnd = end
+  for (const { index } of text.matchAll(/\r\n/g)) {
+    if (index >= modelEnd) break
+    modelEnd++
+    if (index < modelStart) modelStart++
+  }
+  const before = text.slice(0, modelStart)
+  const selected = text.slice(modelStart, modelEnd)
+  const after = text.slice(modelEnd)
+  // Use a whole digit run, excluding mixed notation and @hex registration numbers.
+  if (
+    !/^(?:0|[1-5]{1,6})$/.test(selected) ||
+    /\p{N}$/u.test(before) ||
+    /^\p{N}/u.test(after) ||
+    /@[0-9a-f]*$/i.test(before)
+  ) {
+    toneSelectionHint.value = true
+    element.focus({ preventScroll: true })
+    return
+  }
+
+  toneSelectionHint.value = false
+  const raised = selected.replace(/[0-5]/g, (digit) => superscriptDigits[Number(digit)])
+  const updated = before + raised + after
+  value.value = updated
+  emit('change')
+  await nextTick()
+  if (input.value !== element || props.readOnly || value.value !== updated) return
+  element.focus({ preventScroll: true })
+  element.setSelectionRange(start, end)
+  emit('remember', { target: element })
 }
 watch([value, () => props.mobile, () => props.overview], () => nextTick(fit), { flush: 'post' })
 onMounted(() => {
