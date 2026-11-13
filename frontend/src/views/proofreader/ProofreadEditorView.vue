@@ -125,7 +125,8 @@
         <details v-if="!ownReview" class="editor-correction-help">
           <summary>校对与提交说明</summary>
           <p class="correction-paths text-sm text-muted" role="note">
-            逐字段对照来源，特殊字符从字符键盘插入。提交前可恢复导入值；提交后不能撤回，系统会尝试打开下一条。
+            逐字段对照来源，特殊字符从字符键盘插入。选中已有调值（如 53），可点「调值转上标」改为
+            ⁵³。提交前可恢复导入值；提交后不能撤回，系统会尝试打开下一条。
           </p>
         </details>
       </template>
