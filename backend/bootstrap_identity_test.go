@@ -151,6 +151,9 @@ func TestBootstrapBindingRecreationRequiresDeletedIDAndUnoccupiedEmail(t *testin
 		for _, occupied := range []bool{false, true} {
 			t.Run(collection+map[bool]string{false: "/free", true: "/occupied"}[occupied], func(t *testing.T) {
 				app := newSchemaTestApp(t)
+				// These records have no files. Avoid PocketBase's asynchronous file
+				// cleanup racing the test's temporary directory cleanup.
+				app.OnModelAfterDeleteSuccess().Unbind("__pbFilesManagerDelete__")
 				applyBootstrapBindingTestMigration(t, app)
 				if _, err := runBootstrapIdentity(t, app, collection, "bootstrap@example.test"); err != nil {
 					t.Fatal(err)
