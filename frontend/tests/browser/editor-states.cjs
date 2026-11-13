@@ -10,7 +10,11 @@ const output =
   path.resolve(__dirname, '../../../output/playwright/backlog-editor/editor-states')
 
 async function stableFeedback(browser, width) {
-  const page = await browser.newPage({ viewport: { width, height: width < 768 ? 844 : 900 } })
+  const mobile = width < 768
+  const page = await browser.newPage({
+    viewport: { width, height: mobile ? 844 : 900 },
+    hasTouch: mobile
+  })
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.addInitScript(() => {
@@ -37,6 +41,7 @@ async function stableFeedback(browser, width) {
   await page.route('**/api/fangji/**', async (route) => {
     const url = new URL(route.request().url()).pathname
     if (url.endsWith('/submit')) {
+      assert.equal(JSON.parse(route.request().postDataJSON().rowJson).字词, exact)
       submissions++
       if (submissions === 1) {
         firstStarted()
@@ -75,16 +80,35 @@ async function stableFeedback(browser, width) {
   assert.ok(original.feedbackHeight > 0, 'editing state already reserves the status row')
   assert.match(await feedback.innerText(), /当前条目尚未提交/)
   assert.doesNotMatch(await feedback.innerText(), /校对已提交/)
-  const exact = ' 𠮷 a̤̍⁵³³ '
-  await input.fill(exact)
+  const plain = ' 𠮷 a̤̍53 @53 ka533 '
+  const exact = ' 𠮷 a̤̍⁵³ @53 ka533 '
+  await input.fill(plain)
+  const convert = page.getByRole('button', { name: '字词 调值转上标', exact: true })
+  const activateConversion = async (start) => {
+    await input.focus()
+    await input.evaluate((element, start) => element.setSelectionRange(start, start + 2), start)
+    if (mobile) await convert.tap()
+    else {
+      await convert.focus()
+      await page.keyboard.press('Enter')
+    }
+  }
+  for (const start of [plain.indexOf('@53') + 1, plain.indexOf('533')]) {
+    await activateConversion(start)
+    assert.equal(await input.inputValue(), plain)
+  }
+  await activateConversion(plain.indexOf('53'))
+  assert.equal(await input.inputValue(), exact)
+  assert.equal(await input.evaluate((element) => element === document.activeElement), true)
   await page.keyboard.press('ControlOrMeta+s')
   await page.waitForFunction(() =>
     document.querySelector('[data-task-feedback="draft"]')?.textContent.includes('已存本机')
   )
   assert.match(await feedback.innerText(), /尚未提交/)
   assert.equal(
-    await page.evaluate(() =>
-      Object.values(localStorage).some((value) => value.includes('𠮷 a̤̍⁵³³'))
+    await page.evaluate(
+      (text) => Object.values(localStorage).some((value) => value.includes(text)),
+      exact
     ),
     true
   )
@@ -170,6 +194,7 @@ async function stableFeedback(browser, width) {
   assert.equal(submissions, 2, 'the 409 is not retried automatically')
   await openConfirmation()
   await claiming
+  assert.equal(await convert.count(), 0)
   await page.waitForFunction(() => document.querySelector('[data-task-feedback="submitted"]'))
   assert.match(await feedback.innerText(), /正在领取下一条/)
   assert.doesNotMatch(await feedback.innerText(), /暂无|等待服务端确认/)
