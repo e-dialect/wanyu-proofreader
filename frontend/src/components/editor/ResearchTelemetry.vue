@@ -1,5 +1,5 @@
 <template>
-  <p v-if="session" class="text-sm text-muted" role="status">
+  <p v-if="session" ref="notice" class="text-sm text-muted" role="status">
     研究过程记录已启用。呈现不代表已阅读，工作时间不从租约推算。<span v-if="error"
       >记录中断：{{ error }}；缺失过程和用时将保持未知。</span
     >
@@ -15,6 +15,7 @@ const props = defineProps({
   densityCollapsedIds: { type: Array, default: () => [] }
 })
 const error = ref('')
+const notice = ref(null)
 let current = null
 const sequences = new Map()
 let queue = Promise.resolve()
@@ -88,7 +89,14 @@ function record(type, data = {}) {
 }
 function rendered() {
   if (!current || props.submitted) return
-  const elements = [...document.querySelectorAll('[data-finding-id]')].filter(
+  const panel = notice.value?.closest('.editor-panel-body--fields')
+  if (!panel) return
+  const bounds = panel.getBoundingClientRect()
+  const left = Math.max(0, bounds.left)
+  const top = Math.max(0, bounds.top)
+  const right = Math.min(window.innerWidth, bounds.right)
+  const bottom = Math.min(window.innerHeight, bounds.bottom)
+  const elements = [...panel.querySelectorAll('[data-finding-id]')].filter(
     (element) => element.dataset.findingId && element.getClientRects().length
   )
   const renderedIds = [...new Set(elements.map((element) => element.dataset.findingId))]
@@ -98,10 +106,8 @@ function rendered() {
         .filter((element) => {
           const rect = element.getBoundingClientRect()
           return (
-            rect.bottom > 0 &&
-            rect.top < window.innerHeight &&
-            rect.right > 0 &&
-            rect.left < window.innerWidth
+            Math.min(rect.bottom, bottom) > Math.max(rect.top, top) &&
+            Math.min(rect.right, right) > Math.max(rect.left, left)
           )
         })
         .map((element) => element.dataset.findingId)

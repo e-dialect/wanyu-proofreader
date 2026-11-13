@@ -14,15 +14,17 @@
       </button>
     </div>
     <ul id="proofread-finding-list" class="field-hint-list">
-      <li v-for="hint in visibleHints" :key="hint.key" :data-finding-id="hint.id || undefined">
-        <span class="field-hint-chip" :class="{ 'field-hint-chip--strong': hint.highlight }">
-          <b aria-hidden="true">疑</b>{{ hintKindLabel(hint.kind) }}
-        </span>
-        <strong>{{ hint.field || '整条' }}</strong>
-        <p>{{ hint.text }}</p>
-        <p v-if="hint.inputStatus === 'different_input'" class="text-sm text-muted">
-          导入文本已变化，请按字段对照原文。
-        </p>
+      <li v-for="hint in visibleHints" :key="hint.key">
+        <div :data-finding-id="hint.id || undefined">
+          <span class="field-hint-chip" :class="{ 'field-hint-chip--strong': hint.highlight }">
+            <b aria-hidden="true">疑</b>{{ hintKindLabel(hint.kind) }}
+          </span>
+          <strong>{{ hint.field || '整条' }}</strong>
+          <p>{{ hint.text }}</p>
+          <p v-if="hint.inputStatus === 'different_input'" class="text-sm text-muted">
+            导入文本已变化，请按字段对照原文。
+          </p>
+        </div>
         <div class="proofread-findings__actions">
           <button
             type="button"

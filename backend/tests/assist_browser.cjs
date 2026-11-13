@@ -272,7 +272,7 @@ async function dismissOnboarding (page) {
     assert.ok(await strongChip.count() >= 1, 'strong 档放行后没有出现高亮级疑点')
     assert.equal(await editor.locator('.field-hint-gated').count(), 0, '放行后仍提示"有疑点被挡住"')
     await strongChip.first().scrollIntoViewIfNeeded()
-    await editor.locator('[data-finding-id]').filter({ has: strongChip }).first()
+    await editor.locator('#proofread-finding-list li').filter({ has: strongChip }).first()
       .getByRole('button', { name: '定位原文' }).click()
     // 核对导入文本中被标出的字符。
     // 断言标出来的**文字**而不是"有个元素"：区间错位时元素照样在，字却是别的字。

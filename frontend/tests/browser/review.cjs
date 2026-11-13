@@ -12,6 +12,22 @@ async function openTray(page) {
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
 }
 
+function waitForFindingPresentation(page, id, presented) {
+  return page.waitForRequest(
+    (request) => {
+      if (!request.url().endsWith('/research-sessions/fixture-research-session/events'))
+        return false
+      const { type, data } = request.postDataJSON()
+      return (
+        type === 'render' &&
+        data.rendered_ids?.includes(id) &&
+        data.presented_ids.includes(id) === presented
+      )
+    },
+    { timeout: 5000 }
+  )
+}
+
 ;(async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -81,15 +97,49 @@ async function openTray(page) {
   await fs.mkdir(findingsOutput, { recursive: true })
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true })
   try {
-    await installReviewRoutes(mobile)
+    await installReviewRoutes(mobile, { research: true })
     await mobile.route('**/api/fangji/pages/page1/problems', async (route) => {
       await route.fulfill({ json: { id: 'synthetic-report', issue: { status: 'new' } } })
     })
     await mobile.goto(base + '/tests/fixtures/review.html')
     const hints = mobile.getByRole('region', { name: '本条疑点' })
     await hints.getByRole('button', { name: '展开其余 1 个疑点', exact: true }).tap()
-    const hint = hints.locator('[data-finding-id="finding-meaning"]')
-    await hint.getByRole('button', { name: '定位原文', exact: true }).tap()
+    const hint = hints
+      .locator('li')
+      .filter({ has: mobile.locator('[data-locate-finding="finding-meaning"]') })
+    const locate = hint.getByRole('button', { name: '定位原文', exact: true })
+    const descriptionText = hint.locator('p').first()
+    // Leave enough scroll range to move the last finding past the panel's top edge.
+    const scrollSpace = await mobile.addStyleTag({
+      content: '.editor-panel-body--fields { padding-bottom: 100vh !important; }'
+    })
+    await Promise.all([
+      waitForFindingPresentation(mobile, 'finding-meaning', true),
+      descriptionText.evaluate((element) => {
+        element.scrollIntoView({ block: 'center', behavior: 'instant' })
+      })
+    ])
+
+    await Promise.all([
+      waitForFindingPresentation(mobile, 'finding-meaning', false),
+      locate
+        .evaluate((button) => {
+          button.scrollIntoView({ block: 'start', behavior: 'instant' })
+          const panel = button.closest('.editor-panel-body--fields').getBoundingClientRect()
+          const action = button.getBoundingClientRect()
+          const description = button.closest('li').querySelector('p').getBoundingClientRect()
+          return {
+            actionVisible: action.bottom > panel.top && action.top < panel.bottom,
+            descriptionClipped: description.bottom <= panel.top
+          }
+        })
+        .then(({ actionVisible, descriptionClipped }) => {
+          assert.equal(actionVisible, true, 'Finding action must be visible')
+          assert.equal(descriptionClipped, true, 'Finding text must be above the scrollport')
+        })
+    ])
+    await scrollSpace.evaluate((element) => element.remove())
+    await locate.tap()
     await mobile
       .locator('.source-finding-note')
       .getByText('原文第 5 页 · 核对「释义」', { exact: true })
@@ -137,10 +187,7 @@ async function openTray(page) {
       assert.equal(await hints.locator('li').count(), 3)
       await page.getByRole('button', { name: '下一页原文', exact: true }).click()
       assert.equal(await page.getByRole('spinbutton', { name: 'PDF 页码' }).inputValue(), '6')
-      await hints
-        .locator('[data-finding-id="finding-reading"]')
-        .getByRole('button', { name: '定位原文', exact: true })
-        .click()
+      await hints.locator('[data-locate-finding="finding-reading"]').click()
       assert.equal(await page.getByRole('spinbutton', { name: 'PDF 页码' }).inputValue(), '5')
       assert.equal(await page.locator('.source-value__hit').innerText(), 'tɛ')
       assert.equal(await page.locator('.proofread-field:focus h2').innerText(), '读音')

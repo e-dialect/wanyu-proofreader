@@ -23,7 +23,7 @@ const pdf = Buffer.from(
   fs.readFileSync(path.resolve(__dirname, '../fixtures/review-pdf.base64'), 'utf8').trim(),
   'base64'
 )
-async function installReviewRoutes(page, { keyboard = () => null } = {}) {
+async function installReviewRoutes(page, { keyboard = () => null, research = false } = {}) {
   // The mounted fixture owns its intercepted API; do not inherit a developer's
   // cross-origin VITE_PB_URL (whose CORS header exposure would alter PDF checks).
   await page.addInitScript(() => {
@@ -131,7 +131,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
         page: 1,
         perPage: 25
       }
-    if (url.endsWith('/findings'))
+    if (url.endsWith('/findings')) {
       data = {
         page: 'page1',
         hints: [
@@ -176,6 +176,21 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
         input_version: 'fixture-input-v1',
         truncated: false
       }
+      if (research) {
+        const hints = data.hints.filter((hint) => hint.id)
+        data.research = {
+          id: 'fixture-research-session',
+          state: 'assigned',
+          presentation: {
+            hints,
+            eligible_ids: hints.map((hint) => hint.id),
+            raw_count: data.hints.length,
+            production_suppressed: 0,
+            display: { show_hints: true }
+          }
+        }
+      }
+    }
     if (url.endsWith('/research-notice'))
       data = { decided: true, choice: 'participate', decided_at: '2026-10-17T00:00:00.000Z' }
     return route.fulfill({ json: data })
