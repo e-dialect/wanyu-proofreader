@@ -1,13 +1,5 @@
-import { computed, nextTick } from 'vue'
-import {
-  hintKindLabel,
-  locateSpan,
-  pageLevelHints,
-  pageLevelOverflow,
-  prepareFieldHints,
-  hintsForField,
-  hintsOverflowFor
-} from '../../lib/fieldHints.js'
+import { nextTick } from 'vue'
+import { locateSpan, prepareFieldHints } from '../../lib/fieldHints.js'
 import { getPageFindings } from '../../services/pagesService.js'
 
 export function useProofreadFields({
@@ -119,46 +111,25 @@ export function useProofreadFields({
     return changedFields.value.includes(header)
   }
 
-  const pageHintList = computed(() => pageLevelHints(fieldHints.value))
-  const pageHintOverflow = computed(() => pageLevelOverflow(fieldHints.value))
-  const densityCollapsedIds = computed(() => {
-    const visible = new Set(
-      [...pageHintList.value, ...rowHeaders.value.flatMap((header) => fieldHintList(header))].map(
-        (hint) => hint.id
-      )
-    )
-    return rawFindings.value
-      .filter((hint) => hint.id && !visible.has(hint.id))
-      .map((hint) => hint.id)
-  })
-
-  function fieldHintList(header) {
-    return hintsForField(fieldHints.value, header)
-  }
-
-  function fieldHintOverflow(header) {
-    return hintsOverflowFor(fieldHints.value, header)
-  }
-
-  function hintLabel(kind) {
-    return hintKindLabel(kind)
-  }
-
-  // 疑点点击联动（#161 期望结果 3 的第一级）：先定位到字段卡，
-  // 再用 evidence.char_offsets（SourceSpan，码位计）把命中区间标进「待校对原文」。
-  // 页图内的坐标高亮等 #107-A3 页面图子项落地后再接，本次不动 PDF 侧。
-  function locateHint(header, hint) {
+  async function locateHint(hint) {
+    const header = hint.targetField
     const index = rowHeaders.value.indexOf(header)
-    if (index >= 0) selectField(index)
-    activeField.value = header
-    const source = String(originalRow.value?.[header] ?? '')
-    const span =
-      hint?.inputStatus === 'different_input'
-        ? null
-        : locateSpan(source, hint?.evidence?.char_offsets)
-    locatedSpan.value = span ? { field: header, span } : null
     const textarea = textareaRefs.get(header)
-    if (textarea && mobile.value) textarea.scrollIntoView({ block: 'nearest' })
+    locatedSpan.value = null
+    if (index < 0 || !textarea) return
+
+    selectField(index)
+    activeField.value = header
+    if (hint.inputStatus !== 'different_input') {
+      const source = String(originalRow.value?.[header] ?? '')
+      const span = locateSpan(source, hint.evidence?.char_offsets)
+      if (span) locatedSpan.value = { field: header, span }
+    }
+    await nextTick()
+    if (textareaRefs.get(header) !== textarea) return
+    const card = textarea.closest('.proofread-field')
+    card?.focus({ preventScroll: true })
+    card?.scrollIntoView({ block: 'nearest' })
   }
 
   // 无定位结果时返回 null——模板走与今天完全一致的单一文本分支。
@@ -201,12 +172,6 @@ export function useProofreadFields({
     activateField,
     rememberSelection,
     isFieldChanged,
-    pageHintList,
-    pageHintOverflow,
-    densityCollapsedIds,
-    fieldHintList,
-    fieldHintOverflow,
-    hintLabel,
     locateHint,
     sourceSegments,
     loadFindings,

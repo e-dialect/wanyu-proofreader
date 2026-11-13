@@ -110,8 +110,6 @@ export function useProofreadEditor() {
   const irreversibleSubmitNotice = IRREVERSIBLE_SUBMIT_NOTICE
   const claimNextFailureNotice = CLAIM_NEXT_FAILURE_NOTICE
   const textareaRefs = new Map()
-  // 机器疑点（#161 渲染侧）。hints 恒为空时 fieldHints 就是 prepareFieldHints([]) 的
-  // 冻结空结构：列表与高亮分支全部走 v-if=false，界面与今天像素级一致。
   const fieldHints = ref(prepareFieldHints([]))
   const findingsTruncated = ref(false)
   const findingsSuppressed = ref(0)
@@ -443,12 +441,6 @@ export function useProofreadEditor() {
     activateField,
     rememberSelection,
     isFieldChanged,
-    pageHintList,
-    pageHintOverflow,
-    densityCollapsedIds,
-    fieldHintList,
-    fieldHintOverflow,
-    hintLabel,
     locateHint,
     sourceSegments,
     loadFindings,
@@ -853,17 +845,12 @@ export function useProofreadEditor() {
     replaceEditedRow,
     receiveVerificationContext,
     researchTelemetry,
-    densityCollapsedIds,
-    pageHintList,
-    pageHintOverflow,
-    hintLabel,
+    fieldHints,
     findingsTruncated,
     gatedNoticeText,
     currentField,
     sourceSegments,
     isFieldChanged,
-    fieldHintList,
-    fieldHintOverflow,
     selectField,
     restoreField,
     locateHint,

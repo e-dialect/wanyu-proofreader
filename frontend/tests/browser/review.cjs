@@ -1,7 +1,11 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs/promises')
+const path = require('node:path')
 const { chromium } = require('playwright')
 const { installReviewRoutes } = require('./reviewFixture.cjs')
 const preset = require('../../../backend/keyboards/hinghwa-dialect.json')
 const base = process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5173'
+const findingsOutput = path.resolve(__dirname, '../../../output/playwright/proofread-findings')
 let realPreset = false
 async function openTray(page) {
   const toggle = page.getByRole('button', { name: '字符键盘', exact: true })
@@ -74,6 +78,47 @@ async function openTray(page) {
         throw Error('Overview keyboard not hidden')
     }
   }
+  await fs.mkdir(findingsOutput, { recursive: true })
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true })
+  try {
+    await installReviewRoutes(mobile)
+    await mobile.route('**/api/fangji/pages/page1/problems', async (route) => {
+      await route.fulfill({ json: { id: 'synthetic-report', issue: { status: 'new' } } })
+    })
+    await mobile.goto(base + '/tests/fixtures/review.html')
+    const hints = mobile.getByRole('region', { name: '本条疑点' })
+    await hints.getByRole('button', { name: '展开其余 1 个疑点', exact: true }).tap()
+    const hint = hints.locator('[data-finding-id="finding-meaning"]')
+    await hint.getByRole('button', { name: '定位原文', exact: true }).tap()
+    await mobile
+      .locator('.source-finding-note')
+      .getByText('原文第 5 页 · 核对「释义」', { exact: true })
+      .waitFor()
+    assert.equal(await mobile.locator('.proofread-field:visible h2').innerText(), '释义')
+    assert.equal(await mobile.locator('.source-value__hit').count(), 0)
+    await mobile.locator('.pdf-canvas-stage').waitFor({ state: 'visible' })
+    await mobile.screenshot({ path: path.join(findingsOutput, 'mobile-source.png') })
+    await hint.getByRole('button', { name: '报告问题', exact: true }).tap()
+    const form = mobile.locator('.verification-report')
+    assert.equal(await form.getByLabel('涉及字段').inputValue(), '释义')
+    assert.equal(await form.getByLabel('相关提示（可选）').inputValue(), 'finding-meaning')
+    assert.equal(await form.getByLabel('问题类型').inputValue(), 'hint')
+    const description = form.getByLabel('问题说明')
+    assert.equal(await description.evaluate((el) => el === document.activeElement), true)
+    await description.fill('合成验收：原文没有该标点问题')
+    await mobile.screenshot({ path: path.join(findingsOutput, 'mobile-report.png') })
+    const submitted = mobile.waitForRequest((request) => request.url().endsWith('/page1/problems'))
+    await form.getByRole('button', { name: '保存草稿并提交问题' }).tap()
+    const body = (await submitted).postDataJSON()
+    assert.equal(body.field, '释义')
+    assert.equal(body.finding, 'finding-meaning')
+    assert.equal(body.category, 'hint')
+    assert.equal(body.blocking, false)
+    await mobile.getByText('问题已提交，可继续逐字段核对。', { exact: true }).waitFor()
+  } finally {
+    await mobile.close()
+  }
+
   // A desktop focus change must follow the field into the single-field layout.
   for (const admin of [false, true]) {
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -82,24 +127,26 @@ async function openTray(page) {
     await page.locator('.ipa-key').first().waitFor({ state: 'attached' })
     await openTray(page)
     if (!admin) {
-      // #161 非空 hints 的真渲染覆盖：4 条疑点、行级上限 3——字段级可点 chip 1 个 +
-      // 整条级 2 个（「声调」是列名不在本行的孤儿 hint，并入整条级）；第 4 条「释义」
-      // 被整行上限整桶挤掉（0 可见/1 折叠），折叠文案必须仍然在 DOM 里可见。
-      await page.waitForFunction(() => document.querySelectorAll('.field-hint-chip').length === 3)
-      if ((await page.locator('.field-hint-chip').count()) !== 3)
-        throw Error('Machine hint chips not rendered')
-      const squeezedCard = page
-        .locator('.proofread-field')
-        .filter({ has: page.locator('.field-hint-overflow') })
-      if ((await squeezedCard.count()) !== 1)
-        throw Error('Squeezed-out bucket overflow block missing')
-      if ((await squeezedCard.locator('h2').innerText()) !== '释义')
-        throw Error('Overflow block attached to the wrong field card')
-      if (!(await squeezedCard.locator('.field-hint-overflow').isVisible()))
-        throw Error('Squeezed bucket lost its density-collapse count')
-      await page.locator('button.field-hint-chip').first().click()
-      if (!(await page.locator('.source-value__hit').first().isVisible()))
-        throw Error('Hint click did not highlight source span')
+      const hints = page.getByRole('region', { name: '本条疑点' })
+      const more = hints.getByRole('button', { name: '展开其余 1 个疑点', exact: true })
+      await more.waitFor()
+      assert.equal(await hints.locator('li').count(), 3)
+      await more.click()
+      assert.equal(await hints.locator('li').count(), 4)
+      await hints.getByRole('button', { name: '收起其余疑点', exact: true }).click()
+      assert.equal(await hints.locator('li').count(), 3)
+      await page.getByRole('button', { name: '下一页原文', exact: true }).click()
+      assert.equal(await page.getByRole('spinbutton', { name: 'PDF 页码' }).inputValue(), '6')
+      await hints
+        .locator('[data-finding-id="finding-reading"]')
+        .getByRole('button', { name: '定位原文', exact: true })
+        .click()
+      assert.equal(await page.getByRole('spinbutton', { name: 'PDF 页码' }).inputValue(), '5')
+      assert.equal(await page.locator('.source-value__hit').innerText(), 'tɛ')
+      assert.equal(await page.locator('.proofread-field:focus h2').innerText(), '读音')
+      await page.locator('.pdf-canvas-stage').waitFor({ state: 'visible' })
+      await page.screenshot({ path: path.join(findingsOutput, 'desktop-source.png') })
+      await openTray(page)
     }
     if (admin) await page.getByRole('button', { name: '全部字段 3', exact: true }).click()
     const fieldCards = page.locator(admin ? '.arbitration-field' : '.proofread-field')

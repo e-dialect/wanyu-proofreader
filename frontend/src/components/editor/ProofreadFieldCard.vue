@@ -1,6 +1,8 @@
 <template>
   <article
     class="proofread-field"
+    tabindex="-1"
+    :aria-labelledby="`proofread-field-title-${index}`"
     :class="{
       'proofread-field--active': active,
       'proofread-field--changed': changed,
@@ -13,7 +15,7 @@
       </button>
       <div>
         <span class="sr-only">字段 {{ index + 1 }}</span>
-        <h2>{{ header }}</h2>
+        <h2 :id="`proofread-field-title-${index}`">{{ header }}</h2>
       </div>
       <div class="proofread-field__actions">
         <span v-if="changed" class="field-change-label">已修改</span>
@@ -56,38 +58,10 @@
         :font-notice="false"
       />
     </div>
-    <ul
-      v-if="hints.length || hintOverflow"
-      class="field-hint-list"
-      :aria-label="`${header} 机器疑点`"
-    >
-      <li v-for="(hint, hintIndex) in hints" :key="`${header}-hint-${hintIndex}`">
-        <button
-          type="button"
-          class="field-hint-chip"
-          :data-finding-id="hint.id"
-          :class="{ 'field-hint-chip--strong': hint.highlight }"
-          @click="emit('locate', hint)"
-        >
-          <b aria-hidden="true">疑</b>{{ hintLabel(hint.kind) }}
-        </button>
-        <span class="field-hint-reason">{{ hint.text }}</span>
-        <small v-if="hint.inputStatus === 'different_input'"
-          >提示分析输入与当前导入值不同，已撤去字符定位，请按字段重新核对。</small
-        >
-        <small v-else-if="hint.inputStatus === 'legacy_unrecorded'"
-          >旧版提示，完整输入版本未记录。</small
-        >
-      </li>
-      <li v-if="hintOverflow" class="field-hint-overflow">
-        本字段疑点较多，已按密度折叠 {{ hintOverflow }} 条
-      </li>
-    </ul>
   </article>
 </template>
 <script setup>
 import AppFieldValue from '@/components/AppFieldValue.vue'
-import { hintKindLabel as hintLabel } from '@/lib/fieldHints'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 const props = defineProps({
   header: String,
@@ -102,9 +76,7 @@ const props = defineProps({
   ownReview: Boolean,
   restoreDisabled: Boolean,
   readOnly: Boolean,
-  inputMode: String,
-  hints: { type: Array, default: () => [] },
-  hintOverflow: Number
+  inputMode: String
 })
 const value = defineModel({ type: String, default: '' })
 const input = ref(null)
@@ -162,13 +134,5 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   document.fonts?.removeEventListener('loadingdone', fit)
 })
-const emit = defineEmits([
-  'select',
-  'restore',
-  'locate',
-  'textarea',
-  'activate',
-  'remember',
-  'change'
-])
+const emit = defineEmits(['select', 'restore', 'textarea', 'activate', 'remember', 'change'])
 </script>

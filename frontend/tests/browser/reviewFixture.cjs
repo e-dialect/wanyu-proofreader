@@ -41,7 +41,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
       })
     if (url.endsWith('/pdf/descriptor'))
       return route.fulfill({
-        json: { key: 'fixture-pdf', expiresAt: '2099-01-01T00:00:00Z', start: 5, end: 5, total: 10 }
+        json: { key: 'fixture-pdf', expiresAt: '2099-01-01T00:00:00Z', start: 5, end: 6, total: 10 }
       })
     if (url.endsWith('/pdf'))
       return route.fulfill({
@@ -50,7 +50,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
           'X-PDF-Preview-Key': 'fixture-pdf',
           'X-PDF-Expires-At': '2099-01-01T00:00:00Z',
           'X-PDF-Start-Page': '5',
-          'X-PDF-End-Page': '5',
+          'X-PDF-End-Page': '6',
           'X-PDF-Total-Pages': '10'
         },
         body: pdf
@@ -136,6 +136,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
         page: 'page1',
         hints: [
           {
+            id: 'finding-reading',
             field: '读音',
             kind: 'reading_format_invalid',
             severity: 'strong',
@@ -163,6 +164,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
             evidence: {}
           },
           {
+            id: 'finding-meaning',
             field: '释义',
             kind: 'punctuation_mix',
             severity: 'warn',

@@ -1,5 +1,6 @@
 <template>
   <div ref="viewerRef" class="pdf-viewer">
+    <slot name="context" />
     <div
       v-show="!error || !retryEnabled || isFullscreen"
       class="pdf-toolbar"

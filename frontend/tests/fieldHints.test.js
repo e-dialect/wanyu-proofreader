@@ -3,11 +3,7 @@ import assert from 'node:assert/strict'
 import {
   HINT_DISPLAY_LIMIT,
   hintKindLabel,
-  hintsForField,
-  hintsOverflowFor,
   locateSpan,
-  pageLevelHints,
-  pageLevelOverflow,
   prepareFieldHints,
   gatedNotice
 } from '../src/lib/fieldHints.js'
@@ -25,120 +21,58 @@ function makeHint(overrides = {}) {
   }
 }
 
-// ---- 空数组退化：这是当前（#179 回填后）唯一会发生的线上情况 ----
-
-test('empty hints degrade to a frozen empty structure with zero display surface', () => {
-  const prepared = prepareFieldHints([])
-  // 引用相等 = 视图每次拿到的都是同一个不可变空对象，任何 v-if 判定恒假。
-  assert.equal(prepared, prepareFieldHints([]))
-  assert.deepEqual(prepared, { fields: {}, pageLevel: { items: [], overflow: 0 }, total: 0 })
-  assert.equal(hintsForField(prepared, '莆田IPA').length, 0)
-  assert.equal(hintsOverflowFor(prepared, '莆田IPA'), 0)
-  assert.equal(pageLevelHints(prepared).length, 0)
-  assert.equal(pageLevelOverflow(prepared), 0)
-})
-
-test('non-array garbage never throws and behaves exactly like the empty case', () => {
-  for (const garbage of [null, undefined, 0, '', 'hints', {}]) {
-    assert.equal(prepareFieldHints(garbage), prepareFieldHints([]))
+test('empty or malformed input keeps a stable empty list', () => {
+  const empty = prepareFieldHints([])
+  for (const value of [[], null, undefined, 0, '', 'hints', {}]) {
+    assert.equal(prepareFieldHints(value), empty)
   }
+  assert.deepEqual(empty, [])
 })
 
-// ---- 分组、顺序与 D_max ----
-
-test('hints group by field; an empty field name becomes page-level', () => {
-  const prepared = prepareFieldHints([
-    makeHint(),
-    makeHint({ field: '仙游IPA', message: { key: 'combining_marks_present', params: { marks: ['0x303'] } } }),
-    makeHint({ field: '', message: { key: 'row_width_differs', params: { cells: 5, headers: 4 } } })
-  ])
-  assert.deepEqual(Object.keys(prepared.fields).sort(), ['仙游IPA', '莆田IPA'])
-  assert.equal(hintsForField(prepared, '莆田IPA').length, 1)
-  assert.match(hintsForField(prepared, '莆田IPA')[0].text, /三位以上连续数字/)
-  assert.equal(pageLevelHints(prepared).length, 1)
-  assert.match(pageLevelHints(prepared)[0].text, /单元格数与表头不符/)
-})
-
-test('highlighted hints sort first but nothing is ever hidden by severity (契约 §3.1 强调信号唯一)', () => {
-  const prepared = prepareFieldHints([
-    makeHint({ kind: 'punctuation_mix', message: { key: 'punctuation_width_mixed_in_column', params: {} } }),
-    makeHint({ highlight: true, severity: 'strong', kind: 'encoding_form_anomaly', message: { key: 'mixed_normalization_forms', params: { nfc: 2, nfd: 1, minority: 'NFD' } } }),
-    makeHint({ kind: 'missing_field', message: { key: 'required_role_field_empty', params: { role: 'reading' } } })
-  ])
-  const items = hintsForField(prepared, '莆田IPA')
-  assert.equal(items.length, 3)
-  assert.equal(items[0].highlight, true)
-  assert.equal(items[1].highlight, false)
-  // 服务端给的相对顺序在非高亮组内保持不变（稳定排序）。
-  assert.equal(items[1].kind, 'punctuation_mix')
-  assert.equal(items[2].kind, 'missing_field')
-})
-
-test('D_max keeps display density bounded and folds the rest into a count', () => {
-  const many = Array.from({ length: HINT_DISPLAY_LIMIT + 2 }, (_, i) =>
-    makeHint({ kind: `kind_${i}`, message: { key: `unknown_key_${i}`, params: {} } }))
-  const prepared = prepareFieldHints(many)
-  assert.equal(hintsForField(prepared, '莆田IPA').length, HINT_DISPLAY_LIMIT)
-  assert.equal(hintsOverflowFor(prepared, '莆田IPA'), 2)
-  assert.equal(prepared.total, many.length)
-})
-
-test('D_max caps the whole row, not each field (门槛文件 §8.1 每行口径)', () => {
-  // 2(莆田IPA) + 1(释义) + 2(整条级) = 5 条，无 highlight → 服务端序取前 3。
-  const prepared = prepareFieldHints([
-    makeHint(),
-    makeHint({ kind: 'punctuation_mix', message: { key: 'punctuation_width_mixed_in_column', params: {} } }),
-    makeHint({ field: '释义', message: { key: 'row_width_differs', params: { cells: 5, headers: 4 } } }),
-    makeHint({ field: '', message: { key: 'pdf_page_backtrack', params: { from_page: 9, to_page: 5, backtrack: 4 } } }),
-    makeHint({ field: '', message: { key: 'example_missing', params: {} } })
-  ])
-  const visibleTotal =
-    hintsForField(prepared, '莆田IPA').length +
-    hintsForField(prepared, '释义').length +
-    pageLevelHints(prepared).length
-  assert.equal(visibleTotal, HINT_DISPLAY_LIMIT)
-  // 被行级上限隐藏的疑点按桶记数，绝不静默消失。
-  assert.equal(hintsOverflowFor(prepared, '莆田IPA'), 0)
-  assert.equal(hintsOverflowFor(prepared, '释义'), 0)
-  assert.equal(pageLevelOverflow(prepared), 2)
-  assert.equal(prepared.total, 5)
-})
-
-test('a row-wide cap still lets highlights win across fields', () => {
-  const prepared = prepareFieldHints([
-    makeHint(),
-    makeHint({ field: '释义' }),
-    makeHint({ field: '', highlight: true, severity: 'strong' })
-  ])
-  // 3 条恰好都在上限内：整行可见 = 3，高亮在桶内排前。
-  assert.equal(pageLevelHints(prepared)[0].highlight, true)
-  assert.equal(hintsForField(prepared, '莆田IPA').length, 1)
-})
-
-test('hints for unrendered columns fall back to page level (宁可多标也不要漏标)', () => {
+test('prioritizes emphasized hints and preserves every item for expansion', () => {
   const hints = [
-    makeHint({ field: '字词' }),
-    makeHint({ field: '仙游IPA', message: { key: 'combining_marks_present', params: { marks: ['0x303'] } } })
+    makeHint({ id: 'first', field: '释义' }),
+    makeHint({ id: 'second', field: '莆田IPA' }),
+    makeHint({ id: 'third', field: '', highlight: true }),
+    makeHint({ id: 'fourth', field: '莆田IPA' })
   ]
-  const prepared = prepareFieldHints(hints, ['字词', '莆田IPA', '释义'])
-  assert.equal(prepared.fields['仙游IPA'], undefined)
-  assert.equal(hintsForField(prepared, '仙游IPA').length, 0)
-  assert.equal(pageLevelHints(prepared).length, 1)
-  assert.match(pageLevelHints(prepared)[0].text, /组合附加符/)
-  // Set 也接受；不传第二参则维持纯按 field 分组的旧行为（视图以外调用不受影响）。
-  const asSet = prepareFieldHints(hints, new Set(['字词']))
-  assert.equal(pageLevelHints(asSet).length, 1)
-  const unbounded = prepareFieldHints(hints)
-  assert.equal(hintsForField(unbounded, '仙游IPA').length, 1)
+  const list = prepareFieldHints(hints, ['莆田IPA', '释义'])
+  assert.deepEqual(
+    list.slice(0, HINT_DISPLAY_LIMIT).map(({ id }) => id),
+    ['third', 'first', 'second']
+  )
+  assert.equal(list[HINT_DISPLAY_LIMIT].id, 'fourth')
+})
+
+test('keeps the reported field label and locates only fields present in the editor', () => {
+  const list = prepareFieldHints(
+    [makeHint({ field: '莆田IPA' }), makeHint({ field: '仙游IPA' }), makeHint({ field: '' })],
+    ['莆田IPA']
+  )
+  assert.deepEqual(
+    list.map(({ field, targetField }) => [field, targetField]),
+    [
+      ['莆田IPA', '莆田IPA'],
+      ['仙游IPA', ''],
+      ['', '']
+    ]
+  )
 })
 
 // ---- kind 标签与措辞退化 ----
 
 test('all ten contract kinds get labels and an unknown kind falls back readably (#178 扩展点)', () => {
   const kinds = [
-    'char_out_of_repertoire', 'confusable_substitution', 'encoding_form_anomaly', 'missing_field',
-    'reading_format_invalid', 'punctuation_mix', 'page_outlier', 'duplicate_identity',
-    'cross_source_conflict', 'merged_columns'
+    'char_out_of_repertoire',
+    'confusable_substitution',
+    'encoding_form_anomaly',
+    'missing_field',
+    'reading_format_invalid',
+    'punctuation_mix',
+    'page_outlier',
+    'duplicate_identity',
+    'cross_source_conflict',
+    'merged_columns'
   ]
   for (const kind of kinds) {
     const label = hintKindLabel(kind)
@@ -151,9 +85,8 @@ test('all ten contract kinds get labels and an unknown kind falls back readably 
 
 test('a malformed hint renders a fallback message instead of throwing', () => {
   const prepared = prepareFieldHints([null, makeHint({ field: '', message: undefined })])
-  assert.equal(prepared.total, 2)
-  assert.equal(pageLevelHints(prepared).length, 2)
-  for (const item of pageLevelHints(prepared)) {
+  assert.equal(prepared.length, 2)
+  for (const item of prepared) {
     assert.match(item.text, /未登记的疑点类型/)
   }
 })
@@ -176,7 +109,13 @@ test('locateSpan returns null for missing or malformed offsets (定位降级为�
   assert.equal(locateSpan('', [[0, 1]]), null)
   assert.equal(locateSpan(null, [[0, 1]]), null)
   // 取第一个可用区间，坏形状跳过后继续。
-  assert.deepEqual(locateSpan('abcdef', [[9, 8], [1, 3]]), { start: 1, end: 3 })
+  assert.deepEqual(
+    locateSpan('abcdef', [
+      [9, 8],
+      [1, 3]
+    ]),
+    { start: 1, end: 3 }
+  )
 })
 
 // #228/#234：被门控挡住的条数要说出来，否则"没下发"会被读成"没疑点"。
@@ -190,6 +129,9 @@ test('gated notice separates "not released" from "nothing found"', () => {
   const text = gatedNotice(2)
   assert.match(text, /另有 2 处机器疑点暂未开放显示/)
   assert.match(text, /不代表这条没有值得看的地方/)
-  assert.equal(gatedNotice(1.9), '本条另有 1 处机器疑点暂未开放显示（规则尚未放行，不代表这条没有值得看的地方）。',
-    '非整数要向下取整，不能显示 1.9 处')
+  assert.equal(
+    gatedNotice(1.9),
+    '本条另有 1 处机器疑点暂未开放显示（规则尚未放行，不代表这条没有值得看的地方）。',
+    '非整数要向下取整，不能显示 1.9 处'
+  )
 })

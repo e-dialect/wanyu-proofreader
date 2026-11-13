@@ -81,6 +81,17 @@
           :source-page-number="currentPdfPage"
           :source-total-pages="totalPdfPages"
         >
+          <template #context>
+            <p
+              v-if="findingSource && !pdfLoading && currentPdfPage === allowedPdfPages[0]"
+              class="source-finding-note text-sm"
+              role="status"
+            >
+              原文第 {{ currentPdfPage }} 页<template v-if="findingSource.field">
+                · 核对「{{ findingSource.field }}」</template
+              >
+            </p>
+          </template>
           <template #navigation>
             <div class="editor-toolbar pdf-page-navigation" aria-label="PDF 页码导航">
               <button
@@ -428,6 +439,7 @@ function reloadSource() {
   return retryProjectPdf()
 }
 
+const findingSource = ref(null)
 const preferLocalSource = ref(true)
 const hasSourceRegion = computed(() =>
   Boolean(entryRegion.value && entryRegion.value.entryId === props.page?.id)
@@ -444,8 +456,24 @@ watch(
   () => props.page?.id,
   () => {
     preferLocalSource.value = true
+    findingSource.value = null
   }
 )
+
+async function revealEntrySource(field) {
+  if (!props.pdfEnabled) return
+  const pageId = props.page?.id
+  closeKeyboard()
+  pdfCollapsed.value = false
+  findingSource.value = { field }
+  preferLocalSource.value = true
+  currentPdfPage.value = allowedPdfPages.value[0]
+  if (field) return
+  await nextTick()
+  if (pageId === props.page?.id) sourcePanel.value?.focus({ preventScroll: true })
+}
+
+defineExpose({ revealEntrySource })
 
 function showLocalSource() {
   if (!hasSourceRegion.value) return
@@ -484,6 +512,11 @@ function applyPdfPageInput() {
 </script>
 
 <style scoped>
+.source-finding-note {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+}
+
 .source-view-options {
   display: inline-flex;
   max-width: 100%;
