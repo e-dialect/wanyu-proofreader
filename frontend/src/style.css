@@ -1605,28 +1605,6 @@ tr:hover td {
   border-bottom: 2px solid var(--primary);
 }
 
-/* #161 机器疑点标注。状态不只靠颜色：标记始终带「疑」字与类别文本；
-   整套样式只挂在 .field-hint-* 新类上，hints 为空时这些节点根本不渲染。 */
-.field-hint-list {
-  list-style: none;
-  margin: 0.5rem 0.85rem 0;
-  padding: 0;
-  display: grid;
-  gap: 0.3rem;
-}
-.field-hint-list--page {
-  margin: 0 0 0.75rem;
-  padding: 0.6rem 0.85rem;
-  border: 1px dashed var(--gray-300);
-  border-radius: var(--radius);
-  background: var(--gray-50);
-}
-.field-hint-list li {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
 .field-hint-chip {
   display: inline-flex;
   align-items: center;
@@ -1640,9 +1618,6 @@ tr:hover td {
   font-weight: 600;
   line-height: 1.5;
 }
-button.field-hint-chip {
-  cursor: pointer;
-}
 .field-hint-chip b {
   font-size: 0.68rem;
 }
@@ -1652,19 +1627,6 @@ button.field-hint-chip {
   border-width: 2px;
   font-weight: 700;
 }
-button.field-hint-chip:hover {
-  background: var(--gray-100);
-}
-button.field-hint-chip:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
-}
-.field-hint-reason {
-  color: var(--gray-600);
-  font-size: 0.78rem;
-  line-height: 1.5;
-}
-.field-hint-overflow,
 .field-hint-truncated,
 .field-hint-gated {
   color: var(--gray-500);

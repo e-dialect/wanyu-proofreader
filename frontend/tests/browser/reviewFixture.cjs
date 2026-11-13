@@ -23,7 +23,7 @@ const pdf = Buffer.from(
   fs.readFileSync(path.resolve(__dirname, '../fixtures/review-pdf.base64'), 'utf8').trim(),
   'base64'
 )
-async function installReviewRoutes(page, { keyboard = () => null } = {}) {
+async function installReviewRoutes(page, { keyboard = () => null, research = false } = {}) {
   // The mounted fixture owns its intercepted API; do not inherit a developer's
   // cross-origin VITE_PB_URL (whose CORS header exposure would alter PDF checks).
   await page.addInitScript(() => {
@@ -41,7 +41,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
       })
     if (url.endsWith('/pdf/descriptor'))
       return route.fulfill({
-        json: { key: 'fixture-pdf', expiresAt: '2099-01-01T00:00:00Z', start: 5, end: 5, total: 10 }
+        json: { key: 'fixture-pdf', expiresAt: '2099-01-01T00:00:00Z', start: 5, end: 6, total: 10 }
       })
     if (url.endsWith('/pdf'))
       return route.fulfill({
@@ -50,7 +50,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
           'X-PDF-Preview-Key': 'fixture-pdf',
           'X-PDF-Expires-At': '2099-01-01T00:00:00Z',
           'X-PDF-Start-Page': '5',
-          'X-PDF-End-Page': '5',
+          'X-PDF-End-Page': '6',
           'X-PDF-Total-Pages': '10'
         },
         body: pdf
@@ -131,11 +131,12 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
         page: 1,
         perPage: 25
       }
-    if (url.endsWith('/findings'))
+    if (url.endsWith('/findings')) {
       data = {
         page: 'page1',
         hints: [
           {
+            id: 'finding-reading',
             field: '读音',
             kind: 'reading_format_invalid',
             severity: 'strong',
@@ -163,6 +164,7 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
             evidence: {}
           },
           {
+            id: 'finding-meaning',
             field: '释义',
             kind: 'punctuation_mix',
             severity: 'warn',
@@ -174,6 +176,21 @@ async function installReviewRoutes(page, { keyboard = () => null } = {}) {
         input_version: 'fixture-input-v1',
         truncated: false
       }
+      if (research) {
+        const hints = data.hints.filter((hint) => hint.id)
+        data.research = {
+          id: 'fixture-research-session',
+          state: 'assigned',
+          presentation: {
+            hints,
+            eligible_ids: hints.map((hint) => hint.id),
+            raw_count: data.hints.length,
+            production_suppressed: 0,
+            display: { show_hints: true }
+          }
+        }
+      }
+    }
     if (url.endsWith('/research-notice'))
       data = { decided: true, choice: 'participate', decided_at: '2026-10-17T00:00:00.000Z' }
     return route.fulfill({ json: data })

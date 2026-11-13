@@ -1,21 +1,6 @@
-// #161 校对端疑点渲染的纯函数层。
-//
-// 形状唯一出处是 docs/plans/2026-09-25-review-findings.md §3.1：
-//   hints = [{ field, kind, severity, message:{key,params}, highlight, evidence }]
-// 服务端已按 gate 与 severity 过滤完毕（off 档与 info 级不会到达这里），
-// 所以渲染端**不得**再实现任何"按 severity 决定要不要显示"的逻辑——
-// `highlight` 是唯一的强调信号；密度控制只有本文件的 D_max 一条。
-//
-// 措辞一律走 findingMessages.js 的 renderFindingMessage（未知 key 退化为可读文本），
-// 本文件不新增自由文本口径，也不显示 confidence 百分比或 producer（契约 §9）。
-
 import { renderFindingMessage } from './findingMessages.js'
 
-// D_max 取值归本 issue（#161 评论）：门槛文件 §8.1 实测每行 warn+strong 分布
-// p99 = 1、max = 3（分母 15,022 行）。取 3 覆盖全部已观测密度，超出部分折叠成计数，
-// 不做按历史误报率的动态调节（#179 回填明确禁止）。
-// 口径与 §8.1 写定的 hint_density 一致：**整行**可见条数上限，而不是每字段各 3 条。
-// 折叠计数仍按桶（字段卡 / 整条级）归属，被行级上限隐藏的疑点不会静默消失。
+// Limit the initial list per entry. The rest remain available on expansion.
 export const HINT_DISPLAY_LIMIT = 3
 
 // kind 短标签：#176 §2 的 10 值枚举是封闭集合，新增 kind 需要迁移，
@@ -39,109 +24,30 @@ export function hintKindLabel(kind) {
   return KIND_LABELS[key] || key || '机器疑点'
 }
 
-// 一条 finding 的渲染视图：措辞 + 强调 + 定位所需的最小信息。
-// evidence 原样保留（char_offsets/bbox 只在点击定位时消费），不解析、不猜形状。
-function toHintView(hint) {
-  return {
-    id: String(hint?.id || ''),
-    inputStatus: String(hint?.input_status || 'legacy_unrecorded'),
-    producerVersion: String(hint?.producer_version || ''),
-    field: String(hint?.field ?? ''),
-    kind: String(hint?.kind ?? ''),
-    severity: String(hint?.severity ?? ''),
-    highlight: Boolean(hint?.highlight),
-    text: renderFindingMessage(hint?.message),
-    evidence: hint?.evidence && typeof hint.evidence === 'object' ? hint.evidence : {}
-  }
-}
+const EMPTY_HINTS = Object.freeze([])
 
-// highlight 的排前，其余保持服务端给的顺序（kind,message_key 稳定序）。
-// 这只是展示次序，不是过滤：可见集合不因 severity/gate 有任何变化。
-function emphasisFirst(entries) {
-  return entries
-    .map((entry, index) => ({ entry, index }))
-    .sort((a, b) => (Number(Boolean(b.entry.hint.highlight)) - Number(Boolean(a.entry.hint.highlight))) || (a.index - b.index))
-    .map(({ entry }) => entry)
-}
-
-const EMPTY_PREPARED = Object.freeze({
-  fields: Object.freeze({}),
-  pageLevel: Object.freeze({ items: Object.freeze([]), overflow: 0 }),
-  total: 0
-})
-
-// renderedColumns 是视图侧实际渲染的列名（rowHeaders）。传了它，`field` 命不中任何
-// 已渲染列的疑点会并入整条级而不是静默消失——#161 的硬要求是「宁可多标也不要漏标」，
-// 「请勿以无标记当作已核对通过」不能因为生产者与导入列名漂移而失效。
-// 不传则维持纯按 field 分组的旧行为（纯函数层不猜视图）。
-function toRenderedSet(renderedColumns) {
-  if (Array.isArray(renderedColumns) || renderedColumns instanceof Set) {
-    return new Set([...renderedColumns].map(String))
-  }
-  return null
-}
-
-// 唯一必须成立的退化保证：hints 恒为空数组时返回**引用稳定**的空结构，
-// 消费端所有 v-if 都为假 → 界面与今天像素级一致（#179 回填：这是当前唯一情况）。
-// 非数组、缺 field、未知 kind 一律按"无数据或可读退化"处理，不抛错。
 export function prepareFieldHints(rawHints, renderedColumns) {
-  if (!Array.isArray(rawHints) || rawHints.length === 0) return EMPTY_PREPARED
-  const rendered = toRenderedSet(renderedColumns)
-  const buckets = new Map()
-  let total = 0
-  for (const raw of rawHints) {
-    const hint = toHintView(raw)
-    total += 1
-    const orphan = hint.field !== '' && rendered !== null && !rendered.has(hint.field)
-    const key = hint.field === '' || orphan ? '' : hint.field
-    if (!buckets.has(key)) buckets.set(key, [])
-    buckets.get(key).push(hint)
-  }
-  // 行级总上限：跨桶统一 emphasis-first 后取前 D_max 条，剩余按桶记折叠数。
-  const flat = []
-  for (const [key, items] of buckets) {
-    for (const hint of items) flat.push({ key, hint })
-  }
-  const visible = new Map()
-  const overflow = new Map()
-  let shown = 0
-  for (const entry of emphasisFirst(flat)) {
-    if (shown < HINT_DISPLAY_LIMIT) {
-      if (!visible.has(entry.key)) visible.set(entry.key, [])
-      visible.get(entry.key).push(entry.hint)
-      shown += 1
-    } else {
-      overflow.set(entry.key, (overflow.get(entry.key) || 0) + 1)
+  if (!Array.isArray(rawHints) || !rawHints.length) return EMPTY_HINTS
+  const fields = new Set(renderedColumns)
+  const emphasized = []
+  const regular = []
+  for (const [index, hint] of rawHints.entries()) {
+    const field = String(hint?.field ?? '')
+    const item = {
+      key: hint?.id || index,
+      id: String(hint?.id || ''),
+      field,
+      targetField: fields.has(field) ? field : '',
+      kind: String(hint?.kind || ''),
+      text: renderFindingMessage(hint?.message),
+      highlight: Boolean(hint?.highlight),
+      inputStatus: String(hint?.input_status || 'legacy_unrecorded'),
+      evidence: hint?.evidence
     }
+    if (item.highlight) emphasized.push(item)
+    else regular.push(item)
   }
-  const fields = {}
-  for (const key of buckets.keys()) {
-    if (key === '') continue
-    fields[key] = { items: visible.get(key) || [], overflow: overflow.get(key) || 0 }
-  }
-  const pageLevel = { items: visible.get('') || [], overflow: overflow.get('') || 0 }
-  return { fields, pageLevel, total }
-}
-
-// 视图侧唯一入口：给 field 返回该字段卡的疑点（无则空数组——渲染端据此 v-if）。
-export function hintsForField(prepared, field) {
-  if (!prepared || !prepared.fields) return []
-  const bucketOfField = prepared.fields[String(field ?? '')]
-  return bucketOfField ? bucketOfField.items : []
-}
-
-export function hintsOverflowFor(prepared, field) {
-  const bucketOfField = prepared?.fields?.[String(field ?? '')]
-  return bucketOfField ? bucketOfField.overflow : 0
-}
-
-// 整条级（field 为空）疑点：挂在字段卡列表上方，同样"无数据不占位"。
-export function pageLevelHints(prepared) {
-  return prepared?.pageLevel?.items ?? []
-}
-
-export function pageLevelOverflow(prepared) {
-  return prepared?.pageLevel?.overflow ?? 0
+  return [...emphasized, ...regular]
 }
 
 // ---- SourceSpan 定位（#161 期望结果 3 的"先字段内、后页图"的第一步）----
@@ -163,7 +69,8 @@ function codepointSpanToUtf16(text, start, end) {
 }
 
 export function locateSpan(text, charOffsets) {
-  if (typeof text !== 'string' || !Array.isArray(charOffsets) || charOffsets.length === 0) return null
+  if (typeof text !== 'string' || !Array.isArray(charOffsets) || charOffsets.length === 0)
+    return null
   for (const pair of charOffsets) {
     if (!Array.isArray(pair) || pair.length !== 2) continue
     const [rawStart, rawEnd] = pair

@@ -1,5 +1,6 @@
 <template>
   <DocumentReviewWorkspace
+    ref="workspace"
     inline-source-toggle
     :page="page"
     :keyboard-available="keyboardAvailable"
@@ -85,10 +86,14 @@
           :density-collapsed-ids="densityCollapsedIds"
         />
         <ProofreadPageHints
-          :page-hint-list="pageHintList"
-          :page-hint-overflow="pageHintOverflow"
+          :key="page.id"
+          v-model:expanded="findingsExpanded"
+          :hints="fieldHints"
+          :can-report="verificationPanel?.canReport"
           :findings-truncated="findingsTruncated"
           :gated-notice-text="gatedNoticeText"
+          @locate="locateFinding"
+          @report="verificationPanel?.openReport($event)"
         />
         <div class="proofread-fields">
           <ProofreadFieldCard
@@ -111,11 +116,8 @@
             "
             :read-only="readOnly || (mobile && overview)"
             :input-mode="inputMode"
-            :hints="fieldHintList(header)"
-            :hint-overflow="fieldHintOverflow(header)"
             @select="selectField(index)"
             @restore="restoreField(header)"
-            @locate="locateHint(header, $event)"
             @textarea="setTextareaRef(header, $event)"
             @activate="activateField(header, $event)"
             @remember="rememberSelection(header, $event)"
@@ -203,6 +205,7 @@
 import { RouterLink } from 'vue-router'
 import AppButton from '@/components/AppButton.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
+import { computed, ref, watch } from 'vue'
 import DocumentReviewWorkspace from '@/components/editor/DocumentReviewWorkspace.vue'
 import FieldNavigation from '@/components/editor/FieldNavigation.vue'
 import ProjectKeyboard from '@/components/editor/ProjectKeyboard.vue'
@@ -216,6 +219,7 @@ import ProofreadFieldCard from '@/components/editor/ProofreadFieldCard.vue'
 import ProofreadSubmitDialog from '@/components/editor/ProofreadSubmitDialog.vue'
 import ProofreadResearchDialog from '@/components/editor/ProofreadResearchDialog.vue'
 import ProofreadReturnDialog from '@/components/editor/ProofreadReturnDialog.vue'
+import { HINT_DISPLAY_LIMIT } from '@/lib/fieldHints'
 import { fieldValueLanguage } from '@/lib/fieldValue'
 import { useProofreadEditor } from '@/composables/proofread/useProofreadEditor'
 const {
@@ -267,16 +271,12 @@ const {
   replaceEditedRow,
   receiveVerificationContext,
   researchTelemetry,
-  densityCollapsedIds,
-  pageHintList,
-  pageHintOverflow,
+  fieldHints,
   findingsTruncated,
   gatedNoticeText,
   currentField,
   sourceSegments,
   isFieldChanged,
-  fieldHintList,
-  fieldHintOverflow,
   selectField,
   restoreField,
   locateHint,
@@ -309,4 +309,30 @@ const {
   confirmReturn,
   returnConfirmButton
 } = useProofreadEditor()
+
+const workspace = ref(null)
+const findingsExpanded = ref(false)
+const densityCollapsedIds = computed(() =>
+  findingsExpanded.value
+    ? []
+    : fieldHints.value
+        .slice(HINT_DISPLAY_LIMIT)
+        .map(({ id }) => id)
+        .filter(Boolean)
+)
+
+watch(
+  () => page.value?.id,
+  () => {
+    findingsExpanded.value = false
+  }
+)
+watch(findingsExpanded, (expanded) => {
+  if (expanded) researchTelemetry.value?.expandFindings()
+})
+
+async function locateFinding(hint) {
+  workspace.value?.revealEntrySource(hint.targetField)
+  await locateHint(hint)
+}
 </script>

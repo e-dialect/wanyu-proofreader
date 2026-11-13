@@ -173,7 +173,7 @@ async function waitFor(check) {
       await worker.goto(`http://localhost/tasks/${research.pages[0].id}/edit`)
       await worker.bringToFront()
       await worker.getByText('研究过程记录已启用', { exact: false }).waitFor()
-      await worker.getByText('本字段疑点较多，已按密度折叠 1 条', { exact: true }).waitFor()
+      await worker.getByRole('button', { name: '展开其余 1 个疑点', exact: true }).waitFor()
       const hintField = worker.locator('.proofread-field').filter({ has: worker.getByRole('heading', { name: '释义', exact: true }) })
       await hintField.scrollIntoViewIfNeeded()
       await waitFor(async () => {

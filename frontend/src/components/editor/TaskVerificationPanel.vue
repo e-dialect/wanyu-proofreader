@@ -43,7 +43,7 @@
           >
         </p>
         <p class="text-sm">
-          机器提示只提供核对线索；未提示字段也要逐一对照。下方定位针对导入文本。
+          机器提示只提供核对线索；未提示字段也要逐一对照。可从疑点打开来源页，导入文本中的高亮标出可定位的内容。
         </p>
         <p
           v-if="data.context.policy && !data.context.source_approved"
@@ -151,7 +151,11 @@
         </div>
         <form v-if="reportOpen" class="verification-report" @submit.prevent="sendReport">
           <label class="form-label"
-            >涉及字段<select v-model="report.field" class="form-control">
+            >涉及字段<select
+              v-model="report.field"
+              class="form-control"
+              @change="report.finding = ''"
+            >
               <option value="">整条／来源页</option>
               <option v-for="field in fields" :key="field">{{ field }}</option>
             </select></label
@@ -173,6 +177,7 @@
           >
           <label class="form-label"
             >问题说明<textarea
+              ref="reportDescription"
               v-model="report.description"
               class="form-control"
               required
@@ -256,13 +261,13 @@ watch(reportOpen, (open) => {
   if (open) detailsOpen.value = true
 })
 
-const report = reactive({
-  field: '',
-  category: 'input_display',
-  finding: '',
-  description: '',
-  blocking: false
-})
+function emptyReport() {
+  return { field: '', category: 'input_display', finding: '', description: '', blocking: false }
+}
+
+const report = reactive(emptyReport())
+const reportDescription = ref(null)
+const canReport = computed(() => !!data.value && props.active && !saving.value)
 const fields = computed(() => Object.keys(props.row || {}))
 const matchingHints = computed(() =>
   props.hints.filter((hint) => hint.id && (!report.field || report.field === hint.field))
@@ -286,12 +291,6 @@ watch(
   },
   { deep: true }
 )
-watch(
-  () => report.field,
-  () => {
-    report.finding = ''
-  }
-)
 onBeforeUnmount(() => {
   generation++
   clearTimeout(timer)
@@ -310,6 +309,7 @@ async function load() {
   saveError.value = ''
   message.value = ''
   reportOpen.value = false
+  Object.assign(report, emptyReport())
   detailsOpen.value = false
   saving.value = false
   if (!pageId) return
@@ -438,6 +438,21 @@ async function saveExplicitDraft() {
     saving.value = false
   }
 }
+async function openReport(hint) {
+  if (!canReport.value || !props.hints.some(({ id }) => id === hint.id)) return
+  const pageId = props.page?.id
+  const field = fields.value.includes(hint.targetField) ? hint.targetField : ''
+  if (report.finding !== hint.id || report.field !== field) report.blocking = false
+  report.field = field
+  report.finding = hint.id
+  report.category = 'hint'
+  reportOpen.value = true
+  detailsOpen.value = true
+  await nextTick()
+  if (pageId !== props.page?.id || !canReport.value) return
+  reportDescription.value?.focus()
+}
+
 async function sendReport() {
   if (saving.value || !props.active || !data.value) return
   const token = generation
@@ -458,17 +473,17 @@ async function sendReport() {
     clearTimeout(timer)
     data.value.reports.push(result)
     reportOpen.value = false
-    report.description = ''
     message.value = report.blocking
       ? '问题和草稿已保存。待处理期间可释放任务，稍后从“我的问题与草稿”恢复。'
       : '问题已提交，可继续逐字段核对。'
+    Object.assign(report, emptyReport())
   } catch (e) {
     if (isCurrent()) saveError.value = getPbMessage(e, '问题提交失败，请重试')
   } finally {
     if (isCurrent()) saving.value = false
   }
 }
-defineExpose({ payload, persistDraft, prepareSubmit })
+defineExpose({ payload, persistDraft, prepareSubmit, canReport, openReport })
 </script>
 
 <style scoped>
