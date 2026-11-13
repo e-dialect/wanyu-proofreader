@@ -96,9 +96,10 @@
       <p v-if="!nativeDeliveryEnabled" class="text-muted">
         编选直接出包暂未开放，请使用已核查的交接清单。
       </p>
-      <label v-if="nativeDeliveryEnabled && !preview" class="form-group mt-3"
-        ><span class="form-label">编选批次</span>
+      <div v-if="nativeDeliveryEnabled && !preview" class="form-group mt-3">
+        <label for="delivery-adoption-batch" class="form-label">编选批次</label>
         <select
+          id="delivery-adoption-batch"
           :value="nativeBatch?.id || ''"
           class="form-control"
           :disabled="busy || legacyMode"
@@ -121,7 +122,7 @@
             {{ batch.status === 'confirmed' ? '已确认' : '待确认' }}
           </option>
         </select>
-      </label>
+      </div>
       <AppPagination
         v-if="nativeDeliveryEnabled && !preview"
         :page="adoptionPage"
@@ -134,6 +135,29 @@
         交给 {{ nativeBatch.recipient }} ·
         {{ purposeLabel(nativeBatch.purpose) }}；将重新核查完整批次与确认范围。
       </p>
+      <div v-if="sourceFixTarget || adoptionFixTarget" class="delivery-blocker-actions mt-3">
+        <RouterLink
+          v-if="sourceFixTarget"
+          :to="sourceFixTarget"
+          target="_blank"
+          rel="noopener"
+          class="btn btn-secondary btn-sm"
+        >
+          核对来源许可 · {{ purposeLabel(preflightProblem.purpose) }}
+        </RouterLink>
+        <RouterLink
+          v-if="adoptionFixTarget"
+          :to="adoptionFixTarget"
+          target="_blank"
+          rel="noopener"
+          class="btn btn-secondary btn-sm"
+        >
+          查看本批编选例外
+        </RouterLink>
+        <p class="text-sm text-muted">
+          处理页面在新标签页打开。处理后切回这里重新检查，接收方和批次范围会保留。
+        </p>
+      </div>
       <AppDisclosure v-if="nativeDeliveryEnabled && !preview" class="mt-3" label="兼容旧交接清单">
         <label
           ><input v-model="legacyMode" type="checkbox" :disabled="busy" /> 使用人工核查过的旧 JSON
@@ -283,6 +307,16 @@
             生成交付包
           </AppButton>
         </div>
+        <AppButton
+          v-if="adoptionFixTarget || !preview.can_generate"
+          type="button"
+          class="mt-3"
+          :loading="busy"
+          loading-label="正在重新检查…"
+          @click="preflight"
+        >
+          重新检查本批交付范围
+        </AppButton>
         <button
           type="button"
           class="btn btn-quiet mt-3"
@@ -769,6 +803,7 @@ const loading = ref(true)
 const busy = ref(false)
 const loadError = ref('')
 const operationError = ref('')
+const preflightProblem = ref(null)
 const success = ref('')
 const items = ref([])
 const metrics = ref(null)
@@ -917,13 +952,43 @@ const receiptEventNote = (event) => {
   return `影响 ${payload.affected} 条 · ${channel === 'manual' ? '人工回执' : channel}`
 }
 const purposeLabel = (value) => USAGE_PURPOSE_LABELS[value] || value
+const sourceFixTarget = computed(() => {
+  const problem = preflightProblem.value
+  if (
+    typeof problem?.sourceId !== 'string' ||
+    !/^[a-z0-9]{15}$/.test(problem.sourceId) ||
+    !Object.hasOwn(USAGE_PURPOSE_LABELS, problem.purpose)
+  )
+    return null
+  return {
+    name: 'SourceRegistry',
+    query: { sourceId: problem.sourceId, purpose: problem.purpose }
+  }
+})
+const adoptionFixTarget = computed(() => {
+  if (
+    legacyMode.value ||
+    !nativeBatch.value ||
+    !(
+      preflightProblem.value?.reasonCode === 'ADOPTION_SCOPE_CHANGED' ||
+      preview.value?.reconciliation?.counts?.pending > 0
+    )
+  )
+    return null
+  return {
+    name: 'ProjectAdoption',
+    params: { id: projectId.value },
+    query: { batch: nativeBatch.value.id, tab: 'exceptions', from: 'delivery' }
+  }
+})
 const percent = (value) => `${(value * 100).toFixed(1)}%`
 function invalidatePreview() {
   preview.value = null
+  preflightProblem.value = null
   confirmed.value = false
   requestId.value = ''
 }
-async function action(fn) {
+async function action(fn, onError) {
   if (accessLost.value || unavailable.value) return
   const request = pageScope.capture()
   const generation = ++operationGeneration
@@ -934,8 +999,10 @@ async function action(fn) {
   try {
     await fn(isCurrent, request.signal)
   } catch (e) {
-    if (!handleFailure(e, request) && isCurrent())
+    if (!handleFailure(e, request) && isCurrent()) {
+      onError?.(e)
       operationError.value = getPbMessage(e, e?.message || '处理失败，请重试')
+    }
   } finally {
     if (isCurrent()) busy.value = false
     request.finish()
@@ -1035,18 +1102,24 @@ const requestBody = () =>
         change_reason: changeReason.value
       }
 async function preflight() {
+  if (busy.value) return
   invalidatePreview()
-  await action(async (isCurrent, signal) => {
-    const result = await (legacyMode.value ? checkDelivery : checkAdoptionDelivery)(
-      projectId.value,
-      requestBody(),
-      { signal }
-    )
-    if (isCurrent()) {
-      preview.value = result
-      requestId.value = crypto.randomUUID()
+  await action(
+    async (isCurrent, signal) => {
+      const result = await (legacyMode.value ? checkDelivery : checkAdoptionDelivery)(
+        projectId.value,
+        requestBody(),
+        { signal }
+      )
+      if (isCurrent()) {
+        preview.value = result
+        requestId.value = crypto.randomUUID()
+      }
+    },
+    (error) => {
+      preflightProblem.value = error?.response?.data || null
     }
-  })
+  )
 }
 async function generate() {
   if (!confirmed.value || !preview.value?.can_generate) return

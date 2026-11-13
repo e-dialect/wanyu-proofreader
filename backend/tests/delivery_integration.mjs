@@ -314,6 +314,9 @@ const nativeBatch = await api(adoptionRoot, { token: admin.token, method: 'POST'
 await api(`/api/fangji/adoption-batches/${nativeBatch.id}/preview`, { token: admin.token, method: 'POST' })
 const confirmedBatch = await api(`/api/fangji/adoption-batches/${nativeBatch.id}/confirm`, { token: admin.token, method: 'POST' })
 assert.ok(confirmedBatch.scope_digest)
+await api(`/api/fangji/adoption-batches/${nativeBatch.id}/continue`, {
+  token: users.nonmember.token, method: 'POST', status: 403
+})
 const nativeInput = { adoption_batch_id: nativeBatch.id, expected_scope_digest: confirmedBatch.scope_digest, reviewer: 'synthetic-native-reviewer', previous: '', change_reason: '' }
 const nativeCheck = (body, status = 200, token = admin.token) => api(`${root}/from-adoption/preflight`, { token, method: 'POST', body, status })
 const nativeCreate = (body, status = 201, token = admin.token) => api(`${root}/from-adoption`, { token, method: 'POST', body, status })
@@ -322,6 +325,12 @@ await api(`/api/fangji/adoption-batches/${unspecifiedBatch.id}/preview`, { token
 const unspecifiedConfirmed = await api(`/api/fangji/adoption-batches/${unspecifiedBatch.id}/confirm`, { token: admin.token, method: 'POST' })
 await nativeCheck({ ...nativeInput, adoption_batch_id: unspecifiedConfirmed.id, expected_scope_digest: unspecifiedConfirmed.scope_digest }, 400)
 await nativeCheck({ ...nativeInput, expected_scope_digest: 'wrong' }, 409)
+await setUsage('raw_third_party_transfer', 'deny')
+const transferBlock = await nativeCheck(nativeInput, 400)
+assert.equal(transferBlock.data.reasonCode, 'DELIVERY_SOURCE_RIGHTS_BLOCKED')
+assert.equal(transferBlock.data.sourceId, source.id)
+assert.equal(transferBlock.data.purpose, 'raw_third_party_transfer')
+await setUsage('raw_third_party_transfer', 'allow')
 const nativePreview = await nativeCheck(nativeInput)
 assert.equal(nativePreview.selection_authority, 'adoption_batch_v1')
 assert.equal(nativePreview.reconciliation.source_covered, pages.length)
@@ -348,7 +357,10 @@ assert.ok(nativeSnapshot.selection_rule.length < 200)
 // Membership/content changes invalidate a new create, yet successful retries
 // still return the already-created evidence before consulting the latest chain.
 await setUsage('public_display', 'deny')
-await nativeCheck(nativeInput, 409)
+const staleRights = await nativeCheck(nativeInput, 409)
+assert.equal(staleRights.data.reasonCode, 'ADOPTION_SCOPE_CHANGED')
+assert.equal(staleRights.data.sourceId, source.id)
+assert.equal(staleRights.data.purpose, 'public_display')
 assert.equal((await nativeCreate(nativeRequest, 200)).id, nativeFirst.id)
 await setUsage('public_display', 'allow')
 const paged = await api(`${root}?page=2&perPage=2`, { token: admin.token })
@@ -362,21 +374,6 @@ const eventPage = await api(`${eventURL}?page=2&perPage=2`, { token: admin.token
 assert.equal(eventPage.events.length, 2)
 assert.ok(eventPage.events[0].sequence > eventPage.events[1].sequence)
 console.log('PASS: authoritative native selection, whole-project digest drift, concurrent idempotency, permission-before-replay and independent paged detail/history')
-if (process.env.DELIVERY_BROWSER_SCRIPT) {
-  // Populate later history through real authority routes so the deep-linked
-  // original batch is outside the first list page.
-  for (let i = 0; i < 26; i++) {
-    const batch = await api(adoptionRoot, { token: admin.token, method: 'POST', status: 201, body: { purpose: 'public_display', recipient: `synthetic-later-${i}`, rule: { statuses: ['approved'], importJobs: [job.id] } } })
-    await api(`/api/fangji/adoption-batches/${batch.id}/preview`, { token: admin.token, method: 'POST' })
-    await api(`/api/fangji/adoption-batches/${batch.id}/confirm`, { token: admin.token, method: 'POST' })
-  }
-  const fixture = process.env.DELIVERY_BROWSER_FIXTURE || '/tmp/wanyu-delivery-fixture.json'
-  writeFileSync(fixture, JSON.stringify({ backend: base, admin, project, batch: confirmedBatch, delivery: nativeFirst }))
-  const browser = spawnSync('node', [process.env.DELIVERY_BROWSER_SCRIPT], { stdio: 'inherit', env: { ...process.env, DELIVERY_BROWSER_FIXTURE: fixture } })
-  assert.equal(browser.status, 0, 'delivery workspace browser regression')
-}
-
-
 const beforeRevoke = await api(`/api/collections/release_deliveries/records/${first.id}`, { token: superAuth.token })
 await setUsage('public_display', 'deny')
 const impact = await api(`${root}/impacts?source_ref=${source.logical_id}`, { token: users.owner.token })
@@ -396,6 +393,24 @@ assert.equal(summary.metrics.withdrawn_packages, 1)
 assert.ok(summary.items.filter((item) => item.receipt_state === 'awaiting_receipt').every((item) => item.waiting_seconds >= 0))
 assert.deepEqual((await api(pageURL, { token: superAuth.token })).items, baselinePages, 'E must not rewrite B results, quality states, or original evidence')
 console.log('PASS: receipt three states, responsible upstream return/resolution, versioned resend, rights impact, append-only withdrawal and notice, pending durations')
+
+if (process.env.DELIVERY_BROWSER_SCRIPT) {
+  // Populate later history so the deep-linked original batch is outside the first list page.
+  for (let i = 0; i < 26; i++) {
+    const batch = await api(adoptionRoot, { token: admin.token, method: 'POST', status: 201, body: { purpose: 'public_display', recipient: `synthetic-later-${i}`, rule: confirmedBatch.rule } })
+    await api(`/api/fangji/adoption-batches/${batch.id}/preview`, { token: admin.token, method: 'POST' })
+    await api(`/api/fangji/adoption-batches/${batch.id}/confirm`, { token: admin.token, method: 'POST' })
+  }
+  // The browser first exercises the valid delivery, then creates a pending
+  // exception through the authority routes using this synthetic page.
+  const fixture = process.env.DELIVERY_BROWSER_FIXTURE || '/tmp/wanyu-delivery-fixture.json'
+  writeFileSync(fixture, JSON.stringify({
+    backend: base, admin, project, source, batch: confirmedBatch, delivery: nativeFirst,
+    pendingPage: pages[2].id, excludedPage: pages[1].id
+  }))
+  const browser = spawnSync('node', [process.env.DELIVERY_BROWSER_SCRIPT], { stdio: 'inherit', env: { ...process.env, DELIVERY_BROWSER_FIXTURE: fixture } })
+  assert.equal(browser.status, 0, 'delivery workspace browser regression')
+}
 
 if (process.env.DELIVERY_SAMPLE_DIR) {
   const out = path.resolve(process.env.DELIVERY_SAMPLE_DIR)

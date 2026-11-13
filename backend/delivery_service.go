@@ -14,6 +14,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 )
 
 // deliveryHandoff retains the legacy manual handoff boundary. Native adoption
@@ -123,27 +124,49 @@ func deliveryRights(app core.App, ref, purpose string) error {
 	return nil
 }
 
+func deliveryImportJob(app core.App, projectID, importID string) (*core.Record, error) {
+	job, err := app.FindRecordById("import_jobs", importID)
+	if err != nil || job.GetString("project") != projectID || job.GetString("mode") != "bundle" || job.GetString("status") != "completed" {
+		return nil, deliveryProblem(400, "UNSUPPORTED_IMPORT_JOB", "请选择本项目已完整导入的 ReviewBundle 批次。", "等待完整 Bundle 入册后重新编选，CSV/OCR 暂不支持直接出包。")
+	}
+	return job, nil
+}
+
+func deliverySourceRightsProblem(app core.App, source *core.Record, purpose string) *router.ApiError {
+	ref := source.GetString("logical_id")
+	err := deliveryRights(app, ref, purpose)
+	message := ""
+	if err != nil {
+		message = err.Error()
+	} else if err = deliveryRights(app, ref, "raw_third_party_transfer"); err != nil {
+		// A recipient gets an independently consumable file, including for internal research.
+		purpose = "raw_third_party_transfer"
+		message = "向接收方交付还须获准 raw_third_party_transfer；" + err.Error()
+	} else {
+		return nil
+	}
+	problem := deliveryProblem(400, "DELIVERY_SOURCE_RIGHTS_BLOCKED", message, "核对对应来源的用途许可，再重新检查交付。")
+	problem.Data["sourceId"] = source.Id
+	problem.Data["purpose"] = purpose
+	return problem
+}
+
 func (s *importService) readDeliverySnapshot(app core.App, projectID, operator string, h deliveryHandoff) (reviewbundle.DeliverySnapshot, error) {
 	snap := reviewbundle.DeliverySnapshot{}
 	if h.IncludeOutside {
 		return snap, apis.NewForbiddenError("范围外正文交付尚未开放；显式请求也不能绕过权利和用途编选规则。", nil)
 	}
-	job, err := app.FindRecordById("import_jobs", h.ImportJob)
-	if err != nil || job.GetString("project") != projectID || job.GetString("mode") != "bundle" || job.GetString("status") != "completed" {
-		return snap, deliveryProblem(400, "UNSUPPORTED_IMPORT_JOB", "请选择本项目已完整导入的 ReviewBundle 批次。", "等待完整 Bundle 入册后重新编选，CSV/OCR 暂不支持直接出包。")
+	job, err := deliveryImportJob(app, projectID, h.ImportJob)
+	if err != nil {
+		return snap, err
 	}
 	// Reuse #183's validated source identity instead of inventing provenance.
 	source, err := app.FindRecordById("sources", job.GetString("source"))
 	if err != nil {
 		return snap, deliveryProblem(400, "DELIVERY_SOURCE_MISSING", "批次缺少来源登记。", "管理员补全并核验来源登记后重新检查。")
 	}
-	if err = deliveryRights(app, source.GetString("logical_id"), h.Purpose); err != nil {
-		return snap, err
-	}
-	// The recipient gets an independently consumable file. Internal-research
-	// permission alone never grants third-party transfer, even for domestic hosts.
-	if err = deliveryRights(app, source.GetString("logical_id"), "raw_third_party_transfer"); err != nil {
-		return snap, fmt.Errorf("向接收方交付还须获准 raw_third_party_transfer；%w", err)
+	if blocked := deliverySourceRightsProblem(app, source, h.Purpose); blocked != nil {
+		return snap, blocked
 	}
 	pages, err := app.FindRecordsByFilter("pages", "project = {:project} && import_job = {:job}", "page_number,id", 20001, 0, dbx.Params{"project": projectID, "job": h.ImportJob})
 	if err != nil {

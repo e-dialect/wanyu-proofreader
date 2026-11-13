@@ -429,6 +429,21 @@
         class="card mb-4"
       >
         <h2>处理例外</h2>
+        <div v-if="canReplaceBatch" class="alert alert-warning mb-3" role="status">
+          <p>
+            这份批次已经确认。新草稿会沿用接收方、用途、筛选条件和已记录的例外，按当前数据重新预览。
+            新批次确认后，从「准备交付包」重新检查。
+          </p>
+          <AppButton class="mt-2" :disabled="busy || loading" @click="startReplacement"
+            >沿用范围创建并预览</AppButton
+          >
+          <p v-if="replacementConflict" class="mt-2">
+            这个用途已有未完成的编选批次。
+            <RouterLink :to="{ query: { batch: replacementConflict.id, tab: 'overview' } }"
+              >打开现有批次并核对范围</RouterLink
+            >
+          </p>
+        </div>
         <AppPagination
           :page="exceptions.page || 1"
           :total-pages="exceptions.totalPages || 1"
@@ -437,8 +452,10 @@
           @change="changePage"
         />
         <p v-if="exceptions.pendingTotal">
-          {{ exceptions.pendingTotal }} 条待处理。当前页 {{ exceptions.pending.length }} 条：
-          给结论、选理由、写依据，三样都留痕。改动例外会把批次退回草稿，需要重新预览再确认。
+          {{ exceptions.pendingTotal }} 条待处理。当前页 {{ exceptions.pending.length }} 条。
+          <template v-if="current.status !== 'confirmed'">
+            请填写结论和依据。保存后重新预览并确认范围。
+          </template>
         </p>
         <div v-else class="adoption-exceptions-done">
           <p class="empty-state-text">没有待处理的例外。</p>
@@ -461,40 +478,42 @@
         >
         <article v-for="item in visibleExceptions" :key="item.page" class="adoption-pending">
           <h3>第 {{ item.pageNumber }} 条 · {{ reasonLabel(item.reason) }}</h3>
-          <div class="adoption-form-grid">
+          <template v-if="current.status !== 'confirmed'">
+            <div class="adoption-form-grid">
+              <AppField layout="plain"
+                ><template #label>结论 </template
+                ><select v-model="draftFor(item.page).decision" class="form-control">
+                  <option value="select">{{ DECISION_LABELS.select }}</option>
+                  <option value="exclude">{{ DECISION_LABELS.exclude }}</option>
+                </select>
+              </AppField>
+              <AppField v-if="draftFor(item.page).decision === 'exclude'" layout="plain"
+                ><template #label>理由 </template
+                ><select v-model="draftFor(item.page).reason" class="form-control">
+                  <option value="">请选择理由</option>
+                  <option v-for="code in reasonCodes" :key="code" :value="code">
+                    {{ reasonLabel(code) }}
+                  </option>
+                </select>
+              </AppField>
+            </div>
             <AppField layout="plain"
-              ><template #label>结论 </template
-              ><select v-model="draftFor(item.page).decision" class="form-control">
-                <option value="select">{{ DECISION_LABELS.select }}</option>
-                <option value="exclude">{{ DECISION_LABELS.exclude }}</option>
-              </select>
+              ><template #label>依据 </template
+              ><input
+                v-model="draftFor(item.page).note"
+                class="form-control"
+                maxlength="500"
+                placeholder="写清为什么这样判，例如取得书面许可、缺字表已补齐"
+              />
             </AppField>
-            <AppField v-if="draftFor(item.page).decision === 'exclude'" layout="plain"
-              ><template #label>理由 </template
-              ><select v-model="draftFor(item.page).reason" class="form-control">
-                <option value="">请选择理由</option>
-                <option v-for="code in reasonCodes" :key="code" :value="code">
-                  {{ reasonLabel(code) }}
-                </option>
-              </select>
-            </AppField>
-          </div>
-          <AppField layout="plain"
-            ><template #label>依据 </template
-            ><input
-              v-model="draftFor(item.page).note"
-              class="form-control"
-              maxlength="500"
-              placeholder="写清为什么这样判，例如取得书面许可、缺字表已补齐"
-            />
-          </AppField>
-          <button
-            class="btn btn-secondary btn-sm mt-3"
-            :disabled="busy || loading"
-            @click="decide(item.page)"
-          >
-            保存这一条
-          </button>
+            <button
+              class="btn btn-secondary btn-sm mt-3"
+              :disabled="busy || loading"
+              @click="decide(item.page)"
+            >
+              保存这一条
+            </button>
+          </template>
         </article>
 
         <details v-if="exceptions.exceptions.length" class="mt-3" :open="Boolean(exceptionQuery)">
@@ -718,6 +737,7 @@ import {
 } from '@/lib/adoption'
 import {
   confirmAdoptionBatch,
+  continueAdoptionBatch,
   createAdoptionBatch,
   deleteAdoptionBatch,
   exportAdoptionManifest,
@@ -789,7 +809,12 @@ function navigate(query) {
   return router.push({ query: { ...canonical, ...reportQuery.value } })
 }
 function changeTab(tab) {
-  return navigate({ batch: currentId.value, tab, page: 1 })
+  return navigate({
+    batch: currentId.value,
+    tab,
+    page: 1,
+    from: route.query.from === 'delivery' ? 'delivery' : undefined
+  })
 }
 function changePage(page) {
   return screen.value === 'list' ? navigate({ listPage: page }) : navigate({ ...route.query, page })
@@ -968,6 +993,14 @@ function applyScopePreset() {
 
 const current = computed(() =>
   currentRecord.value?.id === currentId.value ? currentRecord.value : null
+)
+const canReplaceBatch = computed(
+  () =>
+    current.value?.status === 'confirmed' &&
+    (route.query.from === 'delivery' || exceptions.value.pendingTotal > 0)
+)
+const replacementConflict = computed(() =>
+  createConflict.value?.purpose === current.value?.purpose ? createConflict.value : null
 )
 const dirty = computed(
   () =>
@@ -1255,6 +1288,31 @@ function handleCreateConflict(error, purpose) {
   return true
 }
 
+async function startReplacement() {
+  if (!canReplaceBatch.value || busy.value || loading.value) return
+  const { id: previousId, purpose } = current.value
+  createConflict.value = null
+  await act(
+    async (_id, isCurrent, signal) => {
+      const draft = await continueAdoptionBatch(previousId, { signal })
+      if (!isCurrent()) return
+      let tab = 'exceptions'
+      try {
+        await previewAdoptionBatch(draft.id, { signal })
+        if (!isCurrent()) return
+        message.value = '已沿用原范围创建草稿并预览，请处理例外。'
+      } catch (error) {
+        if (!isCurrent() || [401, 403, 404].includes(getPbStatus(error))) throw error
+        tab = 'overview'
+        message.value = '草稿已创建，预览暂未完成。请在新批次重新预览数量。'
+      }
+      await navigate({ batch: draft.id, tab, page: 1 })
+    },
+    '',
+    (error) => handleCreateConflict(error, purpose)
+  )
+}
+
 async function create() {
   if (busy.value || !reportScopeReady.value) return
   createConflict.value = null
@@ -1387,6 +1445,7 @@ async function exportManifest(include) {
 }
 
 async function decide(pageId) {
+  if (current.value?.status === 'confirmed') return
   const batchId = currentId.value
   const draftKey = `${batchId}:${pageId}`
   const draft = draftFor(pageId)
