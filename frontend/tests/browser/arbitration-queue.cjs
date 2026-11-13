@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict')
-const { mkdir } = require('node:fs/promises')
+const { mkdir, readFile } = require('node:fs/promises')
 const path = require('node:path')
 const { chromium } = require('playwright')
 
@@ -8,8 +8,44 @@ const output =
   path.resolve(__dirname, '../../../output/playwright/arbitration-queue')
 const base = process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5173'
 
+const pdfExpires = '2099-01-01T00:00:00Z'
+const firstValue = '  此处保留长释义和相同上下文。𠮷角词例 a̤̍⁵³。\n原书另有一段补充说明。  '
+const secondValue = firstValue.replace('𠮷', '吉').replace('a̤̍⁵³', 'a̤⁵⁵')
+const importedValue = firstValue.replace('𠮷', '古')
+
+async function verifyCharacterDifferences(page) {
+  const field = page.locator('.arbitration-field').filter({
+    has: page.getByRole('heading', { name: '词条', exact: true })
+  })
+  await field.getByText('导入文本', { exact: true }).waitFor()
+  const values = field.locator('.comparison-option [data-field-value-text]')
+  assert.deepEqual(await values.evaluateAll((nodes) => nodes.map((node) => node.textContent)), [
+    importedValue,
+    firstValue,
+    secondValue
+  ])
+  const highlighted = (index) => values.nth(index).locator('.source-value__hit').allTextContents()
+  assert.deepEqual(await highlighted(0), ['古'])
+  assert.deepEqual(await highlighted(1), ['𠮷', 'a̤̍', '³'])
+  assert.deepEqual(await highlighted(2), ['吉', 'a̤', '⁵'])
+  const details = field.getByRole('button', { name: '查看「词条」的差异码位' })
+  await details.click()
+  await field.getByText('U+20BB7 / U+0061 U+0324 U+030D / U+00B3', { exact: true }).waitFor()
+  await page.locator('.pdf-canvas-stage').waitFor({ state: 'visible' })
+  await page.evaluate(() => document.fonts.ready)
+  const detailRows = field.locator('.arbitration-diff-details ul')
+  await detailRows.screenshot({ path: path.join(output, '1440-diff-code-points.png') })
+  await field.locator('.arbitration-source-grid').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: path.join(output, '1440-character-diff.png') })
+  await details.click()
+}
+
 async function main() {
   await mkdir(output, { recursive: true })
+  const pdf = Buffer.from(
+    (await readFile(path.resolve(__dirname, '../fixtures/review-pdf.base64'), 'utf8')).trim(),
+    'base64'
+  )
   const browser = await chromium.launch({
     headless: true,
     channel: process.env.BROWSER_CHANNEL || 'chrome'
@@ -74,7 +110,12 @@ async function main() {
         }
         if (pathname.endsWith('/arbitration')) {
           const id = pathname.split('/').at(-2)
-          const original = { 词条: id === 'first' ? '合成条目甲' : '合成条目乙' }
+          const original = { 词条: id === 'first' ? importedValue : '合成条目乙', 备注: '一致' }
+          const first = { ...original, 词条: id === 'first' ? firstValue : original.词条 }
+          const second = {
+            ...original,
+            词条: id === 'first' ? secondValue : `${original.词条}待核对`
+          }
           return route.fulfill({
             json: {
               mode: 'arbitration',
@@ -82,15 +123,16 @@ async function main() {
                 id,
                 project: 'syntheticproject',
                 page_number: id === 'first' ? 1 : 2,
+                pdf_page: 1,
                 proofread_round: 1,
                 ocr_row_json: JSON.stringify(original)
               },
               attempts: [
-                { id: 'synthetic-a', pass_no: 1, row_json: JSON.stringify(original) },
+                { id: 'synthetic-a', pass_no: 1, row_json: JSON.stringify(first) },
                 {
                   id: 'synthetic-b',
                   pass_no: 2,
-                  row_json: JSON.stringify({ 词条: `${original.词条}待核对` })
+                  row_json: JSON.stringify(second)
                 }
               ]
             }
@@ -113,7 +155,28 @@ async function main() {
             }
           })
         if (pathname.endsWith('/pdf/descriptor'))
-          return route.fulfill({ status: 404, json: { message: '合成界面夹具不含 PDF' } })
+          return route.fulfill({
+            json: {
+              key: 'synthetic-arbitration-pdf',
+              expiresAt: pdfExpires,
+              start: 1,
+              end: 1,
+              total: 1
+            }
+          })
+        if (pathname.endsWith('/pdf'))
+          return route.fulfill({
+            body: pdf,
+            contentType: 'application/pdf',
+            headers: {
+              'X-PDF-Preview-Key': 'synthetic-arbitration-pdf',
+              'X-PDF-Expires-At': pdfExpires,
+              'X-PDF-Start-Page': '1',
+              'X-PDF-End-Page': '1',
+              'X-PDF-Total-Pages': '1'
+            }
+          })
+        if (/\/images\/\d+\/descriptor$/.test(pathname)) return route.fulfill({ status: 404 })
         return route.fulfill({ json: { items: [] } })
       })
       await page.goto(`${base}/tests/fixtures/arbitration-queue.html`)
@@ -131,6 +194,7 @@ async function main() {
         1,
         'a prefilled final value is not presented as an adopted decision'
       )
+      if (width === 1440) await verifyCharacterDifferences(page)
       if (width < 768) {
         assert.ok(
           (await page.locator('.editor-panel-header--task').boundingBox()).height <= 76,
@@ -147,7 +211,11 @@ async function main() {
         true
       )
       await page.screenshot({ path: path.join(output, `${width}-queue.png`), fullPage: true })
-      await page.locator('.comparison-option button').first().click()
+      await page.getByRole('button', { name: '采用导入值', exact: true }).click()
+      assert.equal(
+        await page.getByRole('textbox', { name: '词条的最终仲裁结果', exact: true }).inputValue(),
+        importedValue
+      )
       assert.equal(
         await queue.getByRole('button', { name: '下一条', exact: true }).isEnabled(),
         true
@@ -261,7 +329,7 @@ async function main() {
     await browser.close()
   }
   console.log(
-    'PASS: synthetic arbitration queue, unresolved guard, failure recovery, automatic continuation, route reset and final empty state (1440/390).'
+    'PASS: arbitration character differences, original text, queue navigation, failure recovery and submission (1440/390).'
   )
 }
 main().catch((error) => {

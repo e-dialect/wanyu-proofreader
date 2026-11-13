@@ -218,6 +218,9 @@
             </div>
           </header>
 
+          <p v-if="differingHeaders.length" class="arbitration-diff-note">
+            下划线标出字符差异。各份文本与第一份校对结果对齐。
+          </p>
           <AppDisclosure class="bulk-actions-menu" label="批量处理">
             <div
               v-if="differingHeaders.length"
@@ -245,7 +248,7 @@
           </AppDisclosure>
           <div v-if="visibleHeaders.length" class="arbitration-fields">
             <article
-              v-for="header in visibleHeaders"
+              v-for="{ header, sources, changes, limited } in comparisonFields"
               :key="header"
               class="arbitration-field"
               v-show="!mobile || overview || currentField === header"
@@ -276,38 +279,42 @@
 
               <div class="arbitration-source-grid">
                 <section
+                  v-for="source in sources"
+                  :key="source.key"
                   class="comparison-option"
-                  :class="{ selected: sourceIs(header, 'original') }"
+                  :class="{ selected: sourceIs(header, source.key) }"
                 >
-                  <span>导入文本</span>
+                  <span>{{ source.label }}</span>
                   <AppFieldValue
                     as="p"
-                    :value="originalRow[header]"
+                    :value="source.value"
+                    :segments="source.segments?.length ? source.segments : null"
+                    :class="{ 'arbitration-diff-empty': source.segments?.length === 0 }"
                     :lang="fieldValueLanguage(header)"
                     :font-notice="false"
                   />
-                  <AppButton size="sm" :disabled="submitting" @click="pickValue(header, 'original')"
-                    >采用导入值</AppButton
-                  >
-                </section>
-                <section
-                  v-for="item in attemptRows"
-                  :key="`${header}-${item.key}`"
-                  class="comparison-option"
-                  :class="{ selected: sourceIs(header, item.key) }"
-                >
-                  <span>{{ item.label }}</span>
-                  <AppFieldValue
-                    as="p"
-                    :value="item.row[header]"
-                    :lang="fieldValueLanguage(header)"
-                    :font-notice="false"
-                  />
-                  <AppButton size="sm" :disabled="submitting" @click="pickValue(header, item.key)"
-                    >采用此结果</AppButton
+                  <AppButton
+                    size="sm"
+                    :disabled="submitting"
+                    @click="pickValue(header, source.key)"
+                    >{{ source.key === 'original' ? '采用导入值' : '采用此结果' }}</AppButton
                   >
                 </section>
               </div>
+              <p v-if="limited" class="arbitration-diff-note">部分内容只能按段或按原文对照。</p>
+              <AppDisclosure
+                v-if="changes.length"
+                class="arbitration-diff-details"
+                :label="`查看「${header}」的差异码位`"
+                lazy
+              >
+                <ul>
+                  <li v-for="source in changes" :key="source.key">
+                    <span>{{ source.label }}</span>
+                    <code>{{ diffCodePoints(source.segments) || '（空白）' }}</code>
+                  </li>
+                </ul>
+              </AppDisclosure>
               <div class="final-value" :class="{ selected: sourceIs(header, 'custom') }">
                 <div class="arbitration-final-heading">
                   <h4>最终采用值</h4>
@@ -483,6 +490,7 @@
 <script setup>
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import { fieldValueLanguage } from '@/lib/fieldValue'
+import { compareArbitrationValues, diffCodePoints } from '@/lib/arbitrationDiff'
 import AppModal from '@/components/AppModal.vue'
 import AppDisclosure from '@/components/AppDisclosure.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -612,6 +620,29 @@ const differingHeaders = computed(() =>
 const visibleHeaders = computed(() =>
   showAllFields.value ? headers.value : differingHeaders.value
 )
+const comparisonFields = computed(() => {
+  const candidates = [
+    { key: 'original', label: '导入文本', row: originalRow },
+    ...attemptRows.value
+  ]
+  const differences = new Set(differingHeaders.value)
+  return visibleHeaders.value.map((header) => {
+    const values = candidates.map(({ row }) => row[header])
+    const diff = differences.has(header) ? compareArbitrationValues(values[1], values) : null
+    const sources = candidates.map(({ key, label }, index) => ({
+      key,
+      label,
+      value: values[index],
+      segments: diff?.segments.get(String(values[index] ?? ''))
+    }))
+    return {
+      header,
+      sources,
+      changes: sources.filter(({ segments }) => segments),
+      limited: diff?.limited
+    }
+  })
+})
 const unresolvedHeaders = computed(() =>
   getUnresolvedHeaders(differingHeaders.value, resolvedHeaders)
 )
