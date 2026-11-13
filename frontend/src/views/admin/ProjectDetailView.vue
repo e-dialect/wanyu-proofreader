@@ -79,6 +79,7 @@
           ref="csvImport"
           :project-id="projectId"
           :job-link="csvJobLink"
+          :active="showImport('csv')"
           @job-change="setCsvJobLink"
           :refresh-pages="loadPages"
           :refresh-stats="loadPageStats"

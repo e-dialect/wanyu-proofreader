@@ -260,6 +260,7 @@
       <AppDisclosure
         v-if="csvInspection"
         :key="csvJob?.id"
+        v-model="samplesOpen"
         class="csv-preview-disclosure mt-3"
         :label="`查看预览样本（${csvInspection.preview.length} 条）`"
         lazy
@@ -269,6 +270,22 @@
           {{ csvInspection.preview.length }} 条。
           这是样本，不代表其余记录均正确；需要修改时，请修改原 CSV 后重新检查。
         </p>
+        <CsvSampleSource
+          v-if="active && samplesOpen && previewFile && selectedSampleOption"
+          ref="sampleViewer"
+          :key="csvJob.id"
+          :file="previewFile"
+          :row="csvInspection.preview[selectedSample]"
+          :headers="csvInspection.headers"
+          :location="selectedSampleOption.location"
+          :sample-options="sampleOptions"
+          :sample-index="selectedSample"
+          @select="selectedSample = $event"
+          @close="closeSample(true)"
+        />
+        <p v-else-if="csvInspection.preview.length && !previewFile" class="text-sm text-muted mt-2">
+          这次预检没有可读取的绑定 PDF。
+        </p>
         <AppDataTable
           label="CSV 预检内容"
           v-if="csvInspection.preview.length"
@@ -277,12 +294,24 @@
             <tr>
               <th>原 CSV 行号</th>
               <th>PDF 物理页码</th>
+              <th v-if="previewFile">原文</th>
               <th v-for="header in csvPreviewHeaders" :key="header">{{ header }}</th>
             </tr>
           </template>
           <tr v-for="(row, index) in csvInspection.preview" :key="index">
             <td>{{ csvInspection.previewLocations[index]?.csvLine ?? '旧记录未保存' }}</td>
             <td>{{ csvInspection.previewLocations[index]?.pdfPage ?? '旧记录未保存' }}</td>
+            <td v-if="previewFile">
+              <AppButton
+                v-if="csvInspection.previewLocations[index]?.pdfPage"
+                variant="ghost"
+                size="sm"
+                :aria-label="`对照 CSV 样本 ${index + 1} 的原文`"
+                :aria-pressed="selectedSample === index"
+                @click="openSample(index, $event)"
+                >对照原文</AppButton
+              >
+            </td>
             <td v-for="header in csvPreviewHeaders" :key="header">
               <AppFieldValue
                 :value="row[header]"
@@ -340,6 +369,7 @@
 import AppButton from '@/components/AppButton.vue'
 import AppField from '@/components/AppField.vue'
 import AppDisclosure from '@/components/AppDisclosure.vue'
+import CsvSampleSource from '@/components/admin/project/CsvSampleSource.vue'
 import RareCharacterNotice from '@/components/editor/RareCharacterNotice.vue'
 import AppFieldValue from '@/components/AppFieldValue.vue'
 import { fieldValueLanguage } from '@/lib/fieldValue'
@@ -369,6 +399,7 @@ import {
 import { getPbMessage, getUploadErrorMessage } from '@/utils/pbErrors'
 const props = defineProps({
   projectId: { type: String, required: true },
+  active: { type: Boolean, default: true },
   jobLink: { type: String, default: '' },
   refreshPages: { type: Function, required: true },
   refreshStats: { type: Function, required: true },
@@ -425,6 +456,37 @@ const {
 
 const csvActualSource = ref(null)
 const csvPdf = ref(null)
+const samplesOpen = ref(false)
+const selectedSample = ref(null)
+const sampleViewer = ref(null)
+let sampleTrigger
+const previewFile = computed(() => {
+  const record = csvPdf.value?.record
+  return csvJob.value?.project_file === record?.id && record?.status === 'ready' && record?.file
+    ? record
+    : null
+})
+async function openSample(index, event) {
+  sampleTrigger = event.currentTarget
+  selectedSample.value = index
+  await nextTick()
+  sampleViewer.value?.focus()
+}
+function closeSample(restoreFocus = false) {
+  selectedSample.value = null
+  if (restoreFocus) sampleTrigger?.focus()
+  sampleTrigger = null
+}
+watch(
+  () => csvJob.value?.id,
+  () => {
+    samplesOpen.value = false
+    closeSample()
+  }
+)
+watch([() => props.active, samplesOpen], ([active, open]) => {
+  if (!active || !open) closeSample()
+})
 let csvPdfRequest
 const csvPdfReady = computed(
   () =>
@@ -467,6 +529,14 @@ const csvStatusVisible = computed(
 let csvPollGeneration = 0
 
 const csvInspection = computed(() => parseCsvInspection(csvJob.value?.inspection_json))
+const sampleOptions = computed(() =>
+  (csvInspection.value?.preview || [])
+    .map((_, index) => ({ index, location: csvInspection.value.previewLocations[index] }))
+    .filter(({ location }) => location?.pdfPage)
+)
+const selectedSampleOption = computed(() =>
+  sampleOptions.value.find(({ index }) => index === selectedSample.value)
+)
 
 const csvPreviewHeaders = computed(() => {
   const inspection = csvInspection.value
@@ -643,7 +713,12 @@ async function readCsvPdf(id) {
     if (controller.signal.aborted) return
     csvPdf.value =
       file.id === id && file.project === projectId
-        ? { id, name: file.original_filename || unavailable.name, ready: file.status === 'ready' }
+        ? {
+            id,
+            name: file.original_filename || unavailable.name,
+            ready: file.status === 'ready',
+            record: file
+          }
         : unavailable
   } catch {
     if (!controller.signal.aborted) csvPdf.value = unavailable
