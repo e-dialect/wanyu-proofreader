@@ -406,6 +406,7 @@ func (s *importService) registerAdoption() {
 		e.Router.GET("/api/fangji/projects/{projectId}/adoption-batches", s.listAdoptionBatches).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/adoption-batches/{batchId}", s.getAdoptionBatch).Bind(apis.RequireAuth("users"))
 		e.Router.DELETE("/api/fangji/adoption-batches/{batchId}", s.deleteAdoptionBatch).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/fangji/adoption-batches/{batchId}/continue", s.continueAdoptionBatch).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/fangji/adoption-batches/{batchId}/preview", s.previewAdoptionBatch).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/adoption-batches/{batchId}/exceptions", s.listAdoptionExceptions).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/fangji/adoption-batches/{batchId}/exceptions/{pageId}", s.getAdoptionExceptionByPage).Bind(apis.RequireAuth("users"))
@@ -502,8 +503,8 @@ func adoptionExceptionView(record *core.Record) map[string]any {
 	}
 }
 
-func (s *importService) openAdoptionBatch(projectID, purpose string) *core.Record {
-	records, err := s.app.FindRecordsByFilter(
+func openAdoptionBatch(app core.App, projectID, purpose string) *core.Record {
+	records, err := app.FindRecordsByFilter(
 		"adoption_batches",
 		`project = {:project} && purpose = {:purpose} && (status = "draft" || status = "previewed")`,
 		"", 1, 0,
@@ -582,15 +583,76 @@ func (s *importService) createAdoptionBatch(c *core.RequestEvent) error {
 		// idx_adoption_batches_open 是部分唯一索引：同一项目同一用途同时只允许
 		// 一条未确认的编选。撞上时把已有那条还给调用方，而不是报一个看不出原因
 		// 的保存失败。
-		if existing := s.openAdoptionBatch(project.Id, purpose); existing != nil {
-			return c.JSON(http.StatusConflict, map[string]any{
-				"message": "该项目在这个用途下已有一份未确认的编选，请先完成或删除它。",
-				"batch":   adoptionBatchView(existing),
-			})
+		if existing := openAdoptionBatch(s.app, project.Id, purpose); existing != nil {
+			return adoptionOpenConflict(c, existing)
 		}
 		return apis.NewBadRequestError("创建编选批次失败。", err)
 	}
 	return c.JSON(http.StatusCreated, adoptionBatchView(record))
+}
+
+func adoptionOpenConflict(c *core.RequestEvent, existing *core.Record) error {
+	return c.JSON(http.StatusConflict, map[string]any{
+		"message": "该项目在这个用途下已有一份未确认的编选，请先完成或删除它。",
+		"batch":   adoptionBatchView(existing),
+	})
+}
+
+func (s *importService) continueAdoptionBatch(c *core.RequestEvent) error {
+	var draft, existing *core.Record
+	err := s.app.RunInTransaction(func(app core.App) error {
+		previous, auth, project, err := s.loadAdoptionBatchInApp(app, c)
+		if err != nil {
+			return err
+		}
+		if previous.GetString("status") != adoptionBatchConfirmed {
+			return apis.NewBadRequestError("只能沿用已确认的编选批次。", nil)
+		}
+		rule, err := parseAdoptionRule(json.RawMessage(previous.GetString("rule_json")))
+		if err != nil {
+			return apis.NewBadRequestError(err.Error(), nil)
+		}
+		for _, id := range rule.ImportJobs {
+			job, jobErr := app.FindRecordById("import_jobs", id)
+			if jobErr != nil || job.GetString("project") != project.Id {
+				return apis.NewBadRequestError("原编选规则中的导入批次已不可用。", nil)
+			}
+		}
+		draft = core.NewRecord(previous.Collection())
+		for _, field := range []string{"project", "purpose", "recipient", "rule_json", "note"} {
+			draft.Set(field, previous.GetString(field))
+		}
+		draft.Set("status", adoptionBatchDraft)
+		draft.Set("created_by", auth.Id)
+		if err := app.Save(draft); err != nil {
+			existing = openAdoptionBatch(app, project.Id, draft.GetString("purpose"))
+			return apis.NewBadRequestError("创建接续草稿失败。", err)
+		}
+		exceptions, err := app.FindRecordsByFilter("adoption_exceptions", "batch = {:batch}", "created,id", 0, 0, dbx.Params{"batch": previous.Id})
+		if err != nil {
+			return err
+		}
+		for _, previousDecision := range exceptions {
+			decision := core.NewRecord(previousDecision.Collection())
+			decision.Set("batch", draft.Id)
+			// These are the original decisions, including their authors and dates.
+			// Preview still evaluates them against current rules and rights.
+			for _, field := range []string{"page", "decision", "reason_code", "note", "decided_by", "decided_at"} {
+				decision.Set(field, previousDecision.Get(field))
+			}
+			if err := app.Save(decision); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if existing != nil {
+			return adoptionOpenConflict(c, existing)
+		}
+		return err
+	}
+	return c.JSON(http.StatusCreated, adoptionBatchView(draft))
 }
 
 func (s *importService) listAdoptionBatches(c *core.RequestEvent) error {

@@ -16,13 +16,23 @@ export function createSource(body) {
   return pb.send('/api/fangji/sources', { method: 'POST', body, requestKey: null })
 }
 
-export function saveSourceUsage(sourceId, purpose, body) {
+export function updateSource(sourceId, body, { signal } = {}) {
+  return pb.send('/api/fangji/sources/' + encodeURIComponent(sourceId), {
+    method: 'PATCH',
+    body,
+    requestKey: null,
+    signal
+  })
+}
+
+export function saveSourceUsage(sourceId, purpose, body, { signal } = {}) {
   return pb.send(
     `/api/fangji/sources/${encodeURIComponent(sourceId)}/usages/${encodeURIComponent(purpose)}`,
     {
       method: 'PUT',
       body,
-      requestKey: null
+      requestKey: null,
+      signal
     }
   )
 }

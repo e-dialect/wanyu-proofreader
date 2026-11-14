@@ -29,6 +29,13 @@
         登记后请切回原来的项目页面，点击“重新检查来源登记”。请保留原页面，已选资料包会留在那里。
       </p>
     </section>
+    <SourcePermissionPanel
+      v-if="focusedSourceId && focusedPurpose"
+      :key="focusedSourceId + ':' + focusedPurpose"
+      :source-id="focusedSourceId"
+      :purpose="focusedPurpose"
+      @updated="load"
+    />
     <AppStatusPanel
       v-if="loadError"
       state="error"
@@ -153,6 +160,7 @@ import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import AppDataTable from '@/components/AppDataTable.vue'
 import AppField from '@/components/AppField.vue'
+import SourcePermissionPanel from '@/components/admin/SourcePermissionPanel.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import {
@@ -173,6 +181,14 @@ import { getPbMessage } from '@/utils/pbErrors'
 
 const auth = useAuthStore()
 const route = useRoute()
+const focusedSourceId = computed(() => {
+  const id = route.query.sourceId
+  return typeof id === 'string' && /^[a-z0-9]{15}$/.test(id) ? id : ''
+})
+const focusedPurpose = computed(() => {
+  const purpose = route.query.purpose
+  return typeof purpose === 'string' && Object.hasOwn(USAGE_PURPOSE_LABELS, purpose) ? purpose : ''
+})
 const practiceContext = computed(() => {
   const context = readPracticeContext(route.query)
   return auth.isPlatformAdmin && context?.role === 'platform' ? context : null

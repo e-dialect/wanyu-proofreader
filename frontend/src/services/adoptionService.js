@@ -26,6 +26,14 @@ export async function createAdoptionBatch(
   })
 }
 
+export function continueAdoptionBatch(batchId, { signal } = {}) {
+  return pb.send('/api/fangji/adoption-batches/' + encodeURIComponent(batchId) + '/continue', {
+    method: 'POST',
+    requestKey: null,
+    signal
+  })
+}
+
 export async function getAdoptionBatch(batchId, { signal } = {}) {
   return pb.send(`/api/fangji/adoption-batches/${encodeURIComponent(batchId)}`, {
     signal,

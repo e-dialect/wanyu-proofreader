@@ -63,7 +63,7 @@ type adoptionDeliveryInput struct {
 	RequestID           string `json:"request_id"`
 }
 
-func deliveryProblem(status int, code, message, next string) error {
+func deliveryProblem(status int, code, message, next string) *router.ApiError {
 	err := apis.NewApiError(status, message, nil)
 	err.Data["reasonCode"] = code
 	err.Data["nextAction"] = next
@@ -89,7 +89,20 @@ func (s *importService) adoptionDeliveryHandoff(app core.App, projectID string, 
 	}
 	stored := batch.GetString("scope_digest")
 	if stored == "" || input.ExpectedScopeDigest != stored || stored != adoptionScopeDigest(computation) || adoptionCountsDrifted(batch, computation) != "" {
-		return h, deliveryProblem(409, "ADOPTION_SCOPE_CHANGED", "编选范围已变更或缺少确认摘要，请新建并确认编选批次。", "重新计算并人工确认编选范围。")
+		problem := deliveryProblem(409, "ADOPTION_SCOPE_CHANGED", "编选范围已变更或缺少确认摘要，请新建并确认编选批次。", "重新计算并人工确认编选范围。")
+		// A permission change can invalidate the confirmation before the snapshot
+		// read. Expose the same destination while preserving the stale-scope error.
+		if len(rule.ImportJobs) == 1 {
+			if job, jobErr := deliveryImportJob(app, projectID, rule.ImportJobs[0]); jobErr == nil {
+				if source, sourceErr := app.FindRecordById("sources", job.GetString("source")); sourceErr == nil {
+					if blocked := deliverySourceRightsProblem(app, source, batch.GetString("purpose")); blocked != nil {
+						problem.Data["sourceId"] = blocked.Data["sourceId"]
+						problem.Data["purpose"] = blocked.Data["purpose"]
+					}
+				}
+			}
+		}
+		return h, problem
 	}
 	// The digest covers the ENTIRE project. Only afterwards may the adapter
 	// narrow declarations to a single complete imported bundle, including its
