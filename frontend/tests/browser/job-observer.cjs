@@ -12,16 +12,19 @@ const inspection = {
   pdf_page_field: 'PDF页码',
   total_rows: 25,
   min_pdf_page: 1,
-  max_pdf_page: 1,
+  max_pdf_page: 2,
   valid_rows: 25,
   preview: Array.from({ length: 20 }, (_, i) => ({
-    PDF页码: '1',
+    PDF页码: i === 1 ? '2' : '1',
     词条: `虚构${i + 1}`,
     组合字符: 'ia̤̍h',
     空值: '',
     csv_line: '原始字段'
   })),
-  preview_locations: Array.from({ length: 20 }, (_, i) => ({ csv_line: i + 2, pdf_page: 1 }))
+  preview_locations: Array.from({ length: 20 }, (_, i) => ({
+    csv_line: i + 2,
+    pdf_page: i === 1 ? 2 : 1
+  }))
 }
 const makeCsvJob = (id, overrides = {}) => ({
   id,
@@ -48,12 +51,16 @@ const makeCsvJob = (id, overrides = {}) => ({
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
     const errors = [],
       reads = []
+    const original = await fs.readFile(
+      path.resolve(__dirname, '../../public/examples/review-bundle-practice-v1/source.pdf')
+    )
     let status = 200,
       posts = 0,
       commits = 0,
+      pdfReads = 0,
       csvReadStatus = 200,
       sourceStatus = 200,
-      csvJob = makeCsvJob('csv-a')
+      csvJob = makeCsvJob('csv-a', { project_file: 'pdf-fixture' })
     page.on('pageerror', (error) => errors.push(error.message))
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url())
@@ -104,6 +111,21 @@ const makeCsvJob = (id, overrides = {}) => ({
             }
           ]
         }
+      } else if (url.pathname.endsWith('/collections/project_files/records/pdf-fixture')) {
+        body = {
+          id: 'pdf-fixture',
+          collectionName: 'project_files',
+          project: 'project-a',
+          status: 'ready',
+          file: 'fixture.pdf',
+          original_filename: '绑定样本.pdf',
+          page_count: 3
+        }
+      } else if (url.pathname === '/api/files/token') {
+        body = { token: 'fixture-file-token' }
+      } else if (url.pathname === '/api/files/project_files/pdf-fixture/fixture.pdf') {
+        pdfReads++
+        return route.fulfill({ body: original, contentType: 'application/pdf' })
       } else if (url.pathname.endsWith('/sources')) {
         return route.fulfill({
           status: sourceStatus,
@@ -245,6 +267,31 @@ const makeCsvJob = (id, overrides = {}) => ({
     assert.equal(await table.isVisible(), false)
     await previewToggle.click()
     assert.equal(await table.textContent(), previewText, 'reopening preserves exact preview values')
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    const openSample = table.getByRole('button', { name: '对照 CSV 样本 2 的原文', exact: true })
+    assert.equal(pdfReads, 0, 'PDF is read only when a sample is opened')
+    await openSample.click()
+    const compare = page.getByRole('region', { name: '原 CSV 第 3 行 · PDF 物理第 2 页' })
+    await compare.getByRole('img', { name: 'PDF 页面图像' }).waitFor()
+    assert.match(await compare.getByLabel('所选 CSV 样本').textContent(), /虚构2/)
+    assert.match(await compare.locator('.pdf-page-label').textContent(), /第 2 \/ 3 页/)
+    const left = await compare.getByLabel('所选 CSV 样本').boundingBox()
+    const right = await compare.getByRole('region', { name: 'PDF 原文' }).boundingBox()
+    assert.ok(left.x + left.width < right.x, 'desktop shows the selected row beside its source')
+    await compare.screenshot({ path: path.join(output, 'csv-source-comparison.png') })
+    await compare.getByRole('combobox', { name: '对照样本' }).selectOption('0')
+    await compare.waitFor({ state: 'hidden' })
+    const first = page.getByRole('region', { name: '原 CSV 第 2 行 · PDF 物理第 1 页' })
+    await first.getByRole('img', { name: 'PDF 页面图像' }).waitFor()
+    assert.match(await first.getByLabel('所选 CSV 样本').textContent(), /虚构1/)
+    assert.match(await first.locator('.pdf-page-label').textContent(), /第 1 \/ 3 页/)
+    assert.equal(pdfReads, 1, 'switching rows reuses the same protected PDF')
+    await first.getByRole('button', { name: '关闭对照' }).click()
+    assert.equal(
+      await page.evaluate(() => document.activeElement.getAttribute('aria-label')),
+      '对照 CSV 样本 2 的原文'
+    )
+    assert.equal(commits, 0)
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 })
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
