@@ -49,6 +49,7 @@
             :disabled="
               submitting || loading || submitted || unresolvedHeaders.length > 0 || !caseData
             "
+            :aria-keyshortcuts="!verificationMode ? 'Control+Enter Meta+Enter' : undefined"
             @click="openSubmitReview"
           >
             {{ submitting ? '保存中…' : verificationMode ? '检查并完成核验' : '检查并完成仲裁' }}
@@ -179,11 +180,26 @@
         <p v-if="progressMessage" class="alert alert-success" role="status">
           {{ progressMessage }}
         </p>
-        <p class="arbitration-progress-note" role="status">
-          <strong>差异已确认 {{ resolvedCount }} / {{ differingHeaders.length }}</strong
-          ><span v-if="unresolvedHeaders.length">还需确认：{{ unresolvedHeaders.join('、') }}</span
-          ><span v-else>采用已明确；来源判断分别记录。</span>
-        </p>
+        <div class="arbitration-progress-note">
+          <span role="status">
+            <strong>差异已确认 {{ resolvedCount }} / {{ differingHeaders.length }}</strong>
+            <span v-if="unresolvedHeaders.length">
+              · 还需确认：{{ unresolvedHeaders.join('、') }}</span
+            >
+            <span v-else> · 采用已明确；来源判断分别记录。</span>
+          </span>
+          <AppButton
+            v-if="!mobile && !verificationMode && differingHeaders.length"
+            type="button"
+            size="sm"
+            :disabled="!unresolvedHeaders.length || submitting"
+            @click="goToUnresolved()"
+            >下一处待确认字段</AppButton
+          >
+          <span v-if="!mobile && !verificationMode" class="arbitration-shortcut">
+            Ctrl / ⌘ + Enter 检查并完成仲裁
+          </span>
+        </div>
 
         <RareCharacterNotice
           :texts="[
@@ -251,6 +267,8 @@
               v-for="{ header, sources, changes, limited } in comparisonFields"
               :key="header"
               class="arbitration-field"
+              tabindex="-1"
+              :aria-label="header"
               v-show="!mobile || overview || currentField === header"
               :class="{
                 'arbitration-field--resolved': isResolved(header),
@@ -275,6 +293,21 @@
                   >已确认 · {{ resolutionLabel(header) }}</span
                 >
                 <span v-else class="resolution-state resolution-state--pending">待确认</span>
+                <AppButton
+                  v-if="
+                    !mobile &&
+                    !verificationMode &&
+                    isResolved(header) &&
+                    differs(header) &&
+                    unresolvedHeaders.length
+                  "
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  :disabled="submitting"
+                  @click="goToUnresolved(header)"
+                  >下一处待确认</AppButton
+                >
               </header>
 
               <div class="arbitration-source-grid">
@@ -657,11 +690,13 @@ const hasUnsubmittedWork = computed(
 
 onMounted(() => {
   window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('keydown', handleArbitrationShortcut)
 })
 
 onBeforeUnmount(() => {
   caseVersion += 1
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('keydown', handleArbitrationShortcut)
 })
 
 function confirmLeave() {
@@ -1127,6 +1162,48 @@ async function insertText(text) {
   target?.setSelectionRange(cursor, cursor)
   activeSelection.value = { field: header, start: cursor, end: cursor }
   fieldSelections.set(header, { ...activeSelection.value })
+}
+
+async function goToUnresolved(from = currentField.value) {
+  if (submitting.value || !unresolvedHeaders.value.length) return
+  const start = visibleHeaders.value.indexOf(from)
+  const index = visibleHeaders.value.findIndex(
+    (field, position) => position > start && unresolvedHeaders.value.includes(field)
+  )
+  const targetIndex = index >= 0 ? index : visibleHeaders.value.indexOf(unresolvedHeaders.value[0])
+  const field = visibleHeaders.value[targetIndex]
+  if (targetIndex < 0) return
+  const version = caseVersion
+  selectField(targetIndex)
+  await nextTick()
+  if (version !== caseVersion) return
+  const article = textareaRefs.get(field)?.closest('.arbitration-field')
+  article?.focus({ preventScroll: true })
+  article?.scrollIntoView({ block: 'start', inline: 'nearest' })
+}
+
+function handleArbitrationShortcut(event) {
+  if (
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.keyCode === 229 ||
+    event.repeat ||
+    event.key !== 'Enter' ||
+    !(event.ctrlKey || event.metaKey) ||
+    event.altKey ||
+    event.shiftKey ||
+    mobile.value ||
+    verificationMode.value ||
+    loading.value ||
+    submitting.value ||
+    submitted.value ||
+    !caseData.value
+  )
+    return
+  event.preventDefault()
+  if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+  if (unresolvedHeaders.value.length) void goToUnresolved()
+  else openSubmitReview()
 }
 
 function openSubmitReview() {

@@ -44,6 +44,16 @@
   font-size: var(--text-xs);
   color: var(--ink-muted);
 }
+.arbitration-studio .arbitration-progress-note {
+  align-items: center;
+}
+.arbitration-studio .arbitration-shortcut {
+  margin-inline-start: auto;
+}
+.arbitration-studio .arbitration-field:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: var(--space-1);
+}
 .arbitration-studio .arbitration-progress-note strong {
   color: var(--ink);
   font-weight: 500;

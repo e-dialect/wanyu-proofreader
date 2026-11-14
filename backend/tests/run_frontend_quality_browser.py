@@ -53,7 +53,8 @@ with harness.temporary_root() as temporary:
                 checks = {
                     'components': ['frontend/tests/browser/reka-controls.cjs', 'frontend/tests/browser/disclosure.cjs', 'frontend/tests/browser/job-observer.cjs', 'frontend/tests/browser/admin-invalidation.cjs', 'frontend/tests/browser/workspace-ready.cjs'],
                     'repository': ['frontend/tests/browser/repository-review.cjs', 'frontend/tests/browser/draft-logout.cjs', 'frontend/tests/browser/pdf-lifecycle.cjs', 'frontend/tests/browser/source-fidelity.cjs', 'frontend/tests/browser/normalization-draft.cjs'],
-                    'review': ['frontend/tests/browser/review.cjs', 'frontend/tests/browser/arbitration-queue.cjs'],
+                    'review': ['frontend/tests/browser/review.cjs', 'frontend/tests/browser/arbitration-queue.cjs',
+                               'frontend/tests/browser/arbitration-field-navigation.cjs'],
                     'modal': ['frontend/tests/browser/modal.cjs'],
                     'members': ['frontend/tests/browser/member-candidates.cjs'],
                     'editor': ['frontend/tests/browser/font-feedback.cjs', 'frontend/tests/browser/editor-keyboard-flow.cjs', 'frontend/tests/browser/editor-states.cjs', 'frontend/tests/browser/editor-experience.cjs', 'frontend/tests/browser/mobile-field-flow.cjs'],

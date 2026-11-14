@@ -287,7 +287,7 @@ test('late submission and continuation responses cannot complete or navigate a n
 
 test('an unmounted instance stays invalid when the user returns to the same project and item', async () => {
   let finish
-  let removedListener = false
+  const removedListeners = []
   const bindings = {
     pageId: ref('same-page'),
     projectId: ref('same-project'),
@@ -314,9 +314,10 @@ test('an unmounted instance stays invalid when the user returns to the same proj
     continueAfterSubmit: () =>
       assert.fail('unmounted instance must not navigate after returning to the same URL'),
     handleBeforeUnload: () => {},
+    handleArbitrationShortcut: () => {},
     window: {
-      removeEventListener: () => {
-        removedListener = true
+      removeEventListener: (event, listener) => {
+        removedListeners.push([event, listener])
       }
     }
   }
@@ -333,7 +334,10 @@ test('an unmounted instance stays invalid when the user returns to the same proj
   api.unmount()
   finish({ status: 'approved' })
   await request
-  assert.equal(removedListener, true)
+  assert.deepEqual(removedListeners, [
+    ['beforeunload', bindings.handleBeforeUnload],
+    ['keydown', bindings.handleArbitrationShortcut]
+  ])
   assert.equal(bindings.submitted.value, false)
   assert.equal(bindings.reviewingSubmission.value, true)
   assert.equal(bindings.submitting.value, true)
