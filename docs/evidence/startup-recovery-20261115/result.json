@@ -1,0 +1,16 @@
+[
+  {
+    "viewport": "desktop",
+    "failure": "timeout",
+    "credentialsRetained": true,
+    "retryReachedLogin": true,
+    "overflow": false
+  },
+  {
+    "viewport": "mobile",
+    "failure": "503",
+    "credentialsRetained": true,
+    "retryReachedLogin": true,
+    "overflow": false
+  }
+]
