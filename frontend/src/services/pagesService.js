@@ -231,7 +231,9 @@ export async function getPageFindings(pageId, { signal } = {}) {
   return {
     hints: result.hints,
     truncated: Boolean(result.truncated),
-    suppressedByGate: result.suppressed_by_gate,
+    suppressedByGate: Number.isFinite(Number(result.suppressed_by_gate))
+      ? Math.max(0, Math.floor(Number(result.suppressed_by_gate)))
+      : 0,
     research: result.research || null
   }
 }

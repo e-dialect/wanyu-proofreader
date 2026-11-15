@@ -109,7 +109,17 @@ export function loadTaskDraftHistory(storage, { userId, pageId }) {
 export function clearTaskDraft(storage, { userId, pageId, savedAt }) {
   if (!storage || !userId || !pageId) return
   const key = taskDraftKey(userId, pageId)
-  if (savedAt && JSON.parse(storage.getItem(key) || 'null')?.savedAt !== savedAt) return
+  if (savedAt) {
+    const raw = storage.getItem(key)
+    let current
+    try {
+      current = JSON.parse(raw)
+    } catch {
+      // Leave the entry in place if we cannot verify which draft it belongs to.
+      return
+    }
+    if (current?.savedAt !== savedAt) return
+  }
   storage.removeItem(key)
 }
 

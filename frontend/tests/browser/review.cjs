@@ -144,6 +144,8 @@ function waitForFindingPresentation(page, id, presented) {
     assert.equal(await form.getByLabel('相关提示（可选）').inputValue(), 'finding-meaning')
     assert.equal(await description.inputValue(), '')
     assert.equal(await form.getByRole('checkbox').isChecked(), false)
+    const category = form.getByLabel('问题类型')
+    await category.selectOption('input_display')
     await meaning.getByRole('button', { name: '核对无误，保留原值' }).click()
     await pane.getByText('待核对 2 · 已核对 2', { exact: true }).waitFor()
     await meaning.getByRole('button', { name: '下一处待核对' }).click()
@@ -152,6 +154,11 @@ function waitForFindingPresentation(page, id, presented) {
     await evidence.getByRole('button', { name: '报告问题' }).click()
     assert.equal(await description.inputValue(), '读音原文无连续调值')
     assert.equal(await form.getByRole('checkbox').isChecked(), true)
+    assert.equal(await category.inputValue(), 'hint')
+    await openFinding('finding-meaning')
+    await meaning.getByRole('button', { name: '报告问题' }).click()
+    assert.equal(await description.inputValue(), '')
+    assert.equal(await category.inputValue(), 'input_display')
     await desktop.waitForFunction(() => {
       const draft = JSON.parse(localStorage.getItem('fangji:task-draft:v1:fixture-user:page1'))
       return (

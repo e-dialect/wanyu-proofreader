@@ -55,6 +55,20 @@ test('persists, validates and clears a compatible task draft', () => {
   assert.equal(loadTaskDraft(storage, input), null)
 })
 
+test('guarded draft clearing preserves a newer or unreadable entry', () => {
+  const storage = memoryStorage()
+  const key = taskDraftKey('u', 'p')
+  const submitted = { userId: 'u', pageId: 'p', savedAt: '2026-11-14T11:00:00.000Z' }
+  const newer = JSON.stringify({ ...submitted, savedAt: '2026-11-14T11:01:00.000Z' })
+  storage.setItem(key, newer)
+  clearTaskDraft(storage, submitted)
+  assert.equal(storage.getItem(key), newer)
+
+  storage.setItem(key, '{')
+  clearTaskDraft(storage, submitted)
+  assert.equal(storage.getItem(key), '{')
+})
+
 test('moves task feedback through session storage exactly once', () => {
   const storage = memoryStorage()
   setTaskFlash(storage, '上一条已提交')

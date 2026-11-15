@@ -452,9 +452,7 @@ async function saveExplicitDraft() {
 function switchReportTarget(field, finding) {
   if (saving.value || (report.field === field && report.finding === finding)) return
   const category = finding ? 'hint' : report.finding ? 'input_display' : report.category
-  if (report.description || report.blocking)
-    reportDrafts.set(reportKey(report.field, report.finding), { ...report })
-  else reportDrafts.delete(reportKey(report.field, report.finding))
+  reportDrafts.set(reportKey(report.field, report.finding), { ...report })
   Object.assign(
     report,
     reportDrafts.get(reportKey(field, finding)) || {
