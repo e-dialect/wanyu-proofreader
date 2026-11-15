@@ -37,5 +37,11 @@ const startup = createApplicationStartup({
   onState: (state) => renderStartupState(document, state)
 })
 document.getElementById('startup-retry')?.addEventListener('click', () => void startup.start())
-window.addEventListener('pagehide', () => startup.dispose(), { once: true })
+window.addEventListener('pagehide', (event) => {
+  if (event.persisted) startup.suspend()
+  else startup.dispose()
+})
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) void startup.resume()
+})
 void startup.start()

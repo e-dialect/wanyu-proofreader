@@ -8,16 +8,22 @@ export function createApplicationStartup({
   let controller = null
   let completed = false
   let disposed = false
+  let suspended = false
+  const suspensionReason = new DOMException('Startup suspended', 'AbortError')
 
   function start() {
-    if (disposed) return Promise.resolve(false)
+    if (disposed || suspended) return Promise.resolve(false)
     if (completed) return Promise.resolve(true)
     if (flight) return flight
 
     controller = new AbortController()
     const current = controller
     flight = Promise.resolve().then(async () => {
-      if (disposed) return false
+      if (disposed || suspended || current.signal.aborted) {
+        if (controller === current) controller = null
+        flight = null
+        return false
+      }
       onState({ state: 'pending' })
       let rejectAbort
       const aborted = new Promise((_, reject) => {
@@ -32,14 +38,18 @@ export function createApplicationStartup({
         await Promise.race([refresh({ signal: current.signal }), aborted])
         current.signal.throwIfAborted()
         clearTimeout(timer)
-        if (disposed) return false
+        if (disposed || suspended) return false
+        // Refresh is finished. Suspending an already mounting app must not
+        // cancel its completion and trigger a second mount on restoration.
+        if (controller === current) controller = null
         await mount()
-        if (disposed || current.signal.aborted) return false
+        if (disposed) return false
         completed = true
-        onState({ state: 'ready' })
+        if (!suspended) onState({ state: 'ready' })
         return true
       } catch (error) {
-        if (!disposed) onState({ state: 'error', error })
+        if (!disposed && !suspended && error !== suspensionReason)
+          onState({ state: 'error', error })
         return false
       } finally {
         clearTimeout(timer)
@@ -53,6 +63,17 @@ export function createApplicationStartup({
 
   return {
     start,
+    suspend() {
+      suspended = true
+      controller?.abort(suspensionReason)
+    },
+    async resume() {
+      if (disposed) return false
+      suspended = false
+      // Let the aborted generation release its flight before starting another.
+      await flight
+      return start()
+    },
     dispose() {
       disposed = true
       controller?.abort(new DOMException('Startup disposed', 'AbortError'))

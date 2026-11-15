@@ -12,5 +12,19 @@
     "credentialsRetained": true,
     "retryReachedLogin": true,
     "overflow": false
+  },
+  {
+    "initial": "pending",
+    "persistedLifecycleEvents": true,
+    "oldResultIgnored": true,
+    "retryReachedLogin": true,
+    "singleMount": true
+  },
+  {
+    "initial": "error",
+    "persistedLifecycleEvents": true,
+    "oldResultIgnored": true,
+    "retryReachedLogin": true,
+    "singleMount": true
   }
 ]

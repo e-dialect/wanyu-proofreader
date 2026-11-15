@@ -119,9 +119,105 @@ async function main() {
       })
       await page.close()
     }
+    for (const initial of ['pending', 'error']) {
+      const page = await browser.newPage()
+      const errors = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      await page.addInitScript(
+        ({ token }) => {
+          localStorage.setItem(
+            'pocketbase_auth',
+            JSON.stringify({
+              token,
+              record: {
+                id: 'synthetic-user',
+                collectionName: 'users',
+                role: 'user',
+                name: '缓存恢复测试'
+              }
+            })
+          )
+        },
+        { token }
+      )
+      await page.route('**/api/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: '{"providers":[]}'
+        })
+      )
+      let attempts = 0,
+        releaseOld
+      await page.route('**/api/collections/users/auth-refresh', async (route) => {
+        const attempt = ++attempts
+        if (attempt === 1 && initial === 'pending') {
+          await new Promise((resolve) => {
+            releaseOld = resolve
+          })
+          return route
+            .fulfill({
+              status: 200,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                token: 'late-cached-token',
+                record: { id: 'synthetic-user' }
+              })
+            })
+            .catch(() => {})
+        }
+        return route.fulfill({
+          status: attempt < 3 ? 503 : 401,
+          contentType: 'application/json',
+          body: '{"message":"synthetic recovery response"}'
+        })
+      })
+      await page.goto(`${origin}/workspace`, { waitUntil: 'domcontentloaded' })
+      if (initial === 'pending') {
+        await page.getByRole('status').filter({ hasText: '正在更新登录状态' }).waitFor()
+      } else {
+        await page.getByRole('alert').filter({ hasText: '连接暂未完成' }).waitFor()
+      }
+      // Drive the entry point with the browser's cache lifecycle event shape.
+      // Dispatching deterministically also covers a transport ignoring cancellation.
+      await Promise.all([
+        page.waitForResponse(
+          (response) => response.url().endsWith('/auth-refresh') && response.status() === 503
+        ),
+        page.evaluate(() => {
+          window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+          window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+        })
+      ])
+      await page.getByRole('alert').filter({ hasText: '连接暂未完成' }).waitFor()
+      assert.equal(attempts, 2)
+      releaseOld?.()
+      await page.getByRole('button', { name: '重新尝试' }).click()
+      await page.getByLabel('昵称或邮箱', { exact: true }).waitFor()
+      assert.equal(attempts, 3)
+      assert.equal(
+        await page.evaluate(() => JSON.parse(localStorage.getItem('pocketbase_auth'))?.token || ''),
+        ''
+      )
+      await page.evaluate(() => {
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+      })
+      await page.getByLabel('昵称或邮箱', { exact: true }).waitFor()
+      assert.equal(attempts, 3, 'a restored mounted application does not refresh or mount again')
+      assert.deepEqual(errors, [])
+      results.push({
+        initial,
+        persistedLifecycleEvents: true,
+        oldResultIgnored: true,
+        retryReachedLogin: true,
+        singleMount: true
+      })
+      await page.close()
+    }
     await writeFile(path.join(output, 'result.json'), JSON.stringify(results, null, 2))
     console.log(
-      'PASS: actual application startup shows loading, bounds refresh, preserves credentials and retries safely on desktop/mobile'
+      'PASS: application startup bounds refresh, preserves credentials, recovers after persisted lifecycle events and retries safely on desktop/mobile'
     )
   } finally {
     await browser.close()
