@@ -227,7 +227,7 @@ import {
   PROBLEM_TYPES
 } from '@/services/verificationService'
 import { hintKindLabel } from '@/lib/fieldHints'
-import { getPbMessage } from '@/utils/pbErrors'
+import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 const props = defineProps({
   page: Object,
@@ -326,7 +326,11 @@ async function load() {
   if (!pageId) return
   loading.value = true
   try {
-    const result = await getVerification(pageId)
+    const result = await getVerification(pageId).catch((error) => {
+      // Research events can advance the verification revision during this read.
+      if (getPbStatus(error) !== 409 || token !== generation) throw error
+      return getVerification(pageId)
+    })
     if (token !== generation) return
     restoring = true
     for (const field of Object.keys(result.context.input))

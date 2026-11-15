@@ -99,6 +99,15 @@ function waitForFindingPresentation(page, id, presented) {
   desktop.on('dialog', (dialog) => dialog.accept())
   try {
     await installReviewRoutes(desktop)
+    await desktop.route(
+      '**/api/fangji/pages/page1/verification',
+      (route) =>
+        route.fulfill({
+          status: 409,
+          json: { message: '分析结果或来源已更新，请重新读取。' }
+        }),
+      { times: 1 }
+    )
     const endpoint = '**/api/fangji/pages/page1/findings'
     let failures = 0
     const failFindings = (route) => {
@@ -107,6 +116,10 @@ function waitForFindingPresentation(page, id, presented) {
     }
     await desktop.route(endpoint, failFindings)
     await desktop.goto(base + '/tests/fixtures/review.html')
+    await desktop
+      .getByRole('region', { name: '来源与核验记录' })
+      .getByText('来源与约定', { exact: true })
+      .waitFor()
     const pane = desktop.getByRole('region', { name: '本条疑点' })
     const retry = pane.getByRole('button', { name: '重试读取疑点' })
     const reading = desktop.getByRole('textbox', { name: '读音 校对结果' })
