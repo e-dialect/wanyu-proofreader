@@ -14,20 +14,19 @@
       </p>
       <div class="adoption-counts">
         <div class="adoption-count">
-          <span class="adoption-count-value">{{ counts.total }}</span
-          ><span>项目条目</span>
+          <span class="adoption-count-value">{{ counts.total }}</span><span>项目条目</span>
         </div>
         <div class="adoption-count">
-          <span class="adoption-count-value">{{ counts.selected }}</span
-          ><span>进入本批</span>
+          <span class="adoption-count-value">{{ counts.selected }}</span><span>进入本批</span>
         </div>
         <div class="adoption-count">
-          <span class="adoption-count-value">{{ counts.excluded }}</span
-          ><span>已定不进入</span>
+          <span class="adoption-count-value">{{ counts.excluded }}</span><span>已定不进入</span>
         </div>
         <div class="adoption-count">
-          <span class="adoption-count-value">{{ counts.pending }}</span
-          ><span title="待处理（规则判不了）">待处理</span>
+          <span class="adoption-count-value">{{ counts.pending }}</span><span
+            title="待处理（规则判不了）"
+            >待处理</span
+          >
         </div>
       </div>
       <p v-if="current.status !== 'draft'" class="text-sm text-muted">

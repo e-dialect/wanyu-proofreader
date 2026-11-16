@@ -23,8 +23,7 @@
           :disabled="busy || loading"
           @click="selectBatch(item.id)"
         >
-          <strong>{{ item.recipient }}</strong
-          ><span class="adoption-hint"
+          <strong>{{ item.recipient }}</strong><span class="adoption-hint"
             >{{ purposeLabel(item.purpose) }} · {{ batchStatusLabel(item.status) }} ·
             {{ item.counts.selected }}/{{ item.counts.total }} 条进入本批</span
           >
