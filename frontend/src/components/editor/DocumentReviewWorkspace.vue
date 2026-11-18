@@ -508,6 +508,7 @@ function showLocalSource() {
 
 function navigatePdfPage(number, controlName) {
   const target = clampPdfPage(number)
+  // On the same page, the source view updates in place without moving focus.
   if (target === currentPdfPage.value) return
   const control = pdfNavigationControls[controlName]?.value
   currentPdfPage.value = target
@@ -532,11 +533,12 @@ watch(
     )
       return
     const control = pdfNavigationControls[controlName].value
-    const destination = pdfError.value
+    const restoredControl = pdfError.value
       ? sourceRetry.value
       : control && !control.disabled
         ? control
         : pdfNavigationControls.pageNumber.value
+    const destination = restoredControl ?? sourcePanel.value
     destination?.focus({ preventScroll: true })
   },
   { flush: 'post' }

@@ -603,6 +603,14 @@ async function main() {
         const source = page.getByRole('region', { name: '来源原文' })
         const field = page.locator('.proofread-textarea').first()
         await page.getByRole('img', { name: '本条原文局部' }).waitFor()
+
+        await page.getByRole('button', { name: '整页', exact: true }).press('Enter')
+        await page.getByRole('img', { name: '原文页面', exact: true }).waitFor()
+        await local.press('Enter')
+        await page.getByRole('img', { name: '本条原文局部' }).waitFor()
+        assert.equal(await pageNumber.inputValue(), '5')
+        assert.equal(await local.evaluate((el) => el === document.activeElement), true)
+
         await next.press('Enter')
         await page.getByRole('img', { name: '原文页面', exact: true }).waitFor()
         assert.equal(await pageNumber.inputValue(), '6')
