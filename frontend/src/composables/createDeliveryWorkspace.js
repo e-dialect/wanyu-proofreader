@@ -108,6 +108,7 @@ export function createDeliveryWorkspace({
   const selectedPackageId = ref('')
   const loading = ref(true)
   const busy = ref(false)
+  const operationKind = ref('')
   const loadError = ref('')
   const operationError = ref('')
   const preflightProblem = ref(null)
@@ -214,6 +215,7 @@ export function createDeliveryWorkspace({
     ++operationGeneration
     ++adoptionGeneration
     loading.value = busy.value = false
+    operationKind.value = ''
     items.value = adoptionChoices.value = []
     currentDelivery.value = nativeBatch.value = metrics.value = impacts.value = null
     sourceRef.value = ''
@@ -243,6 +245,7 @@ export function createDeliveryWorkspace({
       ++operationGeneration
       ++adoptionGeneration
       loading.value = busy.value = false
+      operationKind.value = ''
       items.value = items.value.filter((item) => item.id !== selectedPackageId.value)
       currentDelivery.value = nativeBatch.value = null
       unavailable.value = true
@@ -290,12 +293,13 @@ export function createDeliveryWorkspace({
     confirmed.value = false
     requestId.value = ''
   }
-  async function action(fn, onError) {
+  async function action(fn, onError, kind = '') {
     if (accessLost.value || unavailable.value) return
     const request = pageScope.capture()
     const generation = ++operationGeneration
     const isCurrent = () => request.isCurrent() && !disposed && generation === operationGeneration
     busy.value = true
+    operationKind.value = kind
     operationError.value = ''
     success.value = ''
     try {
@@ -306,7 +310,10 @@ export function createDeliveryWorkspace({
         operationError.value = getPbMessage(e, e?.message || '处理失败，请重试')
       }
     } finally {
-      if (isCurrent()) busy.value = false
+      if (isCurrent()) {
+        busy.value = false
+        operationKind.value = ''
+      }
       request.finish()
     }
   }
@@ -452,7 +459,14 @@ export function createDeliveryWorkspace({
     })
   }
   async function download(item) {
-    await action((isCurrent, signal) => downloadDelivery(item.id, { signal, isCurrent }))
+    await action(
+      async (isCurrent, signal) => {
+        await downloadDelivery(item.id, { signal, isCurrent })
+        if (isCurrent()) success.value = '已发起浏览器下载。接收方核对后可登记回执。'
+      },
+      undefined,
+      'download'
+    )
   }
   function selectEvent(item) {
     if (selected.value?.id === item.id) {
@@ -520,6 +534,7 @@ export function createDeliveryWorkspace({
     view,
     projectUnavailable,
     busy,
+    operationKind,
     navigate,
     loadError,
     loading,

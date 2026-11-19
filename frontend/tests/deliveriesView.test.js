@@ -539,7 +539,7 @@ test('列表加载失败写入 loadError，不冒充空记录', async () => {
       new URL('../src/components/admin/delivery/DeliveryRecordsPanel.vue', import.meta.url),
       'utf8'
     ),
-    /v-else-if="loadError"[\s\S]*?v-else-if="!items\.length" class="empty-state"/
+    /v-if="loadError" state="error"[\s\S]*?v-else-if="!items\.length" class="empty-state"/
   )
 })
 
