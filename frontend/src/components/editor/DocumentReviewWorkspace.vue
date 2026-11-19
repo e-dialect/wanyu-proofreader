@@ -588,24 +588,10 @@ function applyPdfPageInput() {
   max-width: 100%;
   gap: var(--space-1);
 }
-.source-view-options .pdf-tool {
-  min-height: var(--control-height-sm);
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--pdf-track-strong);
-  border-radius: var(--radius-nav);
-  background: var(--surface);
-  color: var(--pdf-ink);
-  cursor: pointer;
-}
 .source-view-options .pdf-tool[aria-pressed='true'] {
   border-color: var(--primary);
   color: var(--primary);
   background: var(--primary-glow-soft);
-}
-@media (max-width: 768px) {
-  .source-view-options .pdf-tool {
-    min-height: var(--control-height-touch);
-  }
 }
 .editor-panel-body--pdf {
   position: relative;

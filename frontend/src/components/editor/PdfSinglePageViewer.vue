@@ -805,7 +805,7 @@ onBeforeUnmount(async () => {
   gap: 0.4rem;
 }
 
-.pdf-tool {
+.pdf-toolbar :deep(.pdf-tool) {
   min-height: var(--control-height-sm);
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--pdf-track-strong);
@@ -818,7 +818,7 @@ onBeforeUnmount(async () => {
     border-color var(--motion-fast) var(--ease-out);
 }
 
-.pdf-tool:hover:not(:disabled),
+.pdf-toolbar :deep(.pdf-tool:hover:not(:disabled)),
 .pdf-display-options[open] > summary {
   border-color: var(--primary);
   background: var(--primary-glow-soft);
@@ -859,7 +859,7 @@ onBeforeUnmount(async () => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pdf-tool {
+  .pdf-toolbar :deep(.pdf-tool) {
     transition: none;
   }
   .pdf-display-controls {
@@ -867,7 +867,7 @@ onBeforeUnmount(async () => {
   }
 }
 
-.pdf-tool:disabled {
+.pdf-toolbar :deep(.pdf-tool:disabled) {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -877,6 +877,7 @@ onBeforeUnmount(async () => {
   color: var(--ink-muted);
   font-size: 0.8rem;
   text-align: center;
+  white-space: nowrap;
 }
 
 .pdf-zoom-control {
@@ -975,6 +976,12 @@ onBeforeUnmount(async () => {
   color: var(--ink-muted);
   font-size: 14px;
   pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .pdf-toolbar :deep(.pdf-tool) {
+    min-height: var(--control-height-touch);
+  }
 }
 
 @media (max-width: 700px) {
