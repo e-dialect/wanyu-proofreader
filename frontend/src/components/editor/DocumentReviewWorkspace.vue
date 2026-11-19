@@ -39,7 +39,8 @@
           class="panel-loading pdf-transition-mask"
           aria-live="polite"
         >
-          正在加载原文…
+          <span>正在加载原文…</span>
+          <small v-if="!loading && currentPdfPage">PDF 第 {{ currentPdfPage }} 页</small>
         </div>
         <div v-else-if="!pdfEnabled" class="alert alert-error" role="alert">
           任务租约已失效，请重新领取。
@@ -93,8 +94,34 @@
               >
             </p>
           </template>
+          <template #range>
+            <div
+              v-if="hasSourceRegion"
+              class="source-view-options"
+              role="group"
+              aria-label="原文显示范围"
+            >
+              <button
+                ref="localSource"
+                type="button"
+                class="pdf-tool"
+                :aria-pressed="Boolean(visibleSourceRegion)"
+                @click="showLocalSource"
+              >
+                本条局部
+              </button>
+              <button
+                type="button"
+                class="pdf-tool"
+                :aria-pressed="!visibleSourceRegion"
+                @click="preferLocalSource = false"
+              >
+                整页
+              </button>
+            </div>
+          </template>
           <template #navigation>
-            <div class="editor-toolbar pdf-page-navigation" aria-label="PDF 页码导航">
+            <div class="editor-toolbar pdf-page-navigation" role="group" aria-label="PDF 页码导航">
               <button
                 ref="previousPage"
                 class="pdf-tool"
@@ -127,34 +154,9 @@
                 ›
               </button>
             </div>
-            <div
-              v-if="hasSourceRegion"
-              class="source-view-options"
-              role="group"
-              aria-label="原文显示范围"
-            >
-              <button
-                ref="localSource"
-                type="button"
-                class="pdf-tool"
-                :aria-pressed="Boolean(visibleSourceRegion)"
-                @click="showLocalSource"
-              >
-                本条局部
-              </button>
-              <button
-                type="button"
-                class="pdf-tool"
-                :aria-pressed="!visibleSourceRegion"
-                @click="preferLocalSource = false"
-              >
-                整页
-              </button>
-            </div>
-            <details class="pdf-preview-help">
-              <summary>预览说明</summary>
-              <p class="source-recall-note" role="note">已经下载的副本无法收回。</p>
-            </details>
+          </template>
+          <template #display-help>
+            <p class="source-recall-note" role="note">已经下载的副本无法收回。</p>
           </template>
         </PdfSinglePageViewer>
         <div
@@ -309,6 +311,7 @@ function toggleSource() {
   keyboardOpen.value = false
   if (show && document.activeElement?.tagName === 'TEXTAREA') document.activeElement.blur()
   pdfCollapsed.value = !show
+  if (!show) void nextTick(scrollCurrentInput)
 }
 const viewportStyle = computed(() => ({
   ...(viewportHeight.value ? { height: `${viewportHeight.value}px` } : {}),
@@ -608,10 +611,18 @@ function applyPdfPageInput() {
   position: relative;
 }
 .pdf-transition-mask {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
   position: absolute;
   inset: 0;
   z-index: var(--z-mask);
   background: var(--surface);
+}
+.pdf-transition-mask small {
+  color: var(--ink-muted);
 }
 .pdf-preview-pending {
   opacity: 0;
