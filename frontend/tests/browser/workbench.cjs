@@ -340,6 +340,25 @@ async function catalogFits(page) {
     assert.equal(new URL(page.url()).searchParams.get('project'), project.id)
     assert.equal(new URL(page.url()).searchParams.get('stage'), 'arbitration')
     await page.screenshot({ path: path.join(output, 'desktop-unified-todo-return.png') })
+    const managerTodosUrl = '**/api/fangji/manager-todos?*'
+    let lastItemFinished = false
+    await page.route(managerTodosUrl, async (route) => {
+      const url = new URL(route.request().url())
+      url.searchParams.set('page', '1')
+      const response = await route.fetch({ url: url.href })
+      const data = await response.json()
+      const paging = lastItemFinished
+        ? { items: [], totalItems: 0, page: 1, totalPages: 1 }
+        : { page: 2, totalPages: 2 }
+      await route.fulfill({ response, json: { ...data, ...paging } })
+    })
+    await page.goto(base + todoPath + '&page=2')
+    await todoAction.press('Enter')
+    lastItemFinished = true
+    await page.getByRole('link', { name: '返回统一待办', exact: true }).first().click()
+    await page.waitForFunction(() => document.activeElement?.id === 'todo-results-heading')
+    assert.equal(new URL(page.url()).searchParams.get('page'), null)
+    await page.unroute(managerTodosUrl)
     await page.goto(base + '/workspace')
     await page.locator('.app-sidebar').getByRole('link', { name: '我的任务', exact: true }).focus()
     await page.keyboard.press('Tab')

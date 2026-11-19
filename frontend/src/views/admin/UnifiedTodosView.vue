@@ -127,6 +127,8 @@ import AppSelect from '@/components/AppSelect.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import { useProtectedPageScope } from '@/composables/useProtectedPageScope'
 import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
+import { browserSessionStorage, retargetTodoPosition } from '@/lib/queueReturn'
+import { useAuthStore } from '@/stores/auth'
 import {
   TODO_STAGES,
   todoActionTarget,
@@ -140,6 +142,7 @@ import { getPbMessage, getPbStatus } from '@/utils/pbErrors'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const filters = computed(() => todoFilters(route.query))
 const invalidFilter = computed(() => todoFilterError(route.query))
 const result = ref(null)
@@ -248,7 +251,15 @@ async function load() {
     const data = await listUnifiedTodos(requested, request.signal)
     if (!request.isCurrent()) return
     if (Number.isInteger(data.page) && data.page !== requested.page) {
-      await router.replace({ query: todoListQuery({ ...requested, page: data.page }) })
+      const target = { query: todoListQuery({ ...requested, page: data.page }) }
+      // Finishing the last item may remove the page that launched the work.
+      retargetTodoPosition(
+        browserSessionStorage(),
+        auth.user?.id,
+        route.fullPath,
+        router.resolve(target).fullPath
+      )
+      await router.replace(target)
       return
     }
     projects.value = data.projects

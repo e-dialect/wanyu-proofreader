@@ -26,11 +26,11 @@ function safeQueuePath(path, kind) {
     : /^\/admin(?:\/projects\/[a-z0-9]+(?:\/verification)?)?(?:[?#].*)?$/.test(path)
 }
 
-function read(storage, userId, kind) {
+function read(storage, userId, kind, pathKind = kind) {
   if (!storage || !userId || !kind) return null
   try {
     const value = JSON.parse(storage.getItem(key(userId, kind)) || 'null')
-    return safeQueuePath(value?.path, kind) ? value : null
+    return safeQueuePath(value?.path, pathKind) ? value : null
   } catch {
     return null
   }
@@ -103,6 +103,16 @@ export function rememberQueueTransition(storage, userId, to, from, position = {}
     }
   } catch {
     /* Returning to a queue also works without browser storage. */
+  }
+}
+
+export function retargetTodoPosition(storage, userId, from, to) {
+  const context = read(storage, userId, 'pending', 'todo')
+  if (!context || context.path !== from || !safeQueuePath(to, 'todo')) return
+  try {
+    storage.setItem(key(userId, 'pending'), JSON.stringify({ ...context, path: to }))
+  } catch {
+    /* The browser can still restore its native scroll position. */
   }
 }
 

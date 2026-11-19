@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   queueReturnTarget,
   rememberQueueTransition,
+  retargetTodoPosition,
   takeQueuePosition
 } from '../src/lib/queueReturn.js'
 const memory = () => {
@@ -35,12 +36,15 @@ test('unified todo restores its exact filters and row after continuing detail, o
   rememberQueueTransition(storage, 'alice', next, detail)
   rememberQueueTransition(storage, 'alice', returned, next)
   assert.equal(takeQueuePosition(storage, 'bob', returnPath), null)
-  assert.deepEqual(takeQueuePosition(storage, 'alice', returnPath), {
+  const correctedPath = returnPath + '&page=2'
+  retargetTodoPosition(storage, 'alice', returnPath, correctedPath)
+  assert.equal(takeQueuePosition(storage, 'alice', returnPath), null)
+  assert.deepEqual(takeQueuePosition(storage, 'alice', correctedPath), {
     top: 530,
     left: 0,
     focusId: projectId + ':arbitration'
   })
-  assert.equal(takeQueuePosition(storage, 'alice', returnPath), null)
+  assert.equal(takeQueuePosition(storage, 'alice', correctedPath), null)
 })
 
 test('task return keeps queue filters and restores its position exactly once after data is ready', () => {
