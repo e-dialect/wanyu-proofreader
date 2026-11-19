@@ -90,6 +90,23 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
+test('download feedback follows only the package that started the download', async () => {
+  const state = fixture({ downloadDelivery: async () => {} })
+  await state.openDelivery({ id: 'package-a' })
+  await state.download({ id: 'package-a' })
+  assert.match(state.success.value, /已发起浏览器下载/)
+
+  await state.navigate({ package: 'package-a', tab: 'events', page: 1 })
+  assert.match(state.success.value, /已发起浏览器下载/)
+  await state.openDelivery({ id: 'package-b' })
+  assert.equal(state.success.value, '', 'another package has not been downloaded')
+
+  await state.download({ id: 'package-b' })
+  state.route.params.id = 'project-2'
+  await state.openDelivery({ id: 'package-b' })
+  assert.equal(state.success.value, '', 'a different project must not inherit the notice')
+})
+
 test('delivery details and event pagination return to the original record page, including reload', async () => {
   const service = {
     listDeliveries: async (_id, { page }) => ({ items: [], metrics: {}, page, totalPages: 5 })

@@ -136,6 +136,7 @@ export function createDeliveryWorkspace({
   let disposed = false
   let loadGeneration = 0
   let operationGeneration = 0
+  let downloadNoticeScope = null
   onBeforeUnmount(() => {
     disposed = true
     ++loadGeneration
@@ -222,6 +223,7 @@ export function createDeliveryWorkspace({
     listPage.value = listPages.value = eventsPage.value = eventPages.value = 1
     adoptionPage.value = adoptionPages.value = 1
     operationError.value = success.value = ''
+    downloadNoticeScope = null
     clearEditor()
   }
   function projectRead(promise) {
@@ -302,6 +304,7 @@ export function createDeliveryWorkspace({
     operationKind.value = kind
     operationError.value = ''
     success.value = ''
+    downloadNoticeScope = null
     try {
       await fn(isCurrent, request.signal)
     } catch (e) {
@@ -462,7 +465,10 @@ export function createDeliveryWorkspace({
     await action(
       async (isCurrent, signal) => {
         await downloadDelivery(item.id, { signal, isCurrent })
-        if (isCurrent()) success.value = '已发起浏览器下载。接收方核对后可登记回执。'
+        if (isCurrent()) {
+          downloadNoticeScope = { projectId: projectId.value, packageId: item.id }
+          success.value = '已发起浏览器下载。接收方核对后可登记回执。'
+        }
       },
       undefined,
       'download'
@@ -511,10 +517,17 @@ export function createDeliveryWorkspace({
     })
   }
   const stopRoute = observeRoute(() => {
-    const completedMessage = success.value
+    const completedDownloadScope = downloadNoticeScope
+    const completedMessage =
+      !completedDownloadScope ||
+      (completedDownloadScope.projectId === projectId.value &&
+        completedDownloadScope.packageId === route.query.package)
+        ? success.value
+        : ''
     pageScope.cancel()
     clearProtectedData()
     success.value = completedMessage
+    if (completedMessage) downloadNoticeScope = completedDownloadScope
     projectUnavailable.value = unavailable.value = false
     selectedPackageId.value = typeof route.query.package === 'string' ? route.query.package : ''
     view.value = selectedPackageId.value
