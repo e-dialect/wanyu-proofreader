@@ -329,6 +329,18 @@ async function catalogFits(page) {
       .filter({ hasText: project.name })
       .waitFor()
     await page.screenshot({ path: path.join(output, 'desktop-manager-workbench.png') })
+    const todoPath = `/admin/todos?stage=arbitration&project=${project.id}`
+    await page.goto(base + todoPath)
+    const todoAction = page.locator(`[data-todo-row="${project.id}:arbitration"]`)
+    await todoAction.press('Enter')
+    await page.getByRole('link', { name: '返回统一待办', exact: true }).first().click()
+    await todoAction.waitFor()
+    await page.waitForFunction(() => document.activeElement?.matches('[data-todo-row]'))
+    assert.equal(await todoAction.evaluate((el) => el === document.activeElement), true)
+    assert.equal(new URL(page.url()).searchParams.get('project'), project.id)
+    assert.equal(new URL(page.url()).searchParams.get('stage'), 'arbitration')
+    await page.screenshot({ path: path.join(output, 'desktop-unified-todo-return.png') })
+    await page.goto(base + '/workspace')
     await page.locator('.app-sidebar').getByRole('link', { name: '我的任务', exact: true }).focus()
     await page.keyboard.press('Tab')
     const projectNavigation = page

@@ -16,6 +16,33 @@ const memory = () => {
 const task = { name: 'ProofreadEditor', params: { id: 'task1' } }
 const arbitration = { name: 'Arbitration', params: { projectId: 'project1', pageId: 'page1' } }
 
+test('unified todo restores its exact filters and row after continuing detail, once per account', () => {
+  const storage = memory()
+  const projectId = 'practiceproj001'
+  const list = {
+    name: 'AdminTodos',
+    fullPath: '/admin/todos?stage=arbitration&project=' + projectId
+  }
+  const returnPath = '/admin/todos?project=' + projectId + '&stage=arbitration'
+  const returned = { name: 'AdminTodos', fullPath: returnPath }
+  const detail = {
+    ...arbitration,
+    params: { projectId, pageId: 'page1' },
+    query: { todoFrom: projectId + ':arbitration?stage=arbitration&row=arbitration' }
+  }
+  rememberQueueTransition(storage, 'alice', detail, list, { top: 530, todoPath: returnPath })
+  const next = { ...detail, params: { ...detail.params, pageId: 'page2' } }
+  rememberQueueTransition(storage, 'alice', next, detail)
+  rememberQueueTransition(storage, 'alice', returned, next)
+  assert.equal(takeQueuePosition(storage, 'bob', returnPath), null)
+  assert.deepEqual(takeQueuePosition(storage, 'alice', returnPath), {
+    top: 530,
+    left: 0,
+    focusId: projectId + ':arbitration'
+  })
+  assert.equal(takeQueuePosition(storage, 'alice', returnPath), null)
+})
+
 test('task return keeps queue filters and restores its position exactly once after data is ready', () => {
   const storage = memory(),
     queue = { name: 'TaskHall', fullPath: '/tasks?project=project1&view=active&page=2' }

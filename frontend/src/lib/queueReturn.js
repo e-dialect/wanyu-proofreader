@@ -1,4 +1,5 @@
 import { importJobScope, validImportJob } from './adminPageList.js'
+import { todoReturnRow, todoReturnTarget } from './unifiedTodos.js'
 
 const prefix = 'wanyu:queue-return:v1'
 const key = (userId, kind) => `${prefix}:${encodeURIComponent(userId || '')}:${kind}`
@@ -19,6 +20,7 @@ export function browserSessionStorage() {
 
 function safeQueuePath(path, kind) {
   if (typeof path !== 'string' || path.length > 2048 || /[\\\r\n]/.test(path)) return false
+  if (kind === 'todo') return /^\/admin\/todos(?:[?#].*)?$/.test(path)
   return kind === 'proofread'
     ? /^\/tasks(?:[?#].*)?$/.test(path)
     : /^\/admin(?:\/projects\/[a-z0-9]+(?:\/verification)?)?(?:[?#].*)?$/.test(path)
@@ -61,6 +63,26 @@ export function rememberQueueTransition(storage, userId, to, from, position = {}
   const next = kindOf(to),
     previous = kindOf(from)
   try {
+    if (from?.name === 'AdminTodos' && to.name !== 'AdminTodos') {
+      if (safeQueuePath(from.fullPath, 'todo') && safeQueuePath(position.todoPath, 'todo'))
+        storage.setItem(
+          key(userId, 'todo'),
+          JSON.stringify({
+            path: from.fullPath,
+            returnPath: position.todoPath,
+            focusId: todoReturnRow(to),
+            left: Number(position.left) || 0,
+            top: Number(position.top) || 0
+          })
+        )
+      else storage.removeItem(key(userId, 'todo'))
+    }
+    if (todoReturnTarget(from) && !todoReturnTarget(to)) {
+      const context = read(storage, userId, 'todo')
+      storage.removeItem(key(userId, 'todo'))
+      if (context && (context.path === to.fullPath || context.returnPath === to.fullPath))
+        storage.setItem(key(userId, 'pending'), JSON.stringify({ ...context, path: to.fullPath }))
+    }
     if (next && next !== previous) {
       if (safeQueuePath(from?.fullPath, next))
         storage.setItem(
@@ -92,7 +114,8 @@ export function takeQueuePosition(storage, userId, path) {
     storage.removeItem(key(userId, 'pending'))
     return {
       left: Math.max(0, Math.min(10000000, Number(value.left) || 0)),
-      top: Math.max(0, Math.min(10000000, Number(value.top) || 0))
+      top: Math.max(0, Math.min(10000000, Number(value.top) || 0)),
+      ...(typeof value.focusId === 'string' && { focusId: value.focusId })
     }
   } catch {
     return null

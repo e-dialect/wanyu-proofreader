@@ -49,13 +49,14 @@
 
     <section
       v-if="result"
+      ref="resultsPanel"
       class="card todo-results"
       aria-labelledby="todo-results-heading"
       :aria-busy="loading"
     >
       <div class="todo-list-heading">
         <div>
-          <h2 id="todo-results-heading">
+          <h2 id="todo-results-heading" tabindex="-1">
             {{ filters.stage ? TODO_STAGES[filters.stage].label : '待处理环节' }}
           </h2>
           <p class="text-sm text-muted">
@@ -96,6 +97,7 @@
             v-if="row.target"
             :to="row.target"
             class="btn btn-secondary todo-row__action"
+            :data-todo-row="row.item.id"
             :aria-label="`${row.item.project.name} · ${row.stage.label} · ${row.action}`"
           >
             {{ row.action }} <AppIcon name="arrow" />
@@ -115,7 +117,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppButton from '@/components/AppButton.vue'
 import AppField from '@/components/AppField.vue'
@@ -124,6 +126,7 @@ import AppPagination from '@/components/AppPagination.vue'
 import AppSelect from '@/components/AppSelect.vue'
 import AppStatusPanel from '@/components/AppStatusPanel.vue'
 import { useProtectedPageScope } from '@/composables/useProtectedPageScope'
+import { useQueueReturnPosition } from '@/composables/useQueueReturnPosition'
 import {
   TODO_STAGES,
   todoActionTarget,
@@ -140,6 +143,7 @@ const router = useRouter()
 const filters = computed(() => todoFilters(route.query))
 const invalidFilter = computed(() => todoFilterError(route.query))
 const result = ref(null)
+const resultsPanel = useTemplateRef('resultsPanel')
 const projects = ref([])
 const loading = ref(false)
 const error = ref('')
@@ -152,6 +156,19 @@ const scope = useProtectedPageScope((status) => {
 })
 const { accessLost } = scope
 let activeRequest
+
+useQueueReturnPosition(
+  () => Boolean(result.value) && !loading.value,
+  (id) => {
+    const panel = resultsPanel.value
+    const action = [...(panel?.querySelectorAll('[data-todo-row]') || [])].find(
+      (link) => link.dataset.todoRow === id
+    )
+    const target = action ?? panel?.querySelector('#todo-results-heading')
+    target?.focus({ preventScroll: true })
+    target?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
+  }
+)
 
 const projectOptions = computed(() => [
   { value: '', label: '全部项目' },
