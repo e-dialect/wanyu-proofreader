@@ -4,6 +4,7 @@
       v-if="open"
       class="modal-backdrop"
       role="presentation"
+      @mousedown.self="!closeOnBackdrop && $event.preventDefault()"
       @click.self="onBackdrop"
     >
       <section
@@ -44,19 +45,23 @@ const dialogRef = ref(null)
 let previousFocus = null
 let previousOverflow = ''
 
-watch(() => props.open, async (isOpen) => {
-  if (typeof document === 'undefined') return
-  if (isOpen) {
-    previousFocus = document.activeElement
-    previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    await nextTick()
-    initialFocusTarget(dialogRef.value)?.focus?.()
-    return
-  }
-  if (!previousFocus) return
-  restorePage()
-}, { immediate: true })
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (typeof document === 'undefined') return
+    if (isOpen) {
+      previousFocus = document.activeElement
+      previousOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      await nextTick()
+      initialFocusTarget(dialogRef.value)?.focus?.()
+      return
+    }
+    if (!previousFocus) return
+    restorePage()
+  },
+  { immediate: true }
+)
 
 onBeforeUnmount(restorePage)
 
