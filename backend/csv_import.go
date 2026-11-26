@@ -462,6 +462,17 @@ func decodedCSVReader(reader io.ReadSeeker) (io.Reader, string, error) {
 		}
 		return reader, "UTF-8", nil
 	}
+	// 非 UTF-8：严格校验 GB18030/GBK 结构，通过才解码，否则拒绝（#369）。
+	validGB, err := inspectGB18030(reader)
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, "", err
+	}
+	if !validGB {
+		return nil, "", errors.New("文件既不是合法 UTF-8，也不是合法 GB18030/GBK（含损坏或截断字节），请转成 UTF-8 后重新上传")
+	}
 	return transform.NewReader(reader, simplifiedchinese.GB18030.NewDecoder()), "GB18030", nil
 }
 
@@ -503,6 +514,69 @@ func inspectUTF8(reader io.Reader) (valid bool, bom bool, err error) {
 		}
 		if readErr != nil {
 			return false, bom, readErr
+		}
+	}
+}
+
+// inspectGB18030 走一遍整个 reader，判断是否全部是结构合法的 GB18030/GBK 字节序列。
+// 只做结构校验（字节范围 + 序列完整性），不查码点是否被分配：结构合法的 GB18030
+// 即使含未分配码点，也仍算「合法 GB18030 编码」，不在本函数拒绝（避免「见 U+FFFD 就拒绝」误伤）。
+// 截断序列（前导字节在文件末尾缺少后续字节）视为不合法。
+func inspectGB18030(reader io.Reader) (bool, error) {
+	buffer := make([]byte, 64*1024)
+	pending := make([]byte, 0, 4)
+
+	for {
+		n, readErr := reader.Read(buffer)
+		if n > 0 {
+			data := make([]byte, 0, len(pending)+n)
+			data = append(data, pending...)
+			data = append(data, buffer[:n]...)
+			pending = pending[:0]
+
+			for len(data) > 0 {
+				c0 := data[0]
+				switch {
+				case c0 <= 0x7f: // ASCII，单字节
+					data = data[1:]
+				case c0 == 0x80: // GBK Code Page 936 的欧元扩展，单字节
+					data = data[1:]
+				case c0 < 0xff: // 0x81-0xFE：双字节或四字节前导
+					if len(data) < 2 {
+						pending = append(pending, data...)
+						data = data[:0]
+						continue
+					}
+					c1 := data[1]
+					if (c1 >= 0x40 && c1 < 0x7f) || (c1 >= 0x80 && c1 < 0xff) {
+						// 双字节
+						data = data[2:]
+					} else if c1 >= 0x30 && c1 < 0x3a {
+						// 四字节
+						if len(data) < 4 {
+							pending = append(pending, data...)
+							data = data[:0]
+							continue
+						}
+						c2, c3 := data[2], data[3]
+						if (c2 >= 0x81 && c2 < 0xff) && (c3 >= 0x30 && c3 < 0x3a) {
+							data = data[4:]
+						} else {
+							return false, nil
+						}
+					} else {
+						return false, nil
+					}
+				default: // 0xff
+					return false, nil
+				}
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			return len(pending) == 0, nil
+		}
+		if readErr != nil {
+			return false, readErr
 		}
 	}
 }
