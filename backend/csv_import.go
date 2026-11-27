@@ -462,7 +462,7 @@ func decodedCSVReader(reader io.ReadSeeker) (io.Reader, string, error) {
 		}
 		return reader, "UTF-8", nil
 	}
-	// 非 UTF-8：严格校验 GB18030/GBK 结构，通过才解码，否则拒绝（#369）。
+	// 非 UTF-8：严格校验 GB18030/GBK 的结构与映射，通过才解码，否则拒绝（#369）。
 	badOffset, err := inspectGB18030(reader)
 	if err != nil {
 		return nil, "", err
@@ -471,7 +471,7 @@ func decodedCSVReader(reader io.ReadSeeker) (io.Reader, string, error) {
 		return nil, "", err
 	}
 	if badOffset >= 0 {
-		return nil, "", fmt.Errorf("CSV 编码无法可靠解码：第 %d 字节处不是合法 GB18030/GBK（可能含损坏或截断字节），请转成 UTF-8 后重新上传", badOffset+1)
+		return nil, "", fmt.Errorf("CSV 编码无法可靠解码：第 %d 字节处不是合法 GB18030/GBK（可能含损坏、截断或无法映射的字节），请转成 UTF-8 后重新上传", badOffset+1)
 	}
 	return transform.NewReader(reader, simplifiedchinese.GB18030.NewDecoder()), "GB18030", nil
 }
@@ -518,15 +518,23 @@ func inspectUTF8(reader io.Reader) (valid bool, bom bool, err error) {
 	}
 }
 
-// inspectGB18030 走一遍整个 reader，判断是否全部是结构合法的 GB18030/GBK 字节序列。
-// 只做结构校验（字节范围 + 序列完整性），不查码点是否被分配：结构合法的 GB18030
-// 即使含未分配码点，也仍算「合法 GB18030 编码」，不在本函数拒绝（避免「见 U+FFFD 就拒绝」误伤）。
-// 返回首个非法字节的绝对偏移（0 起）；全部合法返回 -1。截断序列（前导字节在文件末尾
-// 缺少后续字节）视为不合法，偏移指向该序列起点。
+// inspectGB18030 校验字节结构，并确认每个多字节序列都能可靠解码。
+// 返回首个损坏、截断或无法映射的序列起点（0 起）；全部合法返回 -1。
 func inspectGB18030(reader io.Reader) (int64, error) {
 	buffer := make([]byte, 64*1024)
 	pending := make([]byte, 0, 4)
 	var offset int64 // 当前 data[0] 的绝对字节偏移（0 起）
+	decoder := simplifiedchinese.GB18030.NewDecoder()
+	var decoded [utf8.UTFMax]byte
+	canDecode := func(seq []byte) bool {
+		n, consumed, err := decoder.Transform(decoded[:], seq, true)
+		if err != nil || consumed != len(seq) {
+			return false
+		}
+		r, size := utf8.DecodeRune(decoded[:n])
+		// 84 31 A4 37 是 U+FFFD 本身的合法 GB18030 编码，不是解码失败。
+		return size == n && (r != utf8.RuneError || string(seq) == "\x84\x31\xa4\x37")
+	}
 
 	for {
 		n, readErr := reader.Read(buffer)
@@ -554,6 +562,9 @@ func inspectGB18030(reader io.Reader) (int64, error) {
 					c1 := data[1]
 					if (c1 >= 0x40 && c1 < 0x7f) || (c1 >= 0x80 && c1 < 0xff) {
 						// 双字节
+						if !canDecode(data[:2]) {
+							return offset, nil
+						}
 						data = data[2:]
 						offset += 2
 					} else if c1 >= 0x30 && c1 < 0x3a {
@@ -564,7 +575,7 @@ func inspectGB18030(reader io.Reader) (int64, error) {
 							continue
 						}
 						c2, c3 := data[2], data[3]
-						if (c2 >= 0x81 && c2 < 0xff) && (c3 >= 0x30 && c3 < 0x3a) {
+						if (c2 >= 0x81 && c2 < 0xff) && (c3 >= 0x30 && c3 < 0x3a) && canDecode(data[:4]) {
 							data = data[4:]
 							offset += 4
 						} else {

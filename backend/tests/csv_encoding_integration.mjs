@@ -42,42 +42,47 @@ const wait = async (id) => {
   throw Error('job timeout')
 }
 
-// 1) 损坏编码（0xff / 截断 0x81）→ 整批失败，错误码 CSV_ENCODING_ERROR，报错含字节定位。
-for (const [name, bytes] of [
+// 1) 损坏、截断或无法映射的序列整批失败，并定位到原始字节。
+const prefix = Buffer.from('page,entry\n1,')
+const unmapped = Buffer.concat([prefix, Buffer.from('85308130', 'hex')])
+for (const [name, bytes, offset = 1] of [
   ['损坏 0xff', new Uint8Array([0xff])],
   ['截断 0x81', new Uint8Array([0x81])],
   ['损坏 0x81 0x20', new Uint8Array([0x81, 0x20])],
+  ['未分配四字节序列', unmapped, prefix.length + 1],
 ]) {
   const job = await api(root, { token, body: bytesForm(bytes), status: 202 })
   const done = await wait(job.id)
   assert.equal(done.status, 'failed', `${name} 应失败`)
   assert.equal(done.error_code, 'CSV_ENCODING_ERROR', `${name} 错误码`)
-  assert.ok(String(done.error_message).includes('字节'), `${name} 报错应含字节定位：${done.error_message}`)
+  assert.ok(String(done.error_message).includes(`第 ${offset} 字节`), `${name} 报错应含字节定位：${done.error_message}`)
 }
 
 // 2) /columns 端点同样拒绝损坏编码（走 csv_columns 的 decodedCSVReader 路径）。
-{
-  const bad = new Uint8Array([0xff])
+for (const [bad, offset] of [[new Uint8Array([0xff]), 1], [unmapped, prefix.length + 1]]) {
   const form = new FormData()
   form.set('file', new Blob([bad]), 'bad.csv')
   const err = await api(root + '/columns', { token, body: form, status: 400 })
-  assert.ok(String(err.message).includes('字节'), `/columns 报错应含字节定位：${err.message}`)
+  assert.ok(String(err.message).includes(`第 ${offset} 字节`), `/columns 报错应含字节定位：${err.message}`)
 }
 
-// 3) 合法 GB18030 正常导入（「page,词条\n1,测试条目」的 GB18030 字节）。
-{
-  const gb = Buffer.from('706167652cb4caccf50a312cb2e2cad4ccf5c4bf', 'hex')
-  const job = await api(root, { token, body: bytesForm(gb, 'gb18030.csv'), status: 202 })
+// 3) 保留普通 GB18030 和原文件中以 UTF-8 或 GB18030 合法编码的 U+FFFD。
+for (const [filename, bytes, encoding, column, expected] of [
+  ['gb18030.csv', Buffer.from('706167652cb4caccf50a312cb2e2cad4ccf5c4bf', 'hex'), 'GB18030', '词条', '测试条目'],
+  ['utf8-replacement.csv', Buffer.concat([prefix, Buffer.from('\uFFFD')]), 'UTF-8', 'entry', '\uFFFD'],
+  ['gb18030-replacement.csv', Buffer.concat([prefix, Buffer.from('8431a437', 'hex')]), 'GB18030', 'entry', '\uFFFD'],
+]) {
+  const job = await api(root, { token, body: bytesForm(bytes, filename), status: 202 })
   const inspection = await wait(job.id)
   assert.equal(inspection.status, 'validated', 'GB18030 应预检通过')
   const info = JSON.parse(inspection.inspection_json)
-  assert.equal(info.encoding, 'GB18030', '应识别为 GB18030')
+  assert.equal(info.encoding, encoding, filename)
   await api('/api/fangji/imports/' + job.id + '/commit', { token, body: {}, status:202 })
   const done = await wait(job.id)
   assert.equal(done.status, 'completed', 'GB18030 应导入完成')
   const pages = await api('/api/collections/pages/records?filter=' + encodeURIComponent(`import_job="${job.id}"`), { token })
   assert.equal(pages.totalItems, 1)
-  assert.equal(JSON.parse(pages.items[0].ocr_row_json).词条, '测试条目')
+  assert.equal(JSON.parse(pages.items[0].ocr_row_json)[column], expected, filename)
 }
 
-console.log('PASS CSV encoding: 损坏/截断字节被拒绝并定位，/columns 同拒，合法 GB18030 正常导入')
+console.log('PASS CSV encoding: 损坏、截断和无法映射的字节被拒绝并定位，合法 U+FFFD 保留')
