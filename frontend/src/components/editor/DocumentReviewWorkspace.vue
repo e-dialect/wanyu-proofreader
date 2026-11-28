@@ -396,6 +396,7 @@ function stopResize() {
   savePreference()
 }
 function resizeWithKeyboard(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
   const amounts = { ArrowLeft: -2, ArrowRight: 2 }
   if (event.key in amounts)
     sourceWidth.value = clampSourceWidth(sourceWidth.value + amounts[event.key])
