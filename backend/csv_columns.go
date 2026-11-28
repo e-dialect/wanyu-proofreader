@@ -30,7 +30,7 @@ func (s *importService) csvColumns(c *core.RequestEvent) error {
 	}
 	decoded, encoding, err := decodedCSVReader(file)
 	if err != nil {
-		return apis.NewBadRequestError("CSV 编码无法识别，请使用 UTF-8 或 GB18030。", err)
+		return apis.NewBadRequestError(err.Error(), err)
 	}
 	reader := csv.NewReader(decoded)
 	reader.FieldsPerRecord = -1

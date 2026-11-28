@@ -146,7 +146,7 @@ func (s *importService) processCSVInspection(work importWork) {
 	defer closeFile()
 	decoded, encodingName, err := decodedCSVReader(file)
 	if err != nil {
-		s.markFatal(work, "CSV_ENCODING_ERROR", "CSV 编码无法识别，请使用 UTF-8 或 GB18030。", err)
+		s.markFatal(work, "CSV_ENCODING_ERROR", err.Error(), err)
 		return
 	}
 	csvReader := csv.NewReader(decoded)
@@ -302,7 +302,7 @@ func (s *importService) processCSV(work importWork) {
 
 	decoded, encodingName, err := decodedCSVReader(file)
 	if err != nil {
-		s.markFatal(work, "CSV_ENCODING_ERROR", "CSV 编码无法识别，请使用 UTF-8 或 GB18030。", err)
+		s.markFatal(work, "CSV_ENCODING_ERROR", err.Error(), err)
 		return
 	}
 
@@ -462,6 +462,17 @@ func decodedCSVReader(reader io.ReadSeeker) (io.Reader, string, error) {
 		}
 		return reader, "UTF-8", nil
 	}
+	// 非 UTF-8：严格校验 GB18030/GBK 结构，通过才解码，否则拒绝（#369）。
+	badOffset, err := inspectGB18030(reader)
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, "", err
+	}
+	if badOffset >= 0 {
+		return nil, "", fmt.Errorf("CSV 编码无法可靠解码：第 %d 字节处不是可映射的 GB18030/GBK（损坏、截断或未分配码位），请转成 UTF-8 后重新上传", badOffset+1)
+	}
 	return transform.NewReader(reader, simplifiedchinese.GB18030.NewDecoder()), "GB18030", nil
 }
 
@@ -505,6 +516,125 @@ func inspectUTF8(reader io.Reader) (valid bool, bom bool, err error) {
 			return false, bom, readErr
 		}
 	}
+}
+
+// inspectGB18030 走一遍整个 reader，判断是否全部是结构合法且解码器能映射的
+// GB18030/GBK 字节序列。
+// 结构校验（字节范围 + 序列完整性）之外，还复用同一个解码器确认每个双字节码位
+// 和四字节指针确实有映射：GBK 双字节区有 2067 个未分配码位（0xA1 0x40、
+// 用户自定义区 0xAAA1-0xAFFE 等），四字节区也有保留段，解码器对它们只会补
+// U+FFFD，和「文件里本来就用合法编码写了 U+FFFD」不是一回事，必须在导入前拒绝（#369）。
+// 返回首个问题字节的绝对偏移（0 起）；全部合法返回 -1。截断序列（前导字节在文件末尾
+// 缺少后续字节）视为不合法，偏移指向该序列起点。
+func inspectGB18030(reader io.Reader) (int64, error) {
+	buffer := make([]byte, 64*1024)
+	pending := make([]byte, 0, 4)
+	var offset int64 // 当前 data[0] 的绝对字节偏移（0 起）
+	decoder := simplifiedchinese.GB18030.NewDecoder()
+	var decoded [utf8.UTFMax]byte
+
+	for {
+		n, readErr := reader.Read(buffer)
+		if n > 0 {
+			data := make([]byte, 0, len(pending)+n)
+			data = append(data, pending...)
+			data = append(data, buffer[:n]...)
+			pending = pending[:0]
+
+			for len(data) > 0 {
+				c0 := data[0]
+				switch {
+				case c0 <= 0x7f: // ASCII，单字节
+					data = data[1:]
+					offset++
+				case c0 == 0x80: // GBK Code Page 936 的欧元扩展，单字节
+					data = data[1:]
+					offset++
+				case c0 < 0xff: // 0x81-0xFE：双字节或四字节前导
+					if len(data) < 2 {
+						pending = append(pending, data...)
+						data = data[:0]
+						continue
+					}
+					c1 := data[1]
+					if (c1 >= 0x40 && c1 < 0x7f) || (c1 >= 0x80 && c1 < 0xff) {
+						// 双字节：结构合法不等于有映射，未分配码位会静默变成 U+FFFD。
+						if !gbkTwoByteMapped(decoder, decoded[:], c0, c1) {
+							return offset, nil
+						}
+						data = data[2:]
+						offset += 2
+					} else if c1 >= 0x30 && c1 < 0x3a {
+						// 四字节
+						if len(data) < 4 {
+							pending = append(pending, data...)
+							data = data[:0]
+							continue
+						}
+						c2, c3 := data[2], data[3]
+						if (c2 >= 0x81 && c2 < 0xff) && (c3 >= 0x30 && c3 < 0x3a) {
+							// 外形合法还不够：未分配的四字节序列解码器只会输出 U+FFFD，
+							// 必须在导入前拒绝（#369 review）。
+							if !gb18030FourByteMapped(c0, c1, c2, c3) {
+								return offset, nil
+							}
+							data = data[4:]
+							offset += 4
+						} else {
+							return offset, nil
+						}
+					} else {
+						return offset, nil
+					}
+				default: // 0xff
+					return offset, nil
+				}
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			if len(pending) > 0 {
+				return offset, nil // 截断序列从此偏移开始
+			}
+			return -1, nil // 全部合法
+		}
+		if readErr != nil {
+			return offset, readErr
+		}
+	}
+}
+
+// gbkTwoByteMapped 用解码器本身判断双字节码位是否有映射，而不是把 23940 个码位
+// 的分配表硬编码进仓库：x/text 升级后判定自动跟随实际解码行为。GBK 双字节区有
+// 2067 个未分配码位（0xA1 0x40、用户自定义区 0xAAA1-0xAFFE 等），解码器对它们
+// 只补 U+FFFD；这与文件里用合法编码写出的 U+FFFD（四字节 0x84 31 A4 37）不是
+// 一回事，必须按「无法映射的字节」拒绝（#369 口径）。
+func gbkTwoByteMapped(decoder transform.Transformer, dst []byte, c0, c1 byte) bool {
+	decoder.Reset()
+	pair := [2]byte{c0, c1}
+	nDst, nSrc, err := decoder.Transform(dst, pair[:], true)
+	if err != nil || nSrc != 2 || nDst == 0 {
+		return false
+	}
+	// 未分配码位解出来就是 U+FFFD（EF BF BD），已分配码位不会。
+	return !(nDst == 3 && dst[0] == 0xef && dst[1] == 0xbf && dst[2] == 0xbd)
+}
+
+// gb18030FourByteMapped 判断四字节序列 (c0,c1,c2,c3) 是否落在 GB18030 的已分配区，
+// 判定与 golang.org/x/text v0.44.0 解码器（simplifiedchinese/gbk.go）完全一致：
+//   - 线性指针 r = ((c0-0x81)*10 + (c1-0x30))*1260 + (c2-0x81)*10 + (c3-0x30)；
+//   - r < 39420：映射到 U+0080 起的 BMP 区；
+//   - 否则 r -= 189000，只有 0 <= r < 0x100000 才映射到 U+10000 起的增补平面。
+//
+// 其余指针（如 0xFE 39 FE 39，r=1575000+；0x85 30 81 30 落在保留区）在标准里未分配，
+// 解码器会输出 U+FFFD 且只前进 1 字节，属于不可映射的损坏字节，导入前必须拒绝（#369）。
+// 注意 0x84 31 A4 37 是 U+FFFD 本身的合法四字节编码，仍放行，不按字符拒绝。
+func gb18030FourByteMapped(c0, c1, c2, c3 byte) bool {
+	pointer := ((int64(c0)-0x81)*10+int64(c1)-0x30)*1260 + (int64(c2)-0x81)*10 + int64(c3-0x30)
+	if pointer < 39420 {
+		return true
+	}
+	pointer -= 189000
+	return pointer >= 0 && pointer < 0x100000
 }
 
 func validateCSVHeaders(raw []string) ([]string, int, error) {
