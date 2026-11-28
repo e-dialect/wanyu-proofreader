@@ -27,6 +27,50 @@ async function visibleFocus(page) {
     true
   )
 }
+async function checkBatchReturn(page, trigger, dialog) {
+  const items = ['queued1', 'queued2'].map((pageId) => ({
+    pageId,
+    reason: 'text_mismatch',
+    basis: '合成队列依据'
+  }))
+  const queueKey = 'fangji:return-queue:v1:fixture-user'
+  await page.evaluate(
+    ([key, queue]) => localStorage.setItem(key, JSON.stringify(queue)),
+    [queueKey, items]
+  )
+  const attempts = []
+  let finishBatch
+  const pending = new Promise((resolve) => {
+    finishBatch = resolve
+  })
+  await page.route('**/pages/queued*/return-to-source', async (route) => {
+    const pageId = new URL(route.request().url()).pathname.split('/').at(-2)
+    const payload = route.request().postDataJSON()
+    assert.deepEqual(payload, { reason: 'text_mismatch', basis: '合成队列依据' })
+    attempts.push(pageId)
+    if (attempts.length === 1) await pending
+    if (attempts.length === 2)
+      return route.fulfill({ status: 503, json: { message: '退回暂时不可用' } })
+    return route.fulfill({ json: { returned: true } })
+  })
+  await trigger.press('Enter')
+  const batch = dialog.getByRole('button', { name: '全部退回' })
+  await batch.press('Enter')
+  await dialog.getByRole('status').waitFor()
+  await page.keyboard.press('Escape')
+  assert.equal(await dialog.isVisible(), true)
+  assert.equal(await batch.isDisabled(), true)
+  finishBatch()
+  await dialog.locator('[data-return-error]').waitFor()
+  await page.waitForFunction(() => document.activeElement.textContent.trim() === '全部退回')
+  const stored = () => page.evaluate((key) => JSON.parse(localStorage.getItem(key)), queueKey)
+  assert.deepEqual(await stored(), [items[1]])
+  await page.keyboard.press('Enter')
+  await dialog.waitFor({ state: 'hidden' })
+  assert.deepEqual(await stored(), [])
+  assert.deepEqual(attempts, ['queued1', 'queued2', 'queued2'])
+}
+
 async function main() {
   await fs.mkdir(output, { recursive: true })
   const browser = await chromium.launch({
@@ -45,6 +89,10 @@ async function main() {
       })
       await installReviewRoutes(page)
       let returns = 0
+      let finishFirstReturn
+      const firstReturn = new Promise((resolve) => {
+        finishFirstReturn = resolve
+      })
       await page.route('**/api/fangji/**', async (route) => {
         const url = new URL(route.request().url()).pathname
         if (url.endsWith('/return-to-source')) {
@@ -52,6 +100,7 @@ async function main() {
           const payload = route.request().postDataJSON()
           assert.equal(payload.reason, 'text_mismatch')
           assert.equal(payload.basis, '合成测试：来源页不对应')
+          if (returns === 1) await firstReturn
           return returns === 1
             ? route.fulfill({ status: 503, json: { message: '合成测试：退回暂时不可用' } })
             : route.fulfill({ json: { returned: true } })
@@ -152,12 +201,34 @@ async function main() {
       await page.keyboard.press('Enter')
       dialog = page.getByRole('dialog')
       await dialog.waitFor()
+      await page.keyboard.press('Escape')
+      await dialog.waitFor({ state: 'hidden' })
+      assert.equal(await returnTrigger.evaluate((el) => el === document.activeElement), true)
+      if (width === 1440) await checkBatchReturn(page, returnTrigger, dialog)
+      await returnTrigger.press('Enter')
+      await dialog.waitFor()
       await dialog.getByRole('combobox').selectOption('text_mismatch')
       const basis = dialog.getByRole('textbox')
       await basis.fill('合成测试：来源页不对应')
       const confirm = dialog.getByRole('button', { name: '立即退回', exact: true })
       await confirm.focus()
       await page.keyboard.press('Enter')
+      await dialog.getByRole('button', { name: '退回中…' }).waitFor()
+      await page.keyboard.press('Escape')
+      assert.equal(await dialog.isVisible(), true, 'Escape dismissed a pending return')
+      await page.locator('.modal-backdrop').click({ position: { x: 5, y: 5 } })
+      assert.equal(await dialog.isVisible(), true, 'backdrop dismissed a pending return')
+      assert.equal(await dialog.getByRole('button', { name: '取消' }).isDisabled(), true)
+      assert.equal(await basis.isDisabled(), true)
+      assert.equal(await dialog.getByRole('combobox').isDisabled(), true)
+      assert.equal(await dialog.getByRole('checkbox').isDisabled(), true)
+      for (const key of ['Tab', 'Shift+Tab', 'Enter']) {
+        await page.keyboard.press(key)
+        assert.equal(await dialog.evaluate((el) => el.contains(document.activeElement)), true)
+      }
+      assert.equal(returns, 1)
+      await page.screenshot({ path: path.join(output, `${width}-return-pending.png`) })
+      finishFirstReturn()
       await dialog.locator('[data-return-error]').waitFor()
       await page.waitForFunction(
         () => document.querySelector('[role=dialog] button.btn-danger') === document.activeElement
@@ -170,6 +241,7 @@ async function main() {
         document.querySelector('#task-panel-title')?.textContent.includes('2')
       )
       assert.equal(returns, 2)
+      await page.screenshot({ path: path.join(output, `${width}-return-next.png`) })
       assert.deepEqual(errors, [])
       results.push({
         width,
@@ -177,6 +249,8 @@ async function main() {
         virtualCharacterViaEnter: true,
         helpViaKeyboard: true,
         submitEscapeRestoresTrigger: true,
+        returnPendingStaysOpen: true,
+        returnIdleEscapeRestoresTrigger: true,
         returnFailurePreservesInputAndFocus: true,
         returnRetryNext: true,
         unavailableNavigationShortcutHidden: true

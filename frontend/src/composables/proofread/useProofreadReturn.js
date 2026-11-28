@@ -33,7 +33,7 @@ export function useProofreadReturn({
   const returnConfirmButton = ref(null)
 
   function openReturnModal() {
-    if (ownReview.value) return
+    if (ownReview.value || returning.value) return
     saveError.value = ''
     returnReason.value = ''
     returnBasis.value = ''
@@ -43,7 +43,7 @@ export function useProofreadReturn({
   }
 
   function closeReturnModal() {
-    returnModalOpen.value = false
+    if (!returning.value) returnModalOpen.value = false
   }
 
   function persistQueueMode() {
@@ -79,7 +79,7 @@ export function useProofreadReturn({
     try {
       await returnToSource(item.pageId, { reason: item.reason, basis: item.basis })
       if (!isCurrentCase(scope)) return
-      closeReturnModal()
+      returnModalOpen.value = false
       // 退回后这条任务退出，尝试领下一条（沿用缺字队列选择）。
       await claimNextAfterReturn(scope)
     } catch (e) {
@@ -110,14 +110,14 @@ export function useProofreadReturn({
       if (!isCurrentCase(scope)) return
       returnQueue.value = remaining
       saveReturnQueue(window.localStorage, remaining, currentUserId.value)
-      closeReturnModal()
       if (failedCount) saveError.value = `${failedCount} 条退回失败，已保留在队列中，可稍后重试。`
+      else returnModalOpen.value = false
     } finally {
       if (isCurrentCase(scope)) {
         returning.value = false
         if (saveError.value && returnModalOpen.value) {
           await nextTick()
-          if (isCurrentCase(scope)) returnConfirmButton.value?.focus()
+          if (isCurrentCase(scope)) returnConfirmButton.value?.focusBatch()
         }
       }
     }
