@@ -225,7 +225,7 @@ def with_research_notice_preload(env):
     """
     env = dict(env)
     preload = BACKEND / 'tests' / 'research_notice_preload.cjs'
-    flag = f'--require {preload}'
+    flag = f'--require "{preload.as_posix()}"'
     current = env.get('NODE_OPTIONS', '')
     if flag not in current:
         env['NODE_OPTIONS'] = f'{current} {flag}'.strip()
