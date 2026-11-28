@@ -335,8 +335,15 @@ async function main() {
     assert.match(await page.locator('#task-panel-title').innerText(), /1/)
     assert.deepEqual(writes, [], 'status details do not write or navigate a read-only task')
     await page.keyboard.press('Escape')
-    await page.locator('.proofread-textarea').first().focus()
+    const divider = page.getByRole('separator', { name: '调整原文与编辑区宽度' })
+    const sourceWidth = await divider.getAttribute('aria-valuenow')
+    await divider.focus()
     await page.keyboard.press('Alt+ArrowRight')
+    assert.equal(
+      await divider.getAttribute('aria-valuenow'),
+      sourceWidth,
+      'the neighbor shortcut must not resize the source pane'
+    )
     await page.waitForFunction(() =>
       document.querySelector('#task-panel-title')?.textContent.includes('2')
     )
@@ -345,7 +352,12 @@ async function main() {
     )
     assert.doesNotMatch(await page.locator('.editor-shortcuts').innerText(), /Ctrl|Alt\+→/)
     assert.deepEqual(writes, [])
-    results.push({ ownReviewNavigation: true, onlyAvailableDirectionShown: true, noWrites: true })
+    results.push({
+      ownReviewNavigation: true,
+      dividerPreservesNavigationShortcut: true,
+      onlyAvailableDirectionShown: true,
+      noWrites: true
+    })
     await fs.writeFile(
       path.join(output, 'results.json'),
       JSON.stringify({ synthetic: true, results }, null, 2)
