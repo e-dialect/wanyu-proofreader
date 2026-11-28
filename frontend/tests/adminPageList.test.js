@@ -4,7 +4,9 @@ import assert from 'node:assert/strict'
 import {
   adminPageRouteQuery,
   normalizeAdminPageQuery,
-  parseRangeInput
+  parseRangeInput,
+  pendingBatchFilter,
+  pendingIdsInWindow
 } from '../src/lib/adminPageList.js'
 
 const options = {
@@ -170,4 +172,42 @@ test('detail route changes are applied during project initialization', () => {
     source.indexOf('async function loadProject()')
   )
   assert.match(mounted, /applyListQuery\(route\.query\)[\s\S]*Promise\.all\(\[loadPages\(\)/)
+})
+
+test('batch filter fetches only pending rows', () => {
+  assert.equal(pendingBatchFilter('p1'), 'project="p1" && status="pending"')
+})
+
+test('range selection keeps sorted-position semantics inside a fetched window', () => {
+  const dense = [
+    { id: 'a', page_number: 1, status: 'pending' },
+    { id: 'b', page_number: 2, status: 'approved' },
+    { id: 'c', page_number: 3, status: 'pending' },
+    { id: 'd', page_number: 4, status: 'claimed' }
+  ]
+  assert.deepEqual(pendingIdsInWindow(dense, [0, 1, 2, 3], 0), ['a', 'c'])
+  assert.deepEqual(pendingIdsInWindow(dense.slice(2), [2, 3], 2), ['c'])
+  assert.deepEqual(pendingIdsInWindow(dense, [1], 0), [])
+  // 物理页号有缺号也不能改变位置语义：窗口第 2、3 条仍是可见排序位置 2、3。
+  const gapped = [
+    { id: 'a', page_number: 1, status: 'pending' },
+    { id: 'c', page_number: 3, status: 'pending' },
+    { id: 'e', page_number: 5, status: 'approved' }
+  ]
+  assert.deepEqual(pendingIdsInWindow(gapped, [0, 1, 2], 0), ['a', 'c'])
+  assert.deepEqual(pendingIdsInWindow(gapped, [1], 0), ['c'])
+  assert.deepEqual(pendingIdsInWindow(gapped, [2], 0), [])
+})
+
+test('batch operations wire to pending-only and bounded visible-position fetches', () => {
+  const source = projectDetailSource()
+  assert.match(source, /async function pendingOperationRows\(\)/)
+  assert.match(source, /filter: pendingBatchFilter\(projectId\)/)
+  assert.match(source, /await countProjectPages\(projectId\)/)
+  assert.match(source, /await listProjectPageWindow\(projectId, startIndex, endIndex\)/)
+  assert.match(source, /pendingIdsInWindow\(window\.items \|\| \[\], indexes, startIndex\)/)
+  assert.doesNotMatch(source, /async function operationRows\(\)/)
+  assert.doesNotMatch(source, /pageStats\.value\?\.total/)
+  const moves = source.match(/pending = await pendingOperationRows\(\)/g) || []
+  assert.equal(moves.length, 2)
 })

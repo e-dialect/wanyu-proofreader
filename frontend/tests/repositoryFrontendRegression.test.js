@@ -13,6 +13,7 @@ import * as localAccountData from '../src/lib/localAccountData.js'
 import { adminRouteKey } from '../src/lib/adminRouteKey.js'
 import * as taskDraft from '../src/lib/taskDraft.js'
 import * as taskLeaseLib from '../src/lib/taskLease.js'
+import * as adminPageList from '../src/lib/adminPageList.js'
 import * as normalizationDraft from '../src/lib/normalizationDraft.js'
 
 const regression = (name, run) => test(name, { timeout: 5000 }, run)
@@ -224,6 +225,227 @@ function verificationFixture(overrides = {}) {
   )
   return { api, props, calls }
 }
+
+regression(
+  'batch selection keeps pending-only fetches and visible sorted-position semantics',
+  async () => {
+    const source = readFileSync(
+      new URL('../src/composables/project/useProjectEntries.js', import.meta.url),
+      'utf8'
+    )
+    const dense = [
+      { id: 'a', page_number: 1, status: 'pending' },
+      { id: 'b', page_number: 2, status: 'approved' },
+      { id: 'c', page_number: 3, status: 'pending' },
+      { id: 'd', page_number: 4, status: 'claimed' }
+    ]
+    const gapped = [
+      { id: 'a', page_number: 1, status: 'pending' },
+      { id: 'c', page_number: 3, status: 'pending' },
+      { id: 'e', page_number: 5, status: 'approved' }
+    ]
+    const rangeBody = source.slice(
+      source.indexOf('  async function selectByRange()'),
+      source.indexOf('  async function applyPendingOrderByIds')
+    )
+    const runRange = async (rows, input, { countFails = false } = {}) => {
+      const calls = []
+      let windowCalls = 0
+      const mutationError = ref('')
+      const mutationSuccess = ref('')
+      const selectedPendingIds = ref([])
+      const selectByRange = new Function(
+        'mutatingRows',
+        'importJob',
+        'clearMutationFeedback',
+        'rangeSelectInput',
+        'parseRangeInput',
+        'countProjectPages',
+        'listProjectPageWindow',
+        'projectId',
+        'mutationError',
+        'mutationSuccess',
+        'selectedPendingIds',
+        'pendingIdsInWindow',
+        'getPbMessage',
+        `${rangeBody}; return selectByRange`
+      )(
+        ref(false),
+        ref(''),
+        () => {},
+        ref(input),
+        adminPageList.parseRangeInput,
+        async () => {
+          if (countFails) throw new Error('count failed')
+          return rows.length
+        },
+        async (projectId, startIndex, endIndex) => {
+          windowCalls++
+          calls.push({ projectId, startIndex, endIndex })
+          return { items: rows.slice(startIndex, endIndex + 1), totalItems: rows.length }
+        },
+        'p1',
+        mutationError,
+        mutationSuccess,
+        selectedPendingIds,
+        adminPageList.pendingIdsInWindow,
+        (error) => error.message
+      )
+      await selectByRange()
+      return {
+        selected: selectedPendingIds.value,
+        calls,
+        windowCalls,
+        error: mutationError.value,
+        success: mutationSuccess.value
+      }
+    }
+    assert.deepEqual((await runRange(dense, '2')).selected, [])
+    assert.deepEqual((await runRange(dense, '3')).selected, ['c'])
+    assert.deepEqual((await runRange(dense, '1,3')).selected, ['a', 'c'])
+    assert.deepEqual((await runRange(dense, '2-3')).selected, ['c'])
+    assert.deepEqual((await runRange(dense, '3')).calls, [
+      { projectId: 'p1', startIndex: 2, endIndex: 2 }
+    ])
+    assert.deepEqual((await runRange(gapped, '2')).selected, ['c'])
+    assert.deepEqual((await runRange(gapped, '3')).selected, [])
+    assert.deepEqual((await runRange(gapped, '2-3')).selected, ['c'])
+    const failed = await runRange(dense, '2', { countFails: true })
+    assert.equal(failed.error, 'count failed')
+    assert.equal(failed.windowCalls, 0)
+    assert.deepEqual(failed.selected, [])
+
+    const serviceCalls = []
+    const fakePb = {
+      collection: () => ({
+        getList: async (page, perPage, options) => {
+          serviceCalls.push({ page, perPage, options })
+          return {
+            items: gapped.slice((page - 1) * perPage, page * perPage),
+            totalItems: gapped.length
+          }
+        }
+      })
+    }
+    const { countProjectPages, listProjectPageWindow } = evaluate(
+      'services/pagesService.js',
+      ['countProjectPages', 'listProjectPageWindow'],
+      {
+        pb: fakePb,
+        createPageListLoader: (client) => async (options) =>
+          client.collection('pages').getList(options.page, options.perPage, {
+            filter: options.filter,
+            sort: options.sort,
+            fields: options.fields,
+            requestKey: null
+          }),
+        PAGE_STATUS: { PENDING: 'pending' },
+        PROOFREADER_ACTIVE_STATUSES: [],
+        statusFilter: () => ''
+      }
+    )
+    assert.equal(await countProjectPages('p1'), 3)
+    const window = await listProjectPageWindow('p1', 1, 2)
+    assert.deepEqual(
+      window.items.map((row) => row.id),
+      ['c', 'e']
+    )
+    assert.deepEqual(serviceCalls[1], {
+      page: 1,
+      perPage: 100,
+      options: {
+        filter: 'project="p1"',
+        sort: 'page_number',
+        fields: 'id,status,page_number',
+        requestKey: null
+      }
+    })
+    const many = Array.from({ length: 250 }, (_, index) => ({
+      id: `row-${index}`,
+      page_number: index + 1,
+      status: index % 2 === 0 ? 'pending' : 'approved'
+    }))
+    const manyCalls = []
+    const manyPb = {
+      collection: () => ({
+        getList: async (page, perPage, options) => {
+          manyCalls.push({ page, perPage, options })
+          return {
+            items: many.slice((page - 1) * perPage, page * perPage),
+            totalItems: many.length
+          }
+        }
+      })
+    }
+    const { listProjectPageWindow: listManyWindow } = evaluate(
+      'services/pagesService.js',
+      ['listProjectPageWindow'],
+      {
+        pb: manyPb,
+        createPageListLoader: (client) => async (options) =>
+          client.collection('pages').getList(options.page, options.perPage, {
+            filter: options.filter,
+            sort: options.sort,
+            fields: options.fields,
+            requestKey: null
+          }),
+        PAGE_STATUS: { PENDING: 'pending' },
+        PROOFREADER_ACTIVE_STATUSES: [],
+        statusFilter: () => ''
+      }
+    )
+    const spanning = await listManyWindow('p1', 95, 105)
+    assert.deepEqual(
+      spanning.items.map((row) => row.id),
+      many.slice(95, 106).map((row) => row.id)
+    )
+    assert.deepEqual(
+      manyCalls.map((call) => call.page),
+      [1, 2]
+    )
+    assert.equal(manyCalls[0].perPage, 100)
+
+    const pendingCalls = []
+    const listAllProjectPages = async (_projectId, options) => {
+      pendingCalls.push(options)
+      return dense.filter((row) => row.status === 'pending')
+    }
+    const pendingBody = source.slice(
+      source.indexOf('  async function pendingOperationRows()'),
+      source.indexOf('  async function loadQualitySummary')
+    )
+    const toggleBody = source.slice(
+      source.indexOf('  async function toggleSelectAllPending()'),
+      source.indexOf('  function canMoveUp')
+    )
+    const selectedAll = ref([])
+    const toggleSelectAllPending = new Function(
+      'mutatingRows',
+      'importJob',
+      'allPendingSelected',
+      'selectedPendingIds',
+      'listAllProjectPages',
+      'projectId',
+      'pendingBatchFilter',
+      'getPbMessage',
+      'mutationError',
+      `${pendingBody}\n${toggleBody}; return toggleSelectAllPending`
+    )(
+      ref(false),
+      ref(''),
+      ref(false),
+      selectedAll,
+      listAllProjectPages,
+      'p1',
+      adminPageList.pendingBatchFilter,
+      (error) => error.message,
+      ref('')
+    )
+    await toggleSelectAllPending()
+    assert.deepEqual(selectedAll.value, ['a', 'c'])
+    assert.equal(pendingCalls[0].filter, 'project="p1" && status="pending"')
+  }
+)
 
 regression(
   'verification read backs off through consecutive conflicts and remains bounded',

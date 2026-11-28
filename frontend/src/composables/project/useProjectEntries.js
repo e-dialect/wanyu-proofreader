@@ -1,14 +1,22 @@
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { adminPageRouteQuery, normalizeAdminPageQuery, parseRangeInput } from '@/lib/adminPageList'
+import {
+  adminPageRouteQuery,
+  normalizeAdminPageQuery,
+  parseRangeInput,
+  pendingBatchFilter,
+  pendingIdsInWindow
+} from '@/lib/adminPageList'
 import { summarizePages } from '@/lib/workspaceInsights'
 import { PAGE_STATUS, PAGE_STATUS_LABELS } from '@/constants/pageStatus'
 import {
+  countProjectPages,
   deletePendingPages,
   getAdminProjectPageStats,
   listAdminProjectPages,
   listAllProjectPages,
+  listProjectPageWindow,
   reorderPendingPages
 } from '@/services/pagesService'
 import { getProjectQualitySummary, setPageQualityState } from '@/services/qualityStateService'
@@ -296,12 +304,13 @@ export function useProjectEntries(projectId, project, refreshLedger) {
     }
   }
 
-  async function operationRows() {
+  async function pendingOperationRows() {
     mutatingRows.value = true
     try {
       return await listAllProjectPages(projectId, {
         fields: 'id,status,page_number',
-        sort: 'page_number,id'
+        sort: 'page_number,id',
+        filter: pendingBatchFilter(projectId)
       })
     } finally {
       mutatingRows.value = false
@@ -452,7 +461,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
       return
     }
     try {
-      selectedPendingIds.value = (await operationRows()).filter(isPending).map((p) => p.id)
+      selectedPendingIds.value = (await pendingOperationRows()).map((p) => p.id)
     } catch (e) {
       mutationError.value = getPbMessage(e, '选择失败，请重试')
     }
@@ -470,7 +479,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
     if (mutatingRows.value || importJob.value) return
     let pending
     try {
-      pending = (await operationRows()).filter(isPending)
+      pending = await pendingOperationRows()
     } catch (e) {
       mutationError.value = getPbMessage(e, '加载顺序失败')
       return
@@ -502,30 +511,29 @@ export function useProjectEntries(projectId, project, refreshLedger) {
   async function selectByRange() {
     if (mutatingRows.value || importJob.value) return
     clearMutationFeedback()
-    let rows
+    mutatingRows.value = true
     try {
-      rows = await operationRows()
+      // total 与窗口必须来自同一个权限过滤后的排序集合；不能从物理页号或异步 stats 推断。
+      const total = await countProjectPages(projectId)
+      const indexes = parseRangeInput(rangeSelectInput.value, total)
+      if (!indexes.length) {
+        mutationError.value = '范围格式无效，请输入如 1-33 或 1,3,5-8。'
+        return
+      }
+      const startIndex = indexes[0]
+      const endIndex = indexes[indexes.length - 1]
+      const window = await listProjectPageWindow(projectId, startIndex, endIndex)
+      const ids = pendingIdsInWindow(window.items || [], indexes, startIndex)
+      selectedPendingIds.value = ids
+      if (!ids.length) {
+        mutationError.value = '该范围内没有可操作的待校对条目（仅待校对状态可选）。'
+      } else {
+        mutationSuccess.value = `已按范围选择 ${ids.length} 条待校对条目。`
+      }
     } catch (e) {
       mutationError.value = getPbMessage(e, '选择失败，请重试')
-      return
-    }
-    const indexes = parseRangeInput(rangeSelectInput.value, rows.length)
-    if (!indexes.length) {
-      mutationError.value = '范围格式无效，请输入如 1-33 或 1,3,5-8。'
-      return
-    }
-
-    const ids = []
-    for (const idx of indexes) {
-      const row = rows[idx]
-      if (row && isPending(row)) ids.push(row.id)
-    }
-
-    selectedPendingIds.value = ids
-    if (!ids.length) {
-      mutationError.value = '该范围内没有可操作的待校对条目（仅待校对状态可选）。'
-    } else {
-      mutationSuccess.value = `已按范围选择 ${ids.length} 条待校对条目。`
+    } finally {
+      mutatingRows.value = false
     }
   }
 
@@ -538,7 +546,7 @@ export function useProjectEntries(projectId, project, refreshLedger) {
     if (mutatingRows.value || importJob.value || selectedPendingIds.value.length === 0) return
     let pending
     try {
-      pending = (await operationRows()).filter(isPending)
+      pending = await pendingOperationRows()
     } catch (e) {
       mutationError.value = getPbMessage(e, '加载顺序失败')
       return

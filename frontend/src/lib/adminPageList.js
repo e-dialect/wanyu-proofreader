@@ -77,3 +77,16 @@ export function adminPageRouteQuery(state) {
   if (state.perPage !== 25) query.perPage = String(state.perPage)
   return query
 }
+
+export function pendingBatchFilter(projectId) {
+  return `project="${projectId}" && status="pending"`
+}
+
+export function pendingIdsInWindow(rows, indexes, startIndex) {
+  const ids = []
+  for (const index of indexes) {
+    const row = rows[index - startIndex]
+    if (row?.status === 'pending') ids.push(row.id)
+  }
+  return ids
+}
