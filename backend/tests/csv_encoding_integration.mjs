@@ -42,26 +42,32 @@ const wait = async (id) => {
   throw Error('job timeout')
 }
 
-// 1) 损坏编码（0xff / 截断 0x81）→ 整批失败，错误码 CSV_ENCODING_ERROR，报错含字节定位。
+// 1) 损坏编码（0xff / 截断 0x81 / 未分配四字节）→ 整批失败，错误码 CSV_ENCODING_ERROR，报错含字节定位。
 for (const [name, bytes] of [
   ['损坏 0xff', new Uint8Array([0xff])],
   ['截断 0x81', new Uint8Array([0x81])],
   ['损坏 0x81 0x20', new Uint8Array([0x81, 0x20])],
+  // 四字节外形合法但落在 GB18030 未分配区，解码器只会输出 U+FFFD（review #501）
+  ['四字节未分配 0xFE 39 FE 39', new Uint8Array([0xfe, 0x39, 0xfe, 0x39])],
+  // 双字节外形合法但码位未分配（GBK 用户自定义区），同样会静默变成 U+FFFD
+  ['双字节未分配 0xA1 0x40', new Uint8Array([0xa1, 0x40])],
 ]) {
   const job = await api(root, { token, body: bytesForm(bytes), status: 202 })
   const done = await wait(job.id)
   assert.equal(done.status, 'failed', `${name} 应失败`)
   assert.equal(done.error_code, 'CSV_ENCODING_ERROR', `${name} 错误码`)
-  assert.ok(String(done.error_message).includes('字节'), `${name} 报错应含字节定位：${done.error_message}`)
+  assert.ok(String(done.error_message).includes('第 1 字节'), `${name} 报错应含字节定位：${done.error_message}`)
 }
 
 // 2) /columns 端点同样拒绝损坏编码（走 csv_columns 的 decodedCSVReader 路径）。
-{
-  const bad = new Uint8Array([0xff])
+for (const [name, bytes] of [
+  ['损坏 0xff', new Uint8Array([0xff])],
+  ['四字节未分配 0xFE 39 FE 39', new Uint8Array([0xfe, 0x39, 0xfe, 0x39])],
+]) {
   const form = new FormData()
-  form.set('file', new Blob([bad]), 'bad.csv')
+  form.set('file', new Blob([bytes]), 'bad.csv')
   const err = await api(root + '/columns', { token, body: form, status: 400 })
-  assert.ok(String(err.message).includes('字节'), `/columns 报错应含字节定位：${err.message}`)
+  assert.ok(String(err.message).includes('第 1 字节'), `/columns ${name} 报错应含字节定位：${err.message}`)
 }
 
 // 3) 合法 GB18030 正常导入（「page,词条\n1,测试条目」的 GB18030 字节）。
@@ -80,4 +86,4 @@ for (const [name, bytes] of [
   assert.equal(JSON.parse(pages.items[0].ocr_row_json).词条, '测试条目')
 }
 
-console.log('PASS CSV encoding: 损坏/截断字节被拒绝并定位，/columns 同拒，合法 GB18030 正常导入')
+console.log('PASS CSV encoding: 损坏/截断/未映射字节被拒绝并定位，/columns 同拒，合法 GB18030 正常导入')
